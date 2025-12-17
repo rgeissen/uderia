@@ -305,6 +305,96 @@ class CollectionDatabase:
         }
         
         return self.create_collection(collection_data)
+    
+    def get_collection_ratings(self, collection_id: int) -> Dict[str, Any]:
+        """
+        Get rating statistics for a collection.
+        
+        Returns:
+            Dict with 'average_rating' (float), 'rating_count' (int), and 'ratings_breakdown' (dict)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Get average rating and count
+        cursor.execute("""
+            SELECT 
+                COALESCE(AVG(rating), 0) as average_rating,
+                COUNT(*) as rating_count
+            FROM collection_ratings
+            WHERE collection_id = ?
+        """, (collection_id,))
+        
+        result = cursor.fetchone()
+        average_rating = float(result['average_rating']) if result else 0.0
+        rating_count = int(result['rating_count']) if result else 0
+        
+        # Get ratings breakdown (count per star level)
+        cursor.execute("""
+            SELECT rating, COUNT(*) as count
+            FROM collection_ratings
+            WHERE collection_id = ?
+            GROUP BY rating
+            ORDER BY rating DESC
+        """, (collection_id,))
+        
+        breakdown = {str(i): 0 for i in range(1, 6)}  # Initialize 1-5 stars
+        for row in cursor.fetchall():
+            breakdown[str(row['rating'])] = row['count']
+        
+        conn.close()
+        
+        return {
+            'average_rating': round(average_rating, 1),
+            'rating_count': rating_count,
+            'ratings_breakdown': breakdown
+        }
+    
+    def get_bulk_collection_ratings(self, collection_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """
+        Get rating statistics for multiple collections in a single query.
+        
+        Args:
+            collection_ids: List of collection IDs
+        
+        Returns:
+            Dict mapping collection_id to rating stats
+        """
+        if not collection_ids:
+            return {}
+        
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        placeholders = ','.join('?' * len(collection_ids))
+        cursor.execute(f"""
+            SELECT 
+                collection_id,
+                COALESCE(AVG(rating), 0) as average_rating,
+                COUNT(*) as rating_count
+            FROM collection_ratings
+            WHERE collection_id IN ({placeholders})
+            GROUP BY collection_id
+        """, collection_ids)
+        
+        ratings_map = {}
+        for row in cursor.fetchall():
+            coll_id = row['collection_id']
+            ratings_map[coll_id] = {
+                'average_rating': round(float(row['average_rating']), 1),
+                'rating_count': int(row['rating_count'])
+            }
+        
+        # Fill in collections with no ratings
+        for coll_id in collection_ids:
+            if coll_id not in ratings_map:
+                ratings_map[coll_id] = {
+                    'average_rating': 0.0,
+                    'rating_count': 0
+                }
+        
+        conn.close()
+        return ratings_map
 
 
 # Global instance

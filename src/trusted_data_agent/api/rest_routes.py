@@ -2262,6 +2262,14 @@ async def get_rag_collections():
             
             enhanced_collections.append(coll_copy)
         
+        # Add rating statistics in bulk (efficient single query)
+        collection_ids = [c["id"] for c in enhanced_collections]
+        ratings_map = collection_db.get_bulk_collection_ratings(collection_ids)
+        for coll in enhanced_collections:
+            coll_ratings = ratings_map.get(coll["id"], {"average_rating": 0.0, "rating_count": 0})
+            coll["average_rating"] = coll_ratings["average_rating"]
+            coll["rating_count"] = coll_ratings["rating_count"]
+        
         return jsonify({"status": "success", "collections": enhanced_collections}), 200
     except Exception as e:
         app_logger.error(f"Error getting RAG collections: {e}", exc_info=True)
@@ -2403,13 +2411,20 @@ async def delete_rag_collection(collection_id: int):
             return jsonify({"status": "error", "message": "Authentication required"}), 401
         
         retriever = APP_STATE.get("rag_retriever_instance")
-        if retriever and not retriever.is_user_collection_owner(collection_id, user_uuid):
-            return jsonify({"status": "error", "message": "Only collection owners can delete collections"}), 403
-        # --- MARKETPLACE PHASE 2 END ---
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
+            
+        if not retriever.is_user_collection_owner(collection_id, user_uuid):
+            return jsonify({"status": "error", "message": "Only collection owners can delete collections"}), 403
         
-        success = retriever.remove_collection(collection_id)
+        # Prevent deletion of user's default collection
+        default_collection_id = retriever._get_user_default_collection_id(user_uuid)
+        if default_collection_id and collection_id == default_collection_id:
+            return jsonify({"status": "error", "message": "Cannot delete your default collection"}), 400
+        # --- MARKETPLACE PHASE 2 END ---
+        
+        # Pass user_id for additional validation in remove_collection
+        success = retriever.remove_collection(collection_id, user_id=user_uuid)
         
         if success:
             app_logger.info(f"Deleted RAG collection: {collection_id}")
@@ -5749,13 +5764,14 @@ async def browse_marketplace_collections():
     - visibility: Filter by visibility (public, unlisted). Default: public
     - search: Search in name and description
     - repository_type: Filter by repository type (planner, knowledge). Default: all
+    - sort_by: Sort order - "rating" (by average rating), "subscribers" (by subscriber count), "recent" (by date). Default: subscribers
     - limit: Max results (default: 50)
     - offset: Pagination offset (default: 0)
     
     Returns:
     {
         "status": "success",
-        "collections": [...],
+        "collections": [...],  // Each collection includes average_rating and rating_count
         "total": 123,
         "limit": 50,
         "offset": 0
@@ -5846,8 +5862,22 @@ async def browse_marketplace_collections():
             
             marketplace_collections.append(coll_copy)
         
-        # Sort by subscriber_count (most popular first)
-        marketplace_collections.sort(key=lambda c: c.get("subscriber_count", 0), reverse=True)
+        # Add rating statistics in bulk (efficient single query)
+        collection_ids = [c["id"] for c in marketplace_collections]
+        ratings_map = collection_db.get_bulk_collection_ratings(collection_ids)
+        for coll in marketplace_collections:
+            coll_ratings = ratings_map.get(coll["id"], {"average_rating": 0.0, "rating_count": 0})
+            coll["average_rating"] = coll_ratings["average_rating"]
+            coll["rating_count"] = coll_ratings["rating_count"]
+        
+        # Sort by rating or subscriber count
+        sort_by = request.args.get("sort_by", "subscribers")  # "rating", "subscribers", or "recent"
+        if sort_by == "rating":
+            marketplace_collections.sort(key=lambda c: (c.get("average_rating", 0), c.get("rating_count", 0)), reverse=True)
+        elif sort_by == "recent":
+            marketplace_collections.sort(key=lambda c: c.get("created_at", ""), reverse=True)
+        else:  # Default: subscribers
+            marketplace_collections.sort(key=lambda c: c.get("subscriber_count", 0), reverse=True)
         
         # Pagination
         total = len(marketplace_collections)

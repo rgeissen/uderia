@@ -677,11 +677,27 @@ class RAGRetriever:
         
         return collection_id
     
-    def remove_collection(self, collection_id: int):
-        """Removes a RAG collection (except default)."""
-        if collection_id == 0:  # Default collection is always ID 0
+    def remove_collection(self, collection_id: int, user_id: Optional[str] = None):
+        """
+        Removes a RAG collection (except default).
+        
+        Args:
+            collection_id: ID of the collection to remove
+            user_id: Optional user ID to check if this is their default collection
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if collection_id == 0:  # Legacy: Default collection is always ID 0
             logger.warning("Cannot remove default collection")
             return False
+        
+        # If user_id provided, check if this is their default collection
+        if user_id:
+            default_collection_id = self._get_user_default_collection_id(user_id)
+            if default_collection_id and collection_id == default_collection_id:
+                logger.warning(f"Cannot remove default collection {collection_id} for user {user_id}")
+                return False
         
         config_manager = get_config_manager()
         collections_list = APP_STATE.get("rag_collections", [])
