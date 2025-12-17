@@ -2232,6 +2232,18 @@ async def get_rag_collections():
             # --- MARKETPLACE PHASE 2: Add ownership indicators ---
             coll_copy["is_owned"] = retriever.is_user_collection_owner(coll["id"], user_uuid)
             coll_copy["is_subscribed"] = retriever.is_subscribed_collection(coll["id"], user_uuid)
+            
+            # Add subscription_id if user is subscribed (needed for unsubscribe action)
+            if coll_copy["is_subscribed"] and not coll_copy["is_owned"]:
+                from trusted_data_agent.auth.database import get_db_session
+                from trusted_data_agent.auth.models import CollectionSubscription
+                with get_db_session() as session:
+                    subscription = session.query(CollectionSubscription).filter_by(
+                        user_id=user_uuid,
+                        source_collection_id=coll["id"]
+                    ).first()
+                    if subscription:
+                        coll_copy["subscription_id"] = subscription.id
             # --- MARKETPLACE PHASE 2 END ---
             
             # Get document count if collection is active
@@ -5815,8 +5827,22 @@ async def browse_marketplace_collections():
             # Check if current user owns this collection
             if user_uuid:
                 coll_copy["is_owner"] = retriever.is_user_collection_owner(coll["id"], user_uuid)
+                coll_copy["is_subscribed"] = retriever.is_subscribed_collection(coll["id"], user_uuid)
+                
+                # Add subscription_id if user is subscribed (needed for unsubscribe action)
+                if coll_copy["is_subscribed"]:
+                    from trusted_data_agent.auth.database import get_db_session
+                    from trusted_data_agent.auth.models import CollectionSubscription
+                    with get_db_session() as session:
+                        subscription = session.query(CollectionSubscription).filter_by(
+                            user_id=user_uuid,
+                            source_collection_id=coll["id"]
+                        ).first()
+                        if subscription:
+                            coll_copy["subscription_id"] = subscription.id
             else:
                 coll_copy["is_owner"] = False
+                coll_copy["is_subscribed"] = False
             
             marketplace_collections.append(coll_copy)
         
@@ -6010,13 +6036,24 @@ async def fork_marketplace_collection(collection_id: int):
         data = await request.get_json()
         new_name = data.get("name")
         new_description = data.get("description", "")
-        mcp_server_id = data.get("mcp_server_id")
         
         if not new_name:
             return jsonify({"status": "error", "message": "Collection name is required"}), 400
         
-        if not mcp_server_id:
-            return jsonify({"status": "error", "message": "mcp_server_id is required"}), 400
+        # Use the user's own MCP server (get from their config)
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        user_config = config_manager.load_config(user_uuid)
+        mcp_servers = user_config.get("mcp_servers", [])
+        
+        # Use active MCP server or first available
+        active_mcp_id = user_config.get("active_mcp_server_id")
+        if active_mcp_id:
+            mcp_server_id = active_mcp_id
+        elif mcp_servers:
+            mcp_server_id = mcp_servers[0].get("id")
+        else:
+            return jsonify({"status": "error", "message": "No MCP server configured for your account"}), 400
         
         # Get retriever
         retriever = APP_STATE.get("rag_retriever_instance")

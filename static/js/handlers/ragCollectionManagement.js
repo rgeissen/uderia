@@ -760,7 +760,7 @@ async function deleteRagCollection(collectionId, collectionName) {
                     // Refresh collections list
                     await loadRagCollections();
                 } else {
-                    showNotification('error', `Failed to delete collection: ${data.error || 'Unknown error'}`);
+                    showNotification('error', `Failed to delete collection: ${data.message || data.error || 'Unknown error'}`);
                 }
             } catch (error) {
                 console.error('Error deleting RAG collection:', error);

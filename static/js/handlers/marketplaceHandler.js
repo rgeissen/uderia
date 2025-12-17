@@ -526,7 +526,12 @@ async function handleSubscribe(collectionId, button) {
         }
         
         showNotification('Successfully subscribed to collection', 'success');
-        loadMarketplaceCollections(); // Reload to update UI
+        loadMarketplaceCollections(); // Reload marketplace to update UI
+        
+        // Also reload RAG collections if the function is available
+        if (window.loadRagCollections) {
+            await window.loadRagCollections();
+        }
         
     } catch (error) {
         console.error('Subscribe failed:', error);
@@ -566,13 +571,108 @@ async function handleUnsubscribe(subscriptionId, button) {
         }
         
         showNotification('Successfully unsubscribed from collection', 'success');
-        loadMarketplaceCollections(); // Reload to update UI
+        loadMarketplaceCollections(); // Reload marketplace to update UI
+        
+        // Also reload RAG collections if the function is available
+        if (window.loadRagCollections) {
+            await window.loadRagCollections();
+        }
         
     } catch (error) {
         console.error('Unsubscribe failed:', error);
         showNotification('Failed to unsubscribe: ' + error.message, 'error');
         button.textContent = originalText;
         button.disabled = false;
+    }
+}
+
+/**
+ * Unsubscribe from a collection (wrapper for external use)
+ * @param {string} subscriptionId - The subscription ID to cancel
+ * @param {string} collectionName - Name of the collection (for notifications)
+ */
+export async function unsubscribeFromCollection(subscriptionId, collectionName) {
+    if (!subscriptionId) {
+        showNotification('Invalid subscription ID', 'error');
+        return;
+    }
+    
+    // Use custom confirmation if available
+    if (window.showConfirmation) {
+        window.showConfirmation(
+            'Unsubscribe from Collection',
+            `Are you sure you want to unsubscribe from "${collectionName}"?\n\nYou will lose access to this collection's cases.`,
+            async () => {
+                try {
+                    const token = window.authClient?.getToken();
+                    if (!token) {
+                        showNotification('Authentication required. Please log in.', 'error');
+                        return;
+                    }
+                    
+                    const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.message || error.error || 'Unsubscribe failed');
+                    }
+                    
+                    showNotification(`Successfully unsubscribed from "${collectionName}"`, 'success');
+                    
+                    // Reload both marketplace and RAG collections
+                    loadMarketplaceCollections();
+                    if (window.loadRagCollections) {
+                        await window.loadRagCollections();
+                    }
+                    
+                } catch (error) {
+                    console.error('Unsubscribe failed:', error);
+                    showNotification('Failed to unsubscribe: ' + error.message, 'error');
+                }
+            }
+        );
+    } else {
+        // Fallback without confirmation
+        if (!confirm(`Are you sure you want to unsubscribe from "${collectionName}"?`)) {
+            return;
+        }
+        
+        try {
+            const token = window.authClient?.getToken();
+            if (!token) {
+                showNotification('Authentication required. Please log in.', 'error');
+                return;
+            }
+            
+            const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || error.error || 'Unsubscribe failed');
+            }
+            
+            showNotification(`Successfully unsubscribed from "${collectionName}"`, 'success');
+            
+            // Reload both marketplace and RAG collections
+            loadMarketplaceCollections();
+            if (window.loadRagCollections) {
+                await window.loadRagCollections();
+            }
+            
+        } catch (error) {
+            console.error('Unsubscribe failed:', error);
+            showNotification('Failed to unsubscribe: ' + error.message, 'error');
+        }
     }
 }
 
@@ -621,7 +721,9 @@ function openForkModal(collection) {
     if (!modal || !modalContent) return;
     
     // Set collection info
-    if (collectionIdInput) collectionIdInput.value = collection.id;
+    if (collectionIdInput) {
+        collectionIdInput.value = collection.id;
+    }
     if (collectionNameInput) collectionNameInput.value = `${collection.name} (Fork)`;
     if (sourceName) sourceName.textContent = collection.name;
     if (sourceDescription) sourceDescription.textContent = collection.description || 'No description';
@@ -691,17 +793,24 @@ async function handleFork() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ new_name: newName })
+            body: JSON.stringify({ 
+                name: newName  // Backend will use user's own MCP server
+            })
         });
         
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.error || 'Fork failed');
+            throw new Error(error.message || error.error || 'Fork failed');
         }
         
         const result = await response.json();
-        showNotification(`Successfully forked collection: ${result.name}`, 'success');
+        showNotification(`Successfully forked collection as "${newName}"`, 'success');
         closeForkModal();
+        
+        // Reload collections to show the new fork
+        if (window.loadRagCollections) {
+            await window.loadRagCollections();
+        }
         
     } catch (error) {
         console.error('Fork failed:', error);

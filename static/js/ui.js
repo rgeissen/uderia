@@ -2451,6 +2451,9 @@ export async function loadRagCollections() {
     }
 }
 
+// Make loadRagCollections globally available for marketplace handler
+window.loadRagCollections = loadRagCollections;
+
 function createKnowledgeRepositoryCard(col) {
     const card = document.createElement('div');
     card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
@@ -2621,23 +2624,41 @@ function createKnowledgeRepositoryCard(col) {
         }
     });
     
-    // Delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', () => {
-        if (window.knowledgeRepositoryHandler) {
-            window.knowledgeRepositoryHandler.deleteKnowledgeRepository(col.id, col.name);
-        }
-    });
+    // Delete/Unsubscribe button for Knowledge repositories
+    if (col.is_subscribed && !col.is_owned) {
+        // Subscribed collection - show Unsubscribe button
+        const unsubscribeBtn = document.createElement('button');
+        unsubscribeBtn.type = 'button';
+        unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-sm text-white';
+        unsubscribeBtn.textContent = 'Unsubscribe';
+        unsubscribeBtn.addEventListener('click', async () => {
+            if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
+                await window.marketplaceHandler.unsubscribeFromCollection(col.subscription_id, col.name);
+            } else {
+                console.error('Marketplace handler not available for unsubscribe');
+            }
+        });
+        actions.appendChild(unsubscribeBtn);
+    } else {
+        // Owned collection - show Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', () => {
+            if (window.knowledgeRepositoryHandler) {
+                window.knowledgeRepositoryHandler.deleteKnowledgeRepository(col.id, col.name);
+            }
+        });
+        actions.appendChild(deleteBtn);
+    }
     
     actions.appendChild(toggleBtn);
     actions.appendChild(refreshBtn);
     actions.appendChild(inspectBtn);
     actions.appendChild(editBtn);
     actions.appendChild(uploadBtn);
-    actions.appendChild(deleteBtn);
+    // Delete/Unsubscribe button already appended above
     
     card.appendChild(actions);
     
@@ -2791,27 +2812,45 @@ function createCollectionCard(col) {
                 }
             });
             
-            // Delete button (disabled for default collection ID 0)
-            const deleteBtn = document.createElement('button');
-            deleteBtn.type = 'button';
-            deleteBtn.className = col.id === 0
-                ? 'px-3 py-1 rounded-md bg-gray-800 text-sm text-gray-600 cursor-not-allowed'
-                : 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
-            deleteBtn.textContent = 'Delete';
-            deleteBtn.disabled = col.id === 0;
-            if (col.id !== 0) {
-                deleteBtn.addEventListener('click', () => {
-                    if (window.ragCollectionManagement) {
-                        window.ragCollectionManagement.deleteRagCollection(col.id, col.name);
+            // Delete/Unsubscribe button
+            if (col.is_subscribed && !col.is_owned) {
+                // Subscribed collection - show Unsubscribe button
+                const unsubscribeBtn = document.createElement('button');
+                unsubscribeBtn.type = 'button';
+                unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-sm text-white';
+                unsubscribeBtn.textContent = 'Unsubscribe';
+                unsubscribeBtn.addEventListener('click', async () => {
+                    if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
+                        await window.marketplaceHandler.unsubscribeFromCollection(col.subscription_id, col.name);
+                    } else {
+                        console.error('Marketplace handler not available for unsubscribe');
                     }
                 });
+                actions.appendChild(unsubscribeBtn);
+            } else {
+                // Owned collection - show Delete button (disabled for ID 0)
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = col.id === 0
+                    ? 'px-3 py-1 rounded-md bg-gray-800 text-sm text-gray-600 cursor-not-allowed'
+                    : 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.disabled = col.id === 0;
+                if (col.id !== 0) {
+                    deleteBtn.addEventListener('click', () => {
+                        if (window.ragCollectionManagement) {
+                            window.ragCollectionManagement.deleteRagCollection(col.id, col.name);
+                        }
+                    });
+                }
+                actions.appendChild(deleteBtn);
             }
             
             actions.appendChild(toggleBtn);
             actions.appendChild(refreshBtn);
             actions.appendChild(inspectBtn);
             actions.appendChild(editBtn);
-            actions.appendChild(deleteBtn);
+            // Delete/Unsubscribe button already appended above
             
     card.appendChild(header);
     if (desc) card.appendChild(desc);

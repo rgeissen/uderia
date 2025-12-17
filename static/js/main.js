@@ -15,7 +15,7 @@ import * as UI from './ui.js';
 import { handleViewSwitch } from './ui.js';
 import { initializeVoiceRecognition } from './voice.js';
 import { subscribeToNotifications } from './notifications.js';
-import { initializeMarketplace } from './handlers/marketplaceHandler.js';
+import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
 // Import conversationInitializer early to ensure window.__conversationInitState is available
 import './conversationInitializer.js';
 
@@ -850,6 +850,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     subscribeToNotifications();
     initializeRAGAutoCompletion();
     initializeMarketplace();
+    
+    // Make marketplace functions globally available
+    window.marketplaceHandler = {
+        unsubscribeFromCollection: unsubscribeFromCollection
+    };
     
     // Restore current session ID from localStorage if available
     const savedSessionId = localStorage.getItem('currentSessionId');
