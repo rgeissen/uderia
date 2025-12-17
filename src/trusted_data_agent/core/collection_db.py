@@ -38,13 +38,17 @@ class CollectionDatabase:
         if user_id is None:
             # Admin view - all collections
             cursor.execute("""
-                SELECT * FROM collections
-                ORDER BY id
+                SELECT c.*, u.username as owner_username 
+                FROM collections c
+                LEFT JOIN users u ON c.owner_user_id = u.id
+                ORDER BY c.id
             """)
         else:
             # User view - owned + subscribed collections
             cursor.execute("""
-                SELECT DISTINCT c.* FROM collections c
+                SELECT DISTINCT c.*, u.username as owner_username 
+                FROM collections c
+                LEFT JOIN users u ON c.owner_user_id = u.id
                 LEFT JOIN collection_subscriptions cs ON c.id = cs.source_collection_id
                 WHERE c.owner_user_id = ? OR cs.user_id = ?
                 ORDER BY c.id
@@ -78,7 +82,12 @@ class CollectionDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT * FROM collections WHERE id = ?", (collection_id,))
+        cursor.execute("""
+            SELECT c.*, u.username as owner_username 
+            FROM collections c
+            LEFT JOIN users u ON c.owner_user_id = u.id
+            WHERE c.id = ?
+        """, (collection_id,))
         row = cursor.fetchone()
         conn.close()
         
@@ -245,20 +254,24 @@ class CollectionDatabase:
         
         if exclude_user_id:
             cursor.execute("""
-                SELECT * FROM collections
-                WHERE is_marketplace_listed = 1
-                  AND visibility = 'public'
-                  AND owner_user_id IS NOT NULL
-                  AND owner_user_id != ?
-                ORDER BY subscriber_count DESC, created_at DESC
+                SELECT c.*, u.username as owner_username 
+                FROM collections c
+                LEFT JOIN users u ON c.owner_user_id = u.id
+                WHERE c.is_marketplace_listed = 1
+                  AND c.visibility = 'public'
+                  AND c.owner_user_id IS NOT NULL
+                  AND c.owner_user_id != ?
+                ORDER BY c.subscriber_count DESC, c.created_at DESC
             """, (exclude_user_id,))
         else:
             cursor.execute("""
-                SELECT * FROM collections
-                WHERE is_marketplace_listed = 1
-                  AND visibility = 'public'
-                  AND owner_user_id IS NOT NULL
-                ORDER BY subscriber_count DESC, created_at DESC
+                SELECT c.*, u.username as owner_username 
+                FROM collections c
+                LEFT JOIN users u ON c.owner_user_id = u.id
+                WHERE c.is_marketplace_listed = 1
+                  AND c.visibility = 'public'
+                  AND c.owner_user_id IS NOT NULL
+                ORDER BY c.subscriber_count DESC, c.created_at DESC
             """)
         
         rows = cursor.fetchall()

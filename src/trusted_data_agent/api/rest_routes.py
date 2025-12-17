@@ -6206,6 +6206,81 @@ async def publish_collection_to_marketplace(collection_id: int):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>/unpublish", methods=["POST"])
+async def unpublish_collection_from_marketplace(collection_id: int):
+    """
+    Unpublish a collection from the marketplace.
+    
+    Removes collection from marketplace browse while preserving:
+    - Existing subscriber access (read-only)
+    - Ratings and reviews
+    - Subscriber count (historical data)
+    
+    Returns:
+    {
+        "status": "success",
+        "message": "Collection unpublished from marketplace"
+    }
+    """
+    try:
+        # Get authenticated user
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+        
+        # Get retriever and validate ownership
+        retriever = APP_STATE.get("rag_retriever_instance")
+        if not retriever:
+            return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
+        
+        if not retriever.is_user_collection_owner(collection_id, user_uuid):
+            return jsonify({"status": "error", "message": "Only collection owners can unpublish collections"}), 403
+        
+        # Check if collection is actually published
+        coll_meta = retriever.get_collection_metadata(collection_id)
+        if not coll_meta:
+            return jsonify({"status": "error", "message": "Collection not found"}), 404
+        
+        if not coll_meta.get("is_marketplace_listed", False):
+            return jsonify({"status": "error", "message": "Collection is not currently published"}), 400
+        
+        # Prevent unpublishing default collection (defensive check)
+        default_collection_id = retriever._get_user_default_collection_id(user_uuid)
+        if default_collection_id and collection_id == default_collection_id:
+            return jsonify({"status": "error", "message": "Cannot unpublish your default collection"}), 400
+        
+        # Update collection in database
+        from trusted_data_agent.core.collection_db import get_collection_db
+        collection_db = get_collection_db()
+        
+        # Unpublish: Remove from marketplace but keep subscriptions active
+        updates = {
+            "is_marketplace_listed": False,
+            "visibility": "private"  # Set to private to prevent new subscriptions
+        }
+        
+        # Update in database
+        success = collection_db.update_collection(collection_id, updates)
+        if not success:
+            return jsonify({"status": "error", "message": "Failed to update collection"}), 500
+        
+        # Reload collections into APP_STATE
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        APP_STATE["rag_collections"] = config_manager.get_rag_collections()
+        
+        app_logger.info(f"User {user_uuid} unpublished collection {collection_id} from marketplace")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Collection unpublished from marketplace"
+        }), 200
+        
+    except Exception as e:
+        app_logger.error(f"Error unpublishing collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/marketplace/collections/<int:collection_id>/rate", methods=["POST"])
 async def rate_marketplace_collection(collection_id: int):
     """

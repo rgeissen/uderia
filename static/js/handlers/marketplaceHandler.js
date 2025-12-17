@@ -413,12 +413,19 @@ function createCollectionCard(collection) {
                     Rate
                 </button>
             ` : ''}
-            ${isOwner && collection.id !== 0 ? `
+            ${isOwner && collection.id !== 0 && !collection.is_marketplace_listed ? `
                 <button class="publish-btn px-3 py-1 rounded-md bg-green-600 hover:bg-green-500 text-sm text-white"
                         data-collection-id="${collection.id}"
                         data-collection-name="${escapeHtml(collection.name)}"
                         data-collection-description="${escapeHtml(collection.description || '')}">
-                    ${collection.is_marketplace_listed ? 'Update' : 'Publish'}
+                    Publish
+                </button>
+            ` : ''}
+            ${isOwner && collection.id !== 0 && collection.is_marketplace_listed ? `
+                <button class="unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
+                        data-collection-id="${collection.id}"
+                        data-collection-name="${escapeHtml(collection.name)}">
+                    Unpublish
                 </button>
             ` : ''}
             ${isOwner && collection.id === 0 ? `
@@ -436,6 +443,7 @@ function createCollectionCard(collection) {
     const unsubscribeBtn = card.querySelector('.unsubscribe-btn');
     const forkBtn = card.querySelector('.fork-btn');
     const publishBtn = card.querySelector('.publish-btn');
+    const unpublishBtn = card.querySelector('.unpublish-btn');
     const rateBtn = card.querySelector('.rate-btn');
     
     if (subscribeBtn) {
@@ -452,6 +460,10 @@ function createCollectionCard(collection) {
     
     if (publishBtn) {
         publishBtn.addEventListener('click', () => openPublishModal(collection));
+    }
+    
+    if (unpublishBtn) {
+        unpublishBtn.addEventListener('click', () => handleUnpublish(collection.id, collection.name, unpublishBtn));
     }
     
     if (rateBtn) {
@@ -976,6 +988,68 @@ async function handlePublish() {
         }
     }
 }
+
+/**
+ * Handle unpublish action
+ */
+async function handleUnpublish(collectionId, collectionName, button) {
+    // Confirm unpublish
+    const confirmed = window.showConfirmation ? await new Promise(resolve => {
+        window.showConfirmation(
+            'Unpublish Collection',
+            `Are you sure you want to remove "${collectionName}" from the marketplace?\n\nExisting subscribers will retain read-only access, but new users won't be able to subscribe.`,
+            () => resolve(true),
+            () => resolve(false)
+        );
+    }) : confirm(`Remove "${collectionName}" from the marketplace?\n\nExisting subscribers will keep access.`);
+    
+    if (!confirmed) return;
+    
+    const originalText = button?.textContent || 'Unpublish';
+    if (button) {
+        button.textContent = 'Unpublishing...';
+        button.disabled = true;
+    }
+    
+    try {
+        const token = window.authClient?.getToken();
+        if (!token) {
+            showNotification('Authentication required. Please log in.', 'error');
+            return;
+        }
+        
+        const response = await fetch(`/api/v1/rag/collections/${collectionId}/unpublish`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || error.error || 'Unpublish failed');
+        }
+        
+        showNotification('Successfully unpublished collection from marketplace', 'success');
+        loadMarketplaceCollections(); // Reload to update UI
+        
+        // Also reload RAG collections if available
+        if (window.loadRagCollections) {
+            await window.loadRagCollections();
+        }
+        
+    } catch (error) {
+        console.error('Unpublish failed:', error);
+        showNotification('Failed to unpublish collection: ' + error.message, 'error');
+    } finally {
+        if (button) {
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    }
+}
+
 
 /**
  * Initialize rate modal
