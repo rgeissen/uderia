@@ -25,13 +25,19 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, Any, List
 from pathlib import Path
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.exceptions import InvalidSignature
 
 from trusted_data_agent.core.config import APP_STATE
 from trusted_data_agent.core.utils import get_project_root
+from trusted_data_agent.agent.prompt_encryption import (
+    derive_tier_key,
+    decrypt_prompt,
+    can_access_prompts,
+    get_placeholder_content
+)
 
 # Initialize logger
 logger = logging.getLogger("quart.app")
@@ -73,12 +79,35 @@ class PromptLoader:
         self._license_info = APP_STATE.get('license_info', {})
         self._tier = self._license_info.get('tier', 'Standard')
         
+        # Step 2.5: Derive decryption key for tier (if authorized)
+        self._can_decrypt = can_access_prompts(self._tier)
+        if self._can_decrypt:
+            try:
+                # Add signature to license_info for key derivation
+                license_path = os.path.join(get_project_root(), "tda_keys", "license.key")
+                with open(license_path, 'r') as f:
+                    license_data = json.load(f)
+                    self._license_info['signature'] = license_data['signature']
+                
+                self._decryption_key = derive_tier_key(self._license_info)
+                logger.info(f"Decryption key derived for tier: {self._tier}")
+            except Exception as e:
+                logger.error(f"Failed to derive decryption key: {e}")
+                self._can_decrypt = False
+                self._decryption_key = None
+        else:
+            self._decryption_key = None
+            logger.warning(f"Tier '{self._tier}' does not have prompt decryption privileges")
+        
         # Step 3: Get database path
         project_root = get_project_root()
         self.db_path = os.path.join(project_root, "tda_auth.db")
         
+        # Allow initialization even if database doesn't exist yet (for bootstrap)
+        # Database existence will be checked when actually loading prompts
         if not os.path.exists(self.db_path):
-            raise RuntimeError(f"Database not found: {self.db_path}")
+            logger.warning(f"Database not found during PromptLoader init: {self.db_path}")
+            logger.warning("PromptLoader initialized but will fail on prompt access until database is created")
         
         # Step 4: Initialize cache
         self._prompt_cache: Dict[str, str] = {}
@@ -154,7 +183,16 @@ class PromptLoader:
         
         Returns:
             sqlite3.Connection: Database connection
+            
+        Raises:
+            RuntimeError: If database doesn't exist
         """
+        if not os.path.exists(self.db_path):
+            raise RuntimeError(
+                f"Database not found: {self.db_path}. "
+                "The database must be initialized before loading prompts. "
+                "If this is a fresh installation, the bootstrap process will create it."
+            )
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Access columns by name
         return conn
@@ -175,6 +213,7 @@ class PromptLoader:
             user_uuid: User UUID for user-level overrides (optional)
             profile_id: Profile ID for profile-level overrides (optional)
             parameters: Parameter values to substitute (optional)
+                       If None, will auto-load from database
         
         Returns:
             str: Prompt content with parameters resolved
@@ -191,7 +230,11 @@ class PromptLoader:
             content = self._load_with_overrides(name, user_uuid, profile_id)
             self._prompt_cache[cache_key] = content
         
-        # Resolve parameters if provided
+        # Auto-load parameters if not provided
+        if parameters is None:
+            parameters = self.get_prompt_parameters(name, user_uuid, profile_id)
+        
+        # Resolve parameters
         if parameters:
             content = self._resolve_parameters(content, parameters)
         
@@ -228,8 +271,20 @@ class PromptLoader:
                 
                 row = cursor.fetchone()
                 if row:
-                    logger.debug(f"Loaded user override for {name} (user: {user_uuid})")
-                    return row['content']
+                    encrypted_content = row['content']
+                    
+                    # Decrypt override (overrides stored encrypted too)
+                    if self._can_decrypt and self._decryption_key:
+                        try:
+                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key)
+                            logger.debug(f"Loaded and decrypted user override for {name} (user: {user_uuid})")
+                            return decrypted_content
+                        except Exception as e:
+                            logger.error(f"Failed to decrypt user override for {name}: {e}")
+                            # Fall through to try other sources
+                    else:
+                        logger.warning(f"Cannot decrypt user override for {name}")
+                        # Fall through to try other sources
             
             # 2. Check profile-level override
             if profile_id:
@@ -242,8 +297,20 @@ class PromptLoader:
                 
                 row = cursor.fetchone()
                 if row:
-                    logger.debug(f"Loaded profile override for {name} (profile: {profile_id})")
-                    return row['content']
+                    encrypted_content = row['content']
+                    
+                    # Decrypt profile override
+                    if self._can_decrypt and self._decryption_key:
+                        try:
+                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key)
+                            logger.debug(f"Loaded and decrypted profile override for {name} (profile: {profile_id})")
+                            return decrypted_content
+                        except Exception as e:
+                            logger.error(f"Failed to decrypt profile override for {name}: {e}")
+                            # Fall through to base prompt
+                    else:
+                        logger.warning(f"Cannot decrypt profile override for {name}")
+                        # Fall through to base prompt
             
             # 3. Load base prompt
             cursor.execute("""
@@ -254,8 +321,23 @@ class PromptLoader:
             
             row = cursor.fetchone()
             if row:
-                logger.debug(f"Loaded base prompt: {name}")
-                return row['content']
+                encrypted_content = row['content']
+                
+                # Decrypt if authorized, otherwise return placeholder
+                if self._can_decrypt and self._decryption_key:
+                    try:
+                        decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key)
+                        logger.debug(f"Loaded and decrypted base prompt: {name}")
+                        return decrypted_content
+                    except InvalidToken:
+                        logger.error(f"Failed to decrypt prompt {name} - invalid key")
+                        return get_placeholder_content(self._tier)
+                    except Exception as e:
+                        logger.error(f"Unexpected error decrypting {name}: {e}")
+                        return get_placeholder_content(self._tier)
+                else:
+                    logger.warning(f"Access denied to prompt {name} for tier: {self._tier}")
+                    return get_placeholder_content(self._tier)
             
             raise ValueError(f"Prompt not found: {name}")
             
@@ -267,22 +349,109 @@ class PromptLoader:
         Resolve parameters in prompt content.
         
         Parameters are specified as {parameter_name} in the content.
+        Only resolves the specific parameters provided, performing simple string replacement
+        to avoid issues with JSON examples or other brace-containing content.
         
         Args:
             content: Prompt content with {parameter} placeholders
             parameters: Parameter values to substitute
         
         Returns:
-            str: Content with parameters resolved
+            str: Content with available parameters resolved
         """
         try:
-            return content.format(**parameters)
-        except KeyError as e:
-            logger.warning(f"Missing parameter in prompt: {e}")
-            return content
+            if not parameters:
+                return content
+                
+            result = content
+            resolved_count = 0
+            
+            # Simple string replacement for each parameter
+            for param_name, param_value in parameters.items():
+                placeholder = f"{{{param_name}}}"
+                if placeholder in result:
+                    result = result.replace(placeholder, str(param_value))
+                    resolved_count += 1
+            
+            if resolved_count > 0:
+                logger.debug(f"Resolved {resolved_count} database parameters via replacement")
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error resolving parameters: {e}")
             return content
+    
+    def get_prompt_parameters(self, name: str, user_uuid: Optional[str] = None,
+                             profile_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Load parameter values for a prompt (global + prompt-specific + overrides).
+        
+        Args:
+            name: Prompt name
+            user_uuid: User UUID for parameter overrides (optional)
+            profile_id: Profile ID for parameter overrides (optional)
+        
+        Returns:
+            dict: Parameter name -> value mapping
+        """
+        import sqlite3
+        
+        conn = self._get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get prompt ID
+            cursor.execute("SELECT id FROM prompts WHERE name = ?", (name,))
+            row = cursor.fetchone()
+            if not row:
+                logger.warning(f"Prompt '{name}' not found for parameter loading")
+                return {}
+            
+            prompt_id = row[0]
+            
+            # Build parameters dictionary starting with global parameters
+            parameters = {}
+            
+            # 1. Load global parameters
+            cursor.execute("""
+                SELECT parameter_name, default_value 
+                FROM global_parameters
+            """)
+            for row in cursor.fetchall():
+                parameters[row[0]] = row[1]
+            
+            # 2. Load prompt-specific parameters (override globals if same name)
+            cursor.execute("""
+                SELECT parameter_name, default_value 
+                FROM prompt_parameters
+                WHERE prompt_id = ?
+            """, (prompt_id,))
+            for row in cursor.fetchall():
+                parameters[row[0]] = row[1]
+            
+            logger.debug(f"Loaded {len(parameters)} parameters for prompt '{name}': {list(parameters.keys())}")
+            
+            # 3. Load parameter overrides (user or profile)
+            if user_uuid or profile_id:
+                cursor.execute("""
+                    SELECT parameter_name, override_value
+                    FROM global_parameter_overrides
+                    WHERE prompt_id = ?
+                    AND (user_uuid = ? OR profile_id = ?)
+                    ORDER BY CASE WHEN user_uuid IS NOT NULL THEN 1 ELSE 2 END
+                """, (prompt_id, user_uuid, profile_id))
+                override_count = 0
+                for row in cursor.fetchall():
+                    parameters[row[0]] = row[1]
+                    override_count += 1
+                if override_count > 0:
+                    logger.debug(f"Applied {override_count} parameter overrides")
+            
+            return parameters
+            
+        finally:
+            conn.close()
     
     def get_prompt_metadata(self, name: str) -> Optional[Dict[str, Any]]:
         """
@@ -308,6 +477,7 @@ class PromptLoader:
                     p.provider,
                     p.version,
                     p.is_active,
+                    p.created_by,
                     pc.display_name as category
                 FROM prompts p
                 LEFT JOIN prompt_classes pc ON p.class_id = pc.id
@@ -346,7 +516,9 @@ class PromptLoader:
                     p.description,
                     p.role,
                     p.provider,
-                    pc.display_name as category
+                    p.is_active,
+                    pc.display_name as category,
+                    pc.id as category_id
                 FROM prompts p
                 LEFT JOIN prompt_classes pc ON p.class_id = pc.id
                 WHERE p.is_active = 1

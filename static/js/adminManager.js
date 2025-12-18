@@ -175,7 +175,12 @@ const AdminManager = {
         // System Prompts
         const systemPromptsTierSelector = document.getElementById('system-prompts-tier-selector');
         if (systemPromptsTierSelector) {
-            systemPromptsTierSelector.addEventListener('change', (e) => this.loadSystemPromptForTier(e.target.value));
+            systemPromptsTierSelector.addEventListener('change', (e) => {
+                const promptName = e.target.value;
+                this.loadSystemPromptForTier(promptName);
+                // Always reload parameters when prompt changes
+                this.loadPromptParameters(promptName);
+            });
         }
 
         const loadSystemPromptBtn = document.getElementById('load-system-prompt-btn');
@@ -196,9 +201,49 @@ const AdminManager = {
             resetSystemPromptBtn.addEventListener('click', () => this.resetSystemPromptToDefault());
         }
 
+        // Phase 4: Enhanced Features Event Handlers
+        const duplicatePromptBtn = document.getElementById('duplicate-prompt-btn');
+        if (duplicatePromptBtn) {
+            duplicatePromptBtn.addEventListener('click', () => this.duplicatePrompt());
+        }
+
+        const deletePromptBtn = document.getElementById('delete-prompt-btn');
+        if (deletePromptBtn) {
+            deletePromptBtn.addEventListener('click', () => this.deletePrompt());
+        }
+
+        const toggleParametersBtn = document.getElementById('toggle-parameters-btn');
+        if (toggleParametersBtn) {
+            toggleParametersBtn.addEventListener('click', () => this.toggleSection('parameters'));
+        }
+
+        const toggleVersionsBtn = document.getElementById('toggle-versions-btn');
+        if (toggleVersionsBtn) {
+            toggleVersionsBtn.addEventListener('click', () => this.toggleSection('versions'));
+        }
+
+        const toggleDiffBtn = document.getElementById('toggle-diff-btn');
+        if (toggleDiffBtn) {
+            toggleDiffBtn.addEventListener('click', () => this.toggleSection('diff'));
+        }
+
         const systemPromptTextarea = document.getElementById('system-prompt-editor-textarea');
         if (systemPromptTextarea) {
-            systemPromptTextarea.addEventListener('input', () => this.updateCharCount());
+            systemPromptTextarea.addEventListener('input', () => {
+                this.updateCharCount();
+                // Auto-reload parameters if the section is expanded
+                const parametersContent = document.getElementById('parameters-content');
+                if (parametersContent && !parametersContent.classList.contains('hidden')) {
+                    const promptName = document.getElementById('system-prompts-tier-selector').value;
+                    if (promptName) {
+                        // Debounce to avoid too many API calls while typing
+                        clearTimeout(this._parameterReloadTimeout);
+                        this._parameterReloadTimeout = setTimeout(() => {
+                            this.loadPromptParameters(promptName);
+                        }, 500); // Wait 500ms after user stops typing
+                    }
+                }
+            });
         }
 
         // Application Configuration
@@ -286,8 +331,13 @@ const AdminManager = {
         } else if (tabName === 'expert-settings-tab') {
             this.loadExpertSettings();
         } else if (tabName === 'system-prompts-tab') {
-            const tier = document.getElementById('system-prompts-tier-selector').value || 'user';
-            this.loadSystemPromptForTier(tier);
+            // Load all prompts first to populate the dropdown
+            this.loadAllPrompts().then(() => {
+                const tier = document.getElementById('system-prompts-tier-selector').value;
+                if (tier) {
+                    this.loadSystemPromptForTier(tier);
+                }
+            });
         }
     },
 
@@ -2549,6 +2599,7 @@ const AdminManager = {
             const textarea = document.getElementById('system-prompt-editor-textarea');
             const saveBtn = document.getElementById('save-system-prompt-btn');
             const resetBtn = document.getElementById('reset-system-prompt-btn');
+            const deleteBtn = document.getElementById('delete-prompt-btn');
             
             // Show/hide notice and disable controls if not authorized
             if (notice) {
@@ -2590,18 +2641,55 @@ const AdminManager = {
                         if (overrideBadge) {
                             overrideBadge.classList.toggle('hidden', !data.is_override);
                         }
+                        
+                        // Check if this is a system default prompt (cannot be deleted)
+                        // System prompts have created_by as null, undefined, 'SYSTEM', 'system', or empty string
+                        const createdBy = data.metadata?.created_by;
+                        const isSystemPrompt = !createdBy || createdBy === 'SYSTEM' || createdBy === 'system';
+                        
+                        // Disable delete button for system prompts or when no edit permission
+                        if (deleteBtn) {
+                            deleteBtn.disabled = isSystemPrompt || !canEdit;
+                            deleteBtn.classList.toggle('opacity-50', isSystemPrompt || !canEdit);
+                            deleteBtn.classList.toggle('cursor-not-allowed', isSystemPrompt || !canEdit);
+                            deleteBtn.title = !canEdit 
+                                ? 'Requires Prompt Engineer or Enterprise license'
+                                : isSystemPrompt 
+                                    ? 'System default prompts cannot be deleted' 
+                                    : 'Delete this custom prompt';
+                        }
+                        
+                        // Auto-reload parameters if section is expanded
+                        const parametersContent = document.getElementById('section-parameters-content');
+                        if (parametersContent && !parametersContent.classList.contains('hidden')) {
+                            this.loadPromptParameters(promptName);
+                        }
                     } else {
                         throw new Error('Failed to load system prompt');
                     }
                 } catch (error) {
                     console.error('[AdminManager] Error loading system prompt:', error);
+                    // Disable delete button on error
+                    if (deleteBtn) {
+                        deleteBtn.disabled = true;
+                        deleteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        deleteBtn.title = 'Failed to load prompt metadata';
+                    }
                     if (window.showNotification) {
                         window.showNotification('error', `Failed to load system prompt: ${error.message}`);
                     }
                 }
-            } else if (textarea) {
-                textarea.value = '';
-                this.updateCharCount();
+            } else {
+                // No edit permission - disable delete button
+                if (deleteBtn) {
+                    deleteBtn.disabled = true;
+                    deleteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    deleteBtn.title = 'Requires Prompt Engineer or Enterprise license';
+                }
+                if (textarea) {
+                    textarea.value = '';
+                    this.updateCharCount();
+                }
                 if (overrideBadge) {
                     overrideBadge.classList.add('hidden');
                 }
@@ -2747,6 +2835,856 @@ const AdminManager = {
         }
     },
 
+    // ========================================================================
+    // PHASE 4: ENHANCED SYSTEM PROMPTS FEATURES
+    // ========================================================================
+
+    /**
+     * Toggle collapsible sections (parameters, versions, diff)
+     */
+    toggleSection(sectionName) {
+        const content = document.getElementById(`${sectionName}-content`);
+        const button = document.getElementById(`toggle-${sectionName}-btn`);
+        
+        if (!content || !button) return;
+
+        const isHidden = content.classList.contains('hidden');
+        
+        if (isHidden) {
+            content.classList.remove('hidden');
+            button.querySelector('.expand-text').textContent = 'Hide';
+            
+            // Load data when opening
+            const promptName = document.getElementById('system-prompts-tier-selector').value;
+            if (promptName) {
+                if (sectionName === 'parameters') {
+                    this.loadPromptParameters(promptName);
+                } else if (sectionName === 'versions') {
+                    this.loadVersionHistory(promptName);
+                } else if (sectionName === 'diff') {
+                    this.showDiff(promptName);
+                }
+            }
+        } else {
+            content.classList.add('hidden');
+            button.querySelector('.expand-text').textContent = 'Show';
+        }
+    },
+
+    /**
+     * Load parameters for the selected prompt
+     */
+    async loadPromptParameters(promptName) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/parameters`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load parameters: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            const tbody = document.getElementById('parameters-table-body');
+            
+            if (!tbody) return;
+
+            // Clear existing rows
+            tbody.innerHTML = '';
+
+            const allParameters = [
+                ...data.global_parameters.map(p => ({ ...p, scope: 'Global' })),
+                ...data.prompt_parameters.map(p => ({ ...p, scope: 'Prompt' })),
+                ...(data.undefined_parameters || []).map(p => ({ ...p, scope: 'Undefined' }))
+            ];
+
+            if (allParameters.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-gray-500">
+                            No parameters referenced in this prompt
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Render parameter rows
+            allParameters.forEach(param => {
+                const isUndefined = param.scope === 'Undefined';
+                const isGlobal = param.scope === 'Global';
+                const isPrompt = param.scope === 'Prompt';
+                const isEditable = (isGlobal || isPrompt) && !isUndefined;
+                const hasOverride = param.has_override || false;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-3 ${isUndefined ? 'text-yellow-400' : 'text-gray-300'}">
+                        ${isUndefined ? '⚠️ ' : ''}${param.display_name || param.parameter_name}
+                    </td>
+                    <td class="py-2 px-3 text-gray-400">${param.parameter_type}</td>
+                    <td class="py-2 px-3">
+                        ${isUndefined 
+                            ? '<span class="text-xs text-yellow-400">Not defined</span>'
+                            : `<code class="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300">${param.default_value || 'N/A'}</code>`
+                        }
+                    </td>
+                    <td class="py-2 px-3">
+                        ${isEditable 
+                            ? `<input type="text" 
+                                      id="override-${param.parameter_name}" 
+                                      value="${param.override_value || ''}"
+                                      placeholder="Enter override..."
+                                      class="w-full px-2 py-1 text-xs bg-gray-700 border ${hasOverride ? 'border-orange-500' : 'border-gray-600'} rounded text-gray-300 focus:outline-none focus:border-[#F15F22]">`
+                            : '<span class="text-xs text-gray-500">—</span>'
+                        }
+                    </td>
+                    <td class="py-2 px-3">
+                        <span class="text-xs px-2 py-0.5 rounded ${
+                            param.scope === 'Global' 
+                                ? 'bg-blue-500/20 text-blue-300' 
+                                : param.scope === 'Prompt'
+                                ? 'bg-purple-500/20 text-purple-300'
+                                : 'bg-yellow-500/20 text-yellow-300'
+                        }">
+                            ${param.scope}
+                        </span>
+                        ${hasOverride ? '<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">✓</span>' : ''}
+                    </td>
+                    <td class="py-2 px-3">
+                        ${isEditable 
+                            ? `<div class="flex gap-1">
+                                <button onclick="adminManager.saveParameterOverride('${promptName}', '${param.parameter_name}')" 
+                                        class="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors">
+                                    Save
+                                </button>
+                                ${hasOverride 
+                                    ? `<button onclick="adminManager.deleteParameterOverride('${promptName}', '${param.parameter_name}')" 
+                                              class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 rounded text-white transition-colors">
+                                        Delete
+                                      </button>`
+                                    : ''
+                                }
+                               </div>`
+                            : '<span class="text-xs text-gray-500">—</span>'
+                        }
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading parameters:', error);
+            const tbody = document.getElementById('parameters-table-body');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-red-400">
+                            Error loading parameters: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+    },
+
+    /**
+     * Load version history for the selected prompt
+     */
+    async loadPromptVersions(promptName) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/versions`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load versions: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            const tbody = document.getElementById('versions-table-body');
+            
+            if (!tbody) return;
+
+            // Clear existing rows
+            tbody.innerHTML = '';
+
+            if (!data.versions || data.versions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-gray-500">
+                            No version history available
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Render version rows
+            data.versions.forEach((version, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-3">
+                        <span class="flex items-center gap-2">
+                            <span class="text-gray-300">v${version.version}</span>
+                        </span>
+                    </td>
+                    <td class="py-2 px-3 text-gray-400">${new Date(version.created_at).toLocaleString()}</td>
+                    <td class="py-2 px-3 text-gray-400">${version.changed_by || 'System'}</td>
+                    <td class="py-2 px-3 text-gray-300">${version.change_reason || 'Initial version'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading versions:', error);
+            const tbody = document.getElementById('versions-table-body');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-red-400">
+                            Error loading versions: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+    },
+
+    /**
+     * Load diff comparison for the selected prompt
+     */
+    async loadPromptDiff(promptName) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/diff`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load diff: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // Update base content
+            const baseContent = document.getElementById('diff-base-content');
+            if (baseContent) {
+                baseContent.textContent = data.base_content || 'No base content';
+            }
+
+            // Update override content
+            const overrideContent = document.getElementById('diff-override-content');
+            if (overrideContent) {
+                if (data.has_override) {
+                    overrideContent.textContent = data.override_content;
+                } else {
+                    overrideContent.textContent = 'No override found';
+                }
+            }
+
+            // Update statistics
+            const baseLength = document.getElementById('diff-base-length');
+            const overrideLength = document.getElementById('diff-override-length');
+            const delta = document.getElementById('diff-delta');
+            
+            if (baseLength) baseLength.textContent = data.base_length.toLocaleString();
+            if (overrideLength) overrideLength.textContent = data.override_length.toLocaleString();
+            if (delta) {
+                const diff = data.override_length - data.base_length;
+                delta.textContent = `${diff >= 0 ? '+' : ''}${diff.toLocaleString()}`;
+                delta.className = diff > 0 ? 'text-green-400' : (diff < 0 ? 'text-red-400' : '');
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading diff:', error);
+            const baseContent = document.getElementById('diff-base-content');
+            const overrideContent = document.getElementById('diff-override-content');
+            
+            if (baseContent) baseContent.textContent = 'Error loading base content';
+            if (overrideContent) overrideContent.textContent = 'Error loading override content';
+        }
+    },
+
+    /**
+     * Save parameter override
+     */
+    async saveParameterOverride(promptName, parameterName) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            showNotification('Authentication required', 'error');
+            return;
+        }
+
+        const inputField = document.getElementById(`override-${parameterName}`);
+        if (!inputField) {
+            console.error('[AdminManager] Input field not found');
+            return;
+        }
+
+        const overrideValue = inputField.value.trim();
+        if (!overrideValue) {
+            showNotification('Please enter an override value', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/parameters/${parameterName}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ override_value: overrideValue })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to save override: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            showNotification(`Parameter override saved for '${parameterName}'`, 'success');
+            
+            // Reload parameters to show updated state
+            this.loadPromptParameters(promptName);
+
+        } catch (error) {
+            console.error('[AdminManager] Error saving parameter override:', error);
+            showNotification(`Error saving override: ${error.message}`, 'error');
+        }
+    },
+
+    /**
+     * Delete parameter override
+     */
+    async deleteParameterOverride(promptName, parameterName) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            showNotification('Authentication required', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/parameters/${parameterName}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to delete override: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            showNotification(`Override deleted for '${parameterName}'`, 'success');
+            
+            // Reload parameters to show updated state
+            this.loadPromptParameters(promptName);
+
+        } catch (error) {
+            console.error('[AdminManager] Error deleting parameter override:', error);
+            window.showAppBanner(`Error deleting override: ${error.message}`, 'error', 5000);
+        }
+    },
+
+    /**
+     * Show prompt input modal and return user input
+     * @param {string} title - Modal title
+     * @param {string} label - Input label
+     * @param {string} defaultValue - Default input value
+     * @returns {Promise<string|null>} - User input or null if cancelled
+     */
+    showPromptInputModal(title, label, defaultValue = '') {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('prompt-input-modal-overlay');
+            const titleEl = document.getElementById('prompt-input-modal-title');
+            const labelEl = document.getElementById('prompt-input-modal-label');
+            const input = document.getElementById('prompt-input-modal-input');
+            const form = document.getElementById('prompt-input-modal-form');
+            const closeBtn = document.getElementById('prompt-input-modal-close');
+            const cancelBtn = document.getElementById('prompt-input-modal-cancel');
+
+            if (!overlay || !titleEl || !labelEl || !input || !form) {
+                console.error('[AdminManager] Prompt input modal elements not found');
+                resolve(null);
+                return;
+            }
+
+            // Set modal content
+            titleEl.textContent = title;
+            labelEl.textContent = label;
+            input.value = defaultValue;
+
+            // Show modal
+            overlay.classList.remove('hidden');
+            setTimeout(() => input.focus(), 100);
+
+            // Remove any existing listeners first (in case modal was opened before)
+            const oldSubmit = form._submitHandler;
+            const oldCancel = form._cancelHandler;
+            if (oldSubmit) form.removeEventListener('submit', oldSubmit);
+            if (oldCancel) {
+                closeBtn.removeEventListener('click', oldCancel);
+                cancelBtn.removeEventListener('click', oldCancel);
+            }
+
+            // Handle form submit
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const value = input.value.trim();
+                cleanup();
+                resolve(value || null);
+            };
+
+            // Handle cancel/close
+            const handleCancel = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                cleanup();
+                resolve(null);
+            };
+
+            // Cleanup function
+            const cleanup = () => {
+                overlay.classList.add('hidden');
+                form.removeEventListener('submit', handleSubmit);
+                closeBtn.removeEventListener('click', handleCancel);
+                cancelBtn.removeEventListener('click', handleCancel);
+                delete form._submitHandler;
+                delete form._cancelHandler;
+                input.value = '';
+            };
+
+            // Store handlers for cleanup on next open
+            form._submitHandler = handleSubmit;
+            form._cancelHandler = handleCancel;
+
+            // Attach event listeners
+            form.addEventListener('submit', handleSubmit);
+            closeBtn.addEventListener('click', handleCancel);
+            cancelBtn.addEventListener('click', handleCancel);
+        });
+    },
+
+    /**
+     * Duplicate the selected prompt
+     */
+    async duplicatePrompt() {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            window.showAppBanner('Authentication required', 'error', 5000);
+            return;
+        }
+
+        const promptName = document.getElementById('system-prompts-tier-selector').value;
+        if (!promptName) {
+            window.showAppBanner('Please select a prompt to duplicate', 'error', 5000);
+            return;
+        }
+
+        try {
+            // Get current display name for default
+            const currentDisplayName = promptName.replace(/_/g, ' ');
+            
+            // Ask user for new display name
+            const newDisplayName = await this.showPromptInputModal(
+                'Enter a name for the duplicated prompt',
+                'Prompt Name',
+                `${currentDisplayName} Copy`
+            );
+            
+            if (!newDisplayName || !newDisplayName.trim()) {
+                return; // User cancelled
+            }
+
+            // Auto-generate internal name from display name
+            const newName = newDisplayName.trim().toUpperCase().replace(/\s+/g, '_');
+
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/duplicate`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    new_name: newName,
+                    new_display_name: newDisplayName.trim(),
+                    copy_parameters: true
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to duplicate prompt');
+            }
+
+            const data = await response.json();
+            window.showAppBanner(`Prompt duplicated successfully: ${newDisplayName}`, 'success', 5000);
+            
+            // Reload prompt list to include new prompt
+            await this.loadAllPrompts();
+            
+            // Select the new prompt
+            document.getElementById('system-prompts-tier-selector').value = newName;
+            await this.loadSystemPromptForTier(newName);
+
+        } catch (error) {
+            console.error('[AdminManager] Error duplicating prompt:', error);
+            window.showAppBanner(error.message || 'Failed to duplicate prompt', 'error', 5000);
+        }
+    },
+
+    /**
+     * Delete the selected prompt
+     */
+    async deletePrompt() {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            window.showAppBanner('Authentication required', 'error', 5000);
+            return;
+        }
+
+        const promptName = document.getElementById('system-prompts-tier-selector').value;
+        if (!promptName) {
+            window.showAppBanner('Please select a prompt to delete', 'error', 5000);
+            return;
+        }
+
+        console.log('[AdminManager] Deleting prompt:', promptName);
+
+        try {
+            console.log('[AdminManager] About to send DELETE request to:', `/api/v1/system-prompts/${promptName}/delete`);
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/delete`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            console.log('[AdminManager] DELETE response received:', response.status, response.statusText);
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.log('[AdminManager] DELETE failed with error:', error);
+                throw new Error(error.message || 'Failed to delete prompt');
+            }
+
+            const data = await response.json();
+            console.log('[AdminManager] DELETE successful:', data);
+            window.showAppBanner(`Prompt deleted successfully: ${promptName}`, 'success', 5000);
+            
+            // Reload prompt list and load the first prompt to update button states
+            await this.loadAllPrompts();
+            
+            // Explicitly load the now-selected prompt to ensure button states are updated
+            const selector = document.getElementById('system-prompts-tier-selector');
+            if (selector && selector.value) {
+                await this.loadSystemPromptForTier(selector.value);
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error deleting prompt:', error);
+            window.showAppBanner(error.message || 'Failed to delete prompt', 'error', 5000);
+        }
+    },
+
+    /**
+     * Load all prompts from the database
+     */
+    async loadAllPrompts() {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) return;
+
+        try {
+            // Add cache buster to ensure fresh data
+            const response = await fetch(`/api/v1/system-prompts/list?_=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load prompts');
+            }
+
+            const data = await response.json();
+            const selector = document.getElementById('system-prompts-tier-selector');
+            
+            if (!selector) return;
+
+            // Clear current options
+            selector.innerHTML = '';
+
+            // Group prompts by category
+            const groups = {};
+            const categoryOrder = {}; // Track original order from database
+            data.prompts.forEach(prompt => {
+                const category = prompt.category || 'Other';
+                if (!groups[category]) {
+                    groups[category] = [];
+                    categoryOrder[category] = prompt.category_id || 999;
+                }
+                groups[category].push(prompt);
+            });
+
+            // Add optgroups in database order (not alphabetical)
+            Object.keys(groups).sort((a, b) => categoryOrder[a] - categoryOrder[b]).forEach(category => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = category;
+                
+                groups[category].forEach(prompt => {
+                    const option = document.createElement('option');
+                    option.value = prompt.name;
+                    option.textContent = prompt.display_name || prompt.name;
+                    if (!prompt.is_active) {
+                        option.textContent += ' (Inactive)';
+                        option.style.color = '#999';
+                    }
+                    optgroup.appendChild(option);
+                });
+                
+                selector.appendChild(optgroup);
+            });
+
+            // Select the first prompt by default if none is selected
+            if (selector.options.length > 0 && !selector.value) {
+                selector.selectedIndex = 0;
+                // Trigger change event to load the first prompt
+                selector.dispatchEvent(new Event('change'));
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading prompts:', error);
+        }
+    },
+
+    /**
+     * Load version history for current prompt
+     */
+    async loadVersionHistory(promptName) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) return;
+
+        if (!promptName) {
+            promptName = document.getElementById('system-prompts-tier-selector').value;
+        }
+
+        if (!promptName) {
+            console.log('[AdminManager] No prompt selected for version history');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/versions`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load version history');
+            }
+
+            const data = await response.json();
+            const tbody = document.getElementById('versions-table-body');
+            
+            if (!tbody) return;
+
+            if (data.versions && data.versions.length > 0) {
+                tbody.innerHTML = data.versions.map(v => `
+                    <tr class="hover:bg-gray-700/50 cursor-pointer" onclick="adminManager.viewVersionContent('${promptName}', ${v.version})">
+                        <td class="py-2 px-3 text-white">v${v.version}</td>
+                        <td class="py-2 px-3 text-gray-400">${new Date(v.created_at).toLocaleString()}</td>
+                        <td class="py-2 px-3 text-gray-400">${v.changed_by || 'System'}</td>
+                        <td class="py-2 px-3 text-gray-400 text-sm">${v.change_reason || 'N/A'}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-gray-500">
+                            No version history available
+                        </td>
+                    </tr>
+                `;
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading version history:', error);
+            showNotification(`Error loading version history: ${error.message}`, 'error');
+        }
+    },
+
+    /**
+     * View content of a specific version
+     */
+    async viewVersionContent(promptName, version) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) return;
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/versions/${version}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load version content');
+            }
+
+            const data = await response.json();
+            
+            // Show in a modal or replace current content
+            if (confirm(`View version ${version} content in editor?\n\nNote: This will replace the current editor content.`)) {
+                const textarea = document.getElementById('system-prompt-editor-textarea');
+                if (textarea) {
+                    textarea.value = data.content;
+                    this.updateCharCount();
+                    showNotification(`Loaded version ${version} (read-only)`, 'info');
+                }
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading version content:', error);
+            showNotification(`Error loading version: ${error.message}`, 'error');
+        }
+    },
+
+    /**
+     * Show diff between two versions
+     */
+    async showDiff(promptName, version1, version2) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) return;
+
+        if (!promptName) {
+            promptName = document.getElementById('system-prompts-tier-selector').value;
+        }
+
+        if (!promptName) {
+            showNotification('Please select a prompt first', 'error');
+            return;
+        }
+
+        // Default: compare current with previous version
+        if (!version1) version1 = 'current';
+        if (!version2) version2 = 1;
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/diff`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    version1: version1,
+                    version2: version2
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to generate diff');
+            }
+
+            const data = await response.json();
+            
+            // Display diff in the diff-content div
+            const diffContent = document.getElementById('diff-content');
+            if (diffContent && data.diff_html) {
+                diffContent.innerHTML = data.diff_html;
+                
+                // Auto-expand the diff section if it's collapsed
+                if (diffContent.classList.contains('hidden')) {
+                    document.getElementById('toggle-diff-btn').click();
+                }
+            }
+
+            if (!data.has_changes) {
+                window.showAppBanner('No differences found between versions', 'info', 5000);
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error generating diff:', error);
+            window.showAppBanner(`Error generating diff: ${error.message}`, 'error', 5000);
+        }
+    },
+
+    /**
+     * Perform bulk operations on prompts
+     */
+    async bulkUpdatePrompts(operations) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            window.showAppBanner('Authentication required', 'error', 5000);
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/system-prompts/bulk/update', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ operations })
+            });
+
+            if (!response.ok) {
+                throw new Error('Bulk update failed');
+            }
+
+            const data = await response.json();
+            
+            // Show results
+            const successCount = data.results.filter(r => r.status === 'success').length;
+            const errorCount = data.results.filter(r => r.status === 'error').length;
+            
+            if (errorCount > 0) {
+                const errors = data.results.filter(r => r.status === 'error');
+                console.error('[AdminManager] Bulk operation errors:', errors);
+                window.showAppBanner(`Completed ${successCount} operations, ${errorCount} errors`, 'warning', 5000);
+            } else {
+                window.showAppBanner(`Successfully completed ${successCount} operations`, 'success', 5000);
+            }
+
+            // Reload prompts
+            await this.loadAllPrompts();
+
+        } catch (error) {
+            console.error('[AdminManager] Error in bulk update:', error);
+            window.showAppBanner(`Bulk update failed: ${error.message}`, 'error', 5000);
+        }
+    },
+
     /**
      * Load rate limiting settings from server
      */
@@ -2889,6 +3827,10 @@ const AdminManager = {
         }
     }
 };
+
+// Expose AdminManager globally for inline onclick handlers
+window.adminManager = AdminManager;
+window.AdminManager = AdminManager;
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {

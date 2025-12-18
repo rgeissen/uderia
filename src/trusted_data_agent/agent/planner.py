@@ -1561,6 +1561,19 @@ Ranking:"""
             else:
                 app_logger.info("No relevant RAG cases found for few-shot examples.")
 
+        # Get MCP system name from database (bootstrapped from tda_config.json)
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+        db_path = get_project_root() / 'tda_auth.db'
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT default_value FROM global_parameters WHERE parameter_name = 'mcp_system_name'"
+        )
+        row = cursor.fetchone()
+        mcp_system_name = row[0] if row else 'Database System'
+        conn.close()
+
         planning_prompt = WORKFLOW_META_PLANNING_PROMPT.format(
             workflow_goal=self.executor.workflow_goal_prompt,
             explicit_parameters_section=explicit_parameters_section,
@@ -1568,7 +1581,7 @@ Ranking:"""
             turn_action_history=previous_turn_summary_str,
             execution_depth=self.executor.execution_depth,
             active_prompt_context_section=active_prompt_context_section,
-            mcp_system_name=APP_CONFIG.MCP_SYSTEM_NAME,
+            mcp_system_name=mcp_system_name,
             replan_instructions=replan_context or "",
             constraints_section=constraints_section,
             sql_consolidation_rule=sql_consolidation_rule_str,

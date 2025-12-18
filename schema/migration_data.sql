@@ -181,10 +181,19 @@ INSERT INTO prompts (name, display_name, content, description, class_id, role, p
     1,
     1,
     1
+),
+(
+    'CHARTING_INSTRUCTIONS',
+    'Charting Instructions',
+    '[MIGRATE]',
+    'JSON object containing chart generation instructions by complexity level',
+    5,
+    'visualization',
+    NULL,
+    1,
+    1,
+    1
 );
-
--- Note: CHARTING_INSTRUCTIONS is a JSON object, not a text prompt
--- It will be handled separately during migration
 
 -- ============================================================================
 -- STEP 3: Define Common Global Parameters
@@ -246,8 +255,35 @@ INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, paramete
 
 -- TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR parameters
 INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
-((SELECT id FROM prompts WHERE name = 'TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR'), 'table_name', 'Table Name', 'string', '', 'Name of the problematic table', 1),
-((SELECT id FROM prompts WHERE name = 'TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR'), 'available_tables', 'Available Tables', 'json', '[]', 'List of available tables in the database', 0);
+((SELECT id FROM prompts WHERE name = 'TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR'), 'mcpTool_listTables', 'MCP Tool: List Tables', 'string', 'base_listTables', 'Name of the MCP tool used to list available tables', 0);
+
+-- TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR parameters
+INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
+((SELECT id FROM prompts WHERE name = 'TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR'), 'mcpTool_describeColumns', 'MCP Tool: Describe Columns', 'string', 'base_columnDescription', 'Name of the MCP tool used to describe table columns', 0);
+
+-- MASTER_SYSTEM_PROMPT parameters
+INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
+((SELECT id FROM prompts WHERE name = 'MASTER_SYSTEM_PROMPT'), 'mcpSystemName', 'MCP System Name', 'string', 'Teradata System', 'Name of the MCP system being used', 0),
+((SELECT id FROM prompts WHERE name = 'MASTER_SYSTEM_PROMPT'), 'mcpTool_executeQuery', 'MCP Tool: Execute Query', 'string', 'base_readQuery', 'Name of the MCP tool used to execute SQL queries', 0);
+
+-- GOOGLE_MASTER_SYSTEM_PROMPT parameters
+INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
+((SELECT id FROM prompts WHERE name = 'GOOGLE_MASTER_SYSTEM_PROMPT'), 'mcpTool_executeQuery', 'MCP Tool: Execute Query', 'string', 'base_readQuery', 'Name of the MCP tool used to execute SQL queries', 0),
+((SELECT id FROM prompts WHERE name = 'GOOGLE_MASTER_SYSTEM_PROMPT'), 'mcpTool_summarizeColumnQuality', 'MCP Tool: Summarize Column Quality', 'string', 'qlty_columnSummary', 'Name of the MCP tool used to analyze column quality', 0);
+
+-- OLLAMA_MASTER_SYSTEM_PROMPT parameters  
+INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
+((SELECT id FROM prompts WHERE name = 'OLLAMA_MASTER_SYSTEM_PROMPT'), 'mcpSystemName', 'MCP System Name', 'string', 'Teradata System', 'Name of the MCP system being used', 0),
+((SELECT id FROM prompts WHERE name = 'OLLAMA_MASTER_SYSTEM_PROMPT'), 'mcpTool_executeQuery', 'MCP Tool: Execute Query', 'string', 'base_readQuery', 'Name of the MCP tool used to execute SQL queries', 0);
+
+-- WORKFLOW_META_PLANNING_PROMPT parameters
+INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
+((SELECT id FROM prompts WHERE name = 'WORKFLOW_META_PLANNING_PROMPT'), 'mcpTool_executeQuery', 'MCP Tool: Execute Query', 'string', 'base_readQuery', 'Name of the MCP tool used to execute SQL queries', 0),
+((SELECT id FROM prompts WHERE name = 'WORKFLOW_META_PLANNING_PROMPT'), 'mcpPrompt_executeOptimizedQuery', 'MCP Prompt: Execute Optimized Query', 'string', 'base_teradataQuery', 'Name of the MCP prompt used for optimized database queries', 0),
+((SELECT id FROM prompts WHERE name = 'WORKFLOW_META_PLANNING_PROMPT'), 'mcpTool_describeColumns', 'MCP Tool: Describe Columns', 'string', 'base_columnDescription', 'Name of the MCP tool used to describe table columns', 0),
+((SELECT id FROM prompts WHERE name = 'WORKFLOW_META_PLANNING_PROMPT'), 'mcpTool_listDatabases', 'MCP Tool: List Databases', 'string', 'base_databaseList', 'Name of the MCP tool used to list databases', 0),
+((SELECT id FROM prompts WHERE name = 'WORKFLOW_META_PLANNING_PROMPT'), 'mcpTool_listTables', 'MCP Tool: List Tables', 'string', 'base_tableList', 'Name of the MCP tool used to list tables', 0),
+((SELECT id FROM prompts WHERE name = 'WORKFLOW_META_PLANNING_PROMPT'), 'mcpTool_getTableSchema', 'MCP Tool: Get Table Schema', 'string', 'base_tableDDL', 'Name of the MCP tool used to get table DDL/schema', 0);
 
 -- SQL_CONSOLIDATION_PROMPT parameters
 INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES

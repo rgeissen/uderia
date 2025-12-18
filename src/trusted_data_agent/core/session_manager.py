@@ -281,8 +281,13 @@ def get_all_sessions(user_uuid: str) -> list[dict]:
         user_session_dir = SESSIONS_DIR / "".join(c for c in user_uuid if c.isalnum() or c in ['-', '_'])
         app_logger.debug(f"Scanning user-specific directory: {user_session_dir}")
         if not user_session_dir.is_dir():
-            app_logger.warning(f"User session directory not found: {user_session_dir}. Returning empty list.")
-            return []
+            # Create the directory if it doesn't exist (first time for this user)
+            try:
+                user_session_dir.mkdir(parents=True, exist_ok=True)
+                app_logger.info(f"Created user session directory: {user_session_dir}")
+            except OSError as e:
+                app_logger.error(f"Failed to create user session directory: {user_session_dir}. Error: {e}")
+                return []
         scan_dirs = [user_session_dir]
     else:
         # All users mode: scan all subdirectories

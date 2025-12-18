@@ -475,7 +475,9 @@ async def get_prompts_version():
     Returns a SHA-256 hash of the master system prompts.
     """
     try:
-        prompts_str = json.dumps(PROVIDER_SYSTEM_PROMPTS, sort_keys=True)
+        # Convert LazyPrompt objects to strings for JSON serialization
+        prompts_dict = {k: str(v) for k, v in PROVIDER_SYSTEM_PROMPTS.items()}
+        prompts_str = json.dumps(prompts_dict, sort_keys=True)
         prompt_hash = hashlib.sha256(prompts_str.encode('utf-8')).hexdigest()
         return jsonify({"version": prompt_hash})
     except Exception as e:
@@ -1524,9 +1526,33 @@ async def get_models():
 
 @api_bp.route("/system_prompt/<provider>/<path:model_name>", methods=["GET"])
 async def get_default_system_prompt(provider, model_name):
-    """Gets the default system prompt for a given model."""
-    base_prompt_template = PROVIDER_SYSTEM_PROMPTS.get(provider, PROVIDER_SYSTEM_PROMPTS["Google"])
-    return jsonify({"status": "success", "system_prompt": base_prompt_template})
+    """Gets the default system prompt for a given model from the database."""
+    try:
+        from trusted_data_agent.agent.prompt_loader import get_prompt_loader
+        
+        # Map provider to prompt name (database prompt names)
+        prompt_mapping = {
+            "Google": "GOOGLE_MASTER_SYSTEM_PROMPT",
+            "Anthropic": "MASTER_SYSTEM_PROMPT",
+            "Amazon": "MASTER_SYSTEM_PROMPT",
+            "OpenAI": "MASTER_SYSTEM_PROMPT",
+            "Azure": "MASTER_SYSTEM_PROMPT",
+            "Friendli": "MASTER_SYSTEM_PROMPT",
+            "Ollama": "OLLAMA_MASTER_SYSTEM_PROMPT"
+        }
+        
+        prompt_name = prompt_mapping.get(provider, "MASTER_SYSTEM_PROMPT")
+        
+        # Load from database
+        loader = get_prompt_loader()
+        prompt_content = loader.get_prompt(prompt_name)
+        
+        return jsonify({"status": "success", "system_prompt": prompt_content})
+    except Exception as e:
+        app_logger.error(f"Failed to load system prompt for {provider}: {e}")
+        # Fallback to old system if database fails
+        base_prompt_template = str(PROVIDER_SYSTEM_PROMPTS.get(provider, PROVIDER_SYSTEM_PROMPTS["Google"]))
+        return jsonify({"status": "success", "system_prompt": base_prompt_template})
 
 @api_bp.route("/configure", methods=["POST"])
 async def configure_services():

@@ -3381,7 +3381,23 @@
 
                                     <!-- System Prompt Selector -->
                                     <div class="mb-6">
-                                        <label class="block text-sm font-medium text-gray-300 mb-2">Select System Prompt</label>
+                                        <div class="flex justify-between items-center mb-2">
+                                            <label class="block text-sm font-medium text-gray-300">Select System Prompt</label>
+                                            <div class="flex gap-2">
+                                                <button type="button" id="duplicate-prompt-btn" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium text-xs flex items-center gap-1" title="Duplicate selected prompt">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                    Duplicate
+                                                </button>
+                                                <button type="button" id="delete-prompt-btn" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-md transition-colors text-white font-medium text-xs flex items-center gap-1" title="Delete selected prompt">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    </svg>
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
                                         <select id="system-prompts-tier-selector" class="w-full px-4 py-2 rounded-lg text-white bg-gray-700 border border-gray-600 focus:outline-none focus:border-teradata-orange transition-colors">
                                             <optgroup label="Master System Prompts">
                                                 <option value="MASTER_SYSTEM_PROMPT">Master System Prompt (Default)</option>
@@ -3427,7 +3443,7 @@
                                     </div>
 
                                     <!-- Action Buttons -->
-                                    <div class="flex justify-between items-center">
+                                    <div class="flex justify-between items-center mb-6">
                                         <button type="button" id="load-system-prompt-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium text-sm">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -3445,6 +3461,146 @@
                                                 Save System Prompt
                                             </button>
                                         </div>
+                                    </div>
+
+                                    <!-- Phase 4: Enhanced Features -->
+                                    <div id="system-prompt-enhanced-features" class="space-y-4">
+                                        
+                                        <!-- Parameters Editor (Phase 4) -->
+                                        <div class="glass-panel rounded-xl p-4">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h4 class="text-md font-semibold text-white flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-[#F15F22]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                                                    </svg>
+                                                    Prompt Parameters
+                                                </h4>
+                                                <button type="button" id="toggle-parameters-btn" class="text-sm text-gray-400 hover:text-white transition-colors">
+                                                    <span class="expand-text">Show</span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            
+                                            <div id="parameters-content" class="hidden">
+                                                <p class="text-sm text-gray-400 mb-3">Configure parameters used in this prompt template</p>
+                                                
+                                                <div class="overflow-x-auto">
+                                                    <table class="w-full text-sm">
+                                                        <thead>
+                                                            <tr class="border-b border-gray-700">
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Parameter</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Type</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Default Value</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Override Value</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Scope</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="parameters-table-body" class="divide-y divide-gray-700">
+                                                            <tr>
+                                                                <td colspan="6" class="text-center py-4 text-gray-500">
+                                                                    Select a prompt to view parameters
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Version History (Phase 4) -->
+                                        <div class="glass-panel rounded-xl p-4">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h4 class="text-md font-semibold text-white flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-[#F15F22]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    Version History
+                                                </h4>
+                                                <button type="button" id="toggle-versions-btn" class="text-sm text-gray-400 hover:text-white transition-colors">
+                                                    <span class="expand-text">Show</span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            
+                                            <div id="versions-content" class="hidden">
+                                                <p class="text-sm text-gray-400 mb-3">View changes made to this prompt over time</p>
+                                                
+                                                <div class="overflow-x-auto max-h-64 overflow-y-auto">
+                                                    <table class="w-full text-sm">
+                                                        <thead class="sticky top-0 bg-gray-800">
+                                                            <tr class="border-b border-gray-700">
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Version</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Date</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Author</th>
+                                                                <th class="text-left py-2 px-3 text-gray-400 font-medium">Description</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="versions-table-body" class="divide-y divide-gray-700">
+                                                            <tr>
+                                                                <td colspan="4" class="text-center py-4 text-gray-500">
+                                                                    Select a prompt to view history
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Diff Viewer (Phase 4) -->
+                                        <div class="glass-panel rounded-xl p-4">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h4 class="text-md font-semibold text-white flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-[#F15F22]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                                    </svg>
+                                                    Compare Base vs Override
+                                                </h4>
+                                                <button type="button" id="toggle-diff-btn" class="text-sm text-gray-400 hover:text-white transition-colors">
+                                                    <span class="expand-text">Show</span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            
+                                            <div id="diff-content" class="hidden">
+                                                <p class="text-sm text-gray-400 mb-3">View differences between base prompt and your override</p>
+                                                
+                                                <div id="diff-viewer" class="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <h5 class="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1">
+                                                            <span class="w-3 h-3 rounded-full bg-gray-500"></span>
+                                                            Base Prompt
+                                                        </h5>
+                                                        <div class="bg-gray-800 rounded p-3 text-xs font-mono max-h-64 overflow-y-auto">
+                                                            <pre id="diff-base-content" class="text-gray-300 whitespace-pre-wrap">Select a prompt with override to compare</pre>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <h5 class="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1">
+                                                            <span class="w-3 h-3 rounded-full bg-[#F15F22]"></span>
+                                                            Your Override
+                                                        </h5>
+                                                        <div class="bg-gray-800 rounded p-3 text-xs font-mono max-h-64 overflow-y-auto">
+                                                            <pre id="diff-override-content" class="text-gray-300 whitespace-pre-wrap">No override found</pre>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div id="diff-stats" class="mt-3 text-xs text-gray-500 flex gap-4">
+                                                    <span>Base: <strong id="diff-base-length">0</strong> chars</span>
+                                                    <span>Override: <strong id="diff-override-length">0</strong> chars</span>
+                                                    <span>Difference: <strong id="diff-delta">0</strong> chars</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
                                     </div>
                                 </div>
                             </div>
@@ -3963,6 +4119,32 @@
             <div class="flex justify-end mt-6">
                 <button id="info-modal-close" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold">Close</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Prompt Input Modal (for duplicate prompt name) -->
+    <div id="prompt-input-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+        <div class="glass-panel rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="prompt-input-modal-title" class="text-xl font-bold text-white">Enter Prompt Name</h3>
+                <button type="button" id="prompt-input-modal-close" class="p-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <form id="prompt-input-modal-form">
+                <div class="mb-4">
+                    <label id="prompt-input-modal-label" class="block text-sm font-medium text-gray-300 mb-2">Prompt Name</label>
+                    <input type="text" id="prompt-input-modal-input" 
+                           class="w-full px-3 py-2 bg-gray-800/80 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-teradata-orange" 
+                           required>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" id="prompt-input-modal-cancel" class="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors font-semibold">Cancel</button>
+                    <button type="submit" id="prompt-input-modal-ok" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold">OK</button>
+                </div>
+            </form>
         </div>
     </div>
     

@@ -6,6 +6,7 @@ Manages SQLAlchemy engine, session factory, and database initialization.
 
 import os
 import logging
+import importlib.util
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
@@ -81,6 +82,9 @@ def init_database():
         
         # Bootstrap consumption profiles from tda_config.json
         _bootstrap_consumption_profiles()
+        
+        # Bootstrap prompt management system
+        _bootstrap_prompt_system()
         
         return True
     except Exception as e:
@@ -493,6 +497,192 @@ def _bootstrap_consumption_profiles():
     
     except Exception as e:
         logger.error(f"Failed to bootstrap consumption profiles: {e}", exc_info=True)
+
+
+def _bootstrap_prompt_system():
+    """
+    Bootstrap the prompt management system:
+    1. Create prompt schema tables
+    2. Migrate prompts from prompts.dat
+    3. Sync global parameters from tda_config.json
+    """
+    import sqlite3
+    from pathlib import Path
+    
+    try:
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        
+        # Check if prompt tables already exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='prompts'")
+        if cursor.fetchone():
+            logger.info("Prompt system tables already exist, skipping bootstrap")
+            conn.close()
+            return
+        
+        logger.info("Bootstrapping prompt management system...")
+        
+        # 1. Create schema from SQL files
+        schema_dir = Path(__file__).resolve().parents[3] / "schema"
+        schema_files = [
+            "01_core_tables.sql",
+            "02_parameters.sql", 
+            "03_profile_integration.sql",
+            "04_indexes.sql",
+            "05_views.sql"
+        ]
+        
+        for schema_file in schema_files:
+            schema_path = schema_dir / schema_file
+            if schema_path.exists():
+                with open(schema_path, 'r') as f:
+                    sql = f.read()
+                    cursor.executescript(sql)
+                logger.info(f"Applied schema: {schema_file}")
+        
+        # 2. Run migration data (creates skeleton with placeholder content)
+        migration_sql = schema_dir / "migration_data.sql"
+        if migration_sql.exists():
+            with open(migration_sql, 'r') as f:
+                sql = f.read()
+                cursor.executescript(sql)
+            logger.info("Applied migration data (prompt classes, parameters)")
+        
+        # 3. Load and encrypt default prompts from encrypted distribution file
+        try:
+            import json
+            from trusted_data_agent.agent.prompt_encryption import (
+                derive_bootstrap_key,
+                derive_tier_key,
+                decrypt_prompt,
+                encrypt_prompt,
+                re_encrypt_prompt
+            )
+            
+            # Load encrypted default prompts
+            default_prompts_path = schema_dir / "default_prompts.dat"
+            
+            if not default_prompts_path.exists():
+                logger.warning(f"default_prompts.dat not found at {default_prompts_path}")
+                logger.warning("Prompts will remain as [MIGRATE] placeholders")
+            else:
+                # Derive bootstrap decryption key
+                bootstrap_key = derive_bootstrap_key()
+                
+                # Use the actual license tier from the running application
+                # This ensures prompts are encrypted with the correct tier key
+                from trusted_data_agent.core.config import APP_STATE
+                from trusted_data_agent.core.utils import get_project_root
+                license_info = APP_STATE.get('license_info', {})
+                
+                if not license_info:
+                    logger.error("No license info in APP_STATE - cannot encrypt prompts")
+                    raise RuntimeError("License information required for prompt encryption")
+                
+                # Read license.key to get signature
+                import os
+                license_path = os.path.join(get_project_root(), "tda_keys", "license.key")
+                
+                with open(license_path, 'r') as lf:
+                    license_data = json.load(lf)
+                    license_info['signature'] = license_data['signature']
+                
+                tier_key = derive_tier_key(license_info)
+                
+                logger.info(f"Encrypting prompts for tier: {license_info.get('tier')}")
+                
+                # Load encrypted prompts
+                with open(default_prompts_path, 'r', encoding='utf-8') as f:
+                    encrypted_prompts = json.load(f)
+                
+                logger.info(f"Loaded {len(encrypted_prompts)} encrypted prompts from default_prompts.dat")
+                
+                # Process each prompt
+                cursor.execute("SELECT id, name FROM prompts ORDER BY id")
+                prompts_in_db = cursor.fetchall()
+                
+                migrated_count = 0
+                for prompt_id, prompt_name in prompts_in_db:
+                    if prompt_name in encrypted_prompts:
+                        try:
+                            encrypted_bootstrap_content = encrypted_prompts[prompt_name]
+                            
+                            # Handle dict prompts (like CHARTING_INSTRUCTIONS) specially
+                            if isinstance(encrypted_bootstrap_content, dict):
+                                logger.info(f"Processing dict prompt: {prompt_name}")
+                                # Decrypt each value in the dict
+                                decrypted_dict = {}
+                                for key, encrypted_value in encrypted_bootstrap_content.items():
+                                    if isinstance(encrypted_value, str):
+                                        try:
+                                            decrypted_dict[key] = decrypt_prompt(encrypted_value, bootstrap_key)
+                                        except Exception as e:
+                                            logger.warning(f"Failed to decrypt {prompt_name}[{key}]: {e}")
+                                            decrypted_dict[key] = encrypted_value
+                                    else:
+                                        decrypted_dict[key] = encrypted_value
+                                
+                                # Re-encrypt the dict as JSON
+                                decrypted_json = json.dumps(decrypted_dict)
+                                tier_encrypted_content = encrypt_prompt(decrypted_json, tier_key)
+                            else:
+                                # Regular string prompt
+                                # Decrypt from bootstrap encryption
+                                decrypted_content = decrypt_prompt(encrypted_bootstrap_content, bootstrap_key)
+                                
+                                # Re-encrypt with tier key for database storage
+                                tier_encrypted_content = encrypt_prompt(decrypted_content, tier_key)
+                            
+                            # Update database
+                            cursor.execute(
+                                "UPDATE prompts SET content = ? WHERE id = ?",
+                                (tier_encrypted_content, prompt_id)
+                            )
+                            
+                            migrated_count += 1
+                            logger.debug(f"Encrypted and stored: {prompt_name}")
+                        except Exception as e:
+                            logger.error(f"Failed to migrate prompt {prompt_name}: {e}", exc_info=True)
+                
+                logger.info(f"✅ Migrated and encrypted {migrated_count} prompts to database")
+        
+        except ImportError as e:
+            logger.error(f"Failed to import encryption utilities: {e}")
+            logger.error("Prompts will remain as [MIGRATE] placeholders")
+        except Exception as e:
+            logger.error(f"Failed to load/encrypt default prompts: {e}", exc_info=True)
+            logger.error("Prompts will remain as [MIGRATE] placeholders")
+        
+        # 4. Sync global parameters from tda_config.json
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if config_path.exists():
+            import json
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            global_params = config.get('global_parameters', {})
+            for param_name, param_value in global_params.items():
+                cursor.execute(
+                    "SELECT parameter_name FROM global_parameters WHERE parameter_name = ?",
+                    (param_name,)
+                )
+                if not cursor.fetchone():
+                    cursor.execute(
+                        """INSERT INTO global_parameters 
+                           (parameter_name, display_name, parameter_type, description, default_value, is_system_managed, is_user_configurable)
+                           VALUES (?, ?, 'string', 'Bootstrapped from tda_config.json', ?, 0, 1)""",
+                        (param_name, param_name.replace('_', ' ').title(), str(param_value))
+                    )
+                    logger.info(f"Bootstrapped global parameter: {param_name} = {param_value}")
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("✅ Prompt management system bootstrapped successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to bootstrap prompt system: {e}", exc_info=True)
 
 
 # Initialize database on module import (authentication is always enabled)

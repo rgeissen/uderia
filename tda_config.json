@@ -160,7 +160,6 @@
   "active_profile_id": null,
   "default_profile_id": null,
   "active_for_consumption_profile_ids": [],
-  "default_consumption_profile": "Unlimited",
   "rate_limit_enabled": "on",
   "rate_limit_global_override": "off",
   "window_defaults": {
@@ -298,5 +297,8 @@
       "output_cost_per_million": 0.004,
       "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
     }
-  ]
+  ],
+  "global_parameters": {
+    "mcp_system_name": "Teradata MCP"
+  }
 }

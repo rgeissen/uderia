@@ -95,7 +95,8 @@ export async function finalizeConfiguration(config, switchToConversationView = t
 
     if (Utils.isPrivilegedUser()) {
         const activePrompt = Utils.getSystemPromptForModel(state.currentProvider, state.currentModel);
-        if (!activePrompt) {
+        // Only reset if we have a valid provider and model
+        if (!activePrompt && state.currentProvider && state.currentModel) {
             await resetSystemPrompt(true);
         }
     }

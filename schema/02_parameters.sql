@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS global_parameters (
 CREATE TABLE IF NOT EXISTS global_parameter_overrides (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     parameter_name TEXT NOT NULL,           -- References global_parameters.parameter_name
+    prompt_id INTEGER,                      -- NULL = applies to all prompts, INTEGER = specific prompt only
     user_uuid TEXT,                         -- NULL = applies to all users with this profile
     profile_id TEXT,                        -- NULL = user-level override (all profiles), TEXT string from tda_config.json
     override_value TEXT NOT NULL,           -- Value as string (converted at runtime)
@@ -58,7 +59,8 @@ CREATE TABLE IF NOT EXISTS global_parameter_overrides (
     -- Constraints
     CHECK(is_active IN (0, 1)),
     CHECK(user_uuid IS NOT NULL OR profile_id IS NOT NULL),  -- Must specify at least one
-    FOREIGN KEY (parameter_name) REFERENCES global_parameters(parameter_name) ON DELETE CASCADE
+    FOREIGN KEY (parameter_name) REFERENCES global_parameters(parameter_name) ON DELETE CASCADE,
+    FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
 );
 
 -- ============================================================================

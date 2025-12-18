@@ -47,7 +47,7 @@ class AppConfig:
     CURRENT_MODEL_PROVIDER_IN_PROFILE = None # For Amazon Bedrock, stores the model provider if using an inference profile ARN.
 
     # --- LLM & Agent Configuration ---
-    MCP_SYSTEM_NAME = "Teradata database system" # Describes the target system to the LLM in master prompts to provide context.
+    # MCP_SYSTEM_NAME is now read dynamically from tda_config.json and global_parameters table
     LLM_API_MAX_RETRIES = 5 # The maximum number of times to retry a failed LLM API call.
     LLM_API_BASE_DELAY = 2 # The base delay in seconds for exponential backoff on API retries.
     CONTEXT_DISTILLATION_MAX_ROWS = 500 # The maximum number of rows from a tool's result to include in the LLM context.

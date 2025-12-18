@@ -342,7 +342,7 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
         base_prompt_text = session_data["system_prompt_template"]
     else:
         app_logger.info(f"Using server-side default system prompt for user (Tier: {user_tier or 'Standard'}).")
-        base_prompt_text = PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"])
+        base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
 
     STATE = dependencies['STATE']
 
@@ -432,6 +432,19 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
     if not use_condensed_context and session_data:
         session_data["full_context_sent"] = True
 
+    # Get MCP system name from database (bootstrapped from tda_config.json)
+    import sqlite3
+    from trusted_data_agent.core.utils import get_project_root
+    db_path = get_project_root() / 'tda_auth.db'
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT default_value FROM global_parameters WHERE parameter_name = 'mcp_system_name'"
+    )
+    row = cursor.fetchone()
+    mcp_system_name = row[0] if row else 'Database System'
+    conn.close()
+    
     final_system_prompt = base_prompt_text.replace(
         '{charting_instructions_section}', charting_instructions_section
     ).replace(
@@ -439,7 +452,7 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
     ).replace(
         '{prompts_context}', prompts_context
     ).replace(
-        '{mcp_system_name}', APP_CONFIG.MCP_SYSTEM_NAME
+        '{mcp_system_name}', mcp_system_name
     )
 
     return final_system_prompt
