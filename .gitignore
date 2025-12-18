@@ -58,6 +58,9 @@ tda_auth.db-*
 # Note: jwt_secret.key is distributed with the application
 # Users should regenerate it using: python maintenance/regenerate_jwt_secret.py
 
+# License directory (not distributed)
+trusted-data-agent-license/
+
 # Temporary files
 *.tmp
 *.bak
