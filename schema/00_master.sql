@@ -1,0 +1,43 @@
+-- ============================================================================
+-- Uderia Prompt Management System - Master Schema Builder
+-- ============================================================================
+-- Description: Executes all schema files in order
+-- Version: 1.0
+-- Created: 2025-12-18
+-- Usage: sqlite3 prompts.db < schema/00_master.sql
+-- ============================================================================
+
+-- ============================================================================
+-- Schema Version Tracking
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS schema_version (
+    version TEXT PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    description TEXT
+);
+
+-- Record initial schema version
+INSERT OR IGNORE INTO schema_version (version, description) VALUES 
+('1.0.0', 'Initial prompt management system schema');
+
+-- ============================================================================
+-- Execute Schema Files in Order
+-- ============================================================================
+
+-- Note: When running this file, SQLite does not support .read directive
+-- You must run each schema file individually or concatenate them.
+-- 
+-- Recommended execution order:
+-- 1. 01_core_tables.sql
+-- 2. 02_parameters.sql
+-- 3. 03_profile_integration.sql
+-- 4. 04_indexes.sql
+-- 5. 05_views.sql
+
+-- ============================================================================
+-- Alternatively, use the Python validation script to build the database
+-- ============================================================================
+-- 
+-- python schema/validate_schema.py --create-database prompts.db
+--

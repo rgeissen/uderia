@@ -61,6 +61,12 @@ tda_auth.db-*
 # License directory (not distributed)
 trusted-data-agent-license/
 
+# Custom prompt overrides (not distributed)
+prompt_overrides/
+
+# TDA keys (not distributed)
+tda_keys/
+
 # Temporary files
 *.tmp
 *.bak
