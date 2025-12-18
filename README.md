@@ -1860,7 +1860,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 ## Author & Contributions
 
-* **Author/Initiator:** Rainer Geissendoerfer, rainer.geissendoerfer@teradata.com , teradata.com.
+* **Author/Initiator:** Rainer Geissendoerfer, rainer.geissendoerfer@uderia.com , uderia.com.
 
 * **Source Code & Contributions:** The Uderia Platform is licensed under the GNU Affero General Public License v3.0. Contributions are highly welcome. Please visit the main Git repository to report issues or submit pull requests.
 
