@@ -177,7 +177,7 @@ def create_app():
     app.register_blueprint(rest_api_bp, url_prefix="/api")
     app.register_blueprint(auth_bp)  # Auth routes are already prefixed with /api/v1/auth
     app.register_blueprint(admin_api_bp, url_prefix="/api")  # Phase 4 admin & credential management
-    app.register_blueprint(system_prompts_bp)  # System prompts management
+    app.register_blueprint(system_prompts_bp)  # Phase 3: System prompts (database-backed)
     app.register_blueprint(knowledge_api_bp, url_prefix="/api")  # Knowledge repository endpoints
 
     @app.route('/favicon.ico')
