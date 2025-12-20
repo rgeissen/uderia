@@ -3089,35 +3089,32 @@ async function showProfileModal(profileId = null) {
         // Knowledge repositories: default autocomplete to OFF for both new and existing profiles
         const defaultAutocomplete = isPlanner ? isAutocompleteEnabled : false;
         
-        // Use explicit Tailwind classes instead of string interpolation
-        const hoverBg = isPlanner ? 'hover:bg-cyan-900/20' : 'hover:bg-emerald-900/20';
-        const hoverBorder = isPlanner ? 'hover:border-cyan-700/30' : 'hover:border-emerald-700/30';
-        const hoverText = isPlanner ? 'group-hover:text-cyan-100' : 'group-hover:text-emerald-100';
-        const checkboxColor = isPlanner ? 'text-cyan-500 focus:ring-cyan-500' : 'text-emerald-500 focus:ring-emerald-500';
-        const toggleFocus = isPlanner ? 'peer-focus:ring-cyan-500/50' : 'peer-focus:ring-emerald-500/50';
-        const toggleBg = isPlanner ? 'peer-checked:bg-cyan-600' : 'peer-checked:bg-emerald-600';
-        
         return `
-            <div class="flex items-center justify-between px-3 py-2 bg-gray-800/30 ${hoverBg} rounded-lg border border-transparent ${hoverBorder} transition-all group">
-                <span class="text-sm text-gray-200 ${hoverText} transition-colors truncate flex-1 min-w-0">${escapeHtml(coll.name)}</span>
-                <div class="flex items-center gap-6 flex-shrink-0">
-                    <div class="flex items-center justify-center" style="width: 40px;">
-                        <input type="checkbox" 
-                               data-collection-id="${coll.id}" 
-                               data-collection-type="query"
-                               ${isQueryEnabled ? 'checked' : ''} 
-                               class="${checkboxColor} rounded cursor-pointer" 
-                               style="width: 16px; height: 16px;">
+            <div class="flex items-center justify-between py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all group" style="padding-left: 16px; padding-right: 16px;">
+                <span class="text-sm text-gray-200 group-hover:text-white transition-colors truncate flex-1 min-w-0">${escapeHtml(coll.name)}</span>
+                <div class="flex items-center gap-8 flex-shrink-0">
+                    <!-- Query Toggle -->
+                    <div class="flex items-center justify-center" style="width: 50px;">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" 
+                                   data-collection-id="${coll.id}" 
+                                   data-collection-type="query"
+                                   ${isQueryEnabled ? 'checked' : ''} 
+                                   class="sr-only peer"
+                                   style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
+                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                        </label>
                     </div>
-                    <div class="flex items-center justify-center" style="width: 95px;">
-                        <label class="relative inline-block cursor-pointer" title="Enable autocomplete suggestions" style="width: 44px; height: 24px;">
+                    <!-- Autocomplete Toggle -->
+                    <div class="flex items-center justify-center" style="width: 50px;">
+                        <label class="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" 
                                    data-collection-id="${coll.id}" 
                                    data-collection-type="autocomplete"
                                    ${defaultAutocomplete ? 'checked' : ''} 
-                                   class="sr-only peer">
-                            <span class="absolute inset-0 bg-gray-700 rounded-full transition-colors peer-focus:ring-2 ${toggleFocus} peer-checked:${toggleBg}"></span>
-                            <span class="absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full transition-transform peer-checked:translate-x-5"></span>
+                                   class="sr-only peer"
+                                   style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
+                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
                         </label>
                     </div>
                 </div>
@@ -3163,15 +3160,14 @@ async function showProfileModal(profileId = null) {
             const isRerankingEnabled = collectionConfig?.reranking === true;
             
             return `
-                <div class="flex items-center justify-between px-3 py-2 bg-gray-800/30 hover:bg-purple-900/20 rounded-lg border border-transparent hover:border-purple-700/30 transition-all">
+                <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all">
                     <span class="text-sm text-gray-200">${escapeHtml(collection?.name || `Collection ${collId}`)}</span>
                     <div class="flex items-center gap-3">
-                        <label class="relative inline-flex items-center cursor-pointer" style="width: 44px; height: 24px;">
-                            <input type="checkbox" data-collection-id="${collId}" data-reranking="true" ${isRerankingEnabled ? 'checked' : ''} class="sr-only peer">
-                            <span class="absolute inset-0 bg-gray-700 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-purple-500/50 peer-checked:bg-purple-600"></span>
-                            <span class="absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full transition-transform peer-checked:translate-x-5"></span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" data-collection-id="${collId}" data-reranking="true" ${isRerankingEnabled ? 'checked' : ''} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
+                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
                         </label>
-                        <span class="text-xs font-medium text-gray-400 whitespace-nowrap">Rerank</span>
+                        <span class="text-xs font-medium text-gray-400">Rerank</span>
                     </div>
                 </div>
             `;

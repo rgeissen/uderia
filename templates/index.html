@@ -5272,123 +5272,178 @@
 
                     <!-- Tab Content: Intelligence Collections -->
                     <div id="profile-content-intelligence" class="p-6 hidden">
-                        <p class="text-xs text-gray-400 mb-4">Select which intelligence repositories should be available in this profile and enable autocomplete suggestions</p>
+                        <p class="text-sm text-gray-400 mb-6">Select which intelligence repositories should be available in this profile and enable autocomplete suggestions</p>
                     
-                    <!-- Side-by-Side Layout for Planner and Knowledge -->
-                    <div class="grid grid-cols-2 gap-6">
-                        <!-- Planner Repositories (Left) -->
-                        <div>
-                            <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Planner Repositories</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mb-3">Execution strategies and planning patterns from successful agent interactions</p>
-                                <div class="bg-gray-900/50 border border-cyan-700/30 rounded-lg hover:border-cyan-700/50 transition-all">
-                                    <!-- Column Headers -->
-                                    <div class="flex items-center justify-between px-3 py-2 border-b border-cyan-700/20 bg-cyan-900/10">
-                                        <span class="text-xs text-cyan-300/80 font-semibold uppercase tracking-wider">Collection Name</span>
-                                        <div class="flex items-center gap-6 flex-shrink-0">
-                                            <span class="text-xs text-cyan-300/80 font-semibold uppercase tracking-wider">Query</span>
-                                            <span class="text-xs text-cyan-300/80 font-semibold uppercase tracking-wider">Autocomplete</span>
+                        <!-- Planner Repositories Section -->
+                        <div class="mb-6">
+                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                                            </svg>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h4 class="text-sm font-semibold text-white">Planner Repositories</h4>
+                                            <p class="text-xs text-gray-400 mt-0.5">Execution strategies and planning patterns from successful agent interactions</p>
                                         </div>
                                     </div>
-                                    <!-- Collections List -->
-                                    <div id="profile-modal-planner-collections" 
-                                         class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
+                                </div>
+                                <div class="p-5">
+                                    <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
+                                        <!-- Column Headers -->
+                                        <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
+                                            <span class="text-xs text-gray-300 font-medium">Collection Name</span>
+                                            <div class="flex items-center gap-8 flex-shrink-0">
+                                                <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Query</span>
+                                                <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Autocomplete</span>
+                                            </div>
+                                        </div>
+                                        <!-- Collections List -->
+                                        <div id="profile-modal-planner-collections" 
+                                             class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Knowledge Repositories (Right) -->
-                        <div>
-                            <div class="bg-gradient-to-br from-emerald-900/20 to-teal-900/20 rounded-lg p-4 border-2 border-emerald-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Knowledge Repositories</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mb-3">Document collections and reference materials for context augmentation. <span class="text-purple-400">Global settings configured in Administration panel.</span></p>
-                                <div class="bg-gray-900/50 border border-emerald-700/30 rounded-lg hover:border-emerald-700/50 transition-all">
-                                    <!-- Column Headers -->
-                                    <div class="flex items-center justify-between px-3 py-2 border-b border-emerald-700/20 bg-emerald-900/10">
-                                        <span class="text-xs text-emerald-300/80 font-semibold uppercase tracking-wider">Collection Name</span>
-                                        <div class="flex items-center gap-6 flex-shrink-0">
-                                            <span class="text-xs text-emerald-300/80 font-semibold uppercase tracking-wider">Query</span>
-                                            <span class="text-xs text-emerald-300/80 font-semibold uppercase tracking-wider">Autocomplete</span>
+                        <!-- Knowledge Repositories Section -->
+                        <div class="mb-6">
+                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                                            </svg>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h4 class="text-sm font-semibold text-white">Knowledge Repositories</h4>
+                                            <p class="text-xs text-gray-400 mt-0.5">Document collections and reference materials for context augmentation</p>
                                         </div>
                                     </div>
-                                    <!-- Collections List -->
-                                    <div id="profile-modal-knowledge-collections" 
-                                         class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
                                 </div>
-                                
-                                <!-- Per-Collection Reranking Configuration -->
-                                <div class="mt-4 bg-purple-900/10 border border-purple-700/30 rounded-lg p-4">
-                                    <label class="block text-xs font-semibold text-purple-300 mb-2 uppercase tracking-wide">LLM Reranking (Per-Collection Override)</label>
-                                    <p class="text-xs text-gray-400 mb-3">Enable LLM-powered reranking for specific collections to improve relevance (incurs additional LLM costs)</p>
-                                    <div id="profile-modal-knowledge-reranking-list" class="space-y-2">
-                                        <!-- Reranking toggles will be populated dynamically for selected knowledge collections -->
+                                <div class="p-5">
+                                    <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
+                                        <!-- Column Headers -->
+                                        <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
+                                            <span class="text-xs text-gray-300 font-medium">Collection Name</span>
+                                            <div class="flex items-center gap-8 flex-shrink-0">
+                                                <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Query</span>
+                                                <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Autocomplete</span>
+                                            </div>
+                                        </div>
+                                        <!-- Collections List -->
+                                        <div id="profile-modal-knowledge-collections" 
+                                             class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
+                                    </div>
+                                    
+                                    <!-- Empty State Message -->
+                                    <div id="profile-modal-knowledge-empty" class="hidden text-center py-8 text-gray-500 text-sm">
+                                        No knowledge repositories found
                                     </div>
                                 </div>
+                            </div>
+                        </div>
 
-                                <!-- Advanced Knowledge Configuration -->
-                                <div class="mt-4 bg-emerald-900/10 border border-emerald-700/30 rounded-lg p-4">
-                                    <label class="block text-xs font-semibold text-emerald-300 mb-3 uppercase tracking-wide">Advanced Settings</label>
-                                    <p class="text-xs text-gray-400 mb-4">Override global knowledge retrieval settings for this profile</p>
-                                    
+                        <!-- LLM Reranking Section -->
+                        <div class="mb-6">
+                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
+                                            </svg>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h4 class="text-sm font-semibold text-white">LLM Reranking (Per-Collection Override)</h4>
+                                            <p class="text-xs text-gray-400 mt-0.5">Enable LLM-powered reranking for specific collections to improve relevance <span class="text-orange-400">(incurs additional LLM costs)</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-5">
+                                    <div id="profile-modal-knowledge-reranking-list" class="space-y-2">
+                                        <!-- Reranking toggles will be populated dynamically for selected knowledge collections -->
+                                        <p class="text-xs text-gray-500 italic">Select knowledge collections above to configure reranking</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Settings Section -->
+                        <div>
+                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+                                            </svg>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h4 class="text-sm font-semibold text-white">Advanced Settings</h4>
+                                            <p class="text-xs text-gray-400 mt-0.5">Override global knowledge retrieval settings for this profile</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-5">
                                     <div class="grid grid-cols-3 gap-4">
                                         <!-- Min Relevance Score -->
                                         <div>
-                                            <label for="profile-modal-min-relevance" class="block text-xs font-medium text-gray-300 mb-1.5">
+                                            <label for="profile-modal-min-relevance" class="block text-xs font-medium text-gray-300 mb-2">
                                                 Min Relevance Score
                                             </label>
                                             <input type="number" id="profile-modal-min-relevance" 
                                                    min="0" max="1" step="0.05"
                                                    placeholder="0.70"
-                                                   class="w-full px-3 py-2 bg-gray-800/70 border border-emerald-700/40 rounded-lg text-sm text-white 
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50
-                                                          hover:border-emerald-600/50 transition-all">
-                                            <p class="text-[10px] text-gray-500 mt-1">Cosine similarity threshold (0.0-1.0)</p>
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white 
+                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                          hover:border-gray-600 transition-colors">
+                                            <p class="text-xs text-gray-500 mt-1.5">Cosine similarity threshold (0.0-1.0)</p>
                                         </div>
 
                                         <!-- Max Documents -->
                                         <div>
-                                            <label for="profile-modal-max-docs" class="block text-xs font-medium text-gray-300 mb-1.5">
+                                            <label for="profile-modal-max-docs" class="block text-xs font-medium text-gray-300 mb-2">
                                                 Max Documents
                                             </label>
                                             <input type="number" id="profile-modal-max-docs" 
                                                    min="1" max="10" step="1"
                                                    placeholder="3"
-                                                   class="w-full px-3 py-2 bg-gray-800/70 border border-emerald-700/40 rounded-lg text-sm text-white 
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50
-                                                          hover:border-emerald-600/50 transition-all">
-                                            <p class="text-[10px] text-gray-500 mt-1">Number of chunks to retrieve</p>
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white 
+                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                          hover:border-gray-600 transition-colors">
+                                            <p class="text-xs text-gray-500 mt-1.5">Number of chunks to retrieve</p>
                                         </div>
 
                                         <!-- Max Tokens -->
                                         <div>
-                                            <label for="profile-modal-max-tokens" class="block text-xs font-medium text-gray-300 mb-1.5">
+                                            <label for="profile-modal-max-tokens" class="block text-xs font-medium text-gray-300 mb-2">
                                                 Max Tokens
                                             </label>
                                             <input type="number" id="profile-modal-max-tokens" 
                                                    min="500" max="10000" step="100"
                                                    placeholder="2000"
-                                                   class="w-full px-3 py-2 bg-gray-800/70 border border-emerald-700/40 rounded-lg text-sm text-white 
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50
-                                                          hover:border-emerald-600/50 transition-all">
-                                            <p class="text-[10px] text-gray-500 mt-1">Context window limit</p>
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white 
+                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                          hover:border-gray-600 transition-colors">
+                                            <p class="text-xs text-gray-500 mt-1.5">Context window limit</p>
                                         </div>
                                     </div>
                                     
-                                    <p class="text-[10px] text-gray-400 mt-3 italic">Leave empty to use global defaults from Administration panel</p>
+                                    <div class="mt-4 p-3 bg-gray-900/30 border border-gray-700/30 rounded-lg">
+                                        <p class="text-xs text-gray-400">
+                                            <svg class="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            Leave empty to use global defaults from Administration panel
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
                     </div>
 
                     <!-- Tab Content: System Prompts -->
