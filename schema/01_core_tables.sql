@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS prompt_overrides (
     user_uuid TEXT,                         -- NULL = applies to all users with this profile
     profile_id INTEGER,                     -- NULL = user-level override (all profiles)
     content TEXT NOT NULL,                  -- Custom prompt content
+    active_version_id INTEGER,              -- NULL = use content, INTEGER = use specific version
     is_active BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -121,7 +122,8 @@ CREATE TABLE IF NOT EXISTS prompt_overrides (
     -- Constraints
     CHECK(is_active IN (0, 1)),
     CHECK(user_uuid IS NOT NULL OR profile_id IS NOT NULL),  -- Must specify at least one
-    FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
+    FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+    FOREIGN KEY (active_version_id) REFERENCES prompt_versions(id) ON DELETE SET NULL
 );
 
 -- ============================================================================
@@ -152,9 +154,9 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS create_prompt_version_on_update
 AFTER UPDATE OF content ON prompts
-WHEN OLD.content != NEW.content
+WHEN OLD.content != NEW.content AND OLD.content != '[MIGRATE]'
 BEGIN
-    -- Save old version to history
+    -- Save old version to history (skip if old content was the [MIGRATE] placeholder)
     INSERT INTO prompt_versions (prompt_id, version, content, changed_by)
     VALUES (OLD.id, OLD.version, OLD.content, NEW.updated_by);
     

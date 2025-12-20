@@ -231,6 +231,8 @@ const AdminManager = {
         if (systemPromptTextarea) {
             systemPromptTextarea.addEventListener('input', () => {
                 this.updateCharCount();
+                this.updateSaveButtonState(); // Check if content changed
+                
                 // Auto-reload parameters if the section is expanded
                 const parametersContent = document.getElementById('parameters-content');
                 if (parametersContent && !parametersContent.classList.contains('hidden')) {
@@ -2635,11 +2637,48 @@ const AdminManager = {
                         const data = await response.json();
                         if (textarea) {
                             textarea.value = data.content || '';
+                            // Store original content for change detection
+                            textarea.dataset.originalContent = data.content || '';
                             this.updateCharCount();
+                            this.updateSaveButtonState(); // Initial state check
                         }
                         // Show/hide override badge
+                        // Override badge should only show if:
+                        // 1. There is an override (data.is_override)
+                        // 2. AND we're viewing a version > 1 (v1 is the base prompt, not an override)
                         if (overrideBadge) {
-                            overrideBadge.classList.toggle('hidden', !data.is_override);
+                            const isViewingOverride = data.is_override && data.metadata?.version > 1;
+                            overrideBadge.classList.toggle('hidden', !isViewingOverride);
+                        }
+                        
+                        // Show current version number
+                        const versionBadge = document.getElementById('system-prompt-version-badge');
+                        const versionNumber = document.getElementById('current-version-number');
+                        const activeBadge = document.getElementById('system-prompt-active-badge');
+                        console.log('[AdminManager] Full prompt data:', data);
+                        console.log('[AdminManager] is_version_active:', data.is_version_active);
+                        if (versionBadge && versionNumber && data.metadata?.version) {
+                            versionNumber.textContent = `v${data.metadata.version}`;
+                            versionBadge.classList.remove('hidden');
+                            
+                            // Store currently loaded version for button state management
+                            this.currentLoadedVersion = data.metadata.version;
+                            
+                            // Show active badge if this version is pinned as active
+                            if (activeBadge) {
+                                if (data.is_version_active) {
+                                    console.log('[AdminManager] Showing active badge');
+                                    activeBadge.classList.remove('hidden');
+                                } else {
+                                    console.log('[AdminManager] Hiding active badge');
+                                    activeBadge.classList.add('hidden');
+                                }
+                            }
+                        } else if (versionBadge) {
+                            versionBadge.classList.add('hidden');
+                            if (activeBadge) {
+                                activeBadge.classList.add('hidden');
+                            }
                         }
                         
                         // Check if this is a system default prompt (cannot be deleted)
@@ -2688,7 +2727,9 @@ const AdminManager = {
                 }
                 if (textarea) {
                     textarea.value = '';
+                    textarea.dataset.originalContent = '';
                     this.updateCharCount();
+                    this.updateSaveButtonState();
                 }
                 if (overrideBadge) {
                     overrideBadge.classList.add('hidden');
@@ -2757,6 +2798,64 @@ const AdminManager = {
                 const overrideBadge = document.getElementById('system-prompt-override-badge');
                 if (overrideBadge) {
                     overrideBadge.classList.remove('hidden');
+                }
+                
+                // Update original content after successful save
+                if (textarea) {
+                    textarea.dataset.originalContent = content;
+                    this.updateSaveButtonState(); // Disable save button after save
+                }
+                
+                // Get the newly created version number from save response
+                const saveData = await saveResponse.json();
+                const newVersion = saveData.version || saveData.metadata?.version;
+                
+                // Auto-activate the newly saved version
+                if (newVersion) {
+                    try {
+                        const activateResponse = await fetch(`/api/v1/system-prompts/${promptName}/versions/${newVersion}/activate`, {
+                            method: 'POST',
+                            headers: { 
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        if (activateResponse.ok) {
+                            console.log(`[AdminManager] Auto-activated version ${newVersion}`);
+                        }
+                    } catch (error) {
+                        console.error('[AdminManager] Failed to auto-activate version:', error);
+                    }
+                }
+                
+                // Reload prompt metadata to get updated version (AFTER activation)
+                const metadataResponse = await fetch(`/api/v1/system-prompts/${promptName}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (metadataResponse.ok) {
+                    const data = await metadataResponse.json();
+                    const currentVersion = data.metadata?.version;
+                    const versionBadge = document.getElementById('system-prompt-version-badge');
+                    const versionNumber = document.getElementById('current-version-number');
+                    const activeBadge = document.getElementById('system-prompt-active-badge');
+                    if (versionBadge && versionNumber && currentVersion) {
+                        versionNumber.textContent = `v${currentVersion}`;
+                        versionBadge.classList.remove('hidden');
+                        
+                        // Update the currently loaded version tracker
+                        this.currentLoadedVersion = currentVersion;
+                        
+                        // Show active badge (GET endpoint always returns active version)
+                        if (activeBadge && data.is_version_active) {
+                            activeBadge.classList.remove('hidden');
+                        }
+                    }
+                }
+                
+                // Auto-refresh version history if it's expanded
+                const versionsContent = document.getElementById('versions-content');
+                if (versionsContent && !versionsContent.classList.contains('hidden')) {
+                    await this.loadPromptVersions(promptName);
                 }
                 
                 if (window.showNotification) {
@@ -2835,6 +2934,35 @@ const AdminManager = {
         }
     },
 
+    /**
+     * Update save button state based on whether content has changed
+     */
+    updateSaveButtonState() {
+        const textarea = document.getElementById('system-prompt-editor-textarea');
+        const saveBtn = document.getElementById('save-system-prompt-btn');
+        
+        if (!textarea || !saveBtn) return;
+        
+        const originalContent = textarea.dataset.originalContent || '';
+        const currentContent = textarea.value || '';
+        const hasChanged = originalContent !== currentContent;
+        const isDisabled = textarea.disabled; // Respect license tier restrictions
+        
+        if (isDisabled) {
+            // Keep disabled if license tier doesn't allow editing
+            saveBtn.disabled = true;
+            saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else if (hasChanged) {
+            // Enable if content changed and has permission
+            saveBtn.disabled = false;
+            saveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            // Disable if no changes
+            saveBtn.disabled = true;
+            saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    },
+
     // ========================================================================
     // PHASE 4: ENHANCED SYSTEM PROMPTS FEATURES
     // ========================================================================
@@ -2860,9 +2988,9 @@ const AdminManager = {
                 if (sectionName === 'parameters') {
                     this.loadPromptParameters(promptName);
                 } else if (sectionName === 'versions') {
-                    this.loadVersionHistory(promptName);
+                    this.loadPromptVersions(promptName);
                 } else if (sectionName === 'diff') {
-                    this.showDiff(promptName);
+                    this.loadPromptDiff(promptName);
                 }
             }
         } else {
@@ -3023,27 +3151,72 @@ const AdminManager = {
             if (!data.versions || data.versions.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="text-center py-4 text-gray-500">
+                        <td colspan="5" class="text-center py-4 text-gray-500">
                             No version history available
                         </td>
                     </tr>
                 `;
                 return;
             }
+            
+            console.log('[AdminManager] Active version ID from API:', data.active_version_id);
+            console.log('[AdminManager] All versions:', data.versions);
 
             // Render version rows
             data.versions.forEach((version, index) => {
                 const row = document.createElement('tr');
+                row.classList.add('hover:bg-gray-700/50', 'transition-colors');
+                
+                // Check if this version is the active one
+                const isActive = version.is_active === true || version.is_active === 1;
+                const activeBadge = isActive ? '<span class="ml-2 px-2 py-0.5 text-xs bg-green-600 text-white rounded">Active</span>' : '';
+                
+                // Check if this version is currently loaded in the editor
+                const isCurrentlyLoaded = this.currentLoadedVersion === version.version;
+                
+                console.log(`[AdminManager] Version ${version.version}: is_active=${version.is_active}, isActive=${isActive}, isCurrentlyLoaded=${isCurrentlyLoaded}`);
+                
                 row.innerHTML = `
                     <td class="py-2 px-3">
                         <span class="flex items-center gap-2">
-                            <span class="text-gray-300">v${version.version}</span>
+                            <span class="text-gray-300">v${version.version}${activeBadge}</span>
                         </span>
                     </td>
                     <td class="py-2 px-3 text-gray-400">${new Date(version.created_at).toLocaleString()}</td>
-                    <td class="py-2 px-3 text-gray-400">${version.changed_by || 'System'}</td>
+                    <td class="py-2 px-3 text-gray-400">${version.author_display || version.changed_by || 'System'}</td>
                     <td class="py-2 px-3 text-gray-300">${version.change_reason || 'Initial version'}</td>
+                    <td class="py-2 px-3">
+                        <div class="flex gap-2">
+                            <button class="px-3 py-1 text-xs ${isCurrentlyLoaded ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded transition-colors"
+                                    data-action="load" data-version="${version.version}" ${isCurrentlyLoaded ? 'disabled' : ''}>
+                                ${isCurrentlyLoaded ? 'Loaded' : 'Load'}
+                            </button>
+                            <button class="px-3 py-1 text-xs ${isActive ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white rounded transition-colors"
+                                    data-action="activate" data-version="${version.version}" ${isActive ? 'disabled' : ''}>
+                                ${isActive ? 'Active' : 'Activate'}
+                            </button>
+                        </div>
+                    </td>
                 `;
+                
+                // Add click handlers for buttons
+                const loadBtn = row.querySelector('[data-action="load"]');
+                const activateBtn = row.querySelector('[data-action="activate"]');
+                
+                if (loadBtn && !isCurrentlyLoaded) {
+                    loadBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.loadVersionToEditor(promptName, version.version);
+                    });
+                }
+                
+                if (activateBtn && !isActive) {
+                    activateBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.activateVersion(promptName, version.version);
+                    });
+                }
+                
                 tbody.appendChild(row);
             });
 
@@ -3053,11 +3226,167 @@ const AdminManager = {
             if (tbody) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="text-center py-4 text-red-400">
+                        <td colspan="5" class="text-center py-4 text-red-400">
                             Error loading versions: ${error.message}
                         </td>
                     </tr>
                 `;
+            }
+        }
+    },
+
+    /**
+     * Load a specific version into the editor for viewing/editing
+     */
+    async loadVersionToEditor(promptName, versionNumber) {
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/versions/${versionNumber}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load version ${versionNumber}`);
+            }
+
+            const data = await response.json();
+            const textarea = document.getElementById('system-prompt-editor-textarea');
+            
+            if (textarea && data.content) {
+                textarea.value = data.content;
+                // Update original content to mark as unchanged initially
+                textarea.dataset.originalContent = data.content;
+                this.updateCharCount();
+                this.updateSaveButtonState();
+                
+                // Update the currently loaded version tracker
+                this.currentLoadedVersion = versionNumber;
+                
+                // Update version badge in header to show loaded version
+                const versionNumber_el = document.getElementById('current-version-number');
+                if (versionNumber_el) {
+                    versionNumber_el.textContent = `v${versionNumber}`;
+                }
+                
+                // Hide "Custom Override" badge if loading v1 (base prompt)
+                const overrideBadge = document.getElementById('system-prompt-override-badge');
+                if (overrideBadge) {
+                    // v1 is the base prompt, not an override
+                    overrideBadge.classList.toggle('hidden', versionNumber === 1);
+                }
+                
+                // Update "Active" badge - need to check if this version is actually active
+                // Fetch the current prompt info to get is_version_active status
+                const currentPromptResponse = await fetch(`/api/v1/system-prompts/${promptName}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (currentPromptResponse.ok) {
+                    const currentData = await currentPromptResponse.json();
+                    const activeBadge = document.getElementById('system-prompt-active-badge');
+                    if (activeBadge) {
+                        // Show active badge only if loaded version matches current version AND is active
+                        const isLoadedVersionActive = (currentData.metadata?.version === versionNumber && currentData.is_version_active);
+                        activeBadge.classList.toggle('hidden', !isLoadedVersionActive);
+                    }
+                }
+                
+                // Refresh version history to update button states
+                await this.loadPromptVersions(promptName);
+                
+                if (window.showNotification) {
+                    window.showNotification('success', `Loaded version ${versionNumber} into editor`);
+                }
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error loading version to editor:', error);
+            if (window.showNotification) {
+                window.showNotification('error', `Failed to load version: ${error.message}`);
+            }
+        }
+    },
+
+    /**
+     * Activate a specific version (make it the current active version)
+     */
+    async activateVersion(promptName, versionNumber) {
+        console.log(`[AdminManager] Activating version ${versionNumber} for ${promptName}`);
+        
+        const token = authClient ? authClient.getToken() : null;
+        if (!token) {
+            console.error('[AdminManager] No auth token found');
+            return;
+        }
+
+        // Confirm with user (wrap callback-based showConfirmation in a Promise)
+        console.log('[AdminManager] Showing confirmation dialog...');
+        const confirmed = await new Promise((resolve) => {
+            if (window.showConfirmation) {
+                window.showConfirmation(
+                    `Activate Version ${versionNumber}`,
+                    `This will make version ${versionNumber} the active version used by the application. Continue?`,
+                    () => resolve(true)  // onConfirm callback
+                );
+                // Note: If user clicks Cancel, the modal closes but doesn't call anything
+                // We need to handle cancel too
+                const cancelBtn = document.getElementById('confirm-modal-cancel');
+                if (cancelBtn) {
+                    const cancelHandler = () => {
+                        resolve(false);
+                        cancelBtn.removeEventListener('click', cancelHandler);
+                    };
+                    cancelBtn.addEventListener('click', cancelHandler, { once: true });
+                }
+            } else {
+                resolve(confirm(`Activate version ${versionNumber}?`));
+            }
+        });
+        
+        console.log('[AdminManager] Confirmation result:', confirmed);
+        
+        if (!confirmed) {
+            console.log('[AdminManager] Activation cancelled by user');
+            return;
+        }
+
+        try {
+            console.log('[AdminManager] Making API call to activate version...');
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/versions/${versionNumber}/activate`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('[AdminManager] API response status:', response.status);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Failed to activate version ${versionNumber}`);
+            }
+
+            const data = await response.json();
+            console.log('[AdminManager] Activation successful:', data);
+            
+            // Reload the prompt content to show the newly activated version
+            // This will load the activated version into the editor with all metadata/badges
+            await this.loadSystemPromptForTier(promptName);
+            
+            // Refresh version history to update active badges and button states
+            await this.loadPromptVersions(promptName);
+            
+            if (window.showNotification) {
+                window.showNotification('success', `Version ${versionNumber} is now active (pinned)`);
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error activating version:', error);
+            if (window.showNotification) {
+                window.showNotification('error', `Failed to activate version: ${error.message}`);
             }
         }
     },
@@ -3119,6 +3448,74 @@ const AdminManager = {
             
             if (baseContent) baseContent.textContent = 'Error loading base content';
             if (overrideContent) overrideContent.textContent = 'Error loading override content';
+        }
+    },
+
+    /**
+     * View a specific version of a prompt (preview in modal/dialog)
+     */
+    async viewPromptVersion(promptName, versionNumber, encryptedContent) {
+        try {
+            // Decrypt the version content by fetching from API
+            const token = authClient ? authClient.getToken() : null;
+            if (!token) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Authentication required');
+                }
+                return;
+            }
+
+            const response = await fetch(`/api/v1/system-prompts/${promptName}/versions/${versionNumber}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load version content');
+            }
+
+            const data = await response.json();
+            
+            // Show version in a modal or update textarea temporarily
+            if (window.showConfirmation) {
+                const contentPreview = data.content.substring(0, 500) + (data.content.length > 500 ? '...' : '');
+                window.showConfirmation(
+                    `View Version ${versionNumber}`,
+                    `Prompt: ${promptName}\nVersion: ${versionNumber}\nDate: ${data.created_at}\nAuthor: ${data.changed_by || 'System'}\n\nContent preview:\n${contentPreview}`,
+                    () => {
+                        // Optional: Load this version into the editor
+                        const textarea = document.getElementById('system-prompt-editor-textarea');
+                        if (textarea) {
+                            textarea.value = data.content;
+                            textarea.dataset.originalContent = textarea.value; // Update baseline
+                            this.updateCharCount();
+                            this.updateSaveButtonState();
+                            if (window.showNotification) {
+                                window.showNotification('info', `Loaded version ${versionNumber} into editor`);
+                            }
+                        }
+                    },
+                    'Load into Editor',
+                    'Close'
+                );
+            } else {
+                // Fallback: just load into editor
+                const textarea = document.getElementById('system-prompt-editor-textarea');
+                if (textarea && confirm(`Load version ${versionNumber} into the editor?`)) {
+                    textarea.value = data.content;
+                    textarea.dataset.originalContent = textarea.value;
+                    this.updateCharCount();
+                    this.updateSaveButtonState();
+                    if (window.showNotification) {
+                        window.showNotification('info', `Loaded version ${versionNumber} into editor`);
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error viewing version:', error);
+            if (window.showNotification) {
+                window.showNotification('error', `Failed to load version: ${error.message}`);
+            }
         }
     },
 

@@ -263,25 +263,32 @@ class PromptLoader:
             # 1. Check user-level override (tier-gated)
             if user_uuid and self._tier in ['Prompt Engineer', 'Enterprise']:
                 cursor.execute("""
-                    SELECT po.content
+                    SELECT po.content, po.active_version_id, pv.content as version_content
                     FROM prompt_overrides po
                     JOIN prompts p ON po.prompt_id = p.id
+                    LEFT JOIN prompt_versions pv ON po.active_version_id = pv.id
                     WHERE p.name = ? AND po.user_uuid = ? AND po.is_active = 1
                 """, (name, user_uuid))
                 
                 row = cursor.fetchone()
                 if row:
-                    encrypted_content = row['content']
+                    # Check if a specific version is pinned as active
+                    if row['active_version_id'] and row['version_content']:
+                        encrypted_content = row['version_content']
+                        logger.debug(f"Using pinned version (ID: {row['active_version_id']}) for {name} (user: {user_uuid})")
+                    else:
+                        encrypted_content = row['content']
+                        logger.debug(f"Using user override content for {name} (user: {user_uuid})")
                     
                     # Decrypt override (overrides stored encrypted too)
                     if self._can_decrypt and self._decryption_key:
                         try:
-                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key)
-                            logger.debug(f"Loaded and decrypted user override for {name} (user: {user_uuid})")
+                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key, silent_fail=True)
                             return decrypted_content
                         except Exception as e:
-                            logger.error(f"Failed to decrypt user override for {name}: {e}")
-                            # Fall through to try other sources
+                            # Try as plain text (for old data)
+                            logger.debug(f"Using plain text for {name}: {e}")
+                            return encrypted_content
                     else:
                         logger.warning(f"Cannot decrypt user override for {name}")
                         # Fall through to try other sources
@@ -289,25 +296,32 @@ class PromptLoader:
             # 2. Check profile-level override
             if profile_id:
                 cursor.execute("""
-                    SELECT po.content
+                    SELECT po.content, po.active_version_id, pv.content as version_content
                     FROM prompt_overrides po
                     JOIN prompts p ON po.prompt_id = p.id
+                    LEFT JOIN prompt_versions pv ON po.active_version_id = pv.id
                     WHERE p.name = ? AND po.profile_id = ? AND po.is_active = 1
                 """, (name, profile_id))
                 
                 row = cursor.fetchone()
                 if row:
-                    encrypted_content = row['content']
+                    # Check if a specific version is pinned as active
+                    if row['active_version_id'] and row['version_content']:
+                        encrypted_content = row['version_content']
+                        logger.debug(f"Using pinned version (ID: {row['active_version_id']}) for {name} (profile: {profile_id})")
+                    else:
+                        encrypted_content = row['content']
+                        logger.debug(f"Using profile override content for {name} (profile: {profile_id})")
                     
                     # Decrypt profile override
                     if self._can_decrypt and self._decryption_key:
                         try:
-                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key)
-                            logger.debug(f"Loaded and decrypted profile override for {name} (profile: {profile_id})")
+                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key, silent_fail=True)
                             return decrypted_content
                         except Exception as e:
-                            logger.error(f"Failed to decrypt profile override for {name}: {e}")
-                            # Fall through to base prompt
+                            # Try as plain text
+                            logger.debug(f"Using plain text for {name}: {e}")
+                            return encrypted_content
                     else:
                         logger.warning(f"Cannot decrypt profile override for {name}")
                         # Fall through to base prompt

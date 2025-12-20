@@ -14,6 +14,7 @@ from functools import wraps
 from trusted_data_agent.core.config import APP_STATE
 from trusted_data_agent.auth.middleware import require_auth
 from trusted_data_agent.agent.prompt_loader import get_prompt_loader
+from trusted_data_agent.agent.prompt_encryption import encrypt_prompt
 
 system_prompts_bp = Blueprint('system_prompts', __name__, url_prefix='/api/v1/system-prompts')
 app_logger = logging.getLogger("quart.app")
@@ -97,14 +98,82 @@ async def get_system_prompt(current_user, prompt_name):
         user_uuid = current_user.id
         content = loader.get_prompt(prompt_name, user_uuid=user_uuid, parameters={})
         
-        # Check if this user/profile has overrides
-        has_override = False  # TODO: Query database for override existence
+        # Check if this user has an override
+        import sqlite3
+        conn = sqlite3.connect(loader.db_path)
+        cursor = conn.cursor()
+        
+        has_override = False
+        active_version_id = None
+        
+        # Check for user-level override first (highest priority)
+        cursor.execute("""
+            SELECT id, active_version_id FROM prompt_overrides 
+            WHERE prompt_id = ? AND user_uuid = ? AND is_active = 1
+        """, (metadata['id'], user_uuid))
+        override_row = cursor.fetchone()
+        
+        if override_row:
+            has_override = True
+            active_version_id = override_row[1]  # active_version_id column
+        
+        # If no user-level override, check profile-level
+        if not has_override:
+            cursor.execute("""
+                SELECT id, active_version_id FROM prompt_overrides 
+                WHERE prompt_id = ? AND profile_id IS NULL AND is_active = 1
+            """, (metadata['id'],))
+            profile_override_row = cursor.fetchone()
+            if profile_override_row:
+                has_override = True
+                active_version_id = profile_override_row[1]
+        
+        # Get the LATEST version from prompt_versions (v1 always exists from bootstrap)
+        cursor.execute("""
+            SELECT MAX(version), id FROM prompt_versions WHERE prompt_id = ?
+        """, (metadata['id'],))
+        latest_version_row = cursor.fetchone()
+        latest_version_number = None
+        latest_version_id = None
+        if latest_version_row and latest_version_row[0]:
+            latest_version_number = latest_version_row[0]
+            # Get the ID of this latest version
+            cursor.execute("""
+                SELECT id FROM prompt_versions 
+                WHERE prompt_id = ? AND version = ?
+            """, (metadata['id'], latest_version_number))
+            version_id_row = cursor.fetchone()
+            if version_id_row:
+                latest_version_id = version_id_row[0]
+        
+        # Determine which version is actually being returned (active version, not necessarily latest)
+        actual_version_number = latest_version_number
+        if active_version_id is not None:
+            # A specific version is pinned - find its version number
+            cursor.execute("""
+                SELECT version FROM prompt_versions WHERE id = ?
+            """, (active_version_id,))
+            pinned_row = cursor.fetchone()
+            if pinned_row:
+                actual_version_number = pinned_row[0]
+        
+        # Set metadata version to the actual version being returned
+        metadata['version'] = actual_version_number
+        
+        # The GET endpoint always returns the active version content (via loader.get_prompt)
+        # So is_version_active should always be True
+        is_version_active = True
+        
+        conn.close()
+        
+        app_logger.info(f"GET {prompt_name}: version={metadata.get('version')}, is_override={has_override}, active_version_id={active_version_id}, is_version_active={is_version_active}")
         
         return jsonify({
             "success": True,
             "prompt_name": prompt_name,
             "content": content,
             "is_override": has_override,
+            "is_version_active": is_version_active,
             "metadata": metadata
         })
         
@@ -156,43 +225,116 @@ async def update_system_prompt(current_user, prompt_name):
         license_tier = license_info.get('tier', 'Standard')
         user_uuid = current_user.id
         
-        conn = sqlite3.connect(loader.db_path)
-        cursor = conn.cursor()
+        conn = None
+        try:
+            conn = sqlite3.connect(loader.db_path)
+            cursor = conn.cursor()
+            
+            # Get prompt_id and current version
+            cursor.execute("SELECT id, version FROM prompts WHERE name = ?", (prompt_name,))
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({"success": False, "message": "Prompt not found"}), 404
+            
+            prompt_id, current_version = row[0], row[1]
+            
+            # Encrypt the content before storing (content comes from UI as plain text)
+            encrypted_content = encrypt_prompt(content, loader._decryption_key)
+            
+            # Get old override content (encrypted) for comparison
+            old_override_content = None
+            if license_tier == 'Enterprise':
+                cursor.execute("""
+                    SELECT content FROM prompt_overrides 
+                    WHERE prompt_id = ? AND user_uuid = ? AND is_active = 1
+                """, (prompt_id, user_uuid))
+            else:
+                cursor.execute("""
+                    SELECT content FROM prompt_overrides 
+                    WHERE prompt_id = ? AND profile_id IS NULL AND is_active = 1
+                """, (prompt_id,))
+            
+            existing_row = cursor.fetchone()
+            if existing_row:
+                old_override_content = existing_row[0]
+            
+            # Only create version if content actually changed (compare encrypted)
+            content_changed = old_override_content != encrypted_content
+            
+            created_version = None
+            if license_tier == 'Enterprise':
+                # User-level override
+                cursor.execute("""
+                    INSERT OR REPLACE INTO prompt_overrides 
+                    (prompt_id, user_uuid, content, created_by)
+                    VALUES (?, ?, ?, ?)
+                """, (prompt_id, user_uuid, encrypted_content, user_uuid))
+                scope = 'user'
+            else:
+                # Profile-level override (Prompt Engineer tier)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO prompt_overrides 
+                    (prompt_id, profile_id, content, created_by)
+                    VALUES (?, NULL, ?, ?)
+                """, (prompt_id, encrypted_content, user_uuid))
+                scope = 'profile'
+            
+            # Create version history entry for override changes
+            if content_changed:
+                # Get the next version number (max existing + 1)
+                # v1 always exists from bootstrap, so this will return at least 1
+                cursor.execute("""
+                    SELECT COALESCE(MAX(version), 0) FROM prompt_versions WHERE prompt_id = ?
+                """, (prompt_id,))
+                max_version = cursor.fetchone()[0]
+                next_version = max_version + 1
+                
+                # Only store the NEW content in version history (not the old - it's already there)
+                cursor.execute("""
+                    INSERT INTO prompt_versions (prompt_id, version, content, changed_by, change_reason, created_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    prompt_id, 
+                    next_version, 
+                    encrypted_content,  # Store encrypted
+                    user_uuid,
+                    f"Override updated ({scope}-level)"
+                ))
+                
+                created_version = next_version
+                app_logger.info(f"Created version {next_version} for override of {prompt_name}")
+            
+            conn.commit()
+            
+        except sqlite3.IntegrityError as e:
+            if conn:
+                conn.rollback()
+            app_logger.error(f"Database integrity error saving {prompt_name}: {e}")
+            return jsonify({
+                "success": False,
+                "message": f"Database error: {str(e)}"
+            }), 500
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            app_logger.error(f"Error saving system prompt {prompt_name}: {e}")
+            return jsonify({
+                "success": False,
+                "message": f"Failed to save system prompt: {str(e)}"
+            }), 500
+        finally:
+            if conn:
+                conn.close()
         
-        # Get prompt_id
-        cursor.execute("SELECT id FROM prompts WHERE name = ?", (prompt_name,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            return jsonify({"success": False, "message": "Prompt not found"}), 404
+        # Clear cache - need to clear all cache entries for this prompt
+        # Cache key format: "{name}:{user_uuid}:{profile_id}"
+        # Clear all variations to ensure the new override is loaded
+        keys_to_delete = [key for key in loader._prompt_cache.keys() if key.startswith(f"{prompt_name}:")]
+        for key in keys_to_delete:
+            del loader._prompt_cache[key]
         
-        prompt_id = row[0]
-        
-        if license_tier == 'Enterprise':
-            # User-level override
-            cursor.execute("""
-                INSERT OR REPLACE INTO prompt_overrides 
-                (prompt_id, user_uuid, content, created_by)
-                VALUES (?, ?, ?, ?)
-            """, (prompt_id, user_uuid, content, user_uuid))
-            scope = 'user'
-        else:
-            # Profile-level override (Prompt Engineer tier)
-            # For now, we'll use a default profile or create a mechanism to select profile
-            # This is a simplified implementation
-            cursor.execute("""
-                INSERT OR REPLACE INTO prompt_overrides 
-                (prompt_id, profile_id, content, created_by)
-                VALUES (?, NULL, ?, ?)
-            """, (prompt_id, content, user_uuid))
-            scope = 'profile'
-        
-        conn.commit()
-        conn.close()
-        
-        # Clear cache
-        if prompt_name in loader._prompt_cache:
-            del loader._prompt_cache[prompt_name]
+        if keys_to_delete:
+            app_logger.info(f"Cleared {len(keys_to_delete)} cached entries for {prompt_name}")
         
         app_logger.info(f"System prompt override saved: {prompt_name} ({scope}-level)")
         
@@ -200,7 +342,8 @@ async def update_system_prompt(current_user, prompt_name):
             "success": True,
             "message": f"System prompt '{prompt_name}' saved successfully ({scope}-level override)",
             "prompt_name": prompt_name,
-            "override_scope": scope
+            "override_scope": scope,
+            "version": created_version  # Return the newly created version number
         })
         
     except Exception as e:
@@ -257,9 +400,13 @@ async def delete_system_prompt_override(current_user, prompt_name):
         conn.commit()
         conn.close()
         
-        # Clear cache
-        if prompt_name in loader._prompt_cache:
-            del loader._prompt_cache[prompt_name]
+        # Clear cache - need to clear all cache entries for this prompt
+        keys_to_delete = [key for key in loader._prompt_cache.keys() if key.startswith(f"{prompt_name}:")]
+        for key in keys_to_delete:
+            del loader._prompt_cache[key]
+        
+        if keys_to_delete:
+            app_logger.info(f"Cleared {len(keys_to_delete)} cached entries for {prompt_name}")
         
         if deleted == 0:
             return jsonify({
@@ -751,7 +898,108 @@ async def get_prompt_versions(current_user, prompt_name):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Get version history
+        # Check which version is currently pinned as active (if any)
+        user_uuid = current_user.id
+        license_info = APP_STATE.get('license_info') or {}
+        license_tier = license_info.get('tier', 'Standard')
+        active_version_id = None
+        
+        if license_tier == 'Enterprise':
+            cursor.execute("""
+                SELECT active_version_id FROM prompt_overrides po
+                JOIN prompts p ON po.prompt_id = p.id
+                WHERE p.name = ? AND po.user_uuid = ? AND po.is_active = 1
+            """, (prompt_name, user_uuid))
+            row = cursor.fetchone()
+            if row:
+                active_version_id = row['active_version_id']
+        else:
+            cursor.execute("""
+                SELECT active_version_id FROM prompt_overrides po
+                JOIN prompts p ON po.prompt_id = p.id
+                WHERE p.name = ? AND po.profile_id IS NULL AND po.is_active = 1
+            """, (prompt_name,))
+            row = cursor.fetchone()
+            if row:
+                active_version_id = row['active_version_id']
+        
+        # Get version history (don't include content in list - too large)
+        cursor.execute("""
+            SELECT 
+                pv.id,
+                pv.version,
+                pv.change_reason,
+                pv.changed_by,
+                pv.created_at,
+                LENGTH(pv.content) as content_length,
+                COALESCE(u.username, pv.changed_by) as author_display
+            FROM prompt_versions pv
+            JOIN prompts p ON pv.prompt_id = p.id
+            LEFT JOIN users u ON pv.changed_by = u.id
+            WHERE p.name = ?
+            ORDER BY pv.version DESC
+        """, (prompt_name,))
+        
+        rows = cursor.fetchall()
+        versions = []
+        
+        # If no version is pinned (active_version_id is None), the latest version is active
+        latest_version_id = rows[0]['id'] if rows else None
+        
+        for row in rows:
+            version_dict = dict(row)
+            # Mark which version is active (pinned, or latest if unpinned)
+            if active_version_id is None:
+                # No version pinned - latest is active
+                version_dict['is_active'] = (row['id'] == latest_version_id)
+            else:
+                # Version pinned - only that version is active
+                version_dict['is_active'] = (active_version_id == row['id'])
+            versions.append(version_dict)
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "prompt_name": prompt_name,
+            "versions": versions,
+            "total_versions": len(versions),
+            "current_version": metadata.get('version'),
+            "active_version_id": active_version_id
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error getting versions for '{prompt_name}': {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to get version history: {str(e)}"
+        }), 500
+
+
+@system_prompts_bp.route('/<prompt_name>/versions/<int:version_number>', methods=['GET'])
+@require_auth
+async def get_specific_version(current_user, prompt_name, version_number):
+    """
+    Get a specific version of a prompt with decrypted content.
+    Phase 4: Version viewer
+    """
+    try:
+        loader = get_prompt_loader()
+        
+        # Verify prompt exists
+        metadata = loader.get_prompt_metadata(prompt_name)
+        if not metadata:
+            return jsonify({
+                "success": False,
+                "message": f"Prompt '{prompt_name}' not found"
+            }), 404
+        
+        import sqlite3
+        conn = sqlite3.connect(loader.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get specific version from prompt_versions (including v1)
         cursor.execute("""
             SELECT 
                 pv.id,
@@ -762,26 +1010,177 @@ async def get_prompt_versions(current_user, prompt_name):
                 pv.created_at
             FROM prompt_versions pv
             JOIN prompts p ON pv.prompt_id = p.id
-            WHERE p.name = ?
-            ORDER BY pv.version DESC
-        """, (prompt_name,))
+            WHERE p.name = ? AND pv.version = ?
+        """, (prompt_name, version_number))
         
-        versions = [dict(row) for row in cursor.fetchall()]
+        version_row = cursor.fetchone()
         conn.close()
+        
+        if not version_row:
+            return jsonify({
+                "success": False,
+                "message": f"Version {version_number} not found for prompt '{prompt_name}'"
+            }), 404
+        
+        # Decrypt the content (handle plain text from initial migration)
+        from trusted_data_agent.agent.prompt_encryption import decrypt_prompt
+        try:
+            # Use silent_fail=True to suppress ERROR logs for Version 1 plain text
+            decrypted_content = decrypt_prompt(version_row['content'], loader._decryption_key, silent_fail=True)
+        except Exception as e:
+            # Version might be plain text (initial migration data)
+            app_logger.info(f"Version {version_number} of {prompt_name} is plain text (migration data)")
+            decrypted_content = version_row['content']
         
         return jsonify({
             "success": True,
             "prompt_name": prompt_name,
-            "versions": versions,
-            "total_versions": len(versions),
-            "current_version": metadata.get('version')
+            "version": version_row['version'],
+            "content": decrypted_content,
+            "change_reason": version_row['change_reason'],
+            "changed_by": version_row['changed_by'],
+            "created_at": version_row['created_at']
         })
         
     except Exception as e:
-        app_logger.error(f"Error getting versions for '{prompt_name}': {e}")
+        app_logger.error(f"Error getting version {version_number} for '{prompt_name}': {e}")
         return jsonify({
             "success": False,
-            "message": f"Failed to get version history: {str(e)}"
+            "message": f"Failed to get version: {str(e)}"
+        }), 500
+
+
+@system_prompts_bp.route('/<prompt_name>/versions/<int:version_number>/activate', methods=['POST'])
+@require_auth
+@require_prompt_engineer_or_enterprise
+async def activate_version(current_user, prompt_name, version_number):
+    """
+    Activate a specific version (pin it as the active version).
+    This sets active_version_id to point to the selected version without creating a new version.
+    Phase 4: Version activation
+    """
+    try:
+        loader = get_prompt_loader()
+        
+        # Verify prompt exists
+        metadata = loader.get_prompt_metadata(prompt_name)
+        if not metadata:
+            return jsonify({
+                "success": False,
+                "message": f"Prompt '{prompt_name}' not found"
+            }), 404
+        
+        import sqlite3
+        conn = sqlite3.connect(loader.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            # Verify the version exists and get its ID
+            cursor.execute("""
+                SELECT pv.id
+                FROM prompt_versions pv
+                JOIN prompts p ON pv.prompt_id = p.id
+                WHERE p.name = ? AND pv.version = ?
+            """, (prompt_name, version_number))
+            
+            version_row = cursor.fetchone()
+            
+            if not version_row:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f"Version {version_number} not found for prompt '{prompt_name}'"
+                }), 404
+            
+            version_id = version_row['id']
+            
+            # Determine scope
+            license_info = APP_STATE.get('license_info') or {}
+            license_tier = license_info.get('tier', 'Standard')
+            user_uuid = current_user.id
+            prompt_id = metadata['id']
+            
+            if license_tier == 'Enterprise':
+                # Update user-level override (or create if doesn't exist)
+                cursor.execute("""
+                    SELECT id FROM prompt_overrides 
+                    WHERE prompt_id = ? AND user_uuid = ? AND is_active = 1
+                """, (prompt_id, user_uuid))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing override to pin this version
+                    cursor.execute("""
+                        UPDATE prompt_overrides 
+                        SET active_version_id = ?
+                        WHERE id = ?
+                    """, (version_id, existing['id']))
+                else:
+                    # Create new override with just the version pin (no content copy)
+                    # We set content to empty and rely on active_version_id
+                    cursor.execute("""
+                        INSERT INTO prompt_overrides (prompt_id, user_uuid, content, active_version_id, created_by)
+                        VALUES (?, ?, '', ?, ?)
+                    """, (prompt_id, user_uuid, version_id, user_uuid))
+                
+                scope = 'user'
+            else:
+                # Prompt Engineer: Update profile-level override
+                cursor.execute("""
+                    SELECT id FROM prompt_overrides 
+                    WHERE prompt_id = ? AND profile_id IS NULL AND is_active = 1
+                """, (prompt_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing override to pin this version
+                    cursor.execute("""
+                        UPDATE prompt_overrides 
+                        SET active_version_id = ?
+                        WHERE id = ?
+                    """, (version_id, existing['id']))
+                else:
+                    # Create new override with just the version pin
+                    cursor.execute("""
+                        INSERT INTO prompt_overrides (prompt_id, profile_id, content, active_version_id, created_by)
+                        VALUES (?, NULL, '', ?, ?)
+                    """, (prompt_id, version_id, user_uuid))
+                
+                scope = 'profile'
+            
+            conn.commit()
+            
+            # Clear cache
+            keys_to_delete = [key for key in loader._prompt_cache.keys() if key.startswith(f"{prompt_name}:")]
+            for key in keys_to_delete:
+                del loader._prompt_cache[key]
+            
+            app_logger.info(f"Activated version {version_number} (ID: {version_id}) of {prompt_name} for user {current_user.username} ({scope}-level)")
+            
+            conn.close()
+            
+            return jsonify({
+                "success": True,
+                "message": f"Version {version_number} is now active (no new version created)",
+                "prompt_name": prompt_name,
+                "version": version_number,
+                "scope": scope
+            })
+            
+        except Exception as e:
+            if conn:
+                conn.rollback()
+                conn.close()
+            raise
+        
+    except Exception as e:
+        app_logger.error(f"Error activating version {version_number} for '{prompt_name}': {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to activate version: {str(e)}"
         }), 500
 
 
@@ -804,34 +1203,47 @@ async def get_prompt_diff(current_user, prompt_name):
                 "message": f"Prompt '{prompt_name}' not found"
             }), 404
         
+        # Get base content (decrypted) using prompt loader
+        base_content = loader.get_prompt(prompt_name, user_uuid=None, profile_id=None, parameters={})
+        
+        # Get override content if exists
         import sqlite3
         conn = sqlite3.connect(loader.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Get base prompt content
-        cursor.execute("SELECT content FROM prompts WHERE name = ?", (prompt_name,))
-        row = cursor.fetchone()
-        base_content = row['content'] if row else ""
-        
-        # Get user/profile override if exists
+        # Check for user-level override first
         cursor.execute("""
-            SELECT content, 
-                   CASE WHEN user_uuid IS NOT NULL THEN 'user' ELSE 'profile' END as override_scope
+            SELECT po.content, 'user' as override_scope
             FROM prompt_overrides po
             JOIN prompts p ON po.prompt_id = p.id
-            WHERE p.name = ? AND (po.user_uuid = ? OR po.profile_id IN (
-                SELECT profile_id FROM profile_prompt_assignments WHERE user_uuid = ?
-            ))
-            ORDER BY CASE WHEN user_uuid IS NOT NULL THEN 1 ELSE 2 END
-            LIMIT 1
-        """, (prompt_name, user_uuid, user_uuid))
+            WHERE p.name = ? AND po.user_uuid = ? AND po.is_active = 1
+        """, (prompt_name, user_uuid))
         
         override_row = cursor.fetchone()
-        override_content = override_row['content'] if override_row else None
-        override_scope = override_row['override_scope'] if override_row else None
+        
+        # If no user override, check for profile override
+        if not override_row:
+            cursor.execute("""
+                SELECT po.content, 'profile' as override_scope
+                FROM prompt_overrides po
+                JOIN prompts p ON po.prompt_id = p.id
+                WHERE p.name = ? AND po.profile_id IS NULL AND po.is_active = 1
+            """, (prompt_name,))
+            override_row = cursor.fetchone()
         
         conn.close()
+        
+        # Decrypt override if exists
+        override_content = None
+        override_scope = None
+        if override_row:
+            from trusted_data_agent.agent.prompt_encryption import decrypt_prompt
+            try:
+                override_content = decrypt_prompt(override_row['content'], loader._decryption_key)
+                override_scope = override_row['override_scope']
+            except Exception as e:
+                app_logger.error(f"Failed to decrypt override for {prompt_name}: {e}")
         
         return jsonify({
             "success": True,
@@ -840,7 +1252,7 @@ async def get_prompt_diff(current_user, prompt_name):
             "override_content": override_content,
             "override_scope": override_scope,
             "has_override": override_content is not None,
-            "base_length": len(base_content),
+            "base_length": len(base_content) if base_content else 0,
             "override_length": len(override_content) if override_content else 0
         })
         

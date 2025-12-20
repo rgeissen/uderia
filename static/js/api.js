@@ -203,9 +203,13 @@ export async function startNewSession() {
     };
 
     if (isPrivilegedUser()) {
-        const activePrompt = getSystemPromptForModel(state.currentProvider, state.currentModel);
+        let activePrompt = getSystemPromptForModel(state.currentProvider, state.currentModel);
+        // If not in localStorage, fetch from server
         if (!activePrompt) {
-            throw new Error('Cannot start a new session. The system prompt is not loaded for the current model. Please re-configure.');
+            activePrompt = await getDefaultSystemPrompt(state.currentProvider, state.currentModel);
+            if (!activePrompt) {
+                throw new Error('Cannot start a new session. The system prompt is not loaded for the current model. Please re-configure.');
+            }
         }
         payload.system_prompt = activePrompt;
     }

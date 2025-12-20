@@ -118,13 +118,14 @@ def encrypt_prompt(content: str, key: bytes) -> str:
     return base64.b64encode(encrypted_bytes).decode('utf-8')
 
 
-def decrypt_prompt(encrypted_content: str, key: bytes) -> str:
+def decrypt_prompt(encrypted_content: str, key: bytes, silent_fail: bool = False) -> str:
     """
     Decrypt prompt content with given key.
     
     Args:
         encrypted_content: Base64-encoded encrypted content
         key: Fernet decryption key
+        silent_fail: If True, suppress ERROR logs (for plain text fallback)
         
     Returns:
         str: Decrypted plain text content
@@ -146,10 +147,12 @@ def decrypt_prompt(encrypted_content: str, key: bytes) -> str:
         return decrypted_bytes.decode('utf-8')
         
     except InvalidToken:
-        logger.error("Failed to decrypt prompt - invalid key or corrupted content")
+        if not silent_fail:
+            logger.error("Failed to decrypt prompt - invalid key or corrupted content")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error during prompt decryption: {e}")
+        if not silent_fail:
+            logger.error(f"Unexpected error during prompt decryption: {e}")
         raise
 
 

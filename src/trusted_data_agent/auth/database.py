@@ -646,6 +646,19 @@ def _bootstrap_prompt_system():
                             logger.error(f"Failed to migrate prompt {prompt_name}: {e}", exc_info=True)
                 
                 logger.info(f"✅ Migrated and encrypted {migrated_count} prompts to database")
+                
+                # Create version 1 entries in prompt_versions for all prompts
+                logger.info("Creating version 1 entries in prompt_versions...")
+                cursor.execute("SELECT id, name, content FROM prompts ORDER BY id")
+                all_prompts = cursor.fetchall()
+                
+                for prompt_id, prompt_name, prompt_content in all_prompts:
+                    cursor.execute("""
+                        INSERT INTO prompt_versions (prompt_id, version, content, changed_by, change_reason, created_at)
+                        VALUES (?, 1, ?, 'system', 'Base prompt', CURRENT_TIMESTAMP)
+                    """, (prompt_id, prompt_content))
+                
+                logger.info(f"✅ Created version 1 entries for {len(all_prompts)} prompts")
         
         except ImportError as e:
             logger.error(f"Failed to import encryption utilities: {e}")
