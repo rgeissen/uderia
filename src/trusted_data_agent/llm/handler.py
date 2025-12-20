@@ -322,9 +322,18 @@ def _condense_and_clean_history(history: list) -> list:
     return _denormalize_history(cleaned_history, APP_CONFIG.CURRENT_PROVIDER)
 
 
-def _get_full_system_prompt(session_data: dict, dependencies: dict, system_prompt_override: str = None, active_prompt_name_for_filter: str = None, source: str = "text") -> str:
+def _get_full_system_prompt(session_data: dict, dependencies: dict, system_prompt_override: str = None, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None) -> str:
     """
-    Constructs the final system prompt based on the user's license tier.
+    Constructs the final system prompt based on the user's license tier and profile mapping.
+    
+    Args:
+        session_data: Session data dictionary
+        dependencies: Dependencies dictionary containing STATE
+        system_prompt_override: Optional override prompt (takes precedence)
+        active_prompt_name_for_filter: Prompt name to filter from context
+        source: Source of the call ("text", "prompt_library", etc.)
+        active_profile_id: Active profile ID for prompt resolution
+        current_provider: Current LLM provider for prompt resolution
     """
     if system_prompt_override:
         return system_prompt_override
@@ -341,8 +350,28 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
         app_logger.info(f"Using custom system prompt for privileged user (Tier: {user_tier}).")
         base_prompt_text = session_data["system_prompt_template"]
     else:
-        app_logger.info(f"Using server-side default system prompt for user (Tier: {user_tier or 'Standard'}).")
-        base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
+        app_logger.info(f"Using profile-mapped system prompt for user (Tier: {user_tier or 'Standard'}).")
+        
+        # Use profile-aware prompt resolution if profile and provider are available
+        if active_profile_id and current_provider:
+            try:
+                from trusted_data_agent.agent.profile_prompt_resolver import ProfilePromptResolver
+                resolver = ProfilePromptResolver(profile_id=active_profile_id, provider=current_provider)
+                profile_prompt = resolver.get_master_system_prompt()
+                
+                if profile_prompt:
+                    base_prompt_text = profile_prompt
+                    app_logger.info(f"Resolved master system prompt via profile mapping: profile={active_profile_id}, provider={current_provider}")
+                else:
+                    # Fallback to default if resolution fails
+                    app_logger.warning(f"Profile prompt resolution returned None, using default")
+                    base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
+            except Exception as e:
+                app_logger.error(f"Error resolving profile prompt: {e}, falling back to default")
+                base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
+        else:
+            # Fallback to default if profile/provider not available
+            base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
 
     STATE = dependencies['STATE']
 
@@ -468,7 +497,7 @@ def _normalize_bedrock_model_id(model_id: str) -> str:
     return model_id.split(':')[0]
 
     # --- MODIFICATION START: Add user_uuid parameter ---
-async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text") -> tuple[str, int, int, str, str]: # Added provider and model to return type
+async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None) -> tuple[str, int, int, str, str]: # Added provider and model to return type
 # --- MODIFICATION END ---
     if not llm_instance:
         raise RuntimeError("LLM is not initialized.")
@@ -483,7 +512,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
     # --- MODIFICATION START: Pass user_uuid to get_session ---
     session_data = get_session(user_uuid, session_id) if user_uuid and session_id else None
     # --- MODIFICATION END ---
-    system_prompt = _get_full_system_prompt(session_data, dependencies, system_prompt_override, active_prompt_name_for_filter, source)
+    system_prompt = _get_full_system_prompt(session_data, dependencies, system_prompt_override, active_prompt_name_for_filter, source, active_profile_id, current_provider)
 
     history_for_log_str = "No history available."
     history_source = [] # Initialize history source

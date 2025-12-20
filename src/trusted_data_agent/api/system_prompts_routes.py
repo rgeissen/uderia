@@ -1573,3 +1573,431 @@ async def bulk_update_prompts(current_user):
     except Exception as e:
         app_logger.error(f"Error in bulk update: {e}")
         return jsonify({"success": False, "message": f"Bulk update failed: {str(e)}"}), 500
+
+
+# ============================================================================
+# Profile Prompt Mapping API Endpoints
+# ============================================================================
+
+@system_prompts_bp.route('/available', methods=['GET'])
+@require_auth
+async def get_available_prompts(current_user):
+    """
+    Get all available prompts grouped by category for dropdown population.
+    
+    Returns structure like:
+    {
+      "master_system_prompts": {
+        "Google": ["GOOGLE_MASTER_SYSTEM_PROMPT"],
+        "Anthropic": ["MASTER_SYSTEM_PROMPT", "CLAUDE_SYSTEM_PROMPT"]
+      },
+      "workflow_classification": {
+        "task_classification": ["TASK_CLASSIFICATION_PROMPT", "WORKFLOW_CLASSIFIER"]
+      }
+    }
+    
+    Each prompt includes active version number.
+    """
+    try:
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+        import json
+        
+        # Load category structure from tda_config.json
+        config_path = get_project_root() / 'tda_config.json'
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
+        default_mappings = config.get('default_prompt_mappings', {})
+        
+        # Get all prompts with their active version numbers and roles
+        db_path = get_project_root() / 'tda_auth.db'
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get all prompts with their role for filtering
+        cursor.execute("""
+            SELECT p.name, p.display_name, p.version, p.role, p.provider
+            FROM prompts p
+            WHERE p.is_active = 1
+            ORDER BY p.name
+        """)
+        
+        all_prompts = {}
+        for name, display_name, version, role, provider in cursor.fetchall():
+            all_prompts[name] = {
+                "display_name": display_name or name,
+                "version": version or 1,
+                "role": role,
+                "provider": provider
+            }
+        
+        conn.close()
+        
+        # Map categories to roles for filtering
+        category_role_map = {
+            'master_system_prompts': 'system',
+            'workflow_classification': 'workflow',
+            'error_recovery': 'recovery',
+            'data_operations': 'data',
+            'visualization': 'visualization'
+        }
+        
+        # Build response structure based on categories
+        result = {}
+        for category, subcategories in default_mappings.items():
+            result[category] = {}
+            expected_role = category_role_map.get(category)
+            
+            for subcategory, default_prompt_name in subcategories.items():
+                # Get the default prompt info
+                default_info = all_prompts.get(default_prompt_name, {
+                    "display_name": default_prompt_name,
+                    "version": 1,
+                    "role": None,
+                    "provider": None
+                })
+                
+                # For each subcategory, include prompts filtered by role
+                prompts_for_category = []
+                
+                # Add default first
+                if default_prompt_name in all_prompts:
+                    prompts_for_category.append({
+                        "name": default_prompt_name,
+                        "display_name": default_info["display_name"],
+                        "version": default_info["version"],
+                        "is_default": True
+                    })
+                
+                # Add other prompts that match the category's role
+                for name, info in all_prompts.items():
+                    if name != default_prompt_name:
+                        # Filter by role only (not by provider)
+                        if expected_role and info.get("role") == expected_role:
+                            prompts_for_category.append({
+                                "name": name,
+                                "display_name": info["display_name"],
+                                "version": info["version"],
+                                "is_default": False
+                            })
+                
+                result[category][subcategory] = prompts_for_category
+        
+        return jsonify({
+            "success": True,
+            "categories": result,
+            "defaults": default_mappings,  # Include defaults for reference
+            "total_prompts": len(all_prompts)
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error getting available prompts: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to get available prompts: {str(e)}"
+        }), 500
+
+
+@system_prompts_bp.route('/profiles/<profile_id>/mappings', methods=['GET'])
+@require_auth
+async def get_profile_mappings(current_user, profile_id):
+    """
+    Get all prompt mappings for a specific profile.
+    
+    Returns:
+    {
+      "mappings": {
+        "master_system_prompts": {
+          "Google": "GOOGLE_MASTER_SYSTEM_PROMPT",
+          "Anthropic": "MASTER_SYSTEM_PROMPT"
+        },
+        "workflow_classification": {
+          "task_classification": "TASK_CLASSIFICATION_PROMPT"
+        }
+      },
+      "source": "profile" | "system_default" | "config"
+    }
+    """
+    try:
+        from trusted_data_agent.agent.prompt_mapping import get_all_mappings_for_profile
+        
+        # Check if user has permission to view this profile
+        # Admin can view all, users can view their own profiles
+        if not current_user.is_admin:
+            # Get user's profiles
+            import sqlite3
+            from trusted_data_agent.core.utils import get_project_root
+            
+            db_path = get_project_root() / 'tda_auth.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT profile_id FROM user_profiles WHERE user_id = ?
+            """, (current_user.id,))
+            
+            user_profiles = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            
+            if profile_id not in user_profiles:
+                return jsonify({
+                    "success": False,
+                    "message": "Permission denied: You can only view your own profiles"
+                }), 403
+        
+        mappings = get_all_mappings_for_profile(profile_id)
+        
+        return jsonify({
+            "success": True,
+            "profile_id": profile_id,
+            "mappings": mappings
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error getting profile mappings for {profile_id}: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to get profile mappings: {str(e)}"
+        }), 500
+
+
+@system_prompts_bp.route('/profiles/<profile_id>/mappings', methods=['POST'])
+@require_auth
+async def set_profile_mapping(current_user, profile_id):
+    """
+    Set a prompt mapping for a profile.
+    
+    Request body:
+    {
+        "category": "master_system_prompts",
+        "subcategory": "Google",
+        "prompt_name": "GOOGLE_MASTER_SYSTEM_PROMPT"
+    }
+    
+    Or set multiple at once:
+    {
+        "mappings": [
+            {
+                "category": "master_system_prompts",
+                "subcategory": "Google",
+                "prompt_name": "GOOGLE_MASTER_SYSTEM_PROMPT"
+            },
+            {
+                "category": "workflow_classification",
+                "subcategory": "task_classification",
+                "prompt_name": "TASK_CLASSIFICATION_PROMPT"
+            }
+        ]
+    }
+    """
+    try:
+        from trusted_data_agent.agent.prompt_mapping import set_prompt_mapping
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+        
+        # Check if user has permission to modify this profile
+        if not current_user.is_admin:
+            db_path = get_project_root() / 'tda_auth.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT profile_id FROM user_profiles WHERE user_id = ?
+            """, (current_user.id,))
+            
+            user_profiles = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            
+            if profile_id not in user_profiles:
+                return jsonify({
+                    "success": False,
+                    "message": "Permission denied: You can only modify your own profiles"
+                }), 403
+        
+        data = await request.get_json()
+        
+        app_logger.info(f"[Prompt Mappings] Received data for profile {profile_id}: {data}")
+        
+        # Handle single mapping or multiple mappings
+        mappings = data.get('mappings', [])
+        app_logger.info(f"[Prompt Mappings] Extracted mappings array: {mappings} (length: {len(mappings)})")
+        
+        if not mappings:
+            # Single mapping format
+            category = data.get('category')
+            subcategory = data.get('subcategory')
+            prompt_name = data.get('prompt_name')
+            
+            if not all([category, subcategory, prompt_name]):
+                return jsonify({
+                    "success": False,
+                    "message": "Missing required fields: category, subcategory, prompt_name"
+                }), 400
+            
+            mappings = [{"category": category, "subcategory": subcategory, "prompt_name": prompt_name}]
+        
+        # Process each mapping (set or delete)
+        from trusted_data_agent.agent.prompt_mapping import delete_prompt_mapping
+        
+        results = []
+        set_count = 0
+        delete_count = 0
+        
+        for mapping in mappings:
+            try:
+                action = mapping.get('action', 'set')  # Default to 'set' for backward compatibility
+                category = mapping['category']
+                subcategory = mapping['subcategory']
+                prompt_name = mapping.get('prompt_name', '')
+                
+                # If action is 'delete' or prompt_name is empty, delete the mapping
+                if action == 'delete' or not prompt_name:
+                    success = delete_prompt_mapping(
+                        profile_id=profile_id,
+                        category=category,
+                        subcategory=subcategory
+                    )
+                    if success:
+                        delete_count += 1
+                        results.append({
+                            "status": "success",
+                            "action": "deleted",
+                            "category": category,
+                            "subcategory": subcategory
+                        })
+                        app_logger.info(f"Deleted mapping for {profile_id}/{category}/{subcategory}")
+                    else:
+                        results.append({
+                            "status": "error",
+                            "action": "delete",
+                            "category": category,
+                            "subcategory": subcategory,
+                            "message": "Failed to delete mapping"
+                        })
+                else:
+                    # Set the mapping
+                    success = set_prompt_mapping(
+                        profile_id=profile_id,
+                        category=category,
+                        subcategory=subcategory,
+                        prompt_name=prompt_name,
+                        created_by=current_user.username
+                    )
+                    if success:
+                        set_count += 1
+                        results.append({
+                            "status": "success",
+                            "action": "set",
+                            "category": category,
+                            "subcategory": subcategory
+                        })
+                        app_logger.info(f"Set mapping for {profile_id}/{category}/{subcategory} -> {prompt_name}")
+                    else:
+                        results.append({
+                            "status": "error",
+                            "action": "set",
+                            "category": category,
+                            "subcategory": subcategory,
+                            "message": "Failed to set mapping (returned False)"
+                        })
+            except Exception as e:
+                app_logger.error(f"Exception processing mapping {mapping}: {e}")
+                results.append({
+                    "status": "error",
+                    "category": mapping.get('category'),
+                    "subcategory": mapping.get('subcategory'),
+                    "message": str(e)
+                })
+        
+        success_count = sum(1 for r in results if r['status'] == 'success')
+        
+        app_logger.info(f"User {current_user.username} processed {success_count} mappings for profile {profile_id}: {set_count} set, {delete_count} deleted")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Set {success_count}/{len(mappings)} mapping(s)",
+            "results": results
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error setting profile mapping for {profile_id}: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to set profile mapping: {str(e)}"
+        }), 500
+
+
+@system_prompts_bp.route('/profiles/<profile_id>/mappings', methods=['DELETE'])
+@require_auth
+async def delete_profile_mapping(current_user, profile_id):
+    """
+    Delete a prompt mapping for a profile (reset to system default).
+    
+    Query params:
+    - category: Category to reset
+    - subcategory: Subcategory to reset
+    
+    Or delete all mappings for profile (no query params)
+    """
+    try:
+        from trusted_data_agent.agent.prompt_mapping import delete_prompt_mapping
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+        
+        # Check if user has permission to modify this profile
+        if not current_user.is_admin:
+            db_path = get_project_root() / 'tda_auth.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT profile_id FROM user_profiles WHERE user_id = ?
+            """, (current_user.id,))
+            
+            user_profiles = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            
+            if profile_id not in user_profiles:
+                return jsonify({
+                    "success": False,
+                    "message": "Permission denied: You can only modify your own profiles"
+                }), 403
+        
+        args = request.args
+        category = args.get('category')
+        subcategory = args.get('subcategory')
+        
+        if category and subcategory:
+            # Delete specific mapping
+            delete_prompt_mapping(profile_id, category, subcategory)
+            message = f"Deleted mapping for {category}/{subcategory}"
+        else:
+            # Delete all mappings for profile
+            db_path = get_project_root() / 'tda_auth.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                DELETE FROM profile_prompt_mappings WHERE profile_id = ?
+            """, (profile_id,))
+            
+            deleted_count = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            message = f"Deleted all {deleted_count} mapping(s) for profile"
+        
+        app_logger.info(f"User {current_user.username} deleted prompt mapping(s) for profile {profile_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": message
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error deleting profile mapping for {profile_id}: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to delete profile mapping: {str(e)}"
+        }), 500

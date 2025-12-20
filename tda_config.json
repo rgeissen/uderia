@@ -300,5 +300,34 @@
   ],
   "global_parameters": {
     "mcp_system_name": "Teradata MCP"
+  },
+  "default_prompt_mappings": {
+    "master_system_prompts": {
+      "Google": "GOOGLE_MASTER_SYSTEM_PROMPT",
+      "Anthropic": "MASTER_SYSTEM_PROMPT",
+      "Amazon": "MASTER_SYSTEM_PROMPT",
+      "OpenAI": "MASTER_SYSTEM_PROMPT",
+      "Azure": "MASTER_SYSTEM_PROMPT",
+      "Friendli": "MASTER_SYSTEM_PROMPT",
+      "Ollama": "OLLAMA_MASTER_SYSTEM_PROMPT"
+    },
+    "workflow_classification": {
+      "task_classification": "TASK_CLASSIFICATION_PROMPT",
+      "workflow_meta_planning": "WORKFLOW_META_PLANNING_PROMPT",
+      "workflow_tactical": "WORKFLOW_TACTICAL_PROMPT"
+    },
+    "error_recovery": {
+      "error_recovery": "ERROR_RECOVERY_PROMPT",
+      "tactical_self_correction": "TACTICAL_SELF_CORRECTION_PROMPT",
+      "self_correction_column_error": "TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR",
+      "self_correction_table_error": "TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR"
+    },
+    "data_operations": {
+      "sql_consolidation": "SQL_CONSOLIDATION_PROMPT"
+    },
+    "visualization": {
+      "charting_instructions": "CHARTING_INSTRUCTIONS",
+      "g2plot_guidelines": "G2PLOT_GUIDELINES"
+    }
   }
 }

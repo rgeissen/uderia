@@ -18,6 +18,7 @@
    - [RAG Template System](#38-rag-template-system)
    - [MCP Server Management](#39-mcp-server-management)
    - [Session Analytics](#310-session-analytics)
+   - [System Prompts Management](#311-system-prompts-management)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -1391,6 +1392,253 @@ Get complete details for a specific session including timeline and RAG associati
     * **Content**: Complete session data including `workflow_history`, `execution_trace`, and `rag_cases`
 * **Error Response**:
     * **Code**: `404 Not Found`
+
+---
+
+### 3.9. System Prompts Management
+
+The System Prompts API provides endpoints for managing profile-specific prompt mappings. This allows fine-grained control over which prompt versions are used for different functional areas (master system prompts, workflow classification, error recovery, data operations, visualization) on a per-profile basis.
+
+**Key Concepts:**
+- **Categories**: Functional areas like `master_system`, `workflow_classification`, `error_recovery`, `data_operations`, `visualization`
+- **Subcategories**: Specific providers (for master_system) or functional roles (for other categories)
+- **3-Level Fallback**: Profile-specific → System default → Configuration file defaults
+- **Active Versions**: Mappings always use the active version of the mapped prompt
+
+#### 3.9.1. Get Available Prompts
+
+Retrieve all available prompts organized by category and subcategory for dropdown population in UI.
+
+* **Endpoint**: `GET /api/v1/system-prompts/available`
+* **Method**: `GET`
+* **Authentication**: Required (JWT or access token)
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "success": true,
+          "categories": {
+            "master_system": {
+              "Google": [
+                {
+                  "name": "GOOGLE_MASTER_SYSTEM_PROMPT",
+                  "display_name": "Google Master System Prompt",
+                  "version": 3
+                }
+              ],
+              "Anthropic": [
+                {
+                  "name": "MASTER_SYSTEM_PROMPT",
+                  "display_name": "Master System Prompt",
+                  "version": 2
+                }
+              ]
+            },
+            "workflow_classification": {
+              "task_classification": [
+                {
+                  "name": "TASK_CLASSIFICATION_PROMPT",
+                  "display_name": "Task Classification",
+                  "version": 1
+                }
+              ]
+            },
+            "error_recovery": {
+              "error_recovery": [...],
+              "tactical_self_correction": [...]
+            },
+            "data_operations": {
+              "sql_consolidation": [...]
+            },
+            "visualization": {
+              "charting_instructions": [...],
+              "g2plot_guidelines": [...]
+            }
+          },
+          "total_prompts": 15
+        }
+        ```
+* **Error Response**:
+    * **Code**: `500 Internal Server Error`
+
+#### 3.9.2. Get Profile Prompt Mappings
+
+Retrieve all prompt mappings for a specific profile.
+
+* **Endpoint**: `GET /api/v1/system-prompts/profiles/{profile_id}/mappings`
+* **Method**: `GET`
+* **Authentication**: Required (JWT or access token)
+* **URL Parameters**:
+    * `profile_id` (string, required): The profile UUID
+* **Authorization**: Users can only view their own profiles; admins can view all profiles
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "success": true,
+          "profile_id": "profile-123-abc",
+          "mappings": {
+            "master_system": {
+              "Google": "GOOGLE_MASTER_SYSTEM_PROMPT",
+              "Anthropic": "MASTER_SYSTEM_PROMPT"
+            },
+            "workflow_classification": {
+              "task_classification": "TASK_CLASSIFICATION_PROMPT"
+            },
+            "error_recovery": {
+              "error_recovery": "ERROR_RECOVERY_PROMPT"
+            },
+            "data_operations": {},
+            "visualization": {}
+          }
+        }
+        ```
+* **Error Responses**:
+    * **Code**: `403 Forbidden` - User does not have permission to view this profile
+    * **Code**: `500 Internal Server Error`
+
+**Note:** Empty subcategories (`{}`) indicate the profile uses system defaults for those areas.
+
+#### 3.9.3. Set Profile Prompt Mappings
+
+Set or update prompt mappings for a profile. Supports single or bulk operations.
+
+* **Endpoint**: `POST /api/v1/system-prompts/profiles/{profile_id}/mappings`
+* **Method**: `POST`
+* **Authentication**: Required (JWT or access token)
+* **URL Parameters**:
+    * `profile_id` (string, required): The profile UUID
+* **Authorization**: Users can only modify their own profiles; admins can modify all profiles
+* **Request Body (Single Mapping)**:
+    ```json
+    {
+      "category": "master_system",
+      "subcategory": "Google",
+      "prompt_name": "GOOGLE_MASTER_SYSTEM_PROMPT"
+    }
+    ```
+* **Request Body (Bulk Mappings)**:
+    ```json
+    {
+      "mappings": [
+        {
+          "category": "master_system",
+          "subcategory": "Google",
+          "prompt_name": "GOOGLE_MASTER_SYSTEM_PROMPT"
+        },
+        {
+          "category": "workflow_classification",
+          "subcategory": "task_classification",
+          "prompt_name": "TASK_CLASSIFICATION_PROMPT"
+        }
+      ]
+    }
+    ```
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "success": true,
+          "message": "Set 2/2 mapping(s)",
+          "results": [
+            {
+              "status": "success",
+              "category": "master_system",
+              "subcategory": "Google"
+            },
+            {
+              "status": "success",
+              "category": "workflow_classification",
+              "subcategory": "task_classification"
+            }
+          ]
+        }
+        ```
+* **Error Responses**:
+    * **Code**: `400 Bad Request` - Missing required fields
+    * **Code**: `403 Forbidden` - User does not have permission to modify this profile
+    * **Code**: `500 Internal Server Error`
+
+#### 3.9.4. Delete Profile Prompt Mappings
+
+Delete specific prompt mappings or all mappings for a profile (reset to system defaults).
+
+* **Endpoint**: `DELETE /api/v1/system-prompts/profiles/{profile_id}/mappings`
+* **Method**: `DELETE`
+* **Authentication**: Required (JWT or access token)
+* **URL Parameters**:
+    * `profile_id` (string, required): The profile UUID
+* **Query Parameters** (optional - omit both to delete all mappings):
+    * `category` (string, optional): Category to reset
+    * `subcategory` (string, optional): Subcategory to reset
+* **Authorization**: Users can only modify their own profiles; admins can modify all profiles
+* **Success Response (Specific Mapping)**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "success": true,
+          "message": "Deleted mapping for master_system/Google"
+        }
+        ```
+* **Success Response (All Mappings)**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "success": true,
+          "message": "Deleted all 5 mapping(s) for profile"
+        }
+        ```
+* **Error Responses**:
+    * **Code**: `403 Forbidden` - User does not have permission to modify this profile
+    * **Code**: `500 Internal Server Error`
+
+**Examples:**
+
+```bash
+# Get available prompts
+curl -X GET http://localhost:5050/api/v1/system-prompts/available \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get profile mappings
+curl -X GET http://localhost:5050/api/v1/system-prompts/profiles/profile-123/mappings \
+  -H "Authorization: Bearer $TOKEN"
+
+# Set a single mapping
+curl -X POST http://localhost:5050/api/v1/system-prompts/profiles/profile-123/mappings \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "master_system",
+    "subcategory": "Google",
+    "prompt_name": "GOOGLE_MASTER_SYSTEM_PROMPT"
+  }'
+
+# Set multiple mappings at once
+curl -X POST http://localhost:5050/api/v1/system-prompts/profiles/profile-123/mappings \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mappings": [
+      {"category": "master_system", "subcategory": "Google", "prompt_name": "GOOGLE_MASTER_SYSTEM_PROMPT"},
+      {"category": "workflow_classification", "subcategory": "task_classification", "prompt_name": "TASK_CLASSIFICATION_PROMPT"}
+    ]
+  }'
+
+# Delete specific mapping (reset to system default)
+curl -X DELETE "http://localhost:5050/api/v1/system-prompts/profiles/profile-123/mappings?category=master_system&subcategory=Google" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Delete all mappings for profile
+curl -X DELETE http://localhost:5050/api/v1/system-prompts/profiles/profile-123/mappings \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
 
 ## 4. Data Models
 

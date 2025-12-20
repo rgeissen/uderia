@@ -7,6 +7,7 @@ import { handleLoadResources } from '../eventHandlers.js';
 import * as API from '../api.js';
 import * as UI from '../ui.js';
 import * as DOM from '../domElements.js';
+import * as Utils from '../utils.js';
 import { state } from '../state.js';
 import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import { showAppBanner } from '../bannerSystem.js';
@@ -2771,6 +2772,198 @@ function getCategoryColor(category) {
     return colors[category] || '#9ca3af'; // default gray
 }
 
+async function populateSystemPrompts(modal, profile) {
+    const masterPromptsContainer = modal.querySelector('#profile-modal-master-prompts');
+    const workflowPromptsContainer = modal.querySelector('#profile-modal-workflow-prompts');
+    const errorPromptsContainer = modal.querySelector('#profile-modal-error-prompts');
+    const dataPromptsContainer = modal.querySelector('#profile-modal-data-prompts');
+    const visualizationPromptsContainer = modal.querySelector('#profile-modal-visualization-prompts');
+
+    // Get the provider from the profile's LLM configuration
+    let profileProvider = null;
+    if (profile && profile.llmConfigurationId) {
+        const llmConfig = configState.llmConfigurations.find(c => c.id === profile.llmConfigurationId);
+        if (llmConfig) {
+            profileProvider = llmConfig.provider;
+        }
+    }
+
+    // Define the categories and their subcategories with display names
+    const categories = {
+        master_system_prompts: {
+            container: masterPromptsContainer,
+            subcategories: profileProvider ? {
+                [profileProvider]: {
+                    'Google': 'Google Gemini',
+                    'Anthropic': 'Anthropic Claude',
+                    'OpenAI': 'OpenAI GPT',
+                    'Amazon': 'Amazon Bedrock',
+                    'Azure': 'Azure OpenAI',
+                    'Friendli': 'Friendli AI',
+                    'Ollama': 'Ollama (Local)'
+                }[profileProvider] || `${profileProvider} Master System Prompt`
+            } : {}
+        },
+        workflow_classification: {
+            container: workflowPromptsContainer,
+            subcategories: {
+                'task_classification': 'Task Classification',
+                'workflow_meta_planning': 'Workflow Meta Planning',
+                'workflow_tactical': 'Workflow Tactical'
+            }
+        },
+        error_recovery: {
+            container: errorPromptsContainer,
+            subcategories: {
+                'error_recovery': 'Error Recovery',
+                'tactical_self_correction': 'Tactical Self-Correction',
+                'self_correction_column_error': 'Column Error Correction',
+                'self_correction_table_error': 'Table Error Correction'
+            }
+        },
+        data_operations: {
+            container: dataPromptsContainer,
+            subcategories: {
+                'sql_consolidation': 'SQL Consolidation'
+            }
+        },
+        visualization: {
+            container: visualizationPromptsContainer,
+            subcategories: {
+                'charting_instructions': 'Charting Instructions',
+                'g2plot_guidelines': 'G2Plot Guidelines'
+            }
+        }
+    };
+
+    try {
+        // Fetch available prompts from the system
+        const token = localStorage.getItem('tda_auth_token');
+        const availableResponse = await fetch('/api/v1/system-prompts/available', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!availableResponse.ok) {
+            throw new Error('Failed to fetch available prompts');
+        }
+
+        const availableData = await availableResponse.json();
+        const availableCategories = availableData.categories || {};
+        const defaults = availableData.defaults || {};
+        
+        // Debug logging
+        console.log('[System Prompts] Available categories:', availableCategories);
+        console.log('[System Prompts] Profile provider:', profileProvider);
+        console.log('[System Prompts] Defaults:', defaults);
+
+        // Fetch profile's current mappings if editing existing profile
+        let profileMappings = {};
+        if (profile && profile.id) {
+            try {
+                const mappingsResponse = await fetch(`/api/v1/system-prompts/profiles/${profile.id}/mappings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (mappingsResponse.ok) {
+                    const mappingsData = await mappingsResponse.json();
+                    profileMappings = mappingsData.mappings || {};
+                }
+            } catch (err) {
+                console.warn('Failed to load profile mappings:', err);
+            }
+        }
+
+        // Render dropdowns for each category/subcategory
+        for (const [category, config] of Object.entries(categories)) {
+            const container = config.container;
+            container.innerHTML = '';
+
+            // Skip empty categories (e.g., master_system when no provider selected)
+            if (Object.keys(config.subcategories).length === 0) {
+                const emptyMessage = document.createElement('div');
+                emptyMessage.className = 'text-xs text-gray-500 italic py-2';
+                emptyMessage.textContent = category === 'master_system_prompts' 
+                    ? 'Select an LLM Configuration first'
+                    : 'No prompts in this category';
+                container.appendChild(emptyMessage);
+                continue;
+            }
+
+            for (const [subcategory, displayName] of Object.entries(config.subcategories)) {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between py-2';
+                
+                const label = document.createElement('label');
+                label.className = 'text-xs font-medium text-gray-300 flex-1';
+                // For master_system_prompts, don't show the provider name as label since dropdown shows prompt names
+                label.textContent = category === 'master_system_prompts' ? 'Master System Prompt' : displayName;
+
+                const selectWrapper = document.createElement('div');
+                selectWrapper.className = 'flex-1';
+
+                const select = document.createElement('select');
+                select.className = 'w-full px-3 py-1.5 bg-gray-800/70 border border-gray-700/40 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 hover:border-gray-600/50 transition-all';
+                select.dataset.category = category;
+                select.dataset.subcategory = subcategory;
+
+                // Add available prompts as options from the corresponding category
+                const categoryPrompts = availableCategories[category]?.[subcategory] || [];
+                console.log(`[System Prompts] ${category}/${subcategory}:`, categoryPrompts.length, 'prompts');
+                
+                let defaultPromptName = null;
+                const optionValues = []; // Track all option values for debugging
+                categoryPrompts.forEach(prompt => {
+                    const option = document.createElement('option');
+                    option.value = prompt.is_default ? '' : prompt.name;  // Empty value for default = use system default
+                    optionValues.push({ name: prompt.name, value: option.value, is_default: prompt.is_default });
+                    if (prompt.is_default) {
+                        defaultPromptName = prompt.name;  // Remember the default prompt name
+                        select.dataset.defaultPrompt = prompt.name;  // Store in dataset for save logic
+                        option.textContent = `${prompt.display_name} (v${prompt.version}) (System Default)`;
+                    } else {
+                        option.textContent = `${prompt.display_name} (v${prompt.version})`;
+                    }
+                    select.appendChild(option);
+                });
+
+                console.log(`[System Prompts] Options for ${category}/${subcategory}:`, optionValues);
+
+                // Set selected value if profile has custom mapping
+                const currentMapping = profileMappings[category]?.[subcategory];
+                console.log(`[System Prompts] Current mapping for ${category}/${subcategory}:`, currentMapping);
+                if (currentMapping) {
+                    // Check if the current mapping is the default prompt
+                    if (currentMapping === defaultPromptName) {
+                        console.log(`[System Prompts] Selecting default (empty) for ${category}/${subcategory}`);
+                        select.value = '';  // Select the default option (empty value)
+                    } else {
+                        console.log(`[System Prompts] Selecting override "${currentMapping}" for ${category}/${subcategory}`);
+                        select.value = currentMapping;  // Select the specific override
+                        
+                        // Verify the value was set correctly
+                        if (select.value !== currentMapping) {
+                            console.warn(`[System Prompts] Failed to set value for ${category}/${subcategory}. Tried: "${currentMapping}", got: "${select.value}"`);
+                            console.warn(`[System Prompts] Available options:`, Array.from(select.options).map(opt => ({ text: opt.textContent, value: opt.value })));
+                        }
+                    }
+                } else {
+                    console.log(`[System Prompts] No custom mapping for ${category}/${subcategory}, using default`);
+                }
+                
+                selectWrapper.appendChild(select);
+                div.appendChild(label);
+                div.appendChild(selectWrapper);
+                container.appendChild(div);
+            }
+        }
+    } catch (error) {
+        console.error('Error populating system prompts:', error);
+        // Show error in each container
+        Object.values(categories).forEach(config => {
+            config.container.innerHTML = '<span class="text-red-400 text-xs">Failed to load prompts</span>';
+        });
+    }
+}
+
 async function showProfileModal(profileId = null) {
     const profile = profileId ? configState.profiles.find(p => p.id === profileId) : null;
     const isEdit = !!profile;
@@ -3075,45 +3268,76 @@ async function showProfileModal(profileId = null) {
         e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5);
     });
 
+    // Check if user is privileged to see system prompts tab
+    const isPrivileged = Utils.isPrivilegedUser();
+    
+    // Populate system prompts configuration (only for privileged users)
+    if (isPrivileged) {
+        await populateSystemPrompts(modal, profile);
+    }
+
     // Show the modal
     modal.classList.remove('hidden');
 
-    // Tab switching logic for MCP Resources vs Intelligence Collections
+    // Tab switching logic for MCP Resources, Intelligence Collections, and System Prompts
     const mcpResourcesTab = modal.querySelector('#profile-tab-mcp-resources');
     const intelligenceTab = modal.querySelector('#profile-tab-intelligence');
+    const systemPromptsTab = modal.querySelector('#profile-tab-system-prompts');
     const mcpResourcesContent = modal.querySelector('#profile-content-mcp-resources');
     const intelligenceContent = modal.querySelector('#profile-content-intelligence');
+    const systemPromptsContent = modal.querySelector('#profile-content-system-prompts');
 
-    const switchToTab = (tabButton, contentDiv, otherTabButton, otherContentDiv) => {
-        // Update active tab styles with enhanced industrial design
-        tabButton.classList.remove('border-transparent', 'text-gray-400', 'hover:bg-gray-800/40', 'hover:border-gray-600/50');
-        tabButton.classList.add('border-[#F15F22]', 'text-white', 'bg-gradient-to-b', 'from-gray-800/70', 'to-gray-900/50', 'shadow-lg', 'relative');
-        
-        // Add the gradient underline if it doesn't exist
-        if (!tabButton.querySelector('.absolute.inset-x-0.bottom-0')) {
-            const underline = document.createElement('div');
-            underline.className = 'absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-[#F15F22] to-[#D9501A] shadow-lg shadow-orange-500/50';
-            tabButton.appendChild(underline);
+    // Hide System Prompts tab for non-privileged users
+    if (!isPrivileged && systemPromptsTab) {
+        systemPromptsTab.style.display = 'none';
+        if (systemPromptsContent) {
+            systemPromptsContent.style.display = 'none';
         }
-        
-        // Update inactive tab styles
-        otherTabButton.classList.remove('border-[#F15F22]', 'text-white', 'bg-gradient-to-b', 'from-gray-800/70', 'to-gray-900/50', 'shadow-lg', 'relative');
-        otherTabButton.classList.add('border-transparent', 'text-gray-400', 'hover:bg-gray-800/40', 'hover:border-gray-600/50');
-        
-        // Remove gradient underline from inactive tab
-        const underline = otherTabButton.querySelector('.absolute.inset-x-0.bottom-0');
-        if (underline) {
-            underline.remove();
-        }
-        
-        // Show/hide content
-        contentDiv.classList.remove('hidden');
-        otherContentDiv.classList.add('hidden');
+    }
+
+    const allTabs = [mcpResourcesTab, intelligenceTab, systemPromptsTab].filter(tab => tab && tab.style.display !== 'none');
+    const allContents = [mcpResourcesContent, intelligenceContent, systemPromptsContent].filter((content, index) => {
+        const correspondingTab = [mcpResourcesTab, intelligenceTab, systemPromptsTab][index];
+        return content && correspondingTab && correspondingTab.style.display !== 'none';
+    });
+
+    const switchToTab = (activeTab, activeContent) => {
+        allTabs.forEach((tab, index) => {
+            if (tab === activeTab) {
+                // Update active tab styles with enhanced industrial design
+                tab.classList.remove('border-transparent', 'text-gray-400', 'hover:bg-gray-800/40', 'hover:border-gray-600/50');
+                tab.classList.add('border-[#F15F22]', 'text-white', 'bg-gradient-to-b', 'from-gray-800/70', 'to-gray-900/50', 'shadow-lg', 'relative');
+                
+                // Add the gradient underline if it doesn't exist
+                if (!tab.querySelector('.absolute.inset-x-0.bottom-0')) {
+                    const underline = document.createElement('div');
+                    underline.className = 'absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-[#F15F22] to-[#D9501A] shadow-lg shadow-orange-500/50';
+                    tab.appendChild(underline);
+                }
+                
+                // Show content
+                allContents[index].classList.remove('hidden');
+            } else {
+                // Update inactive tab styles
+                tab.classList.remove('border-[#F15F22]', 'text-white', 'bg-gradient-to-b', 'from-gray-800/70', 'to-gray-900/50', 'shadow-lg', 'relative');
+                tab.classList.add('border-transparent', 'text-gray-400', 'hover:bg-gray-800/40', 'hover:border-gray-600/50');
+                
+                // Remove gradient underline from inactive tab
+                const underline = tab.querySelector('.absolute.inset-x-0.bottom-0');
+                if (underline) {
+                    underline.remove();
+                }
+                
+                // Hide content
+                allContents[index].classList.add('hidden');
+            }
+        });
     };
 
-    if (mcpResourcesTab && intelligenceTab && mcpResourcesContent && intelligenceContent) {
-        mcpResourcesTab.onclick = () => switchToTab(mcpResourcesTab, mcpResourcesContent, intelligenceTab, intelligenceContent);
-        intelligenceTab.onclick = () => switchToTab(intelligenceTab, intelligenceContent, mcpResourcesTab, mcpResourcesContent);
+    if (mcpResourcesTab && intelligenceTab && systemPromptsTab) {
+        mcpResourcesTab.onclick = () => switchToTab(mcpResourcesTab, mcpResourcesContent);
+        intelligenceTab.onclick = () => switchToTab(intelligenceTab, intelligenceContent);
+        systemPromptsTab.onclick = () => switchToTab(systemPromptsTab, systemPromptsContent);
     }
 
     // Attach event listeners for uncheck all buttons
@@ -3242,6 +3466,40 @@ async function showProfileModal(profileId = null) {
             profileData.inherit_classification = true;
         }
 
+        // Collect system prompt mappings from the third tab
+        const systemPromptMappings = [];
+        const systemPromptsContent = modal.querySelector('#profile-content-system-prompts');
+        console.log('[Save Profile] System prompts content element:', systemPromptsContent);
+        if (systemPromptsContent) {
+            const dropdowns = systemPromptsContent.querySelectorAll('select[data-category][data-subcategory]');
+            console.log('[Save Profile] Found', dropdowns.length, 'prompt mapping dropdowns');
+            dropdowns.forEach(select => {
+                const value = select.value;
+                const category = select.dataset.category;
+                const subcategory = select.dataset.subcategory;
+                console.log(`[Save Profile] Dropdown ${category}/${subcategory}: value="${value}"`);
+                
+                // Include ALL dropdowns in the payload
+                // Empty value means "delete mapping" (revert to system default)
+                // Non-empty value means "set mapping" (use custom prompt)
+                systemPromptMappings.push({
+                    category: category,
+                    subcategory: subcategory,
+                    prompt_name: value,  // Empty string for delete, prompt name for set
+                    action: value ? 'set' : 'delete'  // Explicit action for backend
+                });
+                
+                if (value) {
+                    console.log(`[Save Profile] Will SET mapping: ${category}/${subcategory} -> ${value}`);
+                } else {
+                    console.log(`[Save Profile] Will DELETE mapping: ${category}/${subcategory} (revert to default)`);
+                }
+            });
+        } else {
+            console.warn('[Save Profile] System prompts content element not found');
+        }
+        console.log('[Save Profile] Total mappings to process:', systemPromptMappings.length, systemPromptMappings);
+
         try {
             if (isEdit) {
                 // Get the current state before update
@@ -3249,6 +3507,28 @@ async function showProfileModal(profileId = null) {
                 const hadReclassificationFlag = profileBeforeUpdate?.needs_reclassification || false;
                 
                 await configState.updateProfile(profileId, profileData);
+                
+                // Save system prompt mappings
+                if (systemPromptMappings.length > 0) {
+                    try {
+                        const token = localStorage.getItem('tda_auth_token');
+                        const mappingsResponse = await fetch(`/api/v1/system-prompts/profiles/${profileId}/mappings`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ mappings: systemPromptMappings })
+                        });
+                        
+                        if (!mappingsResponse.ok) {
+                            console.warn('Failed to save prompt mappings:', await mappingsResponse.text());
+                        }
+                    } catch (err) {
+                        console.error('Error saving prompt mappings:', err);
+                    }
+                }
+                
                 // Reload profiles to get updated needs_reclassification flag from backend
                 await configState.loadProfiles();
                 
@@ -3274,6 +3554,28 @@ async function showProfileModal(profileId = null) {
                 }
             } else {
                 await configState.addProfile(profileData);
+                
+                // Get the new profile ID to save mappings
+                const newProfile = configState.profiles.find(p => p.name === name && p.tag === tag);
+                if (newProfile && systemPromptMappings.length > 0) {
+                    try {
+                        const token = localStorage.getItem('tda_auth_token');
+                        const mappingsResponse = await fetch(`/api/v1/system-prompts/profiles/${newProfile.id}/mappings`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ mappings: systemPromptMappings })
+                        });
+                        
+                        if (!mappingsResponse.ok) {
+                            console.warn('Failed to save prompt mappings:', await mappingsResponse.text());
+                        }
+                    } catch (err) {
+                        console.error('Error saving prompt mappings:', err);
+                    }
+                }
                 
                 renderProfiles();
                 renderLLMProviders(); // Re-render to update default/active badges

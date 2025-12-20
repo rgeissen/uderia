@@ -1526,24 +1526,40 @@ async def get_models():
 
 @api_bp.route("/system_prompt/<provider>/<path:model_name>", methods=["GET"])
 async def get_default_system_prompt(provider, model_name):
-    """Gets the default system prompt for a given model from the database."""
+    """Gets the system prompt for a given model using profile-based mapping."""
     try:
         from trusted_data_agent.agent.prompt_loader import get_prompt_loader
+        from trusted_data_agent.agent.prompt_mapping import get_prompt_for_category
+        from trusted_data_agent.config.configuration_manager import config_manager
+        from trusted_data_agent.auth.middleware import get_current_user
         
-        # Map provider to prompt name (database prompt names)
-        prompt_mapping = {
-            "Google": "GOOGLE_MASTER_SYSTEM_PROMPT",
-            "Anthropic": "MASTER_SYSTEM_PROMPT",
-            "Amazon": "MASTER_SYSTEM_PROMPT",
-            "OpenAI": "MASTER_SYSTEM_PROMPT",
-            "Azure": "MASTER_SYSTEM_PROMPT",
-            "Friendli": "MASTER_SYSTEM_PROMPT",
-            "Ollama": "OLLAMA_MASTER_SYSTEM_PROMPT"
-        }
+        # Get user's UUID from session/auth
+        current_user = await get_current_user()
+        user_uuid = current_user.id if current_user else None
         
-        prompt_name = prompt_mapping.get(provider, "MASTER_SYSTEM_PROMPT")
+        # Get user's default profile to use their custom mappings
+        profile_id = "__system_default__"  # Fallback
+        if user_uuid:
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profile_id = default_profile_id
+                app_logger.info(f"Using profile {profile_id} for system prompt resolution")
         
-        # Load from database
+        # Use prompt mapping system to resolve provider → prompt name
+        prompt_name = get_prompt_for_category(
+            profile_id=profile_id,
+            category="master_system_prompts",
+            subcategory=provider
+        )
+        
+        if not prompt_name:
+            # Fallback to default if mapping not found
+            prompt_name = "MASTER_SYSTEM_PROMPT"
+            app_logger.warning(f"No mapping found for provider {provider}, using default")
+        
+        app_logger.info(f"Resolved prompt for {provider}: {prompt_name} (profile: {profile_id})")
+        
+        # Load from database (gets active version of the mapped prompt)
         loader = get_prompt_loader()
         prompt_content = loader.get_prompt(prompt_name)
         

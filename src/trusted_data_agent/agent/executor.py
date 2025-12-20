@@ -100,11 +100,11 @@ class PlanExecutor:
             config_manager = get_config_manager()
             
             # Determine which profile will be used (override or default)
-            active_profile_id = profile_override_id if profile_override_id else config_manager.get_default_profile_id(user_uuid)
+            self.active_profile_id = profile_override_id if profile_override_id else config_manager.get_default_profile_id(user_uuid)
             
-            if active_profile_id:
+            if self.active_profile_id:
                 profiles = config_manager.get_profiles(user_uuid)
-                active_profile = next((p for p in profiles if p.get("id") == active_profile_id), None)
+                active_profile = next((p for p in profiles if p.get("id") == self.active_profile_id), None)
                 
                 if active_profile:
                     # Get LLM configuration from the active profile
@@ -131,13 +131,23 @@ class PlanExecutor:
                     self.current_provider = get_user_provider(user_uuid)
             else:
                 # Fallback to global config if no active profile
+                self.active_profile_id = "__system_default__"
                 self.current_model = get_user_model(user_uuid)
                 self.current_provider = get_user_provider(user_uuid)
         except Exception as e:
             # Fallback to global config on error
             app_logger.warning(f"Failed to get model/provider from profile, using global config: {e}")
+            self.active_profile_id = "__system_default__"
             self.current_model = get_user_model(user_uuid)
             self.current_provider = get_user_provider(user_uuid)
+        
+        # Initialize profile-aware prompt resolver
+        from trusted_data_agent.agent.profile_prompt_resolver import ProfilePromptResolver
+        self.prompt_resolver = ProfilePromptResolver(
+            profile_id=self.active_profile_id,
+            provider=self.current_provider
+        )
+        app_logger.info(f"Initialized ProfilePromptResolver with profile_id='{self.active_profile_id}', provider='{self.current_provider}'")
         # --- MODIFICATION END ---
 
         self.structured_collected_data = {}
@@ -266,7 +276,11 @@ class PlanExecutor:
             system_prompt_override=system_prompt_override, raise_on_error=raise_on_error,
             disabled_history=final_disabled_history,
             active_prompt_name_for_filter=active_prompt_name_for_filter,
-            source=source
+            source=source,
+            # --- MODIFICATION START: Pass active profile and provider for prompt resolution ---
+            active_profile_id=self.active_profile_id,
+            current_provider=self.current_provider
+            # --- MODIFICATION END ---
         )
         self.llm_debug_history.append({"reason": reason, "response": response_text})
         app_logger.debug(f"LLM RESPONSE (DEBUG): Reason='{reason}', Response='{response_text}'")

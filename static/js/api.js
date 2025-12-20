@@ -6,7 +6,7 @@
 
 import * as DOM from './domElements.js';
 import { state } from './state.js';
-import { getSystemPromptForModel, isPrivilegedUser, getSystemPrompts } from './utils.js';
+import { getSystemPromptForModel, isPrivilegedUser, getSystemPrompts, getDefaultSystemPrompt } from './utils.js';
 
 /**
  * Gets standard headers for API requests, including Content-Type, User UUID, and Auth token.

@@ -530,7 +530,8 @@ def _bootstrap_prompt_system():
             "02_parameters.sql", 
             "03_profile_integration.sql",
             "04_indexes.sql",
-            "05_views.sql"
+            "05_views.sql",
+            "06_prompt_mappings.sql"
         ]
         
         for schema_file in schema_files:
@@ -688,6 +689,65 @@ def _bootstrap_prompt_system():
                         (param_name, param_name.replace('_', ' ').title(), str(param_value))
                     )
                     logger.info(f"Bootstrapped global parameter: {param_name} = {param_value}")
+        
+        # 5. Bootstrap default prompt mappings for system profile
+        # These provide the baseline mappings that all profiles inherit by default
+        default_mappings = config.get('default_prompt_mappings', {})
+        if default_mappings:
+            logger.info("Bootstrapping default prompt mappings...")
+            mappings_created = 0
+            
+            # Master system prompts (provider-specific)
+            for provider, prompt_name in default_mappings.get('master_system_prompts', {}).items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO profile_prompt_mappings 
+                    (profile_id, category, subcategory, prompt_name, created_by)
+                    VALUES ('__system_default__', 'master_system', ?, ?, 'system')
+                """, (provider, prompt_name))
+                if cursor.rowcount > 0:
+                    mappings_created += 1
+            
+            # Workflow & Classification prompts
+            for subcategory, prompt_name in default_mappings.get('workflow_classification', {}).items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO profile_prompt_mappings 
+                    (profile_id, category, subcategory, prompt_name, created_by)
+                    VALUES ('__system_default__', 'workflow_classification', ?, ?, 'system')
+                """, (subcategory, prompt_name))
+                if cursor.rowcount > 0:
+                    mappings_created += 1
+            
+            # Error Recovery prompts
+            for subcategory, prompt_name in default_mappings.get('error_recovery', {}).items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO profile_prompt_mappings 
+                    (profile_id, category, subcategory, prompt_name, created_by)
+                    VALUES ('__system_default__', 'error_recovery', ?, ?, 'system')
+                """, (subcategory, prompt_name))
+                if cursor.rowcount > 0:
+                    mappings_created += 1
+            
+            # Data Operations prompts
+            for subcategory, prompt_name in default_mappings.get('data_operations', {}).items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO profile_prompt_mappings 
+                    (profile_id, category, subcategory, prompt_name, created_by)
+                    VALUES ('__system_default__', 'data_operations', ?, ?, 'system')
+                """, (subcategory, prompt_name))
+                if cursor.rowcount > 0:
+                    mappings_created += 1
+            
+            # Visualization prompts
+            for subcategory, prompt_name in default_mappings.get('visualization', {}).items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO profile_prompt_mappings 
+                    (profile_id, category, subcategory, prompt_name, created_by)
+                    VALUES ('__system_default__', 'visualization', ?, ?, 'system')
+                """, (subcategory, prompt_name))
+                if cursor.rowcount > 0:
+                    mappings_created += 1
+            
+            logger.info(f"✅ Bootstrapped {mappings_created} default prompt mappings")
         
         conn.commit()
         conn.close()

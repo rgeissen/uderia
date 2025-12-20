@@ -12,11 +12,7 @@ from trusted_data_agent.core import session_manager
 from trusted_data_agent.mcp_adapter import adapter as mcp_adapter
 from trusted_data_agent.core.config import APP_CONFIG, AppConfig
 from trusted_data_agent.agent.prompts import (
-    ERROR_RECOVERY_PROMPT,
     WORKFLOW_TACTICAL_PROMPT,
-    TACTICAL_SELF_CORRECTION_PROMPT,
-    TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR,
-    TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR,
 )
 from trusted_data_agent.agent import orchestrators
 from trusted_data_agent.agent.response_models import CanonicalResponse
@@ -140,7 +136,13 @@ class TableNotFoundStrategy(CorrectionStrategy):
 
         app_logger.warning(f"Detected recoverable 'table_not_found' error for table: {invalid_table}")
 
-        prompt = TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR.format(
+        # Use profile-aware prompt resolution
+        prompt_content = self.executor.prompt_resolver.get_tactical_self_correction_table_error_prompt()
+        if not prompt_content:
+            app_logger.error("Failed to resolve TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR from profile mapping")
+            return None, []
+        
+        prompt = prompt_content.format(
             user_question=self.executor.original_user_input,
             tool_name=failed_action.get("tool_name"),
             failed_arguments=json.dumps(failed_args),
@@ -166,7 +168,13 @@ class ColumnNotFoundStrategy(CorrectionStrategy):
 
         app_logger.warning(f"Detected recoverable 'column_not_found' error for column: {invalid_column}")
 
-        prompt = TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR.format(
+        # Use profile-aware prompt resolution
+        prompt_content = self.executor.prompt_resolver.get_tactical_self_correction_column_error_prompt()
+        if not prompt_content:
+            app_logger.error("Failed to resolve TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR from profile mapping")
+            return None, []
+        
+        prompt = prompt_content.format(
             user_question=self.executor.original_user_input,
             tool_name=failed_action.get("tool_name"),
             failed_arguments=json.dumps(failed_action.get("arguments", {})),
@@ -236,8 +244,13 @@ class GenericCorrectionStrategy(CorrectionStrategy):
              except TypeError:
                  tool_def_str = f"{{\"name\": \"{tool_name}\", \"description\": \"Could not serialize tool definition.\"}}"
 
-
-        prompt = TACTICAL_SELF_CORRECTION_PROMPT.format(
+        # Use profile-aware prompt resolution
+        prompt_content = self.executor.prompt_resolver.get_tactical_self_correction_prompt()
+        if not prompt_content:
+            app_logger.error("Failed to resolve TACTICAL_SELF_CORRECTION_PROMPT from profile mapping")
+            return None, []
+        
+        prompt = prompt_content.format(
             tool_definition=tool_def_str,
             failed_command=json.dumps(failed_action),
             error_message=json.dumps(error_message),
@@ -1888,7 +1901,14 @@ class PhaseExecutor:
 
         distilled_workflow_state = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.workflow_state))
 
-        recovery_prompt = ERROR_RECOVERY_PROMPT.format(
+        # Use profile-aware prompt resolution
+        recovery_prompt_content = self.executor.prompt_resolver.get_error_recovery_base_prompt()
+        if not recovery_prompt_content:
+            app_logger.error("Failed to resolve ERROR_RECOVERY_PROMPT from profile mapping")
+            # Fallback: Don't attempt recovery if prompt can't be resolved
+            return
+        
+        recovery_prompt = recovery_prompt_content.format(
             user_question=self.executor.original_user_input,
             error_message=last_error,
             failed_tool_name=failed_tool_name,

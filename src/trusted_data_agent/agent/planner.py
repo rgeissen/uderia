@@ -13,8 +13,6 @@ from trusted_data_agent.core import session_manager
 from trusted_data_agent.core.config import APP_CONFIG
 from trusted_data_agent.agent.prompts import (
     WORKFLOW_META_PLANNING_PROMPT,
-    TASK_CLASSIFICATION_PROMPT,
-    SQL_CONSOLIDATION_PROMPT
 )
 from trusted_data_agent.agent.rag_retriever import RAGRetriever # Import RAGRetriever
 from trusted_data_agent.agent.rag_access_context import RAGAccessContext  # --- MODIFICATION: Import RAGAccessContext ---
@@ -495,38 +493,44 @@ class Planner:
                     task_type = "aggregation"
                     app_logger.warning("TDA_LLMTask loop has no task_description. Defaulting to 'aggregation' for rewrite.")
                 else:
-                    classification_prompt = TASK_CLASSIFICATION_PROMPT.format(task_description=task_description)
-                    reason = "Classifying TDA_LLMTask loop intent for optimization."
-
-                    call_id = str(uuid.uuid4())
-                    event_data = {"step": "Analyzing Plan Efficiency", "type": "plan_optimization", "details": {"summary": "Checking if an iterative task can be optimized into a single batch operation.", "call_id": call_id}}
-                    self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
-                    yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
-
-                    response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
-                        prompt=classification_prompt,
-                        reason=reason,
-                        system_prompt_override="You are a JSON-only responding assistant.",
-                        raise_on_error=False,
-                        disabled_history=True,
-                        source=self.executor.source
-                    )
-
-                    # --- MODIFICATION START: Pass user_uuid to get_session ---
-                    updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
-                    # --- MODIFICATION END ---
-                    if updated_session:
-                        yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
-
-                    yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
-
-                    try:
-                        classification_data = json.loads(response_text)
-                        task_type = classification_data.get("classification", "synthesis")
-                    except (json.JSONDecodeError, AttributeError):
-                        app_logger.error(f"Failed to parse task classification. Defaulting to 'synthesis' to be safe. Response: {response_text}")
+                    # Use profile-aware prompt resolution
+                    classification_prompt_content = self.executor.prompt_resolver.get_task_classification_prompt()
+                    if not classification_prompt_content:
+                        app_logger.error("Failed to resolve TASK_CLASSIFICATION_PROMPT from profile mapping")
                         task_type = "synthesis"
+                    else:
+                        classification_prompt = classification_prompt_content.format(task_description=task_description)
+                        reason = "Classifying TDA_LLMTask loop intent for optimization."
+
+                        call_id = str(uuid.uuid4())
+                        event_data = {"step": "Analyzing Plan Efficiency", "type": "plan_optimization", "details": {"summary": "Checking if an iterative task can be optimized into a single batch operation.", "call_id": call_id}}
+                        self.executor._log_system_event(event_data)
+                        yield self.executor._format_sse(event_data)
+                        yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+
+                        response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
+                            prompt=classification_prompt,
+                            reason=reason,
+                            system_prompt_override="You are a JSON-only responding assistant.",
+                            raise_on_error=False,
+                            disabled_history=True,
+                            source=self.executor.source
+                        )
+
+                        # --- MODIFICATION START: Pass user_uuid to get_session ---
+                        updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+                        # --- MODIFICATION END ---
+                        if updated_session:
+                            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+
+                        yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+
+                        try:
+                            classification_data = json.loads(response_text)
+                            task_type = classification_data.get("classification", "synthesis")
+                        except (json.JSONDecodeError, AttributeError):
+                            app_logger.error(f"Failed to parse task classification. Defaulting to 'synthesis' to be safe. Response: {response_text}")
+                            task_type = "synthesis"
 
                 if task_type == "aggregation":
                     app_logger.warning(
@@ -805,7 +809,14 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                     i = j
                     continue
 
-                consolidation_prompt = SQL_CONSOLIDATION_PROMPT.format(
+                # Use profile-aware prompt resolution
+                consolidation_prompt_content = self.executor.prompt_resolver.get_sql_consolidation_prompt()
+                if not consolidation_prompt_content:
+                    app_logger.error("Failed to resolve SQL_CONSOLIDATION_PROMPT from profile mapping, skipping consolidation")
+                    i = j
+                    continue
+                
+                consolidation_prompt = consolidation_prompt_content.format(
                     user_goal=self.executor.original_user_input,
                     inefficient_queries="\n\n".join(inefficient_queries)
                 )
