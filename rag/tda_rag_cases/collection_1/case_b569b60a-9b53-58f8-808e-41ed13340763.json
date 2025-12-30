@@ -1,0 +1,67 @@
+{
+  "case_id": "b569b60a-9b53-58f8-808e-41ed13340763",
+  "metadata": {
+    "session_id": "c553e8a5-5ad3-4640-a72c-8d0fca20398c",
+    "turn_id": 2,
+    "is_success": true,
+    "task_id": "task-2176ef65-603c-479a-ac73-5211f79a2498",
+    "collection_id": 1,
+    "has_orchestration": false,
+    "had_plan_improvements": false,
+    "had_tactical_improvements": false,
+    "timestamp": "2025-12-30T11:52:16.226526+00:00",
+    "user_feedback_score": 0,
+    "llm_config": {
+      "provider": "Google",
+      "model": "gemini-2.0-flash",
+      "profile_tag": "GOGET",
+      "input_tokens": 12824,
+      "output_tokens": 219
+    },
+    "is_most_efficient": true,
+    "strategy_metrics": {
+      "phase_count": 3,
+      "steps_per_phase": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      },
+      "total_steps": 3
+    },
+    "user_uuid": "1b4d780c-fb14-4c7b-b32b-1181f819b9e2"
+  },
+  "intent": {
+    "user_query": "is there a demo database on the system?"
+  },
+  "successful_strategy": {
+    "phases": [
+      {
+        "phase": 1,
+        "goal": "Get a list of all databases on the system.",
+        "relevant_tools": [
+          "base_databaseList"
+        ],
+        "arguments": {}
+      },
+      {
+        "phase": 2,
+        "goal": "Filter the list of databases to find those that might be related to 'demo'.",
+        "relevant_tools": [
+          "TDA_LLMFilter"
+        ],
+        "arguments": {
+          "goal": "Find the databases related to 'demo'.",
+          "data_to_filter": "result_of_phase_1"
+        }
+      },
+      {
+        "phase": 3,
+        "goal": "Generate the final report based on the data gathered.",
+        "relevant_tools": [
+          "TDA_FinalReport"
+        ],
+        "arguments": {}
+      }
+    ]
+  }
+}

@@ -482,7 +482,21 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             config_manager.update_profile(profile_id, {"needs_reclassification": False}, user_uuid)
             app_logger.info(f"Cleared needs_reclassification flag for profile {profile_id} after classification")
         else:
-            app_logger.info(f"Using cached classification for profile {profile_id}, skipping reclassification")
+            # For cached classification, also ensure profile has tools/prompts initialized
+            # This fixes the bug where cached profiles had all resources deactivated
+            app_logger.info(f"Using cached classification for profile {profile_id}, checking profile initialization...")
+            profile = config_manager.get_profile(profile_id, user_uuid)
+            if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                # Profile doesn't have tools list yet - initialize with all discovered tools from cache
+                all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
+                all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
+                
+                if all_tools or all_prompts:
+                    app_logger.info(f"Initializing cached profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
+                    config_manager.update_profile(profile_id, {
+                        "tools": all_tools,
+                        "prompts": all_prompts
+                    }, user_uuid)
         
         # Calculate disabled tools/prompts from profile's enabled lists
         APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
@@ -812,11 +826,16 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                     app_logger.info(f"Set runtime classification mode to '{APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE}'")
             
             # --- 4a. Load Enabled/Disabled Tools/Prompts from Active Profile ---
-            # Note: This will be fully populated when a profile is activated
-            # For now, just initialize with empty lists since no profile is active yet during initial config
-            APP_STATE["disabled_tools"] = []
-            APP_STATE["disabled_prompts"] = []
-            app_logger.info("Initialized empty disabled lists. These will be populated when a profile is activated.")
+            # Calculate disabled lists from default profile if one exists
+            if profile_id:
+                APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
+                APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
+                app_logger.info(f"Loaded disabled lists from profile {profile_id}: {len(APP_STATE['disabled_tools'])} tools, {len(APP_STATE['disabled_prompts'])} prompts")
+            else:
+                # No profile exists yet, initialize with empty lists
+                APP_STATE["disabled_tools"] = []
+                APP_STATE["disabled_prompts"] = []
+                app_logger.info("No default profile found. Initialized with empty disabled lists.")
             
             APP_CONFIG.CHART_MCP_CONNECTED = True
 
