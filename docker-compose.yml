@@ -24,7 +24,7 @@ services:
       # Mount the entire application directory for development
       # IMPORTANT: Ensure /mnt/hdd_storage/docker/uderia contains your latest code
       # including all fixes for authentication and configuration
-      -/mnt/hdd_storage/docker/uderia:/app
+      - /mnt/hdd_storage/docker/uderia:/app
       
     environment:
       # Application-specific variables
