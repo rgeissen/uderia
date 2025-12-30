@@ -45,9 +45,6 @@ venv.bak/
 logs/
 *.log
 
-# Session data (optional - exclude if contains sensitive data)
-tda_sessions/
-
 # Sensitive data
 *.env
 !.env.example
@@ -67,6 +64,12 @@ prompt_overrides/
 # TDA keys (not distributed)
 tda_keys/
 
+# RAG directory (session data - excluded from distribution)
+rag/
+
+# TDA sessions (excluded from distribution)
+tda_sessions/
+
 # Temporary files
 *.tmp
 *.bak
@@ -85,6 +88,4 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 
-# Keep RAG case files (these can be shared)
-!rag/tda_rag_cases/
 test/inference_profile_test.py
