@@ -1870,6 +1870,11 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **20-Dec-2025:** Extended Prompt Management System - Dynamic Workflow Prompts
+*   **17-Dec-2025:** Extended Prompt Management System - Dynamic Variables
+*   **15-Dec-2025:** Extended Bootstrapping - Enhanced Bootstraping Parameter Configuration
+*   **12-Dec-2025:** Enhanced Prompt Encryption/Decryption Process using Database Encryption 
+*   **10-Dec-2025:** Migration from File based Application Configuration to Database Schema
 *   **05-Dec-2025:** Consumption Profile Enforcement - Rate Limiting and Usage Quotas
 *   **02-Dec-2025:** Financial Governance - Dashboards and LiteLLM Integration
 *   **01-Dec-2025:** Planner Constructor: SQL Query - Document Context
