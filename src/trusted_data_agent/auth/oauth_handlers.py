@@ -302,6 +302,12 @@ class OAuthHandler:
                 oauth_account.provider_name = user_info.get('name')
                 oauth_account.provider_picture_url = user_info.get('picture_url')
                 
+                # Sync email verification status from OAuth provider
+                # If provider says email is verified, mark it as verified
+                if user_info.get('email_verified') and not user.email_verified:
+                    user.email_verified = True
+                    logger.info(f"Updated email_verified=True for user {user.id} from {self.provider_name}")
+                
                 logger.info(f"Updated existing OAuth account for user {user.id}")
             else:
                 # Check if user exists by email
@@ -381,6 +387,10 @@ class OAuthHandler:
         # Import hash_password here to avoid circular imports
         from trusted_data_agent.auth.security import hash_password
         
+        # Email verification status from OAuth provider
+        # Google and Microsoft verify emails, so we trust their verification
+        email_verified = user_info.get('email_verified', False)
+        
         user = User(
             username=username,
             email=email or f"{username}@oauth-placeholder.local",
@@ -389,6 +399,7 @@ class OAuthHandler:
             display_name=user_info.get('name', username),
             is_active=True,
             profile_tier='user',
+            email_verified=email_verified,  # Trust OAuth provider's email verification
         )
         
         return user

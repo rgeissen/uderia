@@ -310,8 +310,10 @@
                 'okta': 'Okta',
             };
             
-            const icon = icons[provider] || '◉';
-            const name = displayNames[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+            // Handle both string and object provider formats
+            const providerName = typeof provider === 'string' ? provider : provider.name;
+            const icon = icons[providerName] || '◉';
+            const name = displayNames[providerName] || provider.display_name || providerName.charAt(0).toUpperCase() + providerName.slice(1);
             
             return `<span>${icon}</span><span>${name}</span>`;
         }
