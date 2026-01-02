@@ -321,7 +321,8 @@ class OAuthHandler:
                     # Create new user from OAuth data
                     user = self._create_user_from_oauth(user_info)
                     session.add(user)
-                    logger.info(f"Created new user from {self.provider_name} OAuth")
+                    session.flush()  # Flush to get user.id before creating OAuthAccount
+                    logger.info(f"Created new user (ID: {user.id}) from {self.provider_name} OAuth")
                 else:
                     logger.info(f"Found existing user {user.id} by email")
                 
@@ -368,6 +369,7 @@ class OAuthHandler:
             New User instance (not yet committed)
         """
         import secrets
+        import os
         
         # Generate username from email or provider name
         email = user_info.get('email', '')
@@ -387,9 +389,13 @@ class OAuthHandler:
         # Import hash_password here to avoid circular imports
         from trusted_data_agent.auth.security import hash_password
         
+        # Check for admin email override
+        admin_email = os.environ.get('ADMIN_EMAIL')
+        is_admin = admin_email and email == admin_email
+        
         # Email verification status from OAuth provider
         # Google and Microsoft verify emails, so we trust their verification
-        email_verified = user_info.get('email_verified', False)
+        email_verified = user_info.get('email_verified', False) or is_admin
         
         user = User(
             username=username,
@@ -398,10 +404,14 @@ class OAuthHandler:
             full_name=user_info.get('name', username),
             display_name=user_info.get('name', username),
             is_active=True,
-            profile_tier='user',
-            email_verified=email_verified,  # Trust OAuth provider's email verification
+            profile_tier='admin' if is_admin else 'user',
+            is_admin=is_admin,
+            email_verified=email_verified,  # Trust OAuth provider's email verification or if admin
         )
         
+        if is_admin:
+            logger.info(f"Creating admin user for email: {email}")
+
         return user
 
 

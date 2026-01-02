@@ -69,6 +69,8 @@ class OAuthSession:
             Tuple of (is_valid: bool, return_to: Optional[str])
         """
         stored_state = session.get(OAuthSession.STATE_SESSION_KEY)
+        logger.info(f"OAuth verify_state: stored_state='{stored_state}', expected_state='{expected_state}'")
+        logger.info(f"OAuth verify_state: session contents: {dict(session)}")
         stored_provider = session.get(OAuthSession.PROVIDER_SESSION_KEY)
         return_to = session.get(OAuthSession.RETURN_TO_SESSION_KEY)
         
@@ -297,7 +299,7 @@ class OAuthErrorHandler:
         log_audit_event(
             action=f'oauth_{event_type}',
             resource=f'oauth:{provider}',
-            status=status,
+            success=success,
             details=message,
             user_id=user_id
         )

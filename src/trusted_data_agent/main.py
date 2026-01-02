@@ -1,4 +1,6 @@
 # src/trusted_data_agent/main.py
+from dotenv import load_dotenv
+load_dotenv()
 import asyncio
 import os
 import sys
@@ -158,6 +160,14 @@ def create_app():
 
     app = Quart(__name__, template_folder=template_folder, static_folder=static_folder)
     app = cors(app, allow_origin="*")
+
+    # --- Set Secret Key for Session Management ---
+    secret_key = os.getenv('SECRET_KEY')
+    if not secret_key:
+        app_logger.critical("FATAL: SECRET_KEY environment variable is not set. This is required for session management.")
+        raise ValueError("SECRET_KEY is not set. Please set it in your .env file.")
+    app.secret_key = secret_key
+    # --- End Secret Key ---
 
     # --- MODIFICATION START: Increase Quart's RESPONSE_TIMEOUT ---
     # This prevents Quart from closing long SSE streams prematurely (default is 60s)

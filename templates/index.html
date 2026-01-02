@@ -6177,7 +6177,30 @@
             }
         }
         
-        // Initialize on page load - wait for DOM to be fully ready
+        // Initialize on page load
+        function handleOAuthCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            if (token) {
+                try {
+                    // Store the token and update the UI
+                    window.authClient.setToken(token);
+                    // Clean the token from the URL
+                    window.history.replaceState({}, document.title, '/');
+                    // Show a success message
+                    if (window.showAppBanner) {
+                        window.showAppBanner('Login successful!', 'success', 3000);
+                    }
+                    // The UI will be updated by the main logic that calls updateAuthUI()
+                } catch (error) {
+                    console.error('Error processing OAuth token:', error);
+                    if (window.showAppBanner) {
+                        window.showAppBanner('Error processing login token.', 'error', 5000);
+                    }
+                }
+            }
+        }
+        handleOAuthCallback();
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 updateAuthUI();

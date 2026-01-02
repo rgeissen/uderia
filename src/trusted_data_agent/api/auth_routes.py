@@ -711,7 +711,7 @@ async def login():
                 }), 401
             
             # Check if email is verified
-            if not user.email_verified:
+            if not user.email_verified and not user.is_admin:
                 logger.warning(f"Login attempt for unverified email: {username}")
                 log_audit_event(
                     user_id=user.id,
@@ -2252,7 +2252,7 @@ async def oauth_callback(provider):
             return redirect(f"/login?{error_params}")
         
         # Get return_to URL from session
-        return_to = await OAuthSession.get_return_to()
+        return_to = OAuthSession.get_return_to()
         
         # Log successful OAuth login
         ip_address = await get_client_ip()

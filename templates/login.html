@@ -319,8 +319,10 @@
         }
 
         function initiateOAuthFlow(provider) {
+            // Handle both string and object provider formats to prevent [object Object] in URL
+            const providerName = typeof provider === 'string' ? provider : provider.name;
             // Initiate OAuth login flow
-            window.location.href = `/api/v1/auth/oauth/${provider}`;
+            window.location.href = `/api/v1/auth/oauth/${providerName}`;
         }
 
         // Check for OAuth token in URL (after callback redirect)
