@@ -63,7 +63,25 @@ def init_database():
     On first initialization, creates a default admin account.
     """
     try:
-        Base.metadata.create_all(bind=engine)
+        # Create tables with checkfirst to avoid recreating existing tables
+        # For indexes that may already exist, we'll handle the error gracefully
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception as e:
+            # Handle "index already exists" errors - this can happen with SQLite
+            # when the database was partially initialized
+            if "already exists" in str(e).lower():
+                logger.warning(f"Some database objects already exist (expected on re-initialization): {e}")
+                # Try to create only the tables that don't exist
+                with engine.begin() as conn:
+                    for table in Base.metadata.sorted_tables:
+                        try:
+                            table.create(bind=conn, checkfirst=True)
+                        except Exception as table_err:
+                            if "already exists" not in str(table_err).lower():
+                                raise
+            else:
+                raise
         
         # Create collections table (for marketplace)
         _create_collections_table()

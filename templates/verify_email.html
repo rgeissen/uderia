@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - Uderia Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        html {
+            font-size: 13px;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(241, 95, 34, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: pulse 8s ease-in-out infinite;
+        }
+        
+        body::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            left: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: pulse 10s ease-in-out infinite reverse;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1) translate(0, 0); opacity: 1; }
+            50% { transform: scale(1.1) translate(20px, -20px); opacity: 0.8; }
+        }
+        
+        .card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #F15F22 0%, #D9501A 100%);
+            box-shadow: 0 10px 25px -5px rgba(241, 95, 34, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(241, 95, 34, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: #F15F22;
+        }
+        
+        .success-checkmark {
+            animation: scaleIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+        
+        @keyframes scaleIn {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.1);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .spinner {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #F15F22;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .spinner:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+        
+        .spinner:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+        
+        @keyframes bounce {
+            0%, 80%, 100% {
+                opacity: 0.3;
+                transform: scale(0);
+            }
+            40% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="max-w-md w-full relative z-10">
+        <div class="card rounded-2xl shadow-2xl p-12">
+            <!-- Logo -->
+            <div class="text-center mb-8">
+                <div class="flex justify-center mb-6">
+                    <div class="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-orange-600">
+                        UDERIA
+                    </div>
+                </div>
+                <div class="text-xs font-light text-gray-400 tracking-widest" style="letter-spacing: 0.2em;">PLATFORM</div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="loading-state" style="display: none;">
+                <div class="text-center mb-6">
+                    <div class="text-6xl mb-6">📧</div>
+                    <h2 class="text-2xl font-semibold text-white mb-3">Verifying Email</h2>
+                    <p class="text-slate-400 text-base mb-6">Please wait while we verify your email address...</p>
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div class="spinner"></div>
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Success State -->
+            <div id="success-state" style="display: none;">
+                <div class="text-center mb-8">
+                    <div class="text-6xl mb-6 success-checkmark">✅</div>
+                    <h2 class="text-3xl font-bold text-white mb-2">Email Verified!</h2>
+                    <p class="text-slate-300 text-base leading-relaxed">
+                        Your email address has been successfully verified. You can now log in to your account.
+                    </p>
+                </div>
+                <div class="flex flex-col gap-3">
+                    <a href="http://localhost:5050/login" class="btn-primary text-white font-semibold py-3 px-4 rounded-lg text-center w-full transition-all">
+                        Go to Login
+                    </a>
+                    <a href="http://localhost:5050" class="btn-secondary text-slate-300 font-semibold py-3 px-4 rounded-lg text-center w-full transition-all">
+                        Go to Dashboard
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Error State -->
+            <div id="error-state" style="display: none;">
+                <div class="text-center mb-8">
+                    <div class="text-6xl mb-6">❌</div>
+                    <h2 class="text-3xl font-bold text-red-400 mb-2">Verification Failed</h2>
+                    <p id="error-message" class="text-slate-300 text-base mb-6">
+                        The verification link is invalid or has expired.
+                    </p>
+                </div>
+                <div class="bg-red-500/10 border border-red-500/50 rounded-lg p-4 mb-6">
+                    <p class="text-red-300 text-sm font-semibold mb-2">Troubleshooting:</p>
+                    <ul class="text-red-200 text-sm space-y-1">
+                        <li>• Verification links expire after 24 hours</li>
+                        <li>• Check that you used the complete link from the email</li>
+                        <li>• You can request a new verification email during login</li>
+                    </ul>
+                </div>
+                <div class="flex flex-col gap-3">
+                    <a href="http://localhost:5050/login" class="btn-secondary text-slate-300 font-semibold py-3 px-4 rounded-lg text-center w-full transition-all">
+                        Back to Login
+                    </a>
+                    <a href="http://localhost:5050/register" class="btn-primary text-white font-semibold py-3 px-4 rounded-lg text-center w-full transition-all">
+                        Request New Link
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const email = urlParams.get('email');
+        
+        // Show loading state
+        document.getElementById('loading-state').style.display = 'block';
+        
+        // Call verification API
+        if (token && email) {
+            fetch('http://localhost:5050/api/v1/auth/verify-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    token: token,
+                    email: email
+                })
+            })
+            .then(response => {
+                // Hide loading
+                document.getElementById('loading-state').style.display = 'none';
+                
+                if (response.ok) {
+                    // Show success
+                    document.getElementById('success-state').style.display = 'block';
+                } else {
+                    return response.json().then(data => {
+                        throw new Error(data.message || 'Verification failed');
+                    });
+                }
+            })
+            .catch(error => {
+                // Hide loading
+                document.getElementById('loading-state').style.display = 'none';
+                
+                // Show error
+                document.getElementById('error-state').style.display = 'block';
+                document.getElementById('error-message').textContent = error.message;
+            });
+        } else {
+            // Hide loading
+            document.getElementById('loading-state').style.display = 'none';
+            
+            // Show error
+            document.getElementById('error-state').style.display = 'block';
+            document.getElementById('error-message').textContent = 'Missing verification token or email address.';
+        }
+    </script>
+</body>
+</html>

@@ -76,6 +76,11 @@ async def register_page():
     """Serves the registration page."""
     return await render_template("register.html")
 
+@api_bp.route("/verify-email")
+async def verify_email_page():
+    """Serves the email verification page."""
+    return await render_template("verify_email.html")
+
 @api_bp.route("/api/status")
 @optional_auth
 async def get_application_status(current_user):

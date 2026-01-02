@@ -77,6 +77,45 @@ class AuthClient {
     }
 
     /**
+     * Store authentication token from OAuth callback
+     * Decodes JWT to extract user info and sets session
+     * @param {string} token - JWT token from OAuth callback
+     */
+    setToken(token) {
+        if (!token) {
+            console.error('Invalid token');
+            return false;
+        }
+
+        try {
+            // Decode JWT payload (without verification - backend verifies signature)
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                throw new Error('Invalid token format');
+            }
+
+            // Decode payload
+            const payload = JSON.parse(atob(parts[1]));
+            
+            // Extract user info from token
+            const user = {
+                id: payload.user_id,
+                username: payload.username,
+                email: payload.email || '',
+            };
+
+            // Store session
+            this.setSession(token, user);
+            
+            console.log('Token set from OAuth callback:', { username: user.username });
+            return true;
+        } catch (error) {
+            console.error('Error processing OAuth token:', error);
+            return false;
+        }
+    }
+
+    /**
      * Clear stored session data
      */
     clearSession() {

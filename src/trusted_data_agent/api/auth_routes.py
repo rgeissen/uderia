@@ -43,6 +43,8 @@ from trusted_data_agent.auth.audit import (
     log_registration,
     log_rate_limit_exceeded
 )
+from trusted_data_agent.auth.email_verification import EmailVerificationService
+from trusted_data_agent.auth.email_service import EmailService
 
 logger = logging.getLogger("quart.app")
 
@@ -260,7 +262,7 @@ def log_audit_event(user_id: str, action: str, details: str, success: bool = Tru
 @auth_bp.route('/register', methods=['POST'])
 async def register():
     """
-    Register a new user account.
+    Register a new user account with email verification.
     
     Request Body:
         {
@@ -271,7 +273,7 @@ async def register():
         }
     
     Response:
-        201: User created successfully
+        201: User created successfully, verification email sent
         400: Validation errors
         409: Username or email already exists
         429: Rate limit exceeded
@@ -328,12 +330,13 @@ async def register():
                             'message': 'Email already registered'
                         }), 409
                 
-                # Create new user
+                # Create new user (email_verified=False by default)
                 user = User(
                     username=username,
                     email=email,
                     password_hash=password_hash,
-                    display_name=display_name or username
+                    display_name=display_name or username,
+                    email_verified=False
                 )
                 
                 session.add(user)
@@ -351,15 +354,45 @@ async def register():
                 'message': 'Registration failed. Please try again.'
             }), 500
         
+        # Generate email verification token
+        try:
+            verification_token = EmailVerificationService.generate_verification_token(
+                user_id=user_id,
+                email=email,
+                verification_type='signup'
+            )
+            
+            # Build verification link (adjust URL to match your frontend)
+            base_url = data.get('verification_base_url', 'http://localhost:5050')
+            verification_link = f"{base_url}/verify-email?token={verification_token}&email={email}"
+            
+            # Send verification email
+            email_sent = await EmailService.send_verification_email(
+                to_email=email,
+                verification_token=verification_token,
+                verification_link=verification_link,
+                user_name=display_name or username
+            )
+            
+            if email_sent:
+                logger.info(f"Verification email sent to {email} for user {user_username}")
+            else:
+                logger.warning(f"Failed to send verification email to {email}, but user was created")
+        
+        except Exception as e:
+            logger.error(f"Error generating or sending verification email: {e}", exc_info=True)
+            # User was created successfully, but verification email failed
+            # This is not a critical error - user can still resend later
+        
         # Log audit event
         log_audit_event(
             user_id=user_id,
             action='user_registered',
-            details=f'New user {user_username} registered',
+            details=f'New user {user_username} registered, verification email sent',
             success=True
         )
         
-        logger.info(f"New user registered: {user_username} (uuid: {user_uuid})")
+        logger.info(f"New user registered: {user_username} (uuid: {user_uuid}), awaiting email verification")
         
         # Create default profile for new user (bootstrap from tda_config.json)
         ensure_user_default_profile(user_uuid)
@@ -369,13 +402,15 @@ async def register():
         
         return jsonify({
             'status': 'success',
-            'message': 'User registered successfully',
+            'message': 'User registered successfully. Please check your email to verify your account.',
             'user': {
                 'id': user_id,
                 'username': user_username,
                 'user_uuid': user_uuid,
-                'display_name': display_name or username
-            }
+                'display_name': display_name or username,
+                'email_verified': False
+            },
+            'requires_email_verification': True
         }), 201
     
     except Exception as e:
@@ -383,6 +418,215 @@ async def register():
         return jsonify({
             'status': 'error',
             'message': 'Server error during registration'
+        }), 500
+
+
+@auth_bp.route('/verify-email', methods=['POST'])
+async def verify_email():
+    """
+    Verify a user's email address using a verification token.
+    
+    Request Body:
+        {
+            "token": "verification_token_from_email",
+            "email": "user@example.com"
+        }
+    
+    Response:
+        200: Email verified successfully
+        400: Missing fields
+        401: Invalid or expired token
+        404: User or token not found
+        500: Server error
+    """
+    try:
+        data = await request.get_json()
+        
+        # Extract fields
+        token = data.get('token', '').strip()
+        email = data.get('email', '').strip().lower()
+        
+        logger.info(f"Email verification request: token={token[:20]}... email={email}")
+        
+        if not token or not email:
+            logger.warning(f"Missing email verification fields: token={bool(token)}, email={bool(email)}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing token or email'
+            }), 400
+        
+        # Verify the token
+        logger.debug(f"Calling EmailVerificationService.verify_email with token and email {email}")
+        success, user_id = EmailVerificationService.verify_email(token, email)
+        
+        logger.info(f"Email verification result: success={success}, user_id={user_id}")
+        
+        if not success:
+            logger.warning(f"Email verification failed for token={token[:20]}... email={email}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid or expired verification token'
+            }), 401
+        
+        # Mark user as email verified
+        try:
+            with get_db_session() as session:
+                user = session.query(User).filter_by(id=user_id).first()
+                
+                if not user:
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'User not found'
+                    }), 404
+                
+                user.email_verified = True
+                session.commit()
+                
+                logger.info(f"Email verified for user {user.username} (ID: {user_id})")
+        
+        except Exception as e:
+            logger.error(f"Error marking email as verified: {e}", exc_info=True)
+            return jsonify({
+                'status': 'error',
+                'message': 'Error verifying email'
+            }), 500
+        
+        # Log audit event
+        log_audit_event(
+            user_id=user_id,
+            action='email_verified',
+            details=f'Email verified for user',
+            success=True
+        )
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Email verified successfully',
+            'user_id': user_id
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Email verification error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Server error during email verification'
+        }), 500
+
+
+@auth_bp.route('/resend-verification-email', methods=['POST'])
+async def resend_verification_email():
+    """
+    Resend email verification email to a user.
+    
+    Request Body:
+        {
+            "email": "user@example.com",
+            "verification_base_url": "http://localhost:3000"  // optional
+        }
+    
+    Response:
+        200: Verification email resent
+        400: Missing email
+        404: User not found or email already verified
+        429: Rate limit exceeded
+        500: Server error
+    """
+    try:
+        # Rate limit resend attempts
+        allowed, retry_after = check_ip_register_limit()
+        if not allowed:
+            log_rate_limit_exceeded('ip:' + request.remote_addr, '/api/v1/auth/resend-verification-email')
+            return jsonify({
+                'status': 'error',
+                'message': 'Rate limit exceeded',
+                'retry_after': retry_after
+            }), 429
+        
+        data = await request.get_json()
+        
+        # Extract fields
+        email = data.get('email', '').strip().lower()
+        verification_base_url = data.get('verification_base_url', 'http://localhost:5050')
+        
+        if not email:
+            return jsonify({
+                'status': 'error',
+                'message': 'Email is required'
+            }), 400
+        
+        # Find user
+        try:
+            with get_db_session() as session:
+                user = session.query(User).filter_by(email=email).first()
+                
+                if not user:
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'User not found'
+                    }), 404
+                
+                if user.email_verified:
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'Email already verified'
+                    }), 400
+                
+                user_id = user.id
+                user_username = user.username
+                user_display_name = user.display_name or user.username
+        
+        except Exception as e:
+            logger.error(f"Error finding user: {e}", exc_info=True)
+            return jsonify({
+                'status': 'error',
+                'message': 'Error processing request'
+            }), 500
+        
+        # Generate new verification token
+        try:
+            verification_token = EmailVerificationService.generate_verification_token(
+                user_id=user_id,
+                email=email,
+                verification_type='signup'
+            )
+            
+            # Build verification link
+            verification_link = f"{verification_base_url}/verify-email?token={verification_token}&email={email}"
+            
+            # Send verification email
+            email_sent = await EmailService.send_verification_email(
+                to_email=email,
+                verification_token=verification_token,
+                verification_link=verification_link,
+                user_name=user_display_name
+            )
+            
+            if email_sent:
+                logger.info(f"Verification email resent to {email} for user {user_username}")
+            else:
+                logger.warning(f"Failed to resend verification email to {email}")
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Failed to send verification email'
+                }), 500
+        
+        except Exception as e:
+            logger.error(f"Error resending verification email: {e}", exc_info=True)
+            return jsonify({
+                'status': 'error',
+                'message': 'Error sending verification email'
+            }), 500
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Verification email sent successfully'
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Resend verification email error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Server error'
         }), 500
 
 
@@ -464,6 +708,21 @@ async def login():
                 return jsonify({
                     'status': 'error',
                     'message': 'Account is inactive. Please contact support.'
+                }), 401
+            
+            # Check if email is verified
+            if not user.email_verified:
+                logger.warning(f"Login attempt for unverified email: {username}")
+                log_audit_event(
+                    user_id=user.id,
+                    action='login_failed',
+                    details='Login attempt with unverified email',
+                    success=False
+                )
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Email not verified. Please check your email for a verification link.',
+                    'requires_email_verification': True
                 }), 401
             
             # Verify password
@@ -1841,4 +2100,411 @@ async def get_all_users_consumption_summary(current_user):
         return jsonify({
             'status': 'error',
             'message': 'Failed to fetch consumption summary'
+        }), 500
+
+
+# ============================================================================
+# OAuth Routes
+# ============================================================================
+
+@auth_bp.route('/oauth/providers', methods=['GET'])
+async def get_oauth_providers():
+    """
+    Get list of available OAuth providers.
+    
+    Returns:
+        JSON with list of configured OAuth providers
+    """
+    from trusted_data_agent.auth.oauth_config import get_configured_providers
+    
+    try:
+        providers = get_configured_providers()
+        provider_list = [
+            {
+                'name': name,
+                'display_name': name.capitalize(),
+                'icon': f'oauth-{name}',
+                'enabled': True,
+            }
+            for name in providers.keys()
+        ]
+        
+        return jsonify({
+            'status': 'success',
+            'providers': provider_list
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching OAuth providers: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch OAuth providers'
+        }), 500
+
+
+@auth_bp.route('/oauth/<provider>', methods=['GET'])
+async def initiate_oauth(provider):
+    """
+    Initiate OAuth flow by redirecting to provider authorization endpoint.
+    
+    Query parameters:
+        return_to: Optional URL to return to after OAuth callback
+    
+    Returns:
+        Redirect to OAuth provider authorization endpoint
+    """
+    from trusted_data_agent.auth.oauth_middleware import (
+        OAuthAuthorizationBuilder,
+        validate_oauth_provider,
+        OAuthErrorHandler
+    )
+    
+    try:
+        # Validate provider
+        if not validate_oauth_provider(provider):
+            return jsonify({
+                'status': 'error',
+                'message': f'OAuth provider "{provider}" is not configured'
+            }), 404
+        
+        # Get return_to URL if provided
+        return_to = request.args.get('return_to')
+        
+        # Build authorization URL
+        auth_url = await OAuthAuthorizationBuilder.build_authorization_url(
+            provider_name=provider,
+            return_to=return_to
+        )
+        
+        if not auth_url:
+            OAuthErrorHandler.log_oauth_event(provider, 'initiate', success=False, details='Failed to build auth URL')
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to build authorization URL'
+            }), 500
+        
+        OAuthErrorHandler.log_oauth_event(provider, 'initiate', success=True)
+        
+        # Redirect to OAuth provider
+        from quart import redirect
+        return redirect(auth_url)
+    
+    except Exception as e:
+        logger.error(f"Error initiating OAuth for {provider}: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to initiate OAuth flow'
+        }), 500
+
+
+@auth_bp.route('/oauth/<provider>/callback', methods=['GET'])
+async def oauth_callback(provider):
+    """
+    Handle OAuth callback from provider.
+    
+    Query parameters:
+        code: Authorization code from provider
+        state: State parameter for CSRF protection
+        error: Error code if authorization failed
+    
+    Returns:
+        Redirect to frontend with JWT token or error
+    """
+    from trusted_data_agent.auth.oauth_handlers import OAuthHandler
+    from trusted_data_agent.auth.oauth_middleware import (
+        OAuthCallbackValidator,
+        OAuthErrorHandler,
+        get_client_ip,
+        validate_oauth_provider,
+        OAuthSession,
+    )
+    from quart import redirect
+    from urllib.parse import urlencode
+    
+    try:
+        # Validate provider
+        if not validate_oauth_provider(provider):
+            OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details='Provider not configured')
+            error_params = urlencode({'error': 'Provider not configured'})
+            return redirect(f"/login?{error_params}")
+        
+        # Validate callback request
+        is_valid, code, state, error_msg = await OAuthCallbackValidator.validate_callback_request(provider)
+        
+        if not is_valid:
+            OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details=error_msg)
+            error_params = urlencode({'error': error_msg or 'OAuth authorization failed'})
+            return redirect(f"/login?{error_params}")
+        
+        # Handle OAuth callback
+        handler = OAuthHandler(provider)
+        callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider)
+        
+        jwt_token, user_dict = await handler.handle_callback(
+            code=code,
+            redirect_uri=callback_uri,
+            state=state
+        )
+        
+        if not jwt_token or not user_dict:
+            OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details='Failed to complete OAuth flow')
+            error_params = urlencode({'error': 'Failed to complete OAuth authentication'})
+            return redirect(f"/login?{error_params}")
+        
+        # Get return_to URL from session
+        return_to = await OAuthSession.get_return_to()
+        
+        # Log successful OAuth login
+        ip_address = await get_client_ip()
+        OAuthErrorHandler.log_oauth_event(
+            provider,
+            'login',
+            user_id=user_dict.get('id'),
+            success=True,
+            details=f"IP: {ip_address}"
+        )
+        
+        logger.info(f"Successful OAuth login for user {user_dict.get('id')} via {provider}")
+        
+        # Redirect to frontend with JWT token
+        redirect_url = return_to or '/'
+        # Append token to redirect URL (frontend should handle this)
+        separator = '&' if '?' in redirect_url else '?'
+        redirect_url = f"{redirect_url}{separator}token={jwt_token}"
+        
+        return redirect(redirect_url)
+    
+    except Exception as e:
+        logger.error(f"Error processing OAuth callback from {provider}: {e}", exc_info=True)
+        OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details=str(e))
+        error_params = urlencode({'error': 'An unexpected error occurred'})
+        return redirect(f"/login?{error_params}")
+
+
+@auth_bp.route('/oauth/<provider>/link', methods=['GET'])
+@require_auth
+async def initiate_oauth_link(provider):
+    """
+    Initiate OAuth flow to link provider account to existing user.
+    
+    Requires authentication.
+    
+    Returns:
+        Redirect to OAuth provider authorization endpoint
+    """
+    from trusted_data_agent.auth.oauth_middleware import (
+        OAuthAuthorizationBuilder,
+        validate_oauth_provider,
+        OAuthErrorHandler
+    )
+    
+    try:
+        # Validate provider
+        if not validate_oauth_provider(provider):
+            return jsonify({
+                'status': 'error',
+                'message': f'OAuth provider "{provider}" is not configured'
+            }), 404
+        
+        current_user = await get_current_user()
+        if not current_user:
+            return jsonify({
+                'status': 'error',
+                'message': 'User not authenticated'
+            }), 401
+        
+        # Build authorization URL for linking
+        auth_url = await OAuthAuthorizationBuilder.build_authorization_url_for_linking(
+            provider_name=provider,
+            user_id=current_user['id']
+        )
+        
+        if not auth_url:
+            OAuthErrorHandler.log_oauth_event(provider, 'link_initiate', user_id=current_user['id'], success=False)
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to build authorization URL'
+            }), 500
+        
+        OAuthErrorHandler.log_oauth_event(provider, 'link_initiate', user_id=current_user['id'], success=True)
+        
+        # Redirect to OAuth provider
+        from quart import redirect
+        return redirect(auth_url)
+    
+    except Exception as e:
+        logger.error(f"Error initiating OAuth link for {provider}: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to initiate OAuth linking'
+        }), 500
+
+
+@auth_bp.route('/oauth/<provider>/link/callback', methods=['GET'])
+@require_auth
+async def oauth_link_callback(provider):
+    """
+    Handle OAuth callback for account linking.
+    
+    Query parameters:
+        code: Authorization code from provider
+        state: State parameter for CSRF protection
+    
+    Returns:
+        JSON response with success/error status
+    """
+    from trusted_data_agent.auth.oauth_handlers import link_oauth_to_existing_user
+    from trusted_data_agent.auth.oauth_middleware import (
+        OAuthCallbackValidator,
+        OAuthErrorHandler,
+        validate_oauth_provider,
+    )
+    
+    try:
+        # Validate provider
+        if not validate_oauth_provider(provider):
+            return jsonify({
+                'status': 'error',
+                'message': f'OAuth provider "{provider}" is not configured'
+            }), 404
+        
+        # Validate callback request
+        is_valid, code, state, error_msg = await OAuthCallbackValidator.validate_callback_request(provider)
+        
+        if not is_valid:
+            OAuthErrorHandler.log_oauth_event(provider, 'link_callback', success=False, details=error_msg)
+            return jsonify({
+                'status': 'error',
+                'message': error_msg or 'OAuth authorization failed'
+            }), 400
+        
+        # Get current user
+        current_user = await get_current_user()
+        if not current_user:
+            return jsonify({
+                'status': 'error',
+                'message': 'User not authenticated'
+            }), 401
+        
+        # Link OAuth account
+        callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider) + '/link/callback'
+        success, message = await link_oauth_to_existing_user(
+            user_id=current_user['id'],
+            provider_name=provider,
+            code=code,
+            redirect_uri=callback_uri
+        )
+        
+        if success:
+            OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=current_user['id'], success=True)
+            return jsonify({
+                'status': 'success',
+                'message': message
+            }), 200
+        else:
+            OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=current_user['id'], success=False, details=message)
+            return jsonify({
+                'status': 'error',
+                'message': message
+            }), 400
+    
+    except Exception as e:
+        logger.error(f"Error processing OAuth link callback from {provider}: {e}", exc_info=True)
+        OAuthErrorHandler.log_oauth_event(provider, 'link_callback', success=False, details=str(e))
+        return jsonify({
+            'status': 'error',
+            'message': 'An error occurred while linking the account'
+        }), 500
+
+
+@auth_bp.route('/oauth/<provider>/disconnect', methods=['POST'])
+@require_auth
+async def disconnect_oauth(provider):
+    """
+    Disconnect/unlink an OAuth account from the current user.
+    
+    Requires authentication.
+    
+    Returns:
+        JSON response with success/error status
+    """
+    from trusted_data_agent.auth.oauth_handlers import unlink_oauth_from_user
+    from trusted_data_agent.auth.oauth_middleware import OAuthErrorHandler
+    
+    try:
+        # Get current user
+        current_user = await get_current_user()
+        if not current_user:
+            return jsonify({
+                'status': 'error',
+                'message': 'User not authenticated'
+            }), 401
+        
+        # Unlink OAuth account
+        success, message = await unlink_oauth_from_user(
+            user_id=current_user['id'],
+            provider_name=provider
+        )
+        
+        if success:
+            OAuthErrorHandler.log_oauth_event(provider, 'disconnect', user_id=current_user['id'], success=True)
+            return jsonify({
+                'status': 'success',
+                'message': message
+            }), 200
+        else:
+            OAuthErrorHandler.log_oauth_event(provider, 'disconnect', user_id=current_user['id'], success=False, details=message)
+            return jsonify({
+                'status': 'error',
+                'message': message
+            }), 400
+    
+    except Exception as e:
+        logger.error(f"Error disconnecting OAuth account for {provider}: {e}", exc_info=True)
+        OAuthErrorHandler.log_oauth_event(provider, 'disconnect', success=False, details=str(e))
+        return jsonify({
+            'status': 'error',
+            'message': 'An error occurred while disconnecting the account'
+        }), 500
+
+
+@auth_bp.route('/oauth/accounts', methods=['GET'])
+@require_auth
+async def get_oauth_accounts():
+    """
+    Get list of OAuth accounts linked to the current user.
+    
+    Requires authentication.
+    
+    Returns:
+        JSON with list of linked OAuth accounts
+    """
+    try:
+        current_user = await get_current_user()
+        if not current_user:
+            return jsonify({
+                'status': 'error',
+                'message': 'User not authenticated'
+            }), 401
+        
+        with get_db_session() as session:
+            user = session.query(User).filter_by(id=current_user['id']).first()
+            if not user:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'User not found'
+                }), 404
+            
+            oauth_accounts = [account.to_dict() for account in user.oauth_accounts]
+        
+        return jsonify({
+            'status': 'success',
+            'accounts': oauth_accounts
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching OAuth accounts: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to fetch OAuth accounts'
         }), 500

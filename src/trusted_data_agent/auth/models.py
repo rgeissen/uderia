@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Index, text
+    Boolean, Column, DateTime, ForeignKey, Integer, String, Text, Index, text, JSON
 )
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
@@ -41,11 +41,17 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
     profile_tier = Column(String(20), default='user', nullable=False)  # user, developer, admin
+    email_verified = Column(Boolean, default=False, nullable=False)  # Email verification status
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime(timezone=True), nullable=True)
     
     # Consumption profile
     consumption_profile_id = Column(Integer, ForeignKey('consumption_profiles.id'), nullable=True, index=True)
+    
+    # OAuth fields
+    oauth_provider = Column(String(50), nullable=True, index=True)  # 'google', 'github', 'microsoft', etc.
+    oauth_id = Column(String(255), nullable=True)  # Provider's unique user ID
+    oauth_metadata = Column(JSON, nullable=True)  # Store additional OAuth profile data
     
     # Relationships
     auth_tokens = relationship("AuthToken", back_populates="user", cascade="all, delete-orphan")
@@ -54,6 +60,12 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     consumption_profile = relationship("ConsumptionProfile", back_populates="users")
     token_usage = relationship("UserTokenUsage", back_populates="user", cascade="all, delete-orphan")
+    oauth_accounts = relationship("OAuthAccount", back_populates="user", cascade="all, delete-orphan")
+    
+    # Unique constraint for OAuth accounts
+    __table_args__ = (
+        Index('idx_oauth_provider_id', 'oauth_provider', 'oauth_id', unique=True),
+    )
     
     def __repr__(self):
         return f"<User(id='{self.id}', username='{self.username}', email='{self.email}')>"
@@ -168,6 +180,56 @@ class UserPreference(Base):
         return f"<UserPreference(user_id='{self.user_id}', theme='{self.theme}')>"
 
 
+class OAuthAccount(Base):
+    """OAuth account linking for users."""
+    
+    __tablename__ = 'oauth_accounts'
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    
+    # OAuth provider details
+    provider = Column(String(50), nullable=False)  # 'google', 'github', 'microsoft', 'discord', etc.
+    provider_user_id = Column(String(255), nullable=False)  # Provider's unique ID
+    
+    # User info from OAuth
+    provider_email = Column(String(255), nullable=True)
+    provider_name = Column(String(255), nullable=True)
+    provider_picture_url = Column(String(500), nullable=True)
+    
+    # Additional metadata
+    provider_metadata = Column(JSON, nullable=True)  # Store any extra data from provider
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="oauth_accounts")
+    
+    # Unique constraint: one OAuth account per provider per user
+    __table_args__ = (
+        Index('idx_oauth_provider_user', 'user_id', 'provider', unique=True),
+        Index('idx_oauth_provider_id', 'provider', 'provider_user_id', unique=True),
+    )
+    
+    def __repr__(self):
+        return f"<OAuthAccount(user_id='{self.user_id}', provider='{self.provider}')>"
+    
+    def to_dict(self):
+        """Convert OAuth account to dictionary."""
+        return {
+            'id': self.id,
+            'provider': self.provider,
+            'provider_email': self.provider_email,
+            'provider_name': self.provider_name,
+            'provider_picture_url': self.provider_picture_url,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_used_at': self.last_used_at.isoformat() if self.last_used_at else None,
+        }
+
+
 class AuditLog(Base):
     """Audit log for tracking user actions."""
     
@@ -224,6 +286,48 @@ class PasswordResetToken(Base):
         """Check if reset token is still valid."""
         now = datetime.now(timezone.utc)
         return not self.used and self.expires_at > now
+
+
+class EmailVerificationToken(Base):
+    """Email verification tokens for OAuth and new user signups."""
+    
+    __tablename__ = 'email_verification_tokens'
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    
+    # Token details
+    token_hash = Column(String(255), nullable=False, index=True, unique=True)
+    email = Column(String(255), nullable=False, index=True)  # Email to verify (may differ from user.email during OAuth)
+    
+    # Token context
+    verification_type = Column(String(50), nullable=False, default='oauth')  # 'oauth', 'signup', 'email_change'
+    oauth_provider = Column(String(50), nullable=True)  # If OAuth-related, which provider
+    
+    # Token lifecycle
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    
+    def __repr__(self):
+        return f"<EmailVerificationToken(user_id='{self.user_id}', email='{self.email}')>"
+    
+    def is_valid(self):
+        """Check if verification token is still valid."""
+        now = datetime.now(timezone.utc)
+        
+        # Handle timezone-naive expires_at from old tokens
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            # Make it aware by assuming UTC
+            from datetime import timezone as tz
+            expires_at = expires_at.replace(tzinfo=tz.utc)
+        
+        return self.verified_at is None and expires_at > now
+    
+    def is_verified(self):
+        """Check if email has been verified."""
+        return self.verified_at is not None
 
 
 class AccessToken(Base):
