@@ -284,31 +284,47 @@
                 </div>
             </form>
 
-                    <!-- Login Link -->
-                    <div class="mt-6 text-center">
-                        <p class="text-slate-400 text-sm">
-                            Already have an account?
-                            <a href="/login" class="text-[#F15F22] hover:text-[#D9501A] font-semibold transition-colors">
-                                Sign in instead
-                            </a>
-                        </p>
-                    </div>
+            <!-- OAuth Divider -->
+            <div class="relative my-6">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-slate-600"></div>
+                </div>
+                <div class="relative flex justify-center text-sm">
+                    <span class="px-2 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 text-slate-400">Or sign up with</span>
                 </div>
             </div>
-            
-        </div>
-        
-        <!-- Footer -->
-        <div class="mt-8 text-center">
-            <p class="text-slate-500 text-xs">
-                © 2025 Uderia. All rights reserved.
-            </p>
+
+            <!-- OAuth Buttons -->
+            <div id="oauth-buttons-container" class="grid grid-cols-2 gap-3">
+                <!-- OAuth buttons will be loaded here by JavaScript -->
+            </div>
+
+            <!-- Login Link -->
+            <div class="mt-6 text-center">
+                <p class="text-slate-400 text-sm">
+                    Already have an account?
+                    <a href="/login" class="text-[#F15F22] hover:text-[#D9501A] font-semibold transition-colors">
+                        Sign in instead
+                    </a>
+                </p>
+            </div>
         </div>
     </div>
+    
+</div>
 
-    <script src="/static/js/auth.js"></script>
-    <script>
-        const auth = new AuthClient();
+<!-- Footer -->
+<div class="mt-8 text-center">
+    <p class="text-slate-500 text-xs">
+        © 2026 Uderia. All rights reserved.
+    </p>
+</div>
+</div>
+
+<script src="/static/js/auth.js"></script>
+<script src="/static/js/oauth.js"></script>
+<script>
+const auth = new AuthClient();
 
         if (auth.isAuthenticated()) {
             window.location.href = '/';
@@ -426,6 +442,66 @@
                 }, 4000);
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const oauth = new OAuthClient();
+    
+            async function loadOAuthProviders() {
+                try {
+                    const providers = await oauth.getAvailableProviders();
+                    const container = document.getElementById('oauth-buttons-container');
+                    
+                    container.innerHTML = ''; // Clear container
+                    
+                    if (!providers || providers.length === 0) {
+                        // Optionally hide the divider if no providers are available
+                        return;
+                    }
+                    
+                    providers.forEach(provider => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-700/50 transition-all text-white font-medium text-sm';
+                        button.innerHTML = getOAuthButtonContent(provider);
+                        button.onclick = () => initiateOAuthFlow(provider);
+                        container.appendChild(button);
+                    });
+                } catch (error) {
+                    console.error('Error loading OAuth providers:', error);
+                }
+            }
+    
+            function getOAuthButtonContent(provider) {
+                const providerName = typeof provider === 'string' ? provider : provider.name;
+                const displayNames = {
+                    'google': 'Google',
+                    'github': 'GitHub',
+                    // Add other providers as needed
+                };
+                const icons = {
+                    'google': '/static/images/google_icon.svg',
+                    'github': '/static/images/github_icon.svg',
+                    // Add other providers as needed
+                };
+    
+                const name = displayNames[providerName] || provider.display_name || providerName.charAt(0).toUpperCase() + providerName.slice(1);
+                const iconUrl = icons[providerName];
+    
+                if (iconUrl) {
+                    return `<img src="${iconUrl}" alt="${name}" class="w-5 h-5"><span>${name}</span>`;
+                }
+                // Fallback to emoji or initial
+                return `<span>${providerName.charAt(0).toUpperCase()}</span><span>${name}</span>`;
+            }
+    
+            function initiateOAuthFlow(provider) {
+                const providerName = typeof provider === 'string' ? provider : provider.name;
+                // Redirect to the registration-specific OAuth flow if different from login
+                window.location.href = `/api/v1/auth/oauth/${providerName}`;
+            }
+    
+            loadOAuthProviders();
+        });
     </script>
 </body>
 </html>

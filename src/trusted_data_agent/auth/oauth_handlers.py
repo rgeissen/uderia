@@ -61,9 +61,15 @@ class OAuthHandler:
                     'grant_type': 'authorization_code',
                 }
                 
+                
+                headers = {}
+                if self.provider_name == 'github':
+                    headers['Accept'] = 'application/json'
+
                 response = await client.post(
                     self.provider.access_token_url,
                     data=data,
+                    headers=headers,
                     timeout=10.0
                 )
                 response.raise_for_status()

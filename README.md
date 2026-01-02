@@ -1870,7 +1870,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
-*   **02-Jan-2026:** OAuth Implementation - Google
+*   **02-Jan-2026:** OAuth Implementation - Google, Github
 *   **02-Jan-2026:** Email Validation for Registration
 *   **20-Dec-2025:** Extended Prompt Management System - Dynamic Workflow Prompts
 *   **17-Dec-2025:** Extended Prompt Management System - Dynamic Variables
