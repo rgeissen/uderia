@@ -137,9 +137,10 @@ class OAuthConfig:
     
     # Callback URL (should be set in environment for production)
     # Format: https://yourdomain.com/api/v1/auth/oauth/{provider}/callback
+    APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:5050')
     OAUTH_CALLBACK_URL = os.getenv(
         'OAUTH_CALLBACK_URL',
-        'http://localhost:8000/api/v1/auth/oauth/{provider}/callback'
+        APP_BASE_URL + '/api/v1/auth/oauth/{provider}/callback'
     )
     
     # Session configuration

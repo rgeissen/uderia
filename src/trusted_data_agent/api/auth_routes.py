@@ -5,6 +5,7 @@ Provides endpoints for user registration, login, logout, and profile management.
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime
 from typing import Dict, Any
@@ -363,7 +364,7 @@ async def register():
             )
             
             # Build verification link (adjust URL to match your frontend)
-            base_url = data.get('verification_base_url', 'http://localhost:5050')
+            base_url = data.get('verification_base_url', os.getenv('APP_BASE_URL', 'http://localhost:5050'))
             verification_link = f"{base_url}/verify-email?token={verification_token}&email={email}"
             
             # Send verification email
@@ -546,7 +547,7 @@ async def resend_verification_email():
         
         # Extract fields
         email = data.get('email', '').strip().lower()
-        verification_base_url = data.get('verification_base_url', 'http://localhost:5050')
+        verification_base_url = data.get('verification_base_url', os.getenv('APP_BASE_URL', 'http://localhost:5050'))
         
         if not email:
             return jsonify({
