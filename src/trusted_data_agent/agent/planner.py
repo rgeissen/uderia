@@ -518,7 +518,7 @@ class Planner:
                         )
 
                         # --- MODIFICATION START: Pass user_uuid to get_session ---
-                        updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+                        updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                         # --- MODIFICATION END ---
                         if updated_session:
                             yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
@@ -715,7 +715,7 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                     yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
                     
                     # Update session with token usage
-                    updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+                    updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                     if updated_session:
                         yield self.executor._format_sse({
                             "statement_input": input_tokens,
@@ -840,7 +840,7 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                 yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
                 # --- MODIFICATION START: Pass user_uuid to get_session ---
-                updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+                updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                 # --- MODIFICATION END ---
                 if updated_session:
                     yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
@@ -1643,7 +1643,7 @@ Ranking:"""
         # Get user_uuid and session_id from the executor instance
         user_uuid = self.executor.user_uuid
         session_id = self.executor.session_id
-        updated_session = session_manager.get_session(user_uuid, session_id)
+        updated_session = await session_manager.get_session(user_uuid, session_id)
         # --- MODIFICATION END ---
         if updated_session:
             yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")

@@ -387,7 +387,7 @@ class PlanExecutor:
                 source=self.source
             )
 
-            updated_session = session_manager.get_session(self.user_uuid, self.session_id)
+            updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
                 events.append(self._format_sse({
                     "statement_input": input_tokens,
@@ -708,7 +708,7 @@ class PlanExecutor:
         
         # --- MODIFICATION START: Calculate turn number once and store on self ---
         self.current_turn_number = 1
-        session_data = session_manager.get_session(self.user_uuid, self.session_id)
+        session_data = await session_manager.get_session(self.user_uuid, self.session_id)
         if session_data and isinstance(session_data.get("last_turn_data", {}).get("workflow_history"), list):
             self.current_turn_number = len(session_data["last_turn_data"]["workflow_history"]) + 1
         app_logger.info(f"PlanExecutor initialized for turn: {self.current_turn_number}")
@@ -955,11 +955,11 @@ class PlanExecutor:
         # This ensures the session data is correct before any LLM calls
         profile_tag = self._get_current_profile_tag()
         app_logger.info(f"🔍 About to call update_models_used with: provider={self.current_provider}, model={self.current_model}, profile_tag={profile_tag}, profile_override_id={self.profile_override_id}")
-        session_manager.update_models_used(self.user_uuid, self.session_id, self.current_provider, self.current_model, profile_tag)
+        await session_manager.update_models_used(self.user_uuid, self.session_id, self.current_provider, self.current_model, profile_tag)
         app_logger.info(f"✅ Session {self.session_id} initialized with provider={self.current_provider}, model={self.current_model}, profile_tag={profile_tag}")
         
         # Send immediate SSE notification so UI updates in real-time
-        session_data = session_manager.get_session(self.user_uuid, self.session_id)
+        session_data = await session_manager.get_session(self.user_uuid, self.session_id)
         if session_data:
             notification_payload = {
                 "session_id": self.session_id,
@@ -1293,7 +1293,7 @@ class PlanExecutor:
                     # --- PHASE 2 END ---
                 }
                 # --- MODIFICATION END ---
-                session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+                await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
                 app_logger.debug(f"Saved last turn data to session {self.session_id} for user {self.user_uuid}")
 
                 # --- MODIFICATION START: Add "Producer" logic to send turn to RAG worker ---
@@ -1327,7 +1327,7 @@ class PlanExecutor:
                     new_name = await self._generate_session_name(self.original_user_input)
                     if new_name != "New Chat":
                         try:
-                            session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
                             yield self._format_sse({
                                 "session_id": self.session_id,
                                 "newName": new_name
@@ -1396,7 +1396,7 @@ class PlanExecutor:
                     source=self.source
                 )
 
-                updated_session = session_manager.get_session(self.user_uuid, self.session_id)
+                updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                 if updated_session:
                     yield self._format_sse({
                         "statement_input": input_tokens, "statement_output": output_tokens,
@@ -1456,7 +1456,7 @@ class PlanExecutor:
                 replay_type_text = "Optimized" if "optimized" in str(self.is_replay).lower() else "Original"
                 # Find original turn ID (similar logic as in run method)
                 original_turn_id = "..."
-                session_data = session_manager.get_session(self.user_uuid, self.session_id)
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                 if session_data and isinstance(session_data.get("last_turn_data", {}).get("workflow_history"), list):
                     for idx, turn in enumerate(session_data["last_turn_data"]["workflow_history"]):
                         if turn.get("original_plan") == self.plan_to_execute: # Compare against the plan being replayed
@@ -1700,7 +1700,7 @@ class PlanExecutor:
         self.final_summary_text = clean_summary_for_llm
 
         # Now, save both versions to their respective histories
-        session_manager.add_message_to_histories(
+        await session_manager.add_message_to_histories(
             self.user_uuid,
             self.session_id,
             'assistant',

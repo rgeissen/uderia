@@ -289,7 +289,7 @@ async def execute_prompt(prompt_name: str):
         # This ensures tools are properly registered and execution is autonomous
         llm_instance = APP_STATE.get("llm")
         
-        temp_session_id = session_manager.create_session(
+        temp_session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=APP_CONFIG.CURRENT_PROVIDER,
             llm_instance=llm_instance,
@@ -561,7 +561,7 @@ async def execute_prompt_raw(prompt_name: str):
             return jsonify({"status": "error", "message": "Authentication required"}), 401
         
         # Create temporary session for the authenticated user
-        temp_session_id = session_manager.create_session(
+        temp_session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=APP_CONFIG.CURRENT_PROVIDER,
             llm_instance=llm_instance,
@@ -1901,7 +1901,7 @@ async def create_session():
         
         # Create session with the profile's context
         app_logger.info(f"REST API: Creating session with profile_id={default_profile_id}, profile_tag={default_profile.get('tag')}")  # DEBUG
-        session_id = session_manager.create_session(
+        session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=provider,
             llm_instance=llm_instance,
@@ -1912,7 +1912,7 @@ async def create_session():
         app_logger.info(f"REST API: Created new session: {session_id} for user {user_uuid} using profile {default_profile_id}")
 
         # Retrieve the newly created session's full data
-        new_session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+        new_session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
         if new_session_data:
             # Prepare notification payload
             notification_payload = {
@@ -1952,7 +1952,7 @@ async def execute_query(session_id: str):
         return jsonify({"error": "The 'prompt' field is required."}), 400
 
     # --- MODIFICATION START: Validate session for this user ---
-    if not session_manager.get_session(user_uuid, session_id):
+    if not await session_manager.get_session(user_uuid, session_id):
         app_logger.warning(f"REST API: Session '{session_id}' not found for user '{user_uuid}'.")
         return jsonify({"error": f"Session '{session_id}' not found."}), 404
     # --- MODIFICATION END ---
@@ -2096,7 +2096,7 @@ async def execute_query(session_id: str):
                     # Get the session to retrieve profile tag
                     profile_tag = None
                     try:
-                        session_data = session_manager.get_session(user_uuid, session_id)
+                        session_data = await session_manager.get_session(user_uuid, session_id)
                         profile_tag = session_data.get("profile_tag") if session_data else None
                     except Exception as e:
                         app_logger.warning(f"Could not retrieve profile tag for session {session_id}: {e}")

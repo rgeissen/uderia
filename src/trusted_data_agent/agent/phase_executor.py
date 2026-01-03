@@ -73,7 +73,7 @@ class CorrectionStrategy(ABC):
         events.append( ({"target": "llm", "state": "idle"}, "status_indicator_update") )
 
         # --- MODIFICATION START: Pass user_uuid to get_session ---
-        updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+        updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
             events.append( ({
@@ -1023,7 +1023,7 @@ class PhaseExecutor:
                 self.executor.events_to_yield = []
 
             # --- MODIFICATION START: Pass user_uuid to get_session ---
-            updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+            updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
             # --- MODIFICATION END ---
             if updated_session:
                 yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id }, "token_update")
@@ -1291,7 +1291,7 @@ class PhaseExecutor:
 
         yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
         # --- MODIFICATION START: Pass user_uuid to get_session ---
-        updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+        updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
             yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
@@ -1403,7 +1403,7 @@ class PhaseExecutor:
         if tool_name == "TDA_LLMTask" and self.executor.is_synthesis_from_history:
             app_logger.info("Preparing TDA_LLMTask for 'full_context' execution.")
             # --- MODIFICATION START: Pass user_uuid to get_session ---
-            session_data = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+            session_data = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
             # --- MODIFICATION END ---
             session_history = session_data.get("session_history", []) if session_data else []
 
@@ -1463,7 +1463,7 @@ class PhaseExecutor:
 
             if input_tokens > 0 or output_tokens > 0:
                 # --- MODIFICATION START: Pass user_uuid to get_session ---
-                updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+                updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                 # --- MODIFICATION END ---
                 if updated_session:
                     final_call_id = tool_result.get("metadata", {}).get("call_id") if isinstance(tool_result, dict) else None
@@ -1868,7 +1868,7 @@ class PhaseExecutor:
             # user_uuid implicitly passed
         )
         # --- MODIFICATION START: Pass user_uuid to get_session ---
-        updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+        updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
             yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
@@ -1928,7 +1928,7 @@ class PhaseExecutor:
         yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
         # --- MODIFICATION START: Pass user_uuid to get_session ---
-        updated_session = session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+        updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
             yield self.executor._format_sse({"statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id}, "token_update")

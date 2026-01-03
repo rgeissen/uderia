@@ -1208,11 +1208,11 @@ async def get_sessions(current_user):
         original_filter = APP_CONFIG.SESSIONS_FILTER_BY_USER
         try:
             APP_CONFIG.SESSIONS_FILTER_BY_USER = False
-            sessions = session_manager.get_all_sessions(user_uuid=user_uuid)
+            sessions = await session_manager.get_all_sessions(user_uuid=user_uuid)
         finally:
             APP_CONFIG.SESSIONS_FILTER_BY_USER = original_filter
     else:
-        sessions = session_manager.get_all_sessions(user_uuid=user_uuid)
+        sessions = await session_manager.get_all_sessions(user_uuid=user_uuid)
     
     # Ensure profile_tags_used is included for each session
     for session in sessions:
@@ -1225,8 +1225,8 @@ async def get_sessions(current_user):
 async def get_session_history(current_user, session_id):
     """Retrieves the chat history and token counts for a specific session."""
     user_uuid = current_user.id
-    
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if session_data:
         # --- MODIFICATION START: Extract feedback from workflow_history ---
         feedback_by_turn = {}
@@ -1263,13 +1263,13 @@ async def rename_session(current_user, session_id: str):
     if not new_name or not isinstance(new_name, str) or len(new_name.strip()) == 0:
         return jsonify({"status": "error", "message": "Invalid or empty 'newName' provided."}), 400
 
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
         app_logger.warning(f"Rename failed: Session {session_id} not found for user {user_uuid}.")
         return jsonify({"status": "error", "message": "Session not found or access denied."}), 404
 
     try:
-        session_manager.update_session_name(user_uuid, session_id, new_name.strip())
+        await session_manager.update_session_name(user_uuid, session_id, new_name.strip())
         app_logger.info(f"User {user_uuid} renamed session {session_id} to '{new_name.strip()}'.")
         return jsonify({"status": "success", "message": "Session renamed successfully."}), 200
     except Exception as e:
@@ -1284,7 +1284,7 @@ async def delete_session_endpoint(current_user, session_id: str):
     app_logger.info(f"DELETE request received for session {session_id} from user {user_uuid}.")
 
     try:
-        success = session_manager.delete_session(user_uuid, session_id)
+        success = await session_manager.delete_session(user_uuid, session_id)
         if success:
             app_logger.info(f"Successfully processed archive request for session {session_id} (user {user_uuid}).")
             return jsonify({"status": "success", "message": "Session archived successfully."}), 200
@@ -1303,7 +1303,7 @@ async def purge_memory(current_user, session_id: str):
     user_uuid = current_user.id
     app_logger.info(f"Purge memory request for session {session_id}, user {user_uuid}")
 
-    success = session_manager.purge_session_memory(user_uuid, session_id)
+    success = await session_manager.purge_session_memory(user_uuid, session_id)
 
     if success:
         app_logger.info(f"Agent memory purged successfully for session {session_id}, user {user_uuid}.")
@@ -1320,7 +1320,7 @@ async def purge_memory(current_user, session_id: str):
 async def get_turn_plan(current_user, session_id: str, turn_id: int):
     """Retrieves the original plan for a specific turn in a session."""
     user_uuid = current_user.id
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
         return jsonify({"error": "Session not found"}), 404
 
@@ -1342,7 +1342,7 @@ async def get_turn_plan(current_user, session_id: str, turn_id: int):
 async def get_turn_details(current_user, session_id: str, turn_id: int):
     """Retrieves the full details (plan and trace) for a specific turn."""
     user_uuid = current_user.id
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
         return jsonify({"error": "Session not found"}), 404
 
@@ -1374,7 +1374,7 @@ async def get_turn_query(session_id: str, turn_id: int):
     user_uuid = _get_user_uuid_from_request()
     if not user_uuid:
         return jsonify({"status": "error", "message": "Authentication required. Please login."}), 401
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
         return jsonify({"error": "Session not found"}), 404
 
@@ -1476,7 +1476,7 @@ async def new_session():
             app_logger.warning(f"Default profile ID {default_profile_id} not found in profiles list")
 
     try:
-        session_id = session_manager.create_session(
+        session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=profile_provider,
             llm_instance=APP_STATE.get('llm'),
@@ -1743,7 +1743,7 @@ async def ask_stream():
     # --- MODIFICATION END ---
 
 
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
         app_logger.error(f"ask_stream denied: Session {session_id} not found for user {user_uuid}.")
         async def error_gen():
@@ -1769,7 +1769,7 @@ async def ask_stream():
     # Only update session if no profile override is active
     # If profile override is active, let executor handle the update after validation
     if not profile_override_id:
-        session_manager.update_models_used(user_uuid=user_uuid, session_id=session_id, provider=APP_CONFIG.CURRENT_PROVIDER, model=APP_CONFIG.CURRENT_MODEL, profile_tag=profile_tag)
+        await session_manager.update_models_used(user_uuid=user_uuid, session_id=session_id, provider=APP_CONFIG.CURRENT_PROVIDER, model=APP_CONFIG.CURRENT_MODEL, profile_tag=profile_tag)
 
     # --- MODIFICATION START: Generate task_id for interactive sessions ---
     task_id = generate_task_id()
@@ -1896,7 +1896,7 @@ async def invoke_prompt_stream():
     disabled_history = data.get("disabled_history", False)
     source = data.get("source", "prompt_library")
 
-    session_data = session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+    session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
         app_logger.error(f"invoke_prompt_stream denied: Session {session_id} not found for user {user_uuid}.")
         async def error_gen():
@@ -2005,7 +2005,7 @@ async def toggle_turn_validity_route(session_id: str, turn_id: int):
         return jsonify({"status": "error", "message": "Authentication required. Please login."}), 401
     app_logger.info(f"Toggle validity request for session {session_id}, turn {turn_id}, user {user_uuid}")
 
-    success = session_manager.toggle_turn_validity(user_uuid, session_id, turn_id)
+    success = await session_manager.toggle_turn_validity(user_uuid, session_id, turn_id)
 
     if success:
         return jsonify({"status": "success", "message": f"Turn {turn_id} validity toggled."}), 200
@@ -2025,7 +2025,7 @@ async def update_turn_feedback_route(session_id: str, turn_id: int):
     
     app_logger.info(f"Feedback update request for session {session_id}, turn {turn_id}, user {user_uuid}: {vote}")
 
-    success = session_manager.update_turn_feedback(user_uuid, session_id, turn_id, vote)
+    success = await session_manager.update_turn_feedback(user_uuid, session_id, turn_id, vote)
 
     if success:
         return jsonify({"status": "success", "message": f"Turn {turn_id} feedback updated."}), 200

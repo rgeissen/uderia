@@ -48,7 +48,7 @@ async def run_agent_execution(
     """
     final_result_payload = None
     try:
-        session_data = session_manager.get_session(user_uuid, session_id)
+        session_data = await session_manager.get_session(user_uuid, session_id)
 
         if not session_data:
              app_logger.error(f"Execution service: Session {session_id} not found for user {user_uuid}.")
@@ -86,7 +86,7 @@ async def run_agent_execution(
                 app_logger.warning(f"Failed to get profile tag: {e}")
 
         if message_to_save:
-            session_manager.add_message_to_histories(
+            await session_manager.add_message_to_histories(
                 user_uuid,
                 session_id,
                 'user',
