@@ -89,3 +89,6 @@ htmlcov/
 .pytest_cache/
 
 test/inference_profile_test.py
+
+# Gemini
+.gemini/
