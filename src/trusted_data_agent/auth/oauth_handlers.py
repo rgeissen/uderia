@@ -217,7 +217,7 @@ class OAuthHandler:
         code: str,
         redirect_uri: str,
         state: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], bool]:
         """
         Handle OAuth callback and return JWT token + user info.
         
@@ -234,7 +234,7 @@ class OAuthHandler:
             state: State parameter (for CSRF protection)
             
         Returns:
-            Tuple of (jwt_token, user_dict) on success, (None, None) on failure
+            Tuple of (jwt_token, user_dict, new_user_created) on success, (None, None, False) on failure
         """
         logger.info(f"Processing OAuth callback for {self.provider_name}")
         
@@ -242,7 +242,7 @@ class OAuthHandler:
         token_response = await self.exchange_code_for_token(code, redirect_uri)
         if not token_response or 'access_token' not in token_response:
             logger.error(f"Failed to get access token for {self.provider_name}")
-            return None, None
+            return None, None, False
         
         access_token = token_response['access_token']
         
@@ -250,29 +250,29 @@ class OAuthHandler:
         provider_data = await self.get_user_info(access_token)
         if not provider_data:
             logger.error(f"Failed to fetch user info from {self.provider_name}")
-            return None, None
+            return None, None, False
         
         user_info = self._extract_user_info(provider_data)
         provider_id = user_info.get('provider_id')
         
         if not provider_id:
             logger.error(f"Could not extract provider ID from {self.provider_name} response")
-            return None, None
+            return None, None, False
         
         # Step 3-5: Sync user and generate token
         try:
-            jwt_token, user_dict = await self._sync_user_and_generate_token(
+            jwt_token, user_dict, new_user_created = await self._sync_user_and_generate_token(
                 provider_id=provider_id,
                 user_info=user_info,
                 provider_data=provider_data,
                 ip_address=None  # Should be passed from request context
             )
             
-            return jwt_token, user_dict
+            return jwt_token, user_dict, new_user_created
         
         except Exception as e:
             logger.error(f"Error syncing user for {self.provider_name}: {e}", exc_info=True)
-            return None, None
+            return None, None, False
     
     async def _sync_user_and_generate_token(
         self,
@@ -280,7 +280,7 @@ class OAuthHandler:
         user_info: Dict[str, Any],
         provider_data: Dict[str, Any],
         ip_address: Optional[str] = None
-    ) -> Tuple[str, Dict[str, Any]]:
+    ) -> Tuple[str, Dict[str, Any], bool]:
         """
         Sync OAuth account with database user and generate JWT token.
         
@@ -291,8 +291,9 @@ class OAuthHandler:
             ip_address: Optional IP address for token tracking
             
         Returns:
-            Tuple of (jwt_token, user_dict)
+            Tuple of (jwt_token, user_dict, new_user_created)
         """
+        new_user_created = False
         with get_db_session() as session:
             # Check if OAuth account exists
             oauth_account = session.query(OAuthAccount).filter_by(
@@ -329,6 +330,7 @@ class OAuthHandler:
                     session.add(user)
                     session.flush()  # Flush to get user.id before creating OAuthAccount
                     logger.info(f"Created new user (ID: {user.id}) from {self.provider_name} OAuth")
+                    new_user_created = True
                 else:
                     logger.info(f"Found existing user {user.id} by email")
                 
@@ -361,7 +363,7 @@ class OAuthHandler:
             
             logger.info(f"Generated JWT token for user {user.id} via {self.provider_name}")
             
-            return jwt_token, user_dict
+            return jwt_token, user_dict, new_user_created
     
     @staticmethod
     def _create_user_from_oauth(user_info: Dict[str, Any]) -> User:

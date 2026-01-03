@@ -2241,7 +2241,7 @@ async def oauth_callback(provider):
         handler = OAuthHandler(provider)
         callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider)
         
-        jwt_token, user_dict = await handler.handle_callback(
+        jwt_token, user_dict, new_user_created = await handler.handle_callback(
             code=code,
             redirect_uri=callback_uri,
             state=state
@@ -2251,7 +2251,16 @@ async def oauth_callback(provider):
             OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details='Failed to complete OAuth flow')
             error_params = urlencode({'error': 'Failed to complete OAuth authentication'})
             return redirect(f"/login?{error_params}")
-        
+
+        if new_user_created:
+            user_id = user_dict.get('id')
+            if user_id:
+                logger.info(f"New user {user_id} created via OAuth, ensuring default profile and collection.")
+                ensure_user_default_profile(user_id)
+                ensure_user_default_collection(user_id)
+            else:
+                logger.warning("A new user was created via OAuth, but no user_id was found in the user dictionary.")
+
         # Get return_to URL from session
         return_to = OAuthSession.get_return_to()
         
