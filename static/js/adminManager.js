@@ -464,6 +464,8 @@ const AdminManager = {
                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tier</th>
                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Profile</th>
                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Change Tier</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Assign Profile</th>
                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
             `;
@@ -473,7 +475,7 @@ const AdminManager = {
         if (this.currentUsers.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="px-6 py-8 text-center text-gray-400">
+                    <td colspan="8" class="px-6 py-8 text-center text-gray-400">
                         No users found for this filter.
                     </td>
                 </tr>
@@ -517,23 +519,27 @@ const AdminManager = {
                     </span>
                 </td>
                 <td class="px-6 py-4">
+                    <select
+                        class="tier-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
+                        data-user-id="${user.id}"
+                        ${user.is_current_user ? 'disabled' : ''}
+                    >
+                        <option value="user" ${user.profile_tier === 'user' ? 'selected' : ''}>User</option>
+                        <option value="developer" ${user.profile_tier === 'developer' ? 'selected' : ''}>Developer</option>
+                        <option value="admin" ${user.profile_tier === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                </td>
+                <td class="px-6 py-4">
+                    <select
+                        class="profile-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
+                        data-user-id="${user.id}"
+                        title="Assign Consumption Profile"
+                    >
+                        ${profileOptions}
+                    </select>
+                </td>
+                <td class="px-6 py-4">
                     <div class="flex gap-2">
-                        <select 
-                            class="tier-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
-                            data-user-id="${user.id}"
-                            ${user.is_current_user ? 'disabled' : ''}
-                        >
-                            <option value="user" ${user.profile_tier === 'user' ? 'selected' : ''}>User</option>
-                            <option value="developer" ${user.profile_tier === 'developer' ? 'selected' : ''}>Developer</option>
-                            <option value="admin" ${user.profile_tier === 'admin' ? 'selected' : ''}>Admin</option>
-                        </select>
-                        <select 
-                            class="profile-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
-                            data-user-id="${user.id}"
-                            title="Assign Consumption Profile"
-                        >
-                            ${profileOptions}
-                        </select>
                         <button class="edit-user-btn p-2 text-blue-400 hover:text-blue-300 transition-colors" data-user-id="${user.id}" title="Edit User">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
