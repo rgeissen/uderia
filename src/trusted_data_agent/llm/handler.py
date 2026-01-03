@@ -510,7 +510,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
     max_retries = APP_CONFIG.LLM_API_MAX_RETRIES
     base_delay = APP_CONFIG.LLM_API_BASE_DELAY
     # --- MODIFICATION START: Pass user_uuid to get_session ---
-    session_data = get_session(user_uuid, session_id) if user_uuid and session_id else None
+    session_data = await get_session(user_uuid, session_id) if user_uuid and session_id else None
     # --- MODIFICATION END ---
     system_prompt = _get_full_system_prompt(session_data, dependencies, system_prompt_override, active_prompt_name_for_filter, source, active_profile_id, current_provider)
 
