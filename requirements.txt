@@ -2,6 +2,7 @@ quart==0.20.0
 quart-cors==0.8.0
 hypercorn==0.17.3
 python-dotenv==1.1.1
+aiofiles==24.1.0
 google-generativeai==0.8.5
 langchain-mcp-adapters==0.1.9
 anthropic==0.62.0

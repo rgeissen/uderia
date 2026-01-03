@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path # Use pathlib for better path handling
 import shutil # For potential cleanup later if needed
 import asyncio # For sending notifications asynchronously
+import aiofiles # For async file I/O
 
 import google.generativeai as genai
 from trusted_data_agent.agent.prompts import PROVIDER_SYSTEM_PROMPTS
@@ -80,8 +81,8 @@ def _find_session_path(user_uuid: str, session_id: str) -> Path | None:
                     return potential_path
         return None
 
-def _load_session(user_uuid: str, session_id: str) -> dict | None:
-    """Loads session data from a file."""
+async def _load_session(user_uuid: str, session_id: str) -> dict | None:
+    """Loads session data from a file asynchronously."""
     session_path = _find_session_path(user_uuid, session_id)
     if not session_path:
         app_logger.warning(f"Session file not found for session_id: {session_id}")
@@ -91,8 +92,9 @@ def _load_session(user_uuid: str, session_id: str) -> dict | None:
     try:
         # The check is technically redundant if _find_session_path finds something, but good for safety
         if session_path.is_file():
-            with open(session_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                data = json.loads(content)
                 app_logger.debug(f"Successfully loaded session '{session_id}' (owned by {data.get('user_uuid')}) for requesting user '{user_uuid}'.")
                 return data
         else:
@@ -102,8 +104,8 @@ def _load_session(user_uuid: str, session_id: str) -> dict | None:
         app_logger.error(f"Error loading session file '{session_path}': {e}", exc_info=True)
         return None # Return None on error
 
-def _save_session(user_uuid: str, session_id: str, session_data: dict):
-    """Saves session data to a file, creating directories if needed."""
+async def _save_session(user_uuid: str, session_id: str, session_data: dict):
+    """Saves session data to a file asynchronously, creating directories if needed."""
     session_data['last_updated'] = datetime.now().isoformat()
     session_path = _get_session_path(user_uuid, session_id)
     if not session_path:
@@ -116,8 +118,8 @@ def _save_session(user_uuid: str, session_id: str, session_data: dict):
         if not session_path.parent.exists():
              app_logger.warning(f"User session directory was just created (or failed silently): {session_path.parent}")
 
-        with open(session_path, 'w', encoding='utf-8') as f:
-            json.dump(session_data, f, indent=2) # Use indent for readability
+        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(session_data, indent=2)) # Use indent for readability
         app_logger.debug(f"Successfully saved session '{session_id}' for user '{user_uuid}'.")
 
         # --- MODIFICATION START: Send session_model_update notification (with deduplication) ---
@@ -164,7 +166,7 @@ def _save_session(user_uuid: str, session_id: str, session_data: dict):
 
 # --- Public Session Management Functions ---
 
-def create_session(user_uuid: str, provider: str, llm_instance: any, charting_intensity: str, system_prompt_template: str | None = None, profile_tag: str | None = None, profile_id: str | None = None, is_temporary: bool = False, temporary_purpose: str | None = None) -> str:
+async def create_session(user_uuid: str, provider: str, llm_instance: any, charting_intensity: str, system_prompt_template: str | None = None, profile_tag: str | None = None, profile_id: str | None = None, is_temporary: bool = False, temporary_purpose: str | None = None) -> str:
     session_id = generate_session_id()
     app_logger.info(f"Attempting to create session '{session_id}' for user '{user_uuid}' (temporary: {is_temporary}).")
 
@@ -207,7 +209,7 @@ def create_session(user_uuid: str, provider: str, llm_instance: any, charting_in
         "temporary_purpose": temporary_purpose # Optional description of the temporary session purpose
     }
 
-    if _save_session(user_uuid, session_id, session_data):
+    if await _save_session(user_uuid, session_id, session_data):
         app_logger.info(f"Successfully created and saved session '{session_id}' for user '{user_uuid}'.")
         
         # --- CONSUMPTION TRACKING START ---
@@ -231,9 +233,9 @@ def create_session(user_uuid: str, provider: str, llm_instance: any, charting_in
         raise IOError(f"Failed to save session file for session {session_id}")
 
 
-def get_session(user_uuid: str, session_id: str) -> dict | None:
+async def get_session(user_uuid: str, session_id: str) -> dict | None:
     app_logger.debug(f"Getting session '{session_id}' for user '{user_uuid}'.")
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if session_data:
         history_modified = False
         # --- MODIFICATION START: Update backfill logic for turn numbers ---
@@ -265,16 +267,16 @@ def get_session(user_uuid: str, session_id: str) -> dict | None:
 
         if history_modified:
             app_logger.info(f"Saving session {session_id} after migrating to include turn numbers.")
-            _save_session(user_uuid, session_id, session_data)
+            await _save_session(user_uuid, session_id, session_data)
 
     return session_data
 
-def get_all_sessions(user_uuid: str) -> list[dict]:
+async def get_all_sessions(user_uuid: str) -> list[dict]:
     from trusted_data_agent.core.config import APP_CONFIG
-    
+
     app_logger.debug(f"Getting all sessions for user '{user_uuid}'. Filter by user: {APP_CONFIG.SESSIONS_FILTER_BY_USER}")
     session_summaries = []
-    
+
     # Determine which directories to scan based on filter setting
     if APP_CONFIG.SESSIONS_FILTER_BY_USER:
         # User-specific mode: scan only the user's directory
@@ -296,15 +298,16 @@ def get_all_sessions(user_uuid: str) -> list[dict]:
             app_logger.warning(f"Sessions directory not found: {SESSIONS_DIR}. Returning empty list.")
             return []
         scan_dirs = [d for d in SESSIONS_DIR.iterdir() if d.is_dir()]
-    
+
     # Scan all determined directories
     for session_dir in scan_dirs:
         for session_file in session_dir.glob("*.json"):
             app_logger.debug(f"Found potential session file: {session_file.name}")
             try:
-                with open(session_file, 'r', encoding='utf-8') as f:
+                async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
                     # Load only necessary fields for summary to improve performance
-                    data = json.load(f)
+                    content = await f.read()
+                    data = json.loads(content)
                     
                     summary = {
                         "id": data.get("id", session_file.stem),
@@ -345,7 +348,7 @@ def get_all_sessions(user_uuid: str) -> list[dict]:
     app_logger.debug(f"Returning {len(session_summaries)} session summaries for user '{user_uuid}' (template sessions filtered out).")
     return session_summaries
 
-def delete_session(user_uuid: str, session_id: str) -> bool:
+async def delete_session(user_uuid: str, session_id: str) -> bool:
     """Archives a session by marking it as archived instead of deleting the file."""
     session_path = _find_session_path(user_uuid, session_id)
     if not session_path:
@@ -356,16 +359,17 @@ def delete_session(user_uuid: str, session_id: str) -> bool:
     try:
         if session_path.is_file():
             # Load the session data
-            with open(session_path, 'r', encoding='utf-8') as f:
-                session_data = json.load(f)
-            
+            async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                session_data = json.loads(content)
+
             # Mark as archived
             session_data["archived"] = True
             session_data["archived_at"] = datetime.now(timezone.utc).isoformat()
-            
+
             # Save back to file
-            with open(session_path, 'w', encoding='utf-8') as f:
-                json.dump(session_data, f, indent=2, ensure_ascii=False)
+            async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(session_data, indent=2, ensure_ascii=False))
             
             app_logger.info(f"Successfully archived session file: {session_path}")
             return True # Indicate success
@@ -378,7 +382,7 @@ def delete_session(user_uuid: str, session_id: str) -> bool:
         return False # Indicate failure due to error
 
 # --- MODIFICATION START: Rename and refactor add_to_history ---
-def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None):
+async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None):
     """
     Adds a message to the appropriate histories, decoupling UI from LLM context.
     - `content` (plain text) is *always* added to the LLM's chat_object.
@@ -386,7 +390,7 @@ def add_message_to_histories(user_uuid: str, session_id: str, role: str, content
     - If `html_content` is not provided, `content` is used for the UI.
     - `profile_tag` (if provided) stores which profile was used for this message.
     """
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if session_data:
         # --- 1. Add to UI History (session_history) ---
         # Use the rich HTML content if provided, otherwise fall back to plain text.
@@ -457,16 +461,16 @@ def add_message_to_histories(user_uuid: str, session_id: str, role: str, content
         # --- MODIFICATION END ---
         # --- MODIFICATION END ---
 
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
              app_logger.error(f"Failed to save session after adding history for {session_id}")
     else:
         app_logger.warning(f"Could not add history: Session {session_id} not found for user {user_uuid}.")
 
-def update_session_name(user_uuid: str, session_id: str, new_name: str):
-    session_data = _load_session(user_uuid, session_id)
+async def update_session_name(user_uuid: str, session_id: str, new_name: str):
+    session_data = await _load_session(user_uuid, session_id)
     if session_data:
         session_data['name'] = new_name
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
              app_logger.error(f"Failed to save session after updating name for {session_id}")
         else:
             # --- CONSUMPTION TRACKING: Update session name in database ---
@@ -500,13 +504,13 @@ def update_session_name(user_uuid: str, session_id: str, new_name: str):
          app_logger.warning(f"Could not update name: Session {session_id} not found for user {user_uuid}.")
 
 
-def update_token_count(user_uuid: str, session_id: str, input_tokens: int, output_tokens: int):
+async def update_token_count(user_uuid: str, session_id: str, input_tokens: int, output_tokens: int):
     """Updates the token counts for a given session."""
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if session_data:
         session_data['input_tokens'] = session_data.get('input_tokens', 0) + input_tokens
         session_data['output_tokens'] = session_data.get('output_tokens', 0) + output_tokens
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after updating tokens for {session_id}")
         
         # Record token usage for consumption tracking and quota enforcement
@@ -539,10 +543,10 @@ def update_token_count(user_uuid: str, session_id: str, input_tokens: int, outpu
         app_logger.warning(f"Could not update tokens: Session {session_id} not found for user {user_uuid}.")
 
 
-def update_models_used(user_uuid: str, session_id: str, provider: str, model: str, profile_tag: str | None = None):
+async def update_models_used(user_uuid: str, session_id: str, provider: str, model: str, profile_tag: str | None = None):
     """Adds the current model/profile to the list used in the session."""
     app_logger.debug(f"update_models_used called for session {session_id} with provider={provider}, model={model}, profile_tag={profile_tag}")
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if session_data:
         # Keep models_used for backwards compatibility
         models_used = session_data.get('models_used', [])
@@ -567,15 +571,15 @@ def update_models_used(user_uuid: str, session_id: str, provider: str, model: st
         session_data['profile_tag'] = profile_tag
         # --- MODIFICATION END ---
 
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after updating models used for {session_id}")
     else:
         app_logger.warning(f"Could not update models used: Session {session_id} not found for user {user_uuid}.")
 
 
-def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict):
+async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict):
     """Saves the most recent turn's action history and plans to the session file."""
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if session_data:
         # Ensure the structure exists (already done on creation, but good for robustness)
         if "last_turn_data" not in session_data:
@@ -657,9 +661,9 @@ def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict):
                 cost_manager = get_cost_manager()
                 cost_usd = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
                 cost_usd_cents = int(cost_usd * 100)  # Convert to cents
-                
+
                 # Reload session to get latest name (might have been updated after initial load)
-                current_session = _load_session(user_uuid, session_id)
+                current_session = await _load_session(user_uuid, session_id)
                 session_name = (current_session.get('name') if current_session else None) or session_data.get('name') or 'Untitled Session'
                 user_query = turn_data.get('user_query', '')
                 
@@ -688,20 +692,20 @@ def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict):
             app_logger.warning(f"Failed to record turn metrics for user {user_uuid}: {e}")
         # --- CONSUMPTION TRACKING END ---
 
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after updating last turn data for {session_id}")
     else:
         app_logger.warning(f"Could not update last turn data: Session {session_id} not found for user {user_uuid}.")
 
 # --- MODIFICATION START: Add function to purge only the agent's memory ---
-def purge_session_memory(user_uuid: str, session_id: str) -> bool:
+async def purge_session_memory(user_uuid: str, session_id: str) -> bool:
     """
     Resets the agent's LLM context memory (`chat_object`) for a session,
     but leaves the UI history (`session_history`) and plan/trace history
     (`last_turn_data`) intact.
     """
     app_logger.info(f"Attempting to purge agent memory (chat_object) for session '{session_id}', user '{user_uuid}'.")
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if not session_data:
         app_logger.warning(f"Could not purge memory: Session {session_id} not found for user {user_uuid}.")
         return False # Session not found
@@ -753,10 +757,10 @@ def purge_session_memory(user_uuid: str, session_id: str) -> bool:
 
         app_logger.info(f"Successfully reset chat_object for session '{session_id}'. Invalidated existing history.")
 
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after purging memory for {session_id}")
             return False # Save failed
-        
+
         return True # Success
 
     except Exception as e:
@@ -764,13 +768,13 @@ def purge_session_memory(user_uuid: str, session_id: str) -> bool:
 # --- MODIFICATION END ---
 
 # --- MODIFICATION START: Add function to toggle turn validity ---
-def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) -> bool:
+async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) -> bool:
     """
     Toggles the 'isValid' status of a specific turn and its corresponding
     UI messages in the session history.
     """
     app_logger.info(f"Toggling validity for turn {turn_id} in session '{session_id}' for user '{user_uuid}'.")
-    session_data = _load_session(user_uuid, session_id)
+    session_data = await _load_session(user_uuid, session_id)
     if not session_data:
         app_logger.warning(f"Could not toggle validity: Session {session_id} not found.")
         return False
@@ -808,7 +812,7 @@ def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) -> bool:
                         app_logger.info(f"Updated messages in session_history for turn {turn_id} to isValid={new_status}.")
                         break
 
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after toggling validity for turn {turn_id}")
             return False
 
@@ -820,25 +824,25 @@ def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) -> bool:
 # --- MODIFICATION END ---
 
 # --- MODIFICATION START: Add function to update turn feedback ---
-def update_turn_feedback(user_uuid: str, session_id: str, turn_id: int, vote: str | None) -> bool:
+async def update_turn_feedback(user_uuid: str, session_id: str, turn_id: int, vote: str | None) -> bool:
     """
     Updates the feedback (upvote/downvote) for a specific turn in the workflow_history
     and propagates the feedback to the corresponding RAG case.
-    
+
     Args:
         user_uuid: The user's UUID
         session_id: The session ID
         turn_id: The turn number to update
         vote: 'up', 'down', or None to clear the vote
-    
+
     Returns:
         True if successful, False otherwise
     """
     import asyncio
     from trusted_data_agent.core.config import APP_STATE, APP_CONFIG
-    
+
     try:
-        session_data = _load_session(user_uuid, session_id)
+        session_data = await _load_session(user_uuid, session_id)
         if not session_data:
             app_logger.warning(f"Could not update feedback: Session {session_id} not found for user {user_uuid}.")
             return False
@@ -869,7 +873,7 @@ def update_turn_feedback(user_uuid: str, session_id: str, turn_id: int, vote: st
             return False
 
         # Save the updated session data
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after updating feedback for turn {turn_id}")
             return False
 
@@ -904,21 +908,21 @@ def update_turn_feedback(user_uuid: str, session_id: str, turn_id: int, vote: st
         return False
 # --- MODIFICATION END ---
 
-def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, case_id: str) -> bool:
+async def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, case_id: str) -> bool:
     """
     Adds a RAG case_id to a specific turn in the workflow_history.
-    
+
     Args:
         user_uuid: The user's UUID
         session_id: The session ID
         turn_id: The turn number to update
         case_id: The RAG case ID to associate with this turn
-    
+
     Returns:
         True if successful, False otherwise
     """
     try:
-        session_data = _load_session(user_uuid, session_id)
+        session_data = await _load_session(user_uuid, session_id)
         if not session_data:
             app_logger.warning(f"Could not add case_id: Session {session_id} not found for user {user_uuid}.")
             return False
@@ -940,7 +944,7 @@ def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, case_id: 
             return False
 
         # Save the updated session data
-        if not _save_session(user_uuid, session_id, session_data):
+        if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after adding case_id to turn {turn_id}")
             return False
 
