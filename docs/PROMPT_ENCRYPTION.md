@@ -25,11 +25,13 @@ The Uderia prompt encryption system provides tier-based access control to system
 
 ### License Tiers
 
-| Tier | Prompt Access | Override Creation | Database Visibility |
-|------|---------------|-------------------|---------------------|
-| **Standard** | ❌ Denied | ❌ No | Encrypted only |
-| **Prompt Engineer** | ✅ Full Access | ✅ Profile-level | Decrypted |
-| **Enterprise** | ✅ Full Access | ✅ User & Profile | Decrypted |
+| Tier | Runtime LLM Usage | UI View/Edit | Override Creation | Database Visibility |
+|------|-------------------|--------------|-------------------|---------------------|
+| **Standard** | ✅ Can decrypt for LLM | ❌ Denied | ❌ No | Encrypted only |
+| **Prompt Engineer** | ✅ Can decrypt for LLM | ✅ Full Access | ✅ Profile-level | Decrypted |
+| **Enterprise** | ✅ Can decrypt for LLM | ✅ Full Access | ✅ User & Profile | Decrypted |
+
+**Note**: All tiers can decrypt system prompts for LLM conversations (runtime usage). Only Prompt Engineer and Enterprise tiers can view/edit prompt content in the UI.
 
 ## Encryption Flow
 
@@ -64,15 +66,13 @@ python encrypt_default_prompts.py  # Generate default_prompts.dat
 # In prompt_loader.py::get_prompt()
 
 1. Load encrypted content from database
-2. Check license tier (Standard/PE/Enterprise)
-3. If PE/Enterprise:
-   - Derive decryption key from license signature
-   - Decrypt prompt content
-   - Cache in memory
-4. If Standard:
-   - Return placeholder "[ENCRYPTED CONTENT]" message
-   - App continues with templates only
+2. Derive decryption key from license signature + tier
+3. Decrypt prompt content for LLM usage (ALL tiers)
+4. Cache decrypted content in memory
+5. UI access control enforced separately via can_access_prompts_ui()
 ```
+
+**Changed Behavior**: Standard tier users can now decrypt prompts for LLM conversations. The restriction on viewing/editing prompts is enforced at the UI level only.
 
 ## Key Derivation
 

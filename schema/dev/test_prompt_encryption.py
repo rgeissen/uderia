@@ -23,6 +23,7 @@ from trusted_data_agent.agent.prompt_encryption import (
     decrypt_prompt,
     encrypt_prompt,
     can_access_prompts,
+    can_access_prompts_ui,
     get_placeholder_content
 )
 
@@ -153,27 +154,36 @@ def test_tier_access_control():
     print("\n" + "="*70)
     print("TEST 4: Tier Access Control")
     print("="*70)
-    
+
     try:
-        # Test allowed tiers
-        allowed_tiers = ['Prompt Engineer', 'Enterprise']
-        for tier in allowed_tiers:
+        # Test runtime access - ALL tiers should have runtime access
+        all_tiers = ['Standard', 'Prompt Engineer', 'Enterprise', 'Unknown']
+        for tier in all_tiers:
             if can_access_prompts(tier):
-                print(f"✓ {tier} tier has access")
+                print(f"✓ {tier} tier has runtime access (for LLM usage)")
             else:
-                print(f"✗ {tier} tier should have access")
+                print(f"✗ {tier} tier should have runtime access")
                 return False
-        
-        # Test denied tiers
-        denied_tiers = ['Standard', 'Unknown', 'Free']
-        for tier in denied_tiers:
-            if not can_access_prompts(tier):
-                print(f"✓ {tier} tier denied access")
+
+        # Test UI access - only PE/Enterprise should have UI access
+        ui_allowed_tiers = ['Prompt Engineer', 'Enterprise']
+        for tier in ui_allowed_tiers:
+            if can_access_prompts_ui(tier):
+                print(f"✓ {tier} tier has UI access (can view/edit)")
             else:
-                print(f"✗ {tier} tier should be denied")
+                print(f"✗ {tier} tier should have UI access")
                 return False
-        
-        # Test placeholder content
+
+        # Test UI denied tiers
+        ui_denied_tiers = ['Standard', 'Unknown', 'Free']
+        for tier in ui_denied_tiers:
+            if not can_access_prompts_ui(tier):
+                print(f"✓ {tier} tier denied UI access")
+            else:
+                print(f"✗ {tier} tier should be denied UI access")
+                return False
+
+        # Test placeholder content (still used for error scenarios)
         placeholder = get_placeholder_content('Standard')
         if '[ENCRYPTED CONTENT]' in placeholder:
             print("✓ Placeholder content generated correctly")
@@ -181,7 +191,7 @@ def test_tier_access_control():
         else:
             print("✗ Placeholder content invalid")
             return False
-            
+
     except Exception as e:
         print(f"✗ Access control test failed: {e}")
         import traceback

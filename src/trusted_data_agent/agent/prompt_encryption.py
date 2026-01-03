@@ -6,12 +6,13 @@ Provides encryption/decryption for system prompts with license-tier-based access
 Architecture:
 - Bootstrap: Prompts encrypted with public-key-derived key for distribution
 - Database: Prompts re-encrypted with license-tier-derived key
-- Runtime: Decryption requires valid PE/Enterprise license
+- Runtime: All tiers can decrypt prompts for LLM usage
+- UI Access: Only PE/Enterprise can view/edit prompts in UI
 
 Security Model:
-- Standard Tier: Cannot decrypt prompts (access denied)
-- Prompt Engineer: Can decrypt with license-derived key
-- Enterprise: Can decrypt with license-derived key
+- Standard Tier: Can decrypt for runtime LLM usage, cannot view/edit in UI
+- Prompt Engineer: Can decrypt + view/edit prompts in UI
+- Enterprise: Can decrypt + view/edit prompts in UI
 """
 
 import base64
@@ -177,18 +178,38 @@ def re_encrypt_prompt(encrypted_content: str, old_key: bytes, new_key: bytes) ->
     return encrypt_prompt(plain_content, new_key)
 
 
-def can_access_prompts(license_tier: str) -> bool:
+def can_access_prompts_ui(license_tier: str) -> bool:
     """
-    Check if license tier has permission to access encrypted prompts.
-    
+    Check if license tier has permission to view/edit prompts in the UI.
+
+    This controls administrative access to the System Prompts editor.
+    All tiers can decrypt prompts for runtime LLM usage.
+
     Args:
         license_tier: License tier (Standard, Prompt Engineer, Enterprise)
-        
+
     Returns:
-        bool: True if tier can decrypt prompts
+        bool: True if tier can view/edit prompts in UI
     """
     allowed_tiers = ['Prompt Engineer', 'Enterprise']
     return license_tier in allowed_tiers
+
+
+def can_access_prompts(license_tier: str) -> bool:
+    """
+    DEPRECATED: Use can_access_prompts_ui() for UI access control.
+
+    Kept for backward compatibility. All tiers can decrypt for runtime usage.
+
+    Args:
+        license_tier: License tier (Standard, Prompt Engineer, Enterprise)
+
+    Returns:
+        bool: Always True (all tiers can decrypt for runtime)
+    """
+    # All tiers need to decrypt prompts for LLM conversations
+    # UI restrictions are handled separately via can_access_prompts_ui()
+    return True
 
 
 def get_placeholder_content(tier: str) -> str:

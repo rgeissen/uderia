@@ -36,6 +36,7 @@ from trusted_data_agent.agent.prompt_encryption import (
     derive_tier_key,
     decrypt_prompt,
     can_access_prompts,
+    can_access_prompts_ui,
     get_placeholder_content
 )
 
@@ -79,7 +80,7 @@ class PromptLoader:
         self._license_info = APP_STATE.get('license_info', {})
         self._tier = self._license_info.get('tier', 'Standard')
         
-        # Step 2.5: Derive decryption key for tier (if authorized)
+        # Step 2.5: Derive decryption key for tier (all tiers can decrypt for runtime)
         self._can_decrypt = can_access_prompts(self._tier)
         if self._can_decrypt:
             try:
@@ -88,9 +89,9 @@ class PromptLoader:
                 with open(license_path, 'r') as f:
                     license_data = json.load(f)
                     self._license_info['signature'] = license_data['signature']
-                
+
                 self._decryption_key = derive_tier_key(self._license_info)
-                logger.info(f"Decryption key derived for tier: {self._tier}")
+                logger.info(f"Decryption key derived for tier: {self._tier} (runtime access enabled)")
             except Exception as e:
                 logger.error(f"Failed to derive decryption key: {e}")
                 self._can_decrypt = False
@@ -350,7 +351,8 @@ class PromptLoader:
                         logger.error(f"Unexpected error decrypting {name}: {e}")
                         return get_placeholder_content(self._tier)
                 else:
-                    logger.warning(f"Access denied to prompt {name} for tier: {self._tier}")
+                    # This should never happen since all tiers can decrypt for runtime
+                    logger.error(f"Unexpected: Access denied to prompt {name} for tier: {self._tier}")
                     return get_placeholder_content(self._tier)
             
             raise ValueError(f"Prompt not found: {name}")
