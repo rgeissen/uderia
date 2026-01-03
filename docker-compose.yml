@@ -1,4 +1,4 @@
-version: '3.8'
+version: '12.0'
 
 services:
   uderia:
@@ -7,10 +7,10 @@ services:
       context: . # Assumes Dockerfile is in this directory
       dockerfile: Dockerfile
     # This will be the name of the image after it's built
-    image: uderia-v10:latest
+    image: uderia-v12:latest
     
     # This is the container name from your JSON config
-    container_name: uderia-v10
+    container_name: uderia-v12
     
     # This 'command' overrides the default CMD in the Dockerfile
     # It's taken directly from the "cmd" field in your JSON
@@ -24,7 +24,7 @@ services:
       # Mount the entire application directory for development
       # IMPORTANT: Ensure /mnt/hdd_storage/docker/uderia contains your latest code
       # including all fixes for authentication and configuration
-      - /mnt/hdd_storage/docker/uderia:/app
+      - /home/rgeissen/prod/docker/uderia:/app
       
     environment:
       # Application-specific variables
