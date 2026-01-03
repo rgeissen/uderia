@@ -2212,6 +2212,7 @@ async def oauth_callback(provider):
         Redirect to frontend with JWT token or error
     """
     from trusted_data_agent.auth.oauth_handlers import OAuthHandler
+    from trusted_data_agent.auth.exceptions import UserDeactivatedException
     from trusted_data_agent.auth.oauth_middleware import (
         OAuthCallbackValidator,
         OAuthErrorHandler,
@@ -2241,12 +2242,20 @@ async def oauth_callback(provider):
         handler = OAuthHandler(provider)
         callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider)
         
-        jwt_token, user_dict, new_user_created = await handler.handle_callback(
-            code=code,
-            redirect_uri=callback_uri,
-            state=state
-        )
-        
+        try:
+            jwt_token, user_dict, new_user_created = await handler.handle_callback(
+                code=code,
+                redirect_uri=callback_uri,
+                state=state
+            )
+        except UserDeactivatedException:
+            OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details='Attempted login by deactivated user.')
+            error_params = urlencode({
+                'error': 'Account Deactivated',
+                'error_description': 'Your account is deactivated. For activation, please contact info@uderia.com'
+            })
+            return redirect(f"/login?{error_params}")
+
         if not jwt_token or not user_dict:
             OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details='Failed to complete OAuth flow')
             error_params = urlencode({'error': 'Failed to complete OAuth authentication'})

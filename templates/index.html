@@ -2061,7 +2061,12 @@
                                             <h3 class="text-xl font-bold text-white">User Tier Management</h3>
                                             <p class="text-sm text-gray-400 mt-1">Assign users to profile tiers (User, Developer, Admin)</p>
                                         </div>
-                                        <div class="flex gap-2">
+                                        <div class="flex-1 flex items-center justify-end gap-2">
+                                            <div class="flex items-center gap-1 p-1 bg-gray-800 rounded-lg">
+                                                <button data-status="all" class="user-status-filter-btn px-3 py-1.5 text-xs font-semibold rounded-md bg-gray-600 text-white">All</button>
+                                                <button data-status="active" class="user-status-filter-btn px-3 py-1.5 text-xs font-semibold rounded-md bg-gray-800 text-gray-400 hover:bg-gray-700">Active</button>
+                                                <button data-status="inactive" class="user-status-filter-btn px-3 py-1.5 text-xs font-semibold rounded-md bg-gray-800 text-gray-400 hover:bg-gray-700">Inactive</button>
+                                            </div>
                                             <button type="button" id="create-user-btn" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md transition-colors text-white font-medium text-sm">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -2086,7 +2091,7 @@
                                                     <th class="px-6 py-3">Email</th>
                                                     <th class="px-6 py-3">Current Tier</th>
                                                     <th class="px-6 py-3">Consumption Profile</th>
-                                                    <th class="px-6 py-3">Features</th>
+                                                    <th class="px-6 py-3">Status</th>
                                                     <th class="px-6 py-3">Actions</th>
                                                 </tr>
                                             </thead>

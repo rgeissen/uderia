@@ -19,6 +19,7 @@ from trusted_data_agent.auth.email_verification import (
     EmailVerificationService,
     EmailVerificationValidator
 )
+from trusted_data_agent.auth.exceptions import UserDeactivatedException
 from trusted_data_agent.auth.account_merge import AccountMergeService
 
 logger = logging.getLogger("quart.app")
@@ -270,6 +271,9 @@ class OAuthHandler:
             
             return jwt_token, user_dict, new_user_created
         
+        except UserDeactivatedException:
+            # Re-raise to be caught by the API route handler
+            raise
         except Exception as e:
             logger.error(f"Error syncing user for {self.provider_name}: {e}", exc_info=True)
             return None, None, False
@@ -304,6 +308,11 @@ class OAuthHandler:
             if oauth_account:
                 # Update existing OAuth account
                 user = oauth_account.user
+
+                if not user.is_active:
+                    logger.warning(f"Deactivated user {user.id} attempted to log in via {self.provider_name}")
+                    raise UserDeactivatedException("User account is deactivated")
+
                 oauth_account.last_used_at = datetime.now(timezone.utc)
                 oauth_account.provider_email = user_info.get('email')
                 oauth_account.provider_name = user_info.get('name')

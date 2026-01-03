@@ -378,14 +378,16 @@ async def manage_users():
     limit = int(request.args.get('limit', 50))
     offset = int(request.args.get('offset', 0))
     search = request.args.get('search')
-    active_only = request.args.get('active_only', 'false').lower() == 'true'
+    status = request.args.get('status', 'all').lower()
     
     try:
         with get_db_session() as session:
             query = session.query(User)
             
-            if active_only:
+            if status == 'active':
                 query = query.filter_by(is_active=True)
+            elif status == 'inactive':
+                query = query.filter_by(is_active=False)
             
             if search:
                 query = query.filter(

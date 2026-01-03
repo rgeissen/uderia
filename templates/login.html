@@ -328,9 +328,16 @@
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
             const error = urlParams.get('error');
+            const errorDescription = urlParams.get('error_description');
             
             if (error || token) {
                 document.getElementById('email-verification-info').style.display = 'none';
+            }
+
+            if (errorDescription) {
+                showAlert(decodeURIComponent(errorDescription), 'error');
+                window.history.replaceState({}, document.title, '/login');
+                return;
             }
 
             if (error) {
