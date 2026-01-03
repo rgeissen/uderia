@@ -29,6 +29,9 @@ services:
     environment:
       # Application-specific variables
       - CORS_ALLOWED_ORIGINS=https://tda.uderia.com
+      - APP_BASE_URL=https://tda.uderia.com
+      # Secret key for session security and cryptographic signing. Change this to a strong random string in production.
+      - SECRET_KEY=${SECRET_KEY}
       
     networks:
       - tda_network
