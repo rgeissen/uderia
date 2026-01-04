@@ -77,10 +77,18 @@ export function initializeKnowledgeRepositoryHandlers() {
         previewToggleBtn.addEventListener('click', () => {
             previewEnabled = !previewEnabled;
             updatePreviewToggleButton();
-            
+
             if (previewEnabled) {
                 // Generate preview immediately when enabled
                 handlePreviewChunking(false);
+            } else {
+                // Hide preview when disabled
+                const previewResults = document.getElementById('knowledge-repo-preview-results');
+                const previewEmpty = document.getElementById('knowledge-repo-preview-empty');
+                if (previewResults) previewResults.classList.add('hidden');
+                if (previewEmpty) {
+                    previewEmpty.classList.remove('hidden');
+                }
             }
         });
     }
@@ -183,11 +191,16 @@ function openKnowledgeRepositoryModal() {
     const submitBtn = document.getElementById('add-knowledge-repository-submit');
     if (submitBtn) {
         submitBtn.textContent = 'Create Repository';
+        submitBtn.disabled = true;  // Initially disabled until files are uploaded
+        submitBtn.title = 'Upload at least one document to enable this button';
         delete submitBtn.dataset.uploadMode;
         delete submitBtn.dataset.collectionId;
         delete submitBtn.dataset.collectionName;
     }
-    
+
+    // Reset selected files
+    selectedFiles = [];
+
     // Show modal with animation
     modalOverlay.classList.remove('hidden');
     requestAnimationFrame(() => {
@@ -383,16 +396,23 @@ function handleFiles(files) {
     
     // Add to selected files
     selectedFiles = [...selectedFiles, ...validFiles];
-    
+
     // Update UI
     displayFileList();
-    
+
+    // Enable Create Repository button now that files are uploaded
+    const submitBtn = document.getElementById('add-knowledge-repository-submit');
+    if (submitBtn && selectedFiles.length > 0) {
+        submitBtn.disabled = false;
+        submitBtn.title = `Create repository with ${selectedFiles.length} document${selectedFiles.length > 1 ? 's' : ''}`;
+    }
+
     // Show metadata and preview sections
     const metadata = document.getElementById('knowledge-repo-metadata');
     const preview = document.getElementById('knowledge-repo-preview');
     if (metadata) metadata.classList.remove('hidden');
     if (preview) preview.classList.remove('hidden');
-    
+
     // Auto-generate preview
     setTimeout(() => triggerAutoPreview(), 100);
 }
@@ -435,15 +455,28 @@ function displayFileList() {
             const index = parseInt(e.currentTarget.dataset.index);
             selectedFiles.splice(index, 1);
             displayFileList();
-            
+
             // Reset file input so same file can be re-selected
             const fileInput = document.getElementById('knowledge-repo-file-input');
             if (fileInput) fileInput.value = '';
-            
+
             if (selectedFiles.length === 0) {
                 fileList.classList.add('hidden');
                 const metadata = document.getElementById('knowledge-repo-metadata');
                 if (metadata) metadata.classList.add('hidden');
+
+                // Disable Create Repository button when no files
+                const submitBtn = document.getElementById('add-knowledge-repository-submit');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.title = 'Upload at least one document to enable this button';
+                }
+            } else {
+                // Update button tooltip with new file count
+                const submitBtn = document.getElementById('add-knowledge-repository-submit');
+                if (submitBtn) {
+                    submitBtn.title = `Create repository with ${selectedFiles.length} document${selectedFiles.length > 1 ? 's' : ''}`;
+                }
             }
         });
     });

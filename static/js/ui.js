@@ -3914,29 +3914,38 @@ function openKnowledgeRepositoryView(collection) {
  * Delete a Knowledge repository
  */
 export async function deleteKnowledgeRepository(collectionId, collectionName) {
-    if (!confirm(`Are you sure you want to delete "${collectionName}"?\n\nThis will remove all documents and cannot be undone.`)) {
+    // Use custom confirmation modal (same as planner repositories)
+    if (!window.showConfirmation) {
+        console.error('Confirmation system not available');
         return;
     }
-    
-    try {
-        const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
+
+    showConfirmation(
+        'Delete Knowledge Repository',
+        `Are you sure you want to delete the repository "${collectionName}"?\n\nThis will remove all documents and cannot be undone.`,
+        async () => {
+            try {
+                const token = localStorage.getItem('tda_auth_token');
+                const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAppBanner(`Repository "${collectionName}" deleted successfully`, 'success');
+                    // Reload the collections list
+                    await loadRagCollections();
+                } else {
+                    showAppBanner(`Failed to delete repository: ${data.message || data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('[Knowledge] Error deleting repository:', error);
+                showAppBanner(`Error deleting repository: ${error.message}`, 'error');
             }
-        });
-        
-        if (response.ok) {
-            showAppBanner(`Repository "${collectionName}" deleted successfully`, 'success');
-            // Reload the collections list
-            loadRagCollections();
-        } else {
-            const error = await response.json();
-            showAppBanner(`Failed to delete repository: ${error.message || 'Unknown error'}`, 'error');
         }
-    } catch (error) {
-        console.error('[Knowledge] Error deleting repository:', error);
-        showAppBanner(`Error deleting repository: ${error.message}`, 'error');
-    }
+    );
 }
