@@ -3098,11 +3098,13 @@ function appendCollectionRows(newRows) {
         tr.className = `${selectedClass} hover:bg-gray-800/40 cursor-pointer transition-colors`;
         
         const efficientBadge = r.is_most_efficient ? '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">Yes</span>' : '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">No</span>';
-        
+
+        // Convert to number to handle both string and number types from API/ChromaDB
+        const feedbackScore = Number(r.user_feedback_score) || 0;
         let feedbackBadge = '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">—</span>';
-        if (r.user_feedback_score === 1) {
+        if (feedbackScore === 1) {
             feedbackBadge = '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">👍</span>';
-        } else if (r.user_feedback_score === -1) {
+        } else if (feedbackScore === -1) {
             feedbackBadge = '<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs">👎</span>';
         }
         
@@ -3167,12 +3169,13 @@ function renderCollectionRows(rows, total, query, collectionName) {
             tr.className = `${selectedClass} hover:bg-gray-800/40 cursor-pointer transition-colors`;
             
             const efficientBadge = r.is_most_efficient ? '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">Yes</span>' : '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">No</span>';
-            
-            // Render feedback badge
+
+            // Render feedback badge - convert to number to handle both string and number types from API/ChromaDB
+            const feedbackScore = Number(r.user_feedback_score) || 0;
             let feedbackBadge = '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">—</span>';
-            if (r.user_feedback_score === 1) {
+            if (feedbackScore === 1) {
                 feedbackBadge = '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">👍</span>';
-            } else if (r.user_feedback_score === -1) {
+            } else if (feedbackScore === -1) {
                 feedbackBadge = '<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs">👎</span>';
             }
             
@@ -3715,19 +3718,20 @@ function updateTableRowFeedback(caseId, feedbackScore) {
     }
     
     console.log('[updateTableRowFeedback] Row found, updating feedback badge');
-    
+
     // Find the feedback badge cell (5th column, index 4)
     const feedbackCell = row.cells[4];
     if (!feedbackCell) {
         console.warn('[updateTableRowFeedback] Feedback cell not found');
         return;
     }
-    
-    // Generate new feedback badge
+
+    // Generate new feedback badge - convert to number to handle both string and number types
+    const score = Number(feedbackScore) || 0;
     let feedbackBadge = '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">—</span>';
-    if (feedbackScore === 1) {
+    if (score === 1) {
         feedbackBadge = '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">👍</span>';
-    } else if (feedbackScore === -1) {
+    } else if (score === -1) {
         feedbackBadge = '<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs">👎</span>';
     }
     

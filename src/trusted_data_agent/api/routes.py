@@ -1758,9 +1758,9 @@ async def ask_stream():
     config_manager = get_config_manager()
     
     # Always use default profile here - executor will update if override succeeds
-    default_profile_id = config_manager.get_default_profile_id()
+    default_profile_id = config_manager.get_default_profile_id(user_uuid)
     if default_profile_id:
-        profiles = config_manager.get_profiles()
+        profiles = config_manager.get_profiles(user_uuid)
         default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
         profile_tag = default_profile.get("tag") if default_profile else None
     else:

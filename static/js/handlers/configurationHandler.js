@@ -3074,18 +3074,21 @@ async function showProfileModal(profileId = null) {
     
     // Helper function to create collection entry with toggles
     const createCollectionEntry = (coll, isPlanner) => {
-        // For new profiles (!isEdit), default all to checked
+        // For new profiles (!isEdit), default to UNCHECKED (user must explicitly select)
         // For existing profiles being edited (isEdit=true), respect their saved selections
         let isQueryEnabled;
         if (isPlanner) {
-            isQueryEnabled = !isEdit || profile?.ragCollections?.includes(coll.id) || profile?.ragCollections?.includes('*');
+            // New profiles: unchecked by default
+            // Existing profiles: check if collection is in ragCollections array or wildcard
+            isQueryEnabled = isEdit && (profile?.ragCollections?.includes(coll.id) || profile?.ragCollections?.includes('*'));
         } else {
             // Knowledge repository: check if it's in knowledgeConfig.collections
             const knowledgeCollectionIds = profile?.knowledgeConfig?.collections?.map(c => c.id) || [];
-            isQueryEnabled = !isEdit || knowledgeCollectionIds.includes(coll.id);
+            isQueryEnabled = isEdit && knowledgeCollectionIds.includes(coll.id);
         }
-        
-        const isAutocompleteEnabled = !isEdit || profile?.autocompleteCollections?.includes(coll.id) || profile?.autocompleteCollections?.includes('*');
+
+        // For autocomplete, also default to unchecked for new profiles
+        const isAutocompleteEnabled = isEdit && (profile?.autocompleteCollections?.includes(coll.id) || profile?.autocompleteCollections?.includes('*'));
         // Knowledge repositories: default autocomplete to OFF for both new and existing profiles
         const defaultAutocomplete = isPlanner ? isAutocompleteEnabled : false;
         

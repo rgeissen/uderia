@@ -882,9 +882,12 @@ class RAGRetriever:
         import json
         
         # Find case file by searching all collection directories
+        # Note: case_id may already have "case_" prefix, so normalize it
+        normalized_case_id = case_id.replace("case_", "") if case_id.startswith("case_") else case_id
+
         case_file = None
         for collection_id in self.collections.keys():
-            potential_file = self._get_collection_dir(collection_id) / f"case_{case_id}.json"
+            potential_file = self._get_collection_dir(collection_id) / f"case_{normalized_case_id}.json"
             if potential_file.exists():
                 case_file = potential_file
                 break
@@ -910,14 +913,18 @@ class RAGRetriever:
             # Update cache immediately (used by get_collection_rows for instant consistency)
             # Store both formats since ChromaDB returns "case_" prefixed IDs
             self.feedback_cache[case_id] = feedback_score
-            self.feedback_cache[f'case_{case_id}'] = feedback_score
+            self.feedback_cache[f'case_{normalized_case_id}'] = feedback_score
+            if not case_id.startswith("case_"):
+                self.feedback_cache[f'case_{case_id}'] = feedback_score  # Also cache with prefix if original didn't have it
             logger.debug(f"Updated feedback cache for case {case_id}: {feedback_score}")
-            
+
             # Update ChromaDB metadata in all collections that contain this case
+            # ChromaDB stores IDs WITH the "case_" prefix
+            chroma_case_id = f'case_{normalized_case_id}'
             for collection_id, collection in self.collections.items():
                 try:
                     # Check if this case exists in this collection
-                    existing = collection.get(ids=[case_id], include=["metadatas"])
+                    existing = collection.get(ids=[chroma_case_id], include=["metadatas"])
                     
                     if existing and existing["ids"]:
                         # Update the metadata
@@ -937,9 +944,9 @@ class RAGRetriever:
                         
                         # Update full_case_data with new feedback
                         metadata["full_case_data"] = json.dumps(case_study)
-                        
+
                         collection.update(
-                            ids=[case_id],
+                            ids=[chroma_case_id],  # Use normalized ID with "case_" prefix
                             metadatas=[metadata]
                         )
                         logger.debug(f"Updated ChromaDB metadata for case {case_id} in collection {collection_id}")
@@ -1774,12 +1781,14 @@ class RAGRetriever:
 
             # 6. Transact with ChromaDB
             # Step 6a: Upsert the new case
+            # Ensure ChromaDB ID has "case_" prefix for consistency with filesystem
+            chroma_id = f"case_{new_case_id}" if not new_case_id.startswith("case_") else new_case_id
             collection.upsert(
-                ids=[new_case_id],
+                ids=[chroma_id],
                 documents=[new_document],
                 metadatas=[new_metadata]
             )
-            logger.debug(f"Upserted new case {new_case_id} to collection '{collection_id}' with is_most_efficient={new_metadata['is_most_efficient']}.")
+            logger.debug(f"Upserted new case {chroma_id} to collection '{collection_id}' with is_most_efficient={new_metadata['is_most_efficient']}.")
 
             # Step 6b: Demote the old case if necessary
             if id_to_demote:
@@ -1794,9 +1803,11 @@ class RAGRetriever:
                         metadatas=[meta_to_update]
                     )
                     logger.info(f"Successfully demoted old case {id_to_demote} in ChromaDB.")
-                    
+
                     # Also update the JSON file on disk
-                    old_case_file = self._get_collection_dir(collection_id) / f"case_{id_to_demote}.json"
+                    # Normalize ID: remove "case_" prefix if present, then add it back for filename
+                    normalized_id = id_to_demote.replace("case_", "") if id_to_demote.startswith("case_") else id_to_demote
+                    old_case_file = self._get_collection_dir(collection_id) / f"case_{normalized_id}.json"
                     if old_case_file.exists():
                         try:
                             with open(old_case_file, 'r', encoding='utf-8') as f:

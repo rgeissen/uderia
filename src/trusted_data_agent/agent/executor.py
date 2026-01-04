@@ -217,6 +217,7 @@ class PlanExecutor:
         
         # --- MODIFICATION START: Track which collection RAG examples came from ---
         self.rag_source_collection_id = None  # Will be set when RAG examples are retrieved
+        self.rag_source_case_id = None  # Will be set when RAG examples are retrieved (for feedback tracking)
         # --- MODIFICATION END ---
         
         # --- PHASE 2: Track knowledge repository access ---
@@ -555,6 +556,72 @@ class PlanExecutor:
                 continue
 
             if isinstance(value, str):
+                # --- NEW: Handle string interpolation for loop_item references ---
+                # Pattern: {loop_item[KeyName]} within SQL strings or other text
+                if loop_item and "{loop_item[" in value:
+                    loop_item_pattern = re.compile(r'\{loop_item\[([^\]]+)\]\}')
+
+                    def replace_loop_item(match):
+                        """Replace {loop_item[key]} with the actual value from loop_item dict."""
+                        loop_key = match.group(1).strip('\'"')  # Remove quotes if present
+                        replacement_value = loop_item.get(loop_key)
+
+                        if replacement_value is not None:
+                            app_logger.info(f"Resolved loop_item interpolation: {{loop_item[{loop_key}]}} -> '{replacement_value}'")
+                            return str(replacement_value)
+                        else:
+                            app_logger.warning(f"Could not resolve loop_item key '{loop_key}' in string interpolation. Available keys: {list(loop_item.keys())}")
+                            return match.group(0)  # Return original if key not found
+
+                    resolved_value = loop_item_pattern.sub(replace_loop_item, value)
+                    resolved_args[key] = resolved_value
+                    continue
+                # --- END NEW ---
+
+                # --- NEW: Handle string interpolation for result_of_phase_N references ---
+                # Pattern: {result_of_phase_1[KeyName]} or {result_of_phase_1} within strings
+                if "{result_of_phase_" in value or "{phase_" in value:
+                    phase_pattern = re.compile(r'\{(result_of_phase_\d+|phase_\d+)(?:\[([^\]]+)\])?\}')
+
+                    def replace_phase_ref(match):
+                        """Replace {result_of_phase_N[key]} with actual value from workflow state."""
+                        source_key = match.group(1)
+                        target_key = match.group(2)  # Optional key within brackets
+
+                        if source_key.startswith("phase_"):
+                            source_key = f"result_of_{source_key}"
+
+                        data_from_phase = self.workflow_state.get(source_key)
+
+                        if data_from_phase is None:
+                            app_logger.warning(f"Could not resolve phase interpolation: '{source_key}' not in workflow state.")
+                            return match.group(0)
+
+                        if target_key:
+                            # Extract specific key from the phase result
+                            target_key_clean = target_key.strip('\'"')
+                            found_value = self._find_value_by_key(data_from_phase, target_key_clean)
+                            if found_value is not None:
+                                app_logger.info(f"Resolved phase interpolation: {{{source_key}[{target_key_clean}]}} -> '{found_value}'")
+                                return str(found_value)
+                            else:
+                                app_logger.warning(f"Could not find key '{target_key_clean}' in '{source_key}'.")
+                                return match.group(0)
+                        else:
+                            # No specific key - unwrap single value
+                            unwrapped = self._unwrap_single_value_from_result(data_from_phase)
+                            if unwrapped is not None:
+                                app_logger.info(f"Resolved phase interpolation: {{{source_key}}} -> '{unwrapped}'")
+                                return str(unwrapped)
+                            else:
+                                app_logger.warning(f"Could not unwrap value from '{source_key}'.")
+                                return match.group(0)
+
+                    resolved_value = phase_pattern.sub(replace_phase_ref, value)
+                    resolved_args[key] = resolved_value
+                    continue
+                # --- END NEW ---
+
                 match = re.match(r"(result_of_phase_\d+|phase_\d+|injected_previous_turn_data)", value)
                 if match:
                     source_phase_key = match.group(1)
@@ -729,9 +796,9 @@ class PlanExecutor:
                 from trusted_data_agent.core.config_manager import get_config_manager
                 from langchain_mcp_adapters.client import MultiServerMCPClient
                 import boto3
-                
+
                 config_manager = get_config_manager()
-                profiles = config_manager.get_profiles()
+                profiles = config_manager.get_profiles(self.user_uuid)
                 override_profile = next((p for p in profiles if p.get("id") == self.profile_override_id), None)
                 
                 if not override_profile:
@@ -1014,9 +1081,10 @@ class PlanExecutor:
                     # Create a wrapped event handler that captures RAG collection info and knowledge retrieval
                     async def rag_aware_event_handler(data, event_name):
                         if event_name == "rag_retrieval" and data and 'collection_id' in data.get('full_case_data', {}).get('metadata', {}):
-                            # Store the collection ID from the retrieved RAG case
+                            # Store the collection ID and case ID from the retrieved RAG case
                             self.rag_source_collection_id = data['full_case_data']['metadata']['collection_id']
-                            app_logger.info(f"RAG example retrieved from collection {self.rag_source_collection_id}")
+                            self.rag_source_case_id = data.get('case_id')  # Capture case_id for feedback tracking
+                            app_logger.info(f"RAG example retrieved from collection {self.rag_source_collection_id}, case_id: {self.rag_source_case_id}")
                         
                         # --- PHASE 2: Track knowledge repository access ---
                         elif event_name == "knowledge_retrieval":
@@ -1191,10 +1259,10 @@ class PlanExecutor:
                 try:
                     from trusted_data_agent.core.config_manager import get_config_manager
                     config_manager = get_config_manager()
-                    default_profile_id = config_manager.get_default_profile_id()
+                    default_profile_id = config_manager.get_default_profile_id(self.user_uuid)
                     default_profile_name = "Default Profile"
                     if default_profile_id:
-                        profiles = config_manager.get_profiles()
+                        profiles = config_manager.get_profiles(self.user_uuid)
                         default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
                         if default_profile:
                             default_profile_name = f"{default_profile.get('name')} (Tag: @{default_profile.get('tag', 'N/A')})"
@@ -1284,8 +1352,9 @@ class PlanExecutor:
                     # --- MODIFICATION START: Add session_id for RAG worker ---
                     "session_id": self.session_id,
                     # --- MODIFICATION END ---
-                    # --- MODIFICATION START: Add RAG source collection ID ---
+                    # --- MODIFICATION START: Add RAG source collection ID and case ID ---
                     "rag_source_collection_id": self.rag_source_collection_id,
+                    "case_id": self.rag_source_case_id,  # Add case_id for feedback tracking
                     # --- MODIFICATION END ---
                     # --- PHASE 2: Add knowledge repository tracking ---
                     "knowledge_accessed": self.knowledge_accessed,  # List of knowledge collections used

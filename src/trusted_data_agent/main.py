@@ -135,7 +135,7 @@ async def rag_processing_worker():
                     
                     if session_id and turn_id and user_uuid:
                         try:
-                            session_manager.add_case_id_to_turn(user_uuid, session_id, turn_id, case_id)
+                            await session_manager.add_case_id_to_turn(user_uuid, session_id, turn_id, case_id)
                         except Exception as e:
                             app_logger.error(f"Failed to store case_id {case_id} in session: {e}")
                 

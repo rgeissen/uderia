@@ -1524,24 +1524,34 @@ Ranking:"""
         if self.rag_retriever:
             # Determine which collections to query based on profile
             allowed_collection_ids = None
+            app_logger.info(f"[RAG FILTER DEBUG] Starting collection filtering: profile_override_id={self.executor.profile_override_id}, user_uuid={self.executor.user_uuid}")
             if self.executor.profile_override_id or self.executor.user_uuid:
                 try:
                     from trusted_data_agent.core.config_manager import get_config_manager
                     config_manager = get_config_manager()
-                    profiles = config_manager.get_profiles()
-                    
+                    profiles = config_manager.get_profiles(self.executor.user_uuid)
+                    app_logger.info(f"[RAG FILTER DEBUG] Retrieved {len(profiles)} profiles from config_manager")
+
                     # Use override profile if active, otherwise use default
                     profile_id = self.executor.profile_override_id
                     if not profile_id:
-                        profile_id = config_manager.get_default_profile_id()
-                    
+                        profile_id = config_manager.get_default_profile_id(self.executor.user_uuid)
+                    app_logger.info(f"[RAG FILTER DEBUG] Using profile_id: {profile_id}")
+
                     if profile_id:
                         profile = next((p for p in profiles if p.get("id") == profile_id), None)
+                        app_logger.info(f"[RAG FILTER DEBUG] profile_id={profile_id}, profile_found={profile is not None}")
                         if profile:
-                            autocomplete_collections = profile.get("autocompleteCollections", ["*"])
-                            if autocomplete_collections != ["*"]:
-                                allowed_collection_ids = set(autocomplete_collections)
+                            # Use ragCollections instead of autocompleteCollections for RAG retrieval filtering
+                            rag_collections = profile.get("ragCollections", ["*"])
+                            app_logger.info(f"[RAG FILTER DEBUG] ragCollections from profile: {rag_collections}")
+                            if rag_collections != ["*"]:
+                                allowed_collection_ids = set(rag_collections)
                                 app_logger.info(f"RAG retrieval filtered to collections: {allowed_collection_ids} (profile: {profile.get('name')})")
+                            else:
+                                app_logger.info(f"[RAG FILTER DEBUG] ragCollections is wildcard, not filtering")
+                        else:
+                            app_logger.warning(f"[RAG FILTER DEBUG] Profile {profile_id} not found in profiles list")
                 except Exception as e:
                     app_logger.warning(f"Failed to get profile collections for RAG filtering: {e}")
             

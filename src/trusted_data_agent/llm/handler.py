@@ -850,7 +850,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
     # --- MODIFICATION START: Pass user_uuid to update_token_count ---
     if user_uuid and session_id:
-        update_token_count(user_uuid, session_id, input_tokens, output_tokens)
+        await update_token_count(user_uuid, session_id, input_tokens, output_tokens)
     # --- MODIFICATION END ---
 
     # Capture the actual provider and model used (from APP_CONFIG which gets updated during profile override)
