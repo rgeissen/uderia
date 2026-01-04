@@ -100,7 +100,7 @@ const ragCollectionLlmCount = document.getElementById('rag-collection-llm-count'
 // Legacy LLM workflow elements (removed from UI, kept for compatibility)
 const ragCollectionGenerateContextBtn = document.getElementById('rag-collection-generate-context');
 const ragCollectionGenerateQuestionsBtn = document.getElementById('rag-collection-generate-questions-btn');
-const ragCollectionPopulateBtn = document.getElementById('rag-collection-populate-btn');
+// Removed: ragCollectionPopulateBtn - button no longer needed (Create Collection does everything)
 const ragCollectionRefreshPromptBtn = document.getElementById('rag-collection-refresh-prompt');
 const ragCollectionContextResult = document.getElementById('rag-collection-context-result');
 const ragCollectionContextContent = document.getElementById('rag-collection-context-content');
@@ -402,7 +402,13 @@ async function openAddRagCollectionModal() {
         ragCollectionQuestionsResult.classList.add('hidden');
     }
     lastGeneratedQuestions = null;
-    
+
+    // Initially disable Create Collection button (will be enabled after successful generation)
+    if (addRagCollectionSubmit) {
+        addRagCollectionSubmit.disabled = true;
+        addRagCollectionSubmit.title = 'Generate questions first to enable this button';
+    }
+
     // Clear uploaded documents
     uploadedDocuments = [];
     const docList = document.getElementById('rag-collection-doc-list');
@@ -2285,15 +2291,50 @@ async function handleGenerateQuestions() {
         
         // Store questions for later use
         lastGeneratedQuestions = result.questions;
-        
+
+        // Enable Create Collection button now that questions are generated
+        if (addRagCollectionSubmit) {
+            addRagCollectionSubmit.disabled = false;
+            addRagCollectionSubmit.title = 'Create collection with generated questions';
+        }
+
         // Display questions preview
         displayQuestionsPreview(result.questions);
-        
-        showNotification('success', `Generated ${result.count} questions successfully`);
-        
+
+        // Show success message and scroll to Create Collection button
+        const successMsg = document.getElementById('rag-collection-questions-success');
+        if (successMsg) {
+            successMsg.classList.remove('hidden');
+        }
+
+        // Scroll to Create Collection button
+        setTimeout(() => {
+            if (addRagCollectionSubmit) {
+                addRagCollectionSubmit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Highlight the button
+                addRagCollectionSubmit.classList.add('ring-4', 'ring-green-400', 'shadow-lg', 'shadow-green-400/50');
+                addRagCollectionSubmit.style.transform = 'scale(1.05)';
+                addRagCollectionSubmit.style.transition = 'all 0.3s ease';
+
+                setTimeout(() => {
+                    addRagCollectionSubmit.classList.remove('ring-4', 'ring-green-400', 'shadow-lg', 'shadow-green-400/50');
+                    addRagCollectionSubmit.style.transform = 'scale(1)';
+                }, 3000);
+            }
+        }, 300);
+
+        showNotification('success', `Generated ${result.count} questions successfully - scroll down to create collection`);
+
     } catch (error) {
         console.error('Error generating questions:', error);
         showNotification('error', `Failed to generate questions: ${error.message}`);
+
+        // Keep Create Collection button disabled on error
+        if (addRagCollectionSubmit) {
+            addRagCollectionSubmit.disabled = true;
+            addRagCollectionSubmit.title = 'Generate questions first to enable this button';
+        }
     } finally {
         // Re-enable button
         if (ragCollectionGenerateQuestionsBtn) {
@@ -2346,81 +2387,11 @@ function displayQuestionsPreview(questions) {
 }
 
 /**
- * Handle Populate Collection Button Click
- * Takes generated questions and populates the RAG collection
+ * REMOVED: handlePopulateCollection
+ * This function is no longer needed because "Create Collection" now handles
+ * both creating the collection and populating it in a single step.
+ * The old "Populate Collection" button was redundant and confusing.
  */
-async function handlePopulateCollection(event) {
-    // Prevent any default behavior
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    
-    
-    try {
-        if (!lastGeneratedQuestions || lastGeneratedQuestions.length === 0) {
-            showNotification('error', 'No questions generated yet');
-            return;
-        }
-        
-        // Get database name from dynamic field
-        const databaseNameEl = document.getElementById('rag-collection-llm-database-name');
-        const databaseName = databaseNameEl ? databaseNameEl.value.trim() : '';
-        
-        
-        if (!databaseName) {
-            showNotification('error', 'Database name is required');
-            return;
-        }
-        
-        // Simply collapse the questions section and show success message
-        // Don't hide anything - just collapse the content
-        if (ragCollectionQuestionsResult) {
-            // Collapse the questions list but keep the header visible
-            const questionsList = document.getElementById('rag-collection-questions-list');
-            const populateBtn = document.getElementById('rag-collection-populate-btn');
-            if (questionsList) {
-                questionsList.style.display = 'none';
-            }
-            if (populateBtn) {
-                populateBtn.style.display = 'none';
-            }
-            
-            // Add a success message in the questions result area
-            const successMsg = document.createElement('div');
-            successMsg.className = 'bg-green-900/30 border border-green-500 rounded p-3 text-center';
-            successMsg.innerHTML = `
-                <div class="text-green-400 font-semibold mb-1">✓ ${lastGeneratedQuestions.length} Questions Ready</div>
-                <div class="text-sm text-gray-300">Scroll down and click "Create Collection" to save</div>
-            `;
-            ragCollectionQuestionsResult.appendChild(successMsg);
-        }
-        
-        // Scroll to the Create Collection button at the bottom
-        const createButton = document.getElementById('add-rag-collection-submit');
-        if (createButton) {
-            setTimeout(() => {
-                createButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                
-                // Highlight the button
-                createButton.classList.add('ring-4', 'ring-green-400', 'shadow-lg', 'shadow-green-400/50');
-                createButton.style.transform = 'scale(1.05)';
-                createButton.style.transition = 'all 0.3s ease';
-                
-                setTimeout(() => {
-                    createButton.classList.remove('ring-4', 'ring-green-400', 'shadow-lg', 'shadow-green-400/50');
-                    createButton.style.transform = 'scale(1)';
-                }, 3000);
-            }, 300);
-        }
-        
-        showNotification('success', `✓ Ready to create collection with ${lastGeneratedQuestions.length} generated question/SQL pairs!`);
-        
-    } catch (error) {
-        console.error('[Populate Collection] Error:', error);
-        showNotification('error', `Error: ${error.message}`);
-    }
-}
 
 /**
  * Handle population method radio button changes
@@ -2432,6 +2403,26 @@ const handlePopulationDecisionChange = () => {
         populationWithTemplate: ragPopulationWithTemplate,
         switchFieldsCallback: switchTemplateFields
     };
+
+    // Update Create Collection button state based on population mode
+    if (addRagCollectionSubmit) {
+        if (ragPopulationNone && ragPopulationNone.checked) {
+            // "None" mode: Enable button (no generation needed)
+            addRagCollectionSubmit.disabled = false;
+            addRagCollectionSubmit.title = 'Create empty collection';
+        } else if (ragPopulationWithTemplate && ragPopulationWithTemplate.checked) {
+            // "With Template" mode: Check which method is selected
+            if (ragTemplateMethodManual && ragTemplateMethodManual.checked) {
+                addRagCollectionSubmit.disabled = false;
+                addRagCollectionSubmit.title = 'Add manual examples, then create collection';
+            } else {
+                // LLM method: Disable until questions generated
+                addRagCollectionSubmit.disabled = true;
+                addRagCollectionSubmit.title = 'Generate questions first to enable this button';
+            }
+        }
+    }
+
     return PopulationWorkflow.handlePopulationDecisionChange(elements);
 };
 
@@ -2446,6 +2437,22 @@ const handleTemplateMethodChange = () => {
         examplesContainer: ragCollectionTemplateExamples,
         addExampleCallback: addCollectionTemplateExample
     };
+
+    // Update Create Collection button state based on method
+    if (addRagCollectionSubmit) {
+        if (ragTemplateMethodManual && ragTemplateMethodManual.checked) {
+            // Manual mode: Enable button (users can add examples immediately)
+            addRagCollectionSubmit.disabled = false;
+            addRagCollectionSubmit.title = 'Add manual examples, then create collection';
+        } else if (ragTemplateMethodLlm && ragTemplateMethodLlm.checked) {
+            // LLM mode: Disable until questions are generated
+            addRagCollectionSubmit.disabled = true;
+            addRagCollectionSubmit.title = 'Generate questions first to enable this button';
+            // Clear previously generated questions when switching to LLM mode
+            lastGeneratedQuestions = null;
+        }
+    }
+
     return PopulationWorkflow.handleTemplateMethodChange(elements);
 };
 
@@ -3491,10 +3498,7 @@ if (ragCollectionGenerateQuestionsBtn) {
     ragCollectionGenerateQuestionsBtn.addEventListener('click', handleGenerateQuestions);
 }
 
-// Event Listener for Populate Collection button
-if (ragCollectionPopulateBtn) {
-    ragCollectionPopulateBtn.addEventListener('click', handlePopulateCollection);
-}
+// REMOVED: Event listener for Populate Collection button (button no longer exists)
 
 // Close button for context result (collapses the content but keeps the section visible)
 if (ragCollectionContextClose) {

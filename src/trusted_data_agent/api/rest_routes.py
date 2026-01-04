@@ -324,11 +324,11 @@ async def execute_prompt(prompt_name: str):
         # Archive the temporary session (don't delete - keep for transparency)
         try:
             app_logger.info(f"Attempting to archive temporary session: {temp_session_id}")
-            success = session_manager.archive_session(user_uuid, temp_session_id)
+            success = await session_manager.delete_session(user_uuid, temp_session_id)
             if success:
                 app_logger.info(f"Successfully archived temporary session: {temp_session_id}")
             else:
-                app_logger.error(f"Failed to archive temporary session {temp_session_id}: archive_session returned False")
+                app_logger.error(f"Failed to archive temporary session {temp_session_id}: delete_session returned False")
         except Exception as e:
             app_logger.error(f"Exception while archiving temp session {temp_session_id}: {e}", exc_info=True)
         
@@ -588,11 +588,11 @@ async def execute_prompt_raw(prompt_name: str):
         # Archive temp session (don't delete - keep for transparency)
         try:
             app_logger.info(f"Attempting to archive temporary session: {temp_session_id}")
-            success = session_manager.archive_session(user_uuid, temp_session_id)
+            success = await session_manager.delete_session(user_uuid, temp_session_id)
             if success:
                 app_logger.info(f"Successfully archived temporary session: {temp_session_id}")
             else:
-                app_logger.error(f"Failed to archive temporary session {temp_session_id}: archive_session returned False")
+                app_logger.error(f"Failed to archive temporary session {temp_session_id}: delete_session returned False")
         except Exception as e:
             app_logger.error(f"Exception while archiving temp session {temp_session_id}: {e}", exc_info=True)
         
@@ -923,83 +923,199 @@ Database Context:
 Return ONLY a JSON array: [{{"question": "...", "sql": "..."}}]"""
 
         app_logger.info(f"Generating {count} RAG questions for subject '{subject}' in database '{database_name}' (context: {len(full_context)} chars)")
-        
+
         # Get authenticated user UUID
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
-        
+
         # Call LLM directly using the handler to avoid agent execution framework and TDA_FinalReport validation
         from trusted_data_agent.llm import handler as llm_handler
-        
+
+        # Implement batching to avoid token limit issues with large question counts
+        # Most LLMs have 8K-16K output token limits; a question pair ~= 100-150 tokens
+        # Safe batch size: 20 questions per batch (estimate ~3000 tokens)
+        BATCH_SIZE = 20
+        all_questions = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        # Calculate number of batches needed
+        num_batches = (count + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
+
+        if num_batches > 1:
+            app_logger.info(f"Splitting {count} questions into {num_batches} batches of up to {BATCH_SIZE} questions each")
+
         try:
-            # Direct LLM invocation using the existing handler
-            response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
-                llm_instance=llm_instance,
-                prompt=prompt_text,
-                user_uuid=user_uuid,
-                session_id=None,
-                dependencies={'STATE': APP_STATE, 'CONFIG': APP_CONFIG},
-                reason="Generating RAG questions",
-                disabled_history=True,  # Don't store this in chat history
-                source='rag_question_generator'
-            )
-            
-            app_logger.info(f"LLM generated response with {input_tokens} input tokens, {output_tokens} output tokens")
-            
+            for batch_num in range(num_batches):
+                batch_start = batch_num * BATCH_SIZE
+                batch_count = min(BATCH_SIZE, count - batch_start)
+
+                # Build context of previously generated questions to avoid duplicates
+                previous_questions_context = ""
+                if batch_num > 0 and all_questions:
+                    # Show LLM what questions were already generated
+                    prev_count = len(all_questions)
+                    prev_questions_list = "\n".join([
+                        f"  - {q['question']}"
+                        for q in all_questions[:min(10, prev_count)]  # Show first 10 as examples
+                    ])
+                    if prev_count > 10:
+                        prev_questions_list += f"\n  ... and {prev_count - 10} more questions"
+
+                    previous_questions_context = f"""
+
+IMPORTANT - AVOID DUPLICATES:
+The following {prev_count} questions have ALREADY been generated in previous batches.
+You MUST generate {batch_count} NEW and DIFFERENT questions that cover different aspects:
+
+Previously Generated Questions:
+{prev_questions_list}
+
+Generate {batch_count} questions that explore DIFFERENT topics, tables, or analytical angles.
+"""
+
+                # Update prompt for this batch
+                if num_batches > 1:
+                    # Rebuild prompt with batch-specific count and previous context
+                    try:
+                        batch_prompt_text = build_question_generation_prompt(
+                            prompt_config=prompt_config,
+                            context_content=full_context,
+                            variables={
+                                'subject': subject,
+                                'count': batch_count,
+                                'database_name': database_name,
+                                'target_database': target_database,
+                                'conversion_rules': conversion_rules,
+                                'context_label': 'Database Context'
+                            }
+                        )
+                        # Append previous questions context
+                        batch_prompt_text += previous_questions_context
+                    except:
+                        # Fallback if template failed
+                        batch_prompt_text = f"""You are a SQL expert. Generate {batch_count} question/SQL pairs about "{subject}" for database "{database_name}" using {target_database} syntax.
+
+Database Context:
+{full_context}
+{previous_questions_context}
+
+Return ONLY a JSON array: [{{"question": "...", "sql": "..."}}]"""
+                else:
+                    # Single batch - use original prompt
+                    batch_prompt_text = prompt_text
+
+                app_logger.info(f"Generating batch {batch_num + 1}/{num_batches}: {batch_count} questions")
+
+                # Direct LLM invocation using the existing handler
+                response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
+                    llm_instance=llm_instance,
+                    prompt=batch_prompt_text,
+                    user_uuid=user_uuid,
+                    session_id=None,
+                    dependencies={'STATE': APP_STATE, 'CONFIG': APP_CONFIG},
+                    reason=f"Generating RAG questions (batch {batch_num + 1}/{num_batches})",
+                    disabled_history=True,  # Don't store this in chat history
+                    source='rag_question_generator'
+                )
+
+                total_input_tokens += input_tokens
+                total_output_tokens += output_tokens
+
+                app_logger.info(f"Batch {batch_num + 1}/{num_batches} completed: {input_tokens} input tokens, {output_tokens} output tokens")
+
+                # Parse this batch's JSON response
+                try:
+                    # Try to extract JSON if wrapped in markdown code blocks
+                    json_text = response_text.strip()
+                    if json_text.startswith('```json'):
+                        json_text = json_text[7:]  # Remove ```json
+                    elif json_text.startswith('```'):
+                        json_text = json_text[3:]  # Remove ```
+                    if json_text.endswith('```'):
+                        json_text = json_text[:-3]  # Remove trailing ```
+                    json_text = json_text.strip()
+
+                    batch_questions = json.loads(json_text)
+
+                    if not isinstance(batch_questions, list):
+                        raise ValueError(f"Batch {batch_num + 1} response is not a JSON array")
+
+                    # Validate structure for this batch
+                    for q in batch_questions:
+                        if not isinstance(q, dict) or 'question' not in q or 'sql' not in q:
+                            raise ValueError(f"Batch {batch_num + 1} has invalid question structure")
+
+                    all_questions.extend(batch_questions)
+                    app_logger.info(f"Batch {batch_num + 1}/{num_batches} parsed successfully: {len(batch_questions)} questions")
+
+                except json.JSONDecodeError as e:
+                    app_logger.error(f"Failed to parse batch {batch_num + 1} response as JSON: {e}")
+                    app_logger.error(f"Batch {batch_num + 1} response was: {response_text[:500]}")
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Batch {batch_num + 1} did not return valid JSON",
+                        "raw_response": response_text[:1000]
+                    }), 500
+                except ValueError as e:
+                    app_logger.error(f"Batch {batch_num + 1} invalid structure: {e}")
+                    return jsonify({
+                        "status": "error",
+                        "message": str(e),
+                        "raw_response": response_text[:1000]
+                    }), 500
+
+            # All batches completed successfully
+            app_logger.info(f"Generated {len(all_questions)} question/SQL pairs across {num_batches} batch(es)")
+
+            # Deduplicate questions using fuzzy matching
+            # Remove exact duplicates and very similar questions
+            deduplicated_questions = []
+            seen_questions_lower = set()
+            seen_sql_normalized = set()
+            duplicates_removed = 0
+
+            for q in all_questions:
+                question_text = q.get('question', '').strip()
+                sql_text = q.get('sql', '').strip()
+
+                # Normalize for comparison
+                question_lower = question_text.lower()
+                # Normalize SQL: remove extra whitespace, convert to lowercase
+                sql_normalized = ' '.join(sql_text.lower().split())
+
+                # Check for exact duplicates (case-insensitive)
+                if question_lower in seen_questions_lower or sql_normalized in seen_sql_normalized:
+                    duplicates_removed += 1
+                    app_logger.debug(f"Removed duplicate: {question_text[:50]}...")
+                    continue
+
+                # Add to results and tracking sets
+                deduplicated_questions.append(q)
+                seen_questions_lower.add(question_lower)
+                seen_sql_normalized.add(sql_normalized)
+
+            if duplicates_removed > 0:
+                app_logger.info(f"Removed {duplicates_removed} duplicate questions. Final count: {len(deduplicated_questions)}")
+            else:
+                app_logger.info(f"No duplicates found. Final count: {len(deduplicated_questions)}")
+
+            return jsonify({
+                "status": "success",
+                "questions": deduplicated_questions,
+                "count": len(deduplicated_questions),
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "batches": num_batches,
+                "duplicates_removed": duplicates_removed
+            })
+
         except Exception as e:
             app_logger.error(f"Failed to generate questions with LLM: {e}", exc_info=True)
             return jsonify({
                 "status": "error",
                 "message": f"LLM invocation failed: {str(e)}"
-            }), 500
-        
-        # Parse the JSON response
-        try:
-            # Try to extract JSON if wrapped in markdown code blocks
-            json_text = response_text.strip()
-            if json_text.startswith('```json'):
-                json_text = json_text[7:]  # Remove ```json
-            elif json_text.startswith('```'):
-                json_text = json_text[3:]  # Remove ```
-            if json_text.endswith('```'):
-                json_text = json_text[:-3]  # Remove trailing ```
-            json_text = json_text.strip()
-            
-            questions = json.loads(json_text)
-            
-            if not isinstance(questions, list):
-                raise ValueError("Response is not a JSON array")
-            
-            # Validate structure
-            for q in questions:
-                if not isinstance(q, dict) or 'question' not in q or 'sql' not in q:
-                    raise ValueError("Invalid question structure")
-            
-            app_logger.info(f"Successfully generated {len(questions)} question/SQL pairs")
-            
-            return jsonify({
-                "status": "success",
-                "questions": questions,
-                "count": len(questions),
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens
-            })
-            
-        except json.JSONDecodeError as e:
-            app_logger.error(f"Failed to parse LLM response as JSON: {e}")
-            app_logger.error(f"Response was: {response_text[:500]}")
-            return jsonify({
-                "status": "error",
-                "message": "LLM did not return valid JSON",
-                "raw_response": response_text[:1000]
-            }), 500
-        except ValueError as e:
-            app_logger.error(f"Invalid question structure: {e}")
-            return jsonify({
-                "status": "error",
-                "message": str(e),
-                "raw_response": response_text[:1000]
             }), 500
         
     except Exception as e:
@@ -1302,79 +1418,194 @@ Technical Documentation:
 Return ONLY a JSON array: [{{"question": "...", "sql": "..."}}]"""
 
         app_logger.info(f"Generating {count} RAG questions from documents for subject '{subject}' in database '{database_name}'")
-        
+
+        # Implement batching to avoid token limit issues with large question counts
+        # Same approach as generate_rag_questions endpoint
+        BATCH_SIZE = 20
+        all_questions = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        # Calculate number of batches needed
+        num_batches = (count + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
+
+        if num_batches > 1:
+            app_logger.info(f"Splitting {count} questions into {num_batches} batches of up to {BATCH_SIZE} questions each")
+
         # Call LLM directly using the handler
         try:
-            response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
-                llm_instance=llm_instance,
-                prompt=prompt_text,
-                user_uuid=user_uuid,
-                session_id=None,
-                dependencies={'STATE': APP_STATE, 'CONFIG': APP_CONFIG},
-                reason="Generating RAG questions from documents",
-                disabled_history=True,
-                source='rag_document_question_generator'
-            )
-            
-            app_logger.info(f"LLM generated response with {input_tokens} input tokens, {output_tokens} output tokens")
-            
-        except Exception as e:
-            app_logger.error(f"Failed to generate questions with LLM: {e}", exc_info=True)
-            return jsonify({
-                "status": "error",
-                "message": f"LLM invocation failed: {str(e)}"
-            }), 500
-        
-        # Parse the JSON response
-        try:
-            # Try to extract JSON if wrapped in markdown code blocks
-            json_text = response_text.strip()
-            if json_text.startswith('```json'):
-                json_text = json_text[7:]
-            elif json_text.startswith('```'):
-                json_text = json_text[3:]
-            if json_text.endswith('```'):
-                json_text = json_text[:-3]
-            json_text = json_text.strip()
-            
-            questions = json.loads(json_text)
-            
-            if not isinstance(questions, list):
-                raise ValueError("Response is not a JSON array")
-            
-            # Validate structure
-            for q in questions:
-                if not isinstance(q, dict) or 'question' not in q or 'sql' not in q:
-                    raise ValueError("Invalid question structure")
-            
-            app_logger.info(f"Successfully generated {len(questions)} question/SQL pairs from documents")
-            
+            for batch_num in range(num_batches):
+                batch_start = batch_num * BATCH_SIZE
+                batch_count = min(BATCH_SIZE, count - batch_start)
+
+                # Build context of previously generated questions to avoid duplicates
+                previous_questions_context = ""
+                if batch_num > 0 and all_questions:
+                    # Show LLM what questions were already generated
+                    prev_count = len(all_questions)
+                    prev_questions_list = "\n".join([
+                        f"  - {q['question']}"
+                        for q in all_questions[:min(10, prev_count)]  # Show first 10 as examples
+                    ])
+                    if prev_count > 10:
+                        prev_questions_list += f"\n  ... and {prev_count - 10} more questions"
+
+                    previous_questions_context = f"""
+
+IMPORTANT - AVOID DUPLICATES:
+The following {prev_count} questions have ALREADY been generated in previous batches.
+You MUST generate {batch_count} NEW and DIFFERENT questions that cover different aspects:
+
+Previously Generated Questions:
+{prev_questions_list}
+
+Generate {batch_count} questions that explore DIFFERENT topics, tables, or analytical angles.
+"""
+
+                # Update prompt for this batch
+                if num_batches > 1:
+                    # Rebuild prompt with batch-specific count and previous context
+                    try:
+                        batch_prompt_text = build_question_generation_prompt(
+                            prompt_config=prompt_config,
+                            context_content=combined_document_content,
+                            variables={
+                                'subject': subject,
+                                'count': batch_count,
+                                'database_name': database_name,
+                                'target_database': target_database,
+                                'conversion_rules': conversion_rules,
+                                'context_label': 'Technical Documentation'
+                            }
+                        )
+                        # Append previous questions context
+                        batch_prompt_text += previous_questions_context
+                    except:
+                        # Fallback if template failed
+                        batch_prompt_text = f"""You are a SQL expert. Analyze the technical documentation and generate {batch_count} question/SQL pairs about "{subject}" for database "{database_name}" using {target_database} syntax.
+
+Technical Documentation:
+{combined_document_content}
+{previous_questions_context}
+
+Return ONLY a JSON array: [{{"question": "...", "sql": "..."}}]"""
+                else:
+                    # Single batch - use original prompt
+                    batch_prompt_text = prompt_text
+
+                app_logger.info(f"Generating batch {batch_num + 1}/{num_batches}: {batch_count} questions from documents")
+
+                response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
+                    llm_instance=llm_instance,
+                    prompt=batch_prompt_text,
+                    user_uuid=user_uuid,
+                    session_id=None,
+                    dependencies={'STATE': APP_STATE, 'CONFIG': APP_CONFIG},
+                    reason=f"Generating RAG questions from documents (batch {batch_num + 1}/{num_batches})",
+                    disabled_history=True,
+                    source='rag_document_question_generator'
+                )
+
+                total_input_tokens += input_tokens
+                total_output_tokens += output_tokens
+
+                app_logger.info(f"Batch {batch_num + 1}/{num_batches} completed: {input_tokens} input tokens, {output_tokens} output tokens")
+
+                # Parse this batch's JSON response
+                try:
+                    # Try to extract JSON if wrapped in markdown code blocks
+                    json_text = response_text.strip()
+                    if json_text.startswith('```json'):
+                        json_text = json_text[7:]
+                    elif json_text.startswith('```'):
+                        json_text = json_text[3:]
+                    if json_text.endswith('```'):
+                        json_text = json_text[:-3]
+                    json_text = json_text.strip()
+
+                    batch_questions = json.loads(json_text)
+
+                    if not isinstance(batch_questions, list):
+                        raise ValueError(f"Batch {batch_num + 1} response is not a JSON array")
+
+                    # Validate structure for this batch
+                    for q in batch_questions:
+                        if not isinstance(q, dict) or 'question' not in q or 'sql' not in q:
+                            raise ValueError(f"Batch {batch_num + 1} has invalid question structure")
+
+                    all_questions.extend(batch_questions)
+                    app_logger.info(f"Batch {batch_num + 1}/{num_batches} parsed successfully: {len(batch_questions)} questions")
+
+                except json.JSONDecodeError as e:
+                    app_logger.error(f"Failed to parse batch {batch_num + 1} response as JSON: {e}")
+                    app_logger.error(f"Batch {batch_num + 1} response was: {response_text[:500]}")
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Batch {batch_num + 1} did not return valid JSON",
+                        "raw_response": response_text[:1000]
+                    }), 500
+                except ValueError as e:
+                    app_logger.error(f"Batch {batch_num + 1} invalid structure: {e}")
+                    return jsonify({
+                        "status": "error",
+                        "message": str(e),
+                        "raw_response": response_text[:1000]
+                    }), 500
+
+            # All batches completed successfully
+            app_logger.info(f"Generated {len(all_questions)} question/SQL pairs from documents across {num_batches} batch(es)")
+
+            # Deduplicate questions using fuzzy matching
+            # Remove exact duplicates and very similar questions
+            deduplicated_questions = []
+            seen_questions_lower = set()
+            seen_sql_normalized = set()
+            duplicates_removed = 0
+
+            for q in all_questions:
+                question_text = q.get('question', '').strip()
+                sql_text = q.get('sql', '').strip()
+
+                # Normalize for comparison
+                question_lower = question_text.lower()
+                # Normalize SQL: remove extra whitespace, convert to lowercase
+                sql_normalized = ' '.join(sql_text.lower().split())
+
+                # Check for exact duplicates (case-insensitive)
+                if question_lower in seen_questions_lower or sql_normalized in seen_sql_normalized:
+                    duplicates_removed += 1
+                    app_logger.debug(f"Removed duplicate: {question_text[:50]}...")
+                    continue
+
+                # Add to results and tracking sets
+                deduplicated_questions.append(q)
+                seen_questions_lower.add(question_lower)
+                seen_sql_normalized.add(sql_normalized)
+
+            if duplicates_removed > 0:
+                app_logger.info(f"Removed {duplicates_removed} duplicate questions. Final count: {len(deduplicated_questions)}")
+            else:
+                app_logger.info(f"No duplicates found. Final count: {len(deduplicated_questions)}")
+
             return jsonify({
                 "status": "success",
-                "questions": questions,
-                "count": len(questions),
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
+                "questions": deduplicated_questions,
+                "count": len(deduplicated_questions),
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "batches": num_batches,
+                "duplicates_removed": duplicates_removed,
                 "documents_processed": len(processed_documents),
                 "processing_method": processed_documents[0]['method'] if processed_documents else 'unknown',
                 "provider": provider_name,
                 "native_upload_used": processed_documents[0]['method'] != 'text_extraction' if processed_documents else False
             })
-            
-        except json.JSONDecodeError as e:
-            app_logger.error(f"Failed to parse LLM response as JSON: {e}")
-            app_logger.error(f"Response was: {response_text[:500]}")
+
+        except Exception as e:
+            app_logger.error(f"Failed to generate questions with LLM: {e}", exc_info=True)
             return jsonify({
                 "status": "error",
-                "message": "LLM did not return valid JSON",
-                "raw_response": response_text[:1000]
-            }), 500
-        except ValueError as e:
-            app_logger.error(f"Invalid question structure: {e}")
-            return jsonify({
-                "status": "error",
-                "message": str(e),
-                "raw_response": response_text[:1000]
+                "message": f"LLM invocation failed: {str(e)}"
             }), 500
         
     except Exception as e:
