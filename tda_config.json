@@ -296,6 +296,14 @@
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
       "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+    },
+    {
+      "provider": "Fallback",
+      "model": "Unknown Models",
+      "input_cost_per_million": 0.10,
+      "output_cost_per_million": 0.40,
+      "is_fallback": true,
+      "notes": "Default fallback cost for models not found in pricing table (based on Gemini Flash pricing)"
     }
   ],
   "global_parameters": {

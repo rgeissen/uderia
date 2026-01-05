@@ -234,19 +234,19 @@ class CostManager:
     def get_fallback_cost(self) -> Tuple[float, float]:
         """
         Get fallback pricing for unknown models.
-        
+
         Returns:
             Tuple of (input_cost_per_million, output_cost_per_million)
         """
         with get_db_session() as db:
             stmt = select(LLMModelCost).where(LLMModelCost.is_fallback == True)
             fallback = db.execute(stmt).first()
-            
+
             if fallback and fallback[0]:
                 return (fallback[0].input_cost_per_million, fallback[0].output_cost_per_million)
-            
-            # Hardcoded fallback if database entry doesn't exist
-            return (10.0, 30.0)
+
+            # Hardcoded fallback if database entry doesn't exist (based on Gemini Flash pricing)
+            return (0.10, 0.40)
     
     def calculate_cost(self, provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
         """
@@ -508,20 +508,21 @@ class CostManager:
                     input_cost = cost_entry.get('input_cost_per_million')
                     output_cost = cost_entry.get('output_cost_per_million')
                     notes = cost_entry.get('notes', '')
-                    
+                    is_fallback = cost_entry.get('is_fallback', False)
+
                     if not all([provider, model, input_cost is not None, output_cost is not None]):
                         continue
-                    
+
                     # Check if entry already exists (don't overwrite)
                     stmt = select(LLMModelCost).where(
                         LLMModelCost.provider == provider,
                         LLMModelCost.model == model
                     )
                     existing = db.execute(stmt).scalar_one_or_none()
-                    
+
                     if existing:
                         continue
-                    
+
                     # Insert config default
                     import uuid
                     new_cost = LLMModelCost(
@@ -531,7 +532,7 @@ class CostManager:
                         input_cost_per_million=input_cost,
                         output_cost_per_million=output_cost,
                         is_manual_entry=False,
-                        is_fallback=False,
+                        is_fallback=is_fallback,
                         source='config_default',
                         last_updated=datetime.now(timezone.utc),
                         notes=notes
