@@ -217,8 +217,14 @@ class Planner:
                     correction_made = True
                     correction_type = "prompt_as_tool"
 
+            # --- MODIFICATION START: Change elif to if for independent correction ---
             # Correction 3: Tool misclassified as prompt
-            elif 'executable_prompt' in phase and isinstance(phase['executable_prompt'], str):
+            # Changed from 'elif' to 'if' to ensure this correction runs independently.
+            # This handles cases where LLM generates both fields (e.g., empty relevant_tools
+            # AND executable_prompt with a tool like TDA_ContextReport). Corrections 2 and 3
+            # are mutually exclusive in practice (one deletes what the other creates), so
+            # both won't trigger on the same phase in a single pass.
+            if 'executable_prompt' in phase and isinstance(phase['executable_prompt'], str):
                 capability_name = phase['executable_prompt']
                 if capability_name in all_tools:
                     app_logger.warning(f"PLAN CORRECTION: Planner wrongly classified tool '{capability_name}' as a prompt. Correcting.")
@@ -226,6 +232,7 @@ class Planner:
                     del phase['executable_prompt']
                     correction_made = True
                     correction_type = "tool_as_prompt"
+            # --- MODIFICATION END ---
             
             # Correction 4: Remove hallucinated/extraneous arguments that don't exist in tool schema
             # Also mark phases that need argument refinement at execution time
@@ -330,7 +337,7 @@ class Planner:
             return
 
         last_phase = self.executor.meta_plan[-1]
-        
+
         # --- MODIFICATION START: Make final report check robust to LLM key variations ---
         # Check for the key 'relevant_tools' (list)
         last_phase_tools_list = last_phase.get("relevant_tools", [])
@@ -342,8 +349,17 @@ class Planner:
             last_phase_tool_str in ["TDA_FinalReport", "TDA_ComplexPromptReport"]
         )
         # --- MODIFICATION END ---
-        
-        is_synthesis_plan = any("TDA_ContextReport" in p.get("relevant_tools", []) for p in self.executor.meta_plan)
+
+        # --- MODIFICATION START: Check both relevant_tools AND executable_prompt for TDA_ContextReport ---
+        # Knowledge repository queries use TDA_ContextReport for single-phase bypass.
+        # The LLM sometimes misclassifies it as executable_prompt instead of relevant_tools.
+        # We need to check both locations to properly detect synthesis plans.
+        is_synthesis_plan = any(
+            "TDA_ContextReport" in p.get("relevant_tools", []) or
+            p.get("executable_prompt") == "TDA_ContextReport"
+            for p in self.executor.meta_plan
+        )
+        # --- MODIFICATION END ---
 
         app_logger.debug(f"DEBUG: _ensure_final_report_phase - Current meta_plan: {self.executor.meta_plan}")
         app_logger.debug(f"DEBUG: _ensure_final_report_phase - Last phase: {last_phase}")
