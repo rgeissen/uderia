@@ -1199,17 +1199,30 @@ class RAGRetriever:
                     # They should have document_id, collection_id, chunk metadata
                     where_filter = None  # No filtering needed for knowledge documents
                 elif rag_context:
+                    # Allow cases that are EITHER efficient OR explicitly upvoted
+                    # This ensures "better suited" plans (which users liked) aren't hidden by "lazier" plans (fewer tokens)
+                    efficiency_filter = {
+                        "$or": [
+                            {"is_most_efficient": {"$eq": True}},
+                            {"user_feedback_score": {"$gt": 0}}
+                        ]
+                    }
+                    
                     where_filter = rag_context.build_query_filter(
                         collection_id=collection_id,
+                        extra_filter=efficiency_filter,
                         strategy_type={"$eq": "successful"},
-                        is_most_efficient={"$eq": True},
                         user_feedback_score={"$gte": 0}
                     )
                 else:
+                    # Fallback logic without context
                     where_filter = {"$and": [
                         {"strategy_type": {"$eq": "successful"}},
-                        {"is_most_efficient": {"$eq": True}},
-                        {"user_feedback_score": {"$gte": 0}}
+                        {"user_feedback_score": {"$gte": 0}},
+                        {"$or": [
+                            {"is_most_efficient": {"$eq": True}},
+                            {"user_feedback_score": {"$gt": 0}}
+                        ]}
                     ]}
                 
                 # Log collection state before query
@@ -1301,32 +1314,29 @@ class RAGRetriever:
             return []
         # --- MODIFICATION END ---
         
-        # Sort all candidates by similarity score first
-        all_candidate_cases.sort(key=lambda x: x["similarity_score"], reverse=True)
-
-        # Apply hierarchical filtering
-        no_improvements = []
-        no_tactical_improvements = []
-        other_successful_cases = []
-
-        for case in all_candidate_cases:
-            if not case["had_plan_improvements"] and not case["had_tactical_improvements"]:
-                no_improvements.append(case)
-            elif not case["had_tactical_improvements"]:
-                no_tactical_improvements.append(case)
-            else:
-                other_successful_cases.append(case)
+        # Calculate Adjusted Score to balance Relevance vs. Cleanliness
+        # Instead of hard buckets (which hide highly relevant cases if they have corrections),
+        # we apply a small penalty to the similarity score for corrections.
+        # This ensures a 95% match with corrections still beats a 70% clean match,
+        # but a 90% clean match beats a 92% match with corrections.
         
-        final_candidates = []
-        if no_improvements:
-            final_candidates = no_improvements
-            logger.debug(f"Prioritizing {len(no_improvements)} cases with no plan or tactical improvements.")
-        elif no_tactical_improvements:
-            final_candidates = no_tactical_improvements
-            logger.debug(f"Prioritizing {len(no_tactical_improvements)} cases with no tactical improvements.")
-        else:
-            final_candidates = other_successful_cases
-            logger.debug(f"No specific improvement categories found, returning {len(other_successful_cases)} other successful cases.")
+        PENALTY_TACTICAL = 0.05  # 5% penalty for tactical corrections
+        PENALTY_PLAN = 0.05      # 5% penalty for plan corrections
+        
+        for case in all_candidate_cases:
+            penalty = 0.0
+            if case["had_tactical_improvements"]:
+                penalty += PENALTY_TACTICAL
+            if case["had_plan_improvements"]:
+                penalty += PENALTY_PLAN
+            
+            case["adjusted_score"] = case["similarity_score"] - penalty
+
+        # Sort by Adjusted Score descending
+        all_candidate_cases.sort(key=lambda x: x["adjusted_score"], reverse=True)
+        
+        final_candidates = all_candidate_cases
+        logger.debug(f"Returning top {k} candidates sorted by adjusted score (Relevance - Cleanliness Penalty).")
 
         # Enrich with collection metadata
         for case in final_candidates[:k]:
@@ -1355,7 +1365,7 @@ class RAGRetriever:
             if case["full_case_data"].get("successful_strategy", {}).get("phases"):
                 plan_json = json.dumps(case["full_case_data"]["successful_strategy"]["phases"], indent=2)
             plan_content = f"- **Correct Plan**:\n```json\n{plan_json}\n```"
-            thought_process_summary = f"Retrieved RAG case `{case_id}` demonstrates a successful strategy for this type of query."
+            thought_process_summary = f"RAG case `{case_id}` shows a proven strategy pattern for this query type."
         elif strategy_type == "failed":
             error_summary = case["full_case_data"].get("failed_strategy", {}).get("error_summary", "an unspecified error.")
             plan_content = f"- **Failed Action**: {json.dumps(case['full_case_data'].get('failed_strategy', {}).get('failed_action', {}), indent=2)}"
