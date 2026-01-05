@@ -1365,7 +1365,7 @@ class RAGRetriever:
             if case["full_case_data"].get("successful_strategy", {}).get("phases"):
                 plan_json = json.dumps(case["full_case_data"]["successful_strategy"]["phases"], indent=2)
             plan_content = f"- **Correct Plan**:\n```json\n{plan_json}\n```"
-            thought_process_summary = f"Retrieved RAG case `{case_id}` demonstrates a successful strategy for this type of query."
+            thought_process_summary = f"RAG case `{case_id}` shows a proven strategy pattern for this query type."
         elif strategy_type == "failed":
             error_summary = case["full_case_data"].get("failed_strategy", {}).get("error_summary", "an unspecified error.")
             plan_content = f"- **Failed Action**: {json.dumps(case['full_case_data'].get('failed_strategy', {}).get('failed_action', {}), indent=2)}"
