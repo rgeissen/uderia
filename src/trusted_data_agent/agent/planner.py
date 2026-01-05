@@ -1610,20 +1610,20 @@ Ranking:"""
         if self.rag_retriever and APP_CONFIG.KNOWLEDGE_RAG_ENABLED:
             # Get profile configuration for knowledge settings
             profile_config = None
-            if self.executor.profile_override_id or self.executor.user_uuid:
-                app_logger.info(f"[KNOWLEDGE DEBUG] profile_override_id={self.executor.profile_override_id}, user_uuid={self.executor.user_uuid}")
+            # Use executor's active_profile_id which is already correctly set to either
+            # the override profile or the default profile at initialization (executor.py line 103)
+            if self.executor.active_profile_id and self.executor.active_profile_id != "__system_default__":
+                app_logger.info(f"[KNOWLEDGE DEBUG] active_profile_id={self.executor.active_profile_id}, user_uuid={self.executor.user_uuid}")
                 try:
                     from trusted_data_agent.core.config_manager import get_config_manager
                     config_manager = get_config_manager()
                     profiles = config_manager.get_profiles(self.executor.user_uuid)
-                    
-                    # Use override profile if active, otherwise use default
-                    profile_id = self.executor.profile_override_id
-                    if not profile_id:
-                        profile_id = config_manager.get_default_profile_id(self.executor.user_uuid)
-                    
+
+                    # Use the active profile directly - it's already the correct profile
+                    profile_id = self.executor.active_profile_id
+
                     app_logger.info(f"[KNOWLEDGE DEBUG] Selected profile_id={profile_id}")
-                    
+
                     if profile_id:
                         profile_config = next((p for p in profiles if p.get("id") == profile_id), None)
                         app_logger.info(f"[KNOWLEDGE DEBUG] Found profile_config={profile_config is not None}")
@@ -1683,18 +1683,18 @@ Ranking:"""
         if self.rag_retriever:
             # Determine which collections to query based on profile
             allowed_collection_ids = None
-            app_logger.info(f"[RAG FILTER DEBUG] Starting collection filtering: profile_override_id={self.executor.profile_override_id}, user_uuid={self.executor.user_uuid}")
-            if self.executor.profile_override_id or self.executor.user_uuid:
+            # Use executor's active_profile_id which is already correctly set to either
+            # the override profile or the default profile at initialization (executor.py line 103)
+            app_logger.info(f"[RAG FILTER DEBUG] Starting collection filtering: active_profile_id={self.executor.active_profile_id}, user_uuid={self.executor.user_uuid}")
+            if self.executor.active_profile_id and self.executor.active_profile_id != "__system_default__":
                 try:
                     from trusted_data_agent.core.config_manager import get_config_manager
                     config_manager = get_config_manager()
                     profiles = config_manager.get_profiles(self.executor.user_uuid)
                     app_logger.info(f"[RAG FILTER DEBUG] Retrieved {len(profiles)} profiles from config_manager")
 
-                    # Use override profile if active, otherwise use default
-                    profile_id = self.executor.profile_override_id
-                    if not profile_id:
-                        profile_id = config_manager.get_default_profile_id(self.executor.user_uuid)
+                    # Use the active profile directly - it's already the correct profile
+                    profile_id = self.executor.active_profile_id
                     app_logger.info(f"[RAG FILTER DEBUG] Using profile_id: {profile_id}")
 
                     if profile_id:
