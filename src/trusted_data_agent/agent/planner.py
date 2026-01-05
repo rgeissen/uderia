@@ -1738,6 +1738,11 @@ Ranking:"""
         mcp_system_name = row[0] if row else 'Database System'
         conn.close()
 
+        # Get tools and prompts context from APP_STATE
+        from trusted_data_agent.core.config import APP_STATE
+        tools_context = APP_STATE.get('tools_context', '--- No Tools Available ---')
+        prompts_context = APP_STATE.get('prompts_context', '--- No Prompts Available ---')
+
         planning_prompt = WORKFLOW_META_PLANNING_PROMPT.format(
             workflow_goal=self.executor.workflow_goal_prompt,
             explicit_parameters_section=explicit_parameters_section,
@@ -1751,7 +1756,9 @@ Ranking:"""
             sql_consolidation_rule=sql_consolidation_rule_str,
             reporting_tool_name=reporting_tool_name_injection,
             rag_few_shot_examples=rag_few_shot_examples_str,  # Pass the populated examples
-            knowledge_context=knowledge_context_str  # Pass the knowledge context
+            knowledge_context=knowledge_context_str,  # Pass the knowledge context
+            available_tools=tools_context,  # Pass tools context
+            available_prompts=prompts_context  # Pass prompts context
         )
 
         yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")

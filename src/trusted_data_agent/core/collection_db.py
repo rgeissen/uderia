@@ -8,19 +8,20 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "tda_auth.db"
+# Use absolute path to match database.py (3 parents up from core/collection_db.py to project root)
+DB_PATH = Path(__file__).resolve().parents[3] / "tda_auth.db"
 
 
 class CollectionDatabase:
     """Handles all database operations for RAG collections."""
-    
-    def __init__(self, db_path: str = DB_PATH):
-        self.db_path = db_path
-    
+
+    def __init__(self, db_path: Union[str, Path] = DB_PATH):
+        self.db_path = str(db_path)  # Convert Path to str for sqlite3
+
     def _get_connection(self) -> sqlite3.Connection:
         """Get a database connection."""
         conn = sqlite3.connect(self.db_path)

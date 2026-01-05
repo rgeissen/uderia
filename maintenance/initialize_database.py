@@ -18,14 +18,15 @@ from trusted_data_agent.auth.database import get_db_session
 from trusted_data_agent.auth.models import User
 from trusted_data_agent.core.collection_db import get_collection_db
 
-DB_PATH = "tda_auth.db"
+# Use absolute path to project root database
+DB_PATH = Path(__file__).parent.parent / "tda_auth.db"
 
 
 def clear_database():
     """Clear all users, collections, and related data."""
     print("🗑️  Clearing existing data...")
-    
-    conn = sqlite3.connect(DB_PATH)
+
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
     
     # Clear in order to respect foreign keys
@@ -137,8 +138,8 @@ def create_default_collections(admin_id, test_id):
 def verify_setup():
     """Verify the setup."""
     print("\n🔍 Verifying setup...")
-    
-    conn = sqlite3.connect(DB_PATH)
+
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
     
     # Count users

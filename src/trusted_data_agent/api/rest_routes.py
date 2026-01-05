@@ -40,6 +40,9 @@ from trusted_data_agent.llm import handler as llm_handler
 rest_api_bp = Blueprint('rest_api', __name__)
 app_logger = logging.getLogger("quart.app") # Use quart logger
 
+# Database path - use absolute path to project root (4 parents up from api/rest_routes.py)
+DB_PATH = Path(__file__).resolve().parents[3] / "tda_auth.db"
+
 # --- MODIFICATION START: Helper to get User UUID from JWT token ---
 def _get_user_uuid_from_request():
     """
@@ -3443,10 +3446,10 @@ async def get_template_defaults(template_id: str):
         
         import sqlite3
         from datetime import datetime
-        
-        conn = sqlite3.connect('tda_auth.db')
+
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
-        
+
         # Get user-specific defaults
         cursor.execute("""
             SELECT parameter_name, parameter_value, parameter_type
@@ -3517,10 +3520,10 @@ async def save_template_defaults(template_id: str):
         
         import sqlite3
         from datetime import datetime
-        
-        conn = sqlite3.connect('tda_auth.db')
+
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
-        
+
         updated_count = 0
         now = datetime.utcnow().isoformat()
         
@@ -3577,12 +3580,13 @@ async def reset_template_defaults(template_id: str):
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
-        
+
+
         import sqlite3
-        
-        conn = sqlite3.connect('tda_auth.db')
+
+        conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             DELETE FROM template_defaults
             WHERE template_id = ? AND user_id = ?
