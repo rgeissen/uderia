@@ -556,27 +556,22 @@ class PlanExecutor:
                 continue
 
             if isinstance(value, str):
-                # --- NEW: Handle string interpolation for loop_item references ---
-                # Pattern: {loop_item[KeyName]} within SQL strings or other text
-                if loop_item and "{loop_item[" in value:
-                    loop_item_pattern = re.compile(r'\{loop_item\[([^\]]+)\]\}')
+                # Handle bare {KeyName} templates embedded in SQL strings or other text
+                # Planner normalizes standalone templates to dicts, but embedded ones remain as strings
+                if loop_item and re.search(r'\{[A-Za-z][A-Za-z0-9_]*\}', value):
+                    def replace_bare_template(match):
+                        key = match.group(1)
+                        # Only resolve if it looks like a template variable and exists in loop_item
+                        if (key[0].isupper() or key in ['TableName', 'ColumnName', 'DatabaseName', 'SchemaName']) and key in loop_item:
+                            replacement = loop_item.get(key)
+                            if replacement is not None:
+                                app_logger.info(f"Resolved bare template: {{{key}}} -> '{replacement}'")
+                                return str(replacement)
+                        return match.group(0)  # Return original if not a template or key not found
 
-                    def replace_loop_item(match):
-                        """Replace {loop_item[key]} with the actual value from loop_item dict."""
-                        loop_key = match.group(1).strip('\'"')  # Remove quotes if present
-                        replacement_value = loop_item.get(loop_key)
-
-                        if replacement_value is not None:
-                            app_logger.info(f"Resolved loop_item interpolation: {{loop_item[{loop_key}]}} -> '{replacement_value}'")
-                            return str(replacement_value)
-                        else:
-                            app_logger.warning(f"Could not resolve loop_item key '{loop_key}' in string interpolation. Available keys: {list(loop_item.keys())}")
-                            return match.group(0)  # Return original if key not found
-
-                    resolved_value = loop_item_pattern.sub(replace_loop_item, value)
-                    resolved_args[key] = resolved_value
+                    value = re.sub(r'\{([A-Za-z][A-Za-z0-9_]*)\}', replace_bare_template, value)
+                    resolved_args[key] = value
                     continue
-                # --- END NEW ---
 
                 # --- NEW: Handle string interpolation for result_of_phase_N references ---
                 # Pattern: {result_of_phase_1[KeyName]} or {result_of_phase_1} within strings

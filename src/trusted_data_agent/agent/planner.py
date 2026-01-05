@@ -379,6 +379,149 @@ class Planner:
         self.executor._log_system_event(event_data)
         yield self.executor._format_sse(event_data)
 
+    # ===========================================================================
+    # PLAN NORMALIZATION METHODS - Template Syntax Canonicalization
+    # ===========================================================================
+
+    def _convert_to_canonical(self, value):
+        """
+        Converts a single argument value to canonical template format.
+
+        Handles all LLM-generated template variations:
+        - {{loop_item.key}} → {"source": "loop_item", "key": "key"} (as dict if standalone)
+        - {{loop_item['key']}} → {"source": "loop_item", "key": "key"}
+        - {loop_item[key]} → {"source": "loop_item", "key": "key"}
+        - {loop_item.key} → {"source": "loop_item", "key": "key"}
+        - {KeyName} → {"source": "loop_item", "key": "KeyName"}
+
+        Args:
+            value: Argument value (string, dict, or primitive)
+
+        Returns:
+            Normalized value with canonical template format (dict if pure template, string if embedded)
+        """
+        # Skip if not string or dict
+        if not isinstance(value, (str, dict)):
+            return value
+
+        # Handle dict format (may already be canonical or legacy)
+        if isinstance(value, dict):
+            if value.get("source") == "loop_item" and "key" in value:
+                return value  # Already canonical
+            # Handle legacy {"result_of_phase_1": "key"} format
+            for k, v in value.items():
+                if re.match(r"result_of_phase_\d+|phase_\d+", k):
+                    return {"source": k, "key": v}
+            return value  # Not a template
+
+        # Handle string format
+        original_value = value
+
+        # Check if this is a PURE template (entire value is just a template)
+        # Pattern: exactly "{KeyName}" with nothing before or after
+        pure_template_match = re.fullmatch(r'\{([A-Za-z][A-Za-z0-9_]*)\}', value)
+        if pure_template_match:
+            key = pure_template_match.group(1)
+            # Only convert if it looks like a template variable
+            if key[0].isupper() or key in ['TableName', 'ColumnName', 'DatabaseName', 'SchemaName']:
+                app_logger.debug(f"Template normalized (pure): '{original_value}' → dict object")
+                return {"source": "loop_item", "key": key}
+
+        # Check for other pure template patterns
+        pure_patterns = [
+            (r'\{\{loop_item\.([A-Za-z0-9_]+)\}\}', 'loop_item'),
+            (r'\{\{loop_item\[[\'\"]([A-Za-z0-9_]+)[\'\"]\]\}\}', 'loop_item'),
+            (r'\{loop_item\[[\'\"]?([A-Za-z0-9_]+)[\'\"]?\]\}', 'loop_item'),
+            (r'\{loop_item\.([A-Za-z0-9_]+)\}', 'loop_item'),
+        ]
+
+        for pattern, source in pure_patterns:
+            match = re.fullmatch(pattern, value)
+            if match:
+                key = match.group(1)
+                app_logger.debug(f"Template normalized (pure): '{original_value}' → dict object")
+                return {"source": source, "key": key}
+
+        # If we get here, it's an EMBEDDED template (template within other text)
+        # For embedded templates, we keep them as strings but don't convert to JSON
+        # The executor's embedded placeholder handler will resolve them
+        # So we actually DON'T need to do anything for embedded templates in the new approach
+
+        # Return unchanged - embedded templates will be left as-is for executor to handle
+        return value
+
+    def _normalize_arguments(self, args):
+        """
+        Recursively normalizes all arguments in a dict to canonical template format.
+
+        Args:
+            args: Dictionary of tool/prompt arguments
+
+        Returns:
+            Dictionary with normalized template references
+        """
+        if not isinstance(args, dict):
+            return args
+
+        normalized = {}
+
+        for key, value in args.items():
+            if isinstance(value, dict):
+                # Recursively normalize nested dicts
+                normalized[key] = self._normalize_arguments(value)
+            elif isinstance(value, list):
+                # Normalize each item in list
+                normalized[key] = [
+                    self._normalize_arguments(item) if isinstance(item, dict)
+                    else self._convert_to_canonical(item)
+                    for item in value
+                ]
+            else:
+                # Convert individual values
+                normalized[key] = self._convert_to_canonical(value)
+
+        return normalized
+
+    def _normalize_plan_syntax(self, plan):
+        """
+        Normalizes all template syntax in a plan to canonical format.
+
+        This runs ONCE after plan generation, before validation and execution.
+        Converts all LLM-generated template variations to a single canonical
+        format, simplifying downstream execution logic.
+
+        Args:
+            plan: List of phase dictionaries from LLM
+
+        Returns:
+            Plan with all templates normalized to canonical format
+        """
+        if not isinstance(plan, list):
+            return plan
+
+        total_changes = 0
+
+        for phase in plan:
+            if not isinstance(phase, dict):
+                continue
+
+            # Normalize arguments if present
+            if "arguments" in phase and isinstance(phase["arguments"], dict):
+                original_args = copy.deepcopy(phase["arguments"])
+                phase["arguments"] = self._normalize_arguments(phase["arguments"])
+
+                if phase["arguments"] != original_args:
+                    total_changes += 1
+                    app_logger.debug(
+                        f"Phase {phase.get('phase')} arguments normalized:\n"
+                        f"  Before: {original_args}\n"
+                        f"  After:  {phase['arguments']}"
+                    )
+
+        if total_changes > 0:
+            app_logger.info(f"Plan normalization complete: {total_changes} phases updated")
+
+        return plan
 
     async def _rewrite_plan_for_multi_loop_synthesis(self):
         """
@@ -1639,7 +1782,7 @@ Ranking:"""
         if rag_few_shot_examples_str:
             app_logger.info(f"RAG Findings (few-shot examples) used:\n{rag_few_shot_examples_str}")
 
-        app_logger.debug(
+        app_logger.info(
             f"\n--- Meta-Planner Turn ---\n"
             f"** CONTEXT **\n"
             f"Original User Input: {self.executor.original_user_input}\n"
@@ -1707,6 +1850,12 @@ Ranking:"""
 
         except (json.JSONDecodeError, ValueError) as e:
             raise RuntimeError(f"Failed to generate a valid meta-plan from the LLM. Response: {response_text}. Error: {e}")
+
+        # --- NORMALIZATION: Convert all template syntaxes to canonical format ---
+        if self.executor.meta_plan:
+            app_logger.info("Normalizing plan template syntax to canonical format...")
+            self.executor.meta_plan = self._normalize_plan_syntax(self.executor.meta_plan)
+        # --- END NORMALIZATION ---
 
         if self.executor.active_prompt_name and self.executor.meta_plan:
             if len(self.executor.meta_plan) > 1 or any(phase.get("type") == "loop" for phase in self.executor.meta_plan):

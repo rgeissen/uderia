@@ -3074,21 +3074,40 @@ async function showProfileModal(profileId = null) {
     
     // Helper function to create collection entry with toggles
     const createCollectionEntry = (coll, isPlanner) => {
-        // For new profiles (!isEdit), default to UNCHECKED (user must explicitly select)
+        // Check if this is the default collection (by name)
+        const isDefaultCollection = coll.name === 'Default Collection';
+
+        // For new profiles (!isEdit), only default collection is enabled
         // For existing profiles being edited (isEdit=true), respect their saved selections
         let isQueryEnabled;
         if (isPlanner) {
-            // New profiles: unchecked by default
-            // Existing profiles: check if collection is in ragCollections array or wildcard
-            isQueryEnabled = isEdit && (profile?.ragCollections?.includes(coll.id) || profile?.ragCollections?.includes('*'));
+            if (!isEdit) {
+                // New profiles: only default collection is checked
+                isQueryEnabled = isDefaultCollection;
+            } else {
+                // Existing profiles: check if collection is in ragCollections array or wildcard
+                isQueryEnabled = profile?.ragCollections?.includes(coll.id) || profile?.ragCollections?.includes('*');
+            }
         } else {
             // Knowledge repository: check if it's in knowledgeConfig.collections
             const knowledgeCollectionIds = profile?.knowledgeConfig?.collections?.map(c => c.id) || [];
-            isQueryEnabled = isEdit && knowledgeCollectionIds.includes(coll.id);
+            if (!isEdit) {
+                // New profiles: only default collection is checked
+                isQueryEnabled = isDefaultCollection;
+            } else {
+                isQueryEnabled = knowledgeCollectionIds.includes(coll.id);
+            }
         }
 
-        // For autocomplete, also default to unchecked for new profiles
-        const isAutocompleteEnabled = isEdit && (profile?.autocompleteCollections?.includes(coll.id) || profile?.autocompleteCollections?.includes('*'));
+        // For autocomplete, also enable only default collection for new profiles
+        let isAutocompleteEnabled;
+        if (!isEdit) {
+            // New profiles: only default collection has autocomplete enabled
+            isAutocompleteEnabled = isDefaultCollection;
+        } else {
+            // Existing profiles: respect saved selections
+            isAutocompleteEnabled = profile?.autocompleteCollections?.includes(coll.id) || profile?.autocompleteCollections?.includes('*');
+        }
         // Knowledge repositories: default autocomplete to OFF for both new and existing profiles
         const defaultAutocomplete = isPlanner ? isAutocompleteEnabled : false;
         
