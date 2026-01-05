@@ -226,6 +226,20 @@ class PlanExecutor:
         # --- PHASE 2 END ---
 
 
+    def _check_cancellation(self):
+        """
+        Check if cancellation was requested for this execution.
+        Raises asyncio.CancelledError if cancellation flag is set.
+        This provides a manual cancellation checkpoint independent of asyncio task.cancel().
+        """
+        from trusted_data_agent.core.config import APP_STATE
+        active_tasks_key = f"{self.user_uuid}_{self.session_id}"
+        cancellation_flags = APP_STATE.get("cancellation_flags", {})
+
+        if cancellation_flags.get(active_tasks_key):
+            app_logger.info(f"[CANCELLATION] Flag detected for session {self.session_id} - raising CancelledError")
+            raise asyncio.CancelledError()
+
     def _log_system_event(self, event_data: dict, event_name: str = None):
         """Logs a system-level event to the turn action history for replay and debugging."""
         # Avoid logging token updates or status indicators
@@ -1040,6 +1054,9 @@ class PlanExecutor:
         else:
             app_logger.warning(f"🔔 [DEBUG] Could not send SSE notification - session_data is None for session {self.session_id}")
 
+        # Check for cancellation before starting execution
+        self._check_cancellation()
+
         try:
             # --- MODIFICATION START: Handle Replay ---
             if self.plan_to_execute:
@@ -1072,6 +1089,9 @@ class PlanExecutor:
 
                 # --- Planning Phase ---
                 if self.state == self.AgentState.PLANNING:
+                    # Check for cancellation before starting planning
+                    self._check_cancellation()
+
                     # --- MODIFICATION START: Pass RAG retriever instance to Planner ---
                     # Create a wrapped event handler that captures RAG collection info and knowledge retrieval
                     async def rag_aware_event_handler(data, event_name):
@@ -1511,6 +1531,9 @@ class PlanExecutor:
 
 
         while self.current_phase_index < len(self.meta_plan):
+            # Check for cancellation before each phase
+            self._check_cancellation()
+
             current_phase = self.meta_plan[self.current_phase_index]
             is_delegated_prompt_phase = 'executable_prompt' in current_phase and self.execution_depth < self.MAX_EXECUTION_DEPTH
 

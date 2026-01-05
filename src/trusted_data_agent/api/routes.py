@@ -1792,6 +1792,11 @@ async def ask_stream():
     async def stream_generator():
         queue = asyncio.Queue()
 
+        # Store queue in APP_STATE for cancellation endpoint access
+        active_tasks_key = f"{user_uuid}_{session_id}"
+        active_queues = APP_STATE.setdefault("active_queues", {})
+        active_queues[active_tasks_key] = queue
+
         async def event_handler(event_data, event_type):
             sse_event = PlanExecutor._format_sse(event_data, event_type)
             await queue.put(sse_event)
@@ -1832,6 +1837,10 @@ async def ask_stream():
             finally:
                 if active_tasks_key in APP_STATE.get("active_tasks", {}):
                     del APP_STATE["active_tasks"][active_tasks_key]
+                # Clean up queue from APP_STATE
+                active_queues = APP_STATE.get("active_queues", {})
+                if active_tasks_key in active_queues:
+                    del active_queues[active_tasks_key]
                 await queue.put(None)
 
         asyncio.create_task(run_and_signal_completion())
@@ -1924,6 +1933,11 @@ async def invoke_prompt_stream():
     async def stream_generator():
         queue = asyncio.Queue()
 
+        # Store queue in APP_STATE for cancellation endpoint access
+        active_tasks_key = f"{user_uuid}_{session_id}"
+        active_queues = APP_STATE.setdefault("active_queues", {})
+        active_queues[active_tasks_key] = queue
+
         async def event_handler(event_data, event_type):
             sse_event = PlanExecutor._format_sse(event_data, event_type)
             await queue.put(sse_event)
@@ -1959,6 +1973,10 @@ async def invoke_prompt_stream():
             finally:
                 if active_tasks_key in APP_STATE.get("active_tasks", {}):
                     del APP_STATE["active_tasks"][active_tasks_key]
+                # Clean up queue from APP_STATE
+                active_queues = APP_STATE.get("active_queues", {})
+                if active_tasks_key in active_queues:
+                    del active_queues[active_tasks_key]
                 await queue.put(None)
 
         asyncio.create_task(run_and_signal_completion())
@@ -1983,9 +2001,40 @@ async def cancel_stream(session_id: str):
 
     if task and not task.done():
         app_logger.info(f"Received request to cancel task for user {user_uuid}, session {session_id}.")
+
+        # Set cancellation flag for executor to check
+        cancellation_flags = APP_STATE.setdefault("cancellation_flags", {})
+        cancellation_flags[active_tasks_key] = True
+
+        # Cancel the asyncio task
         task.cancel()
-        if active_tasks_key in active_tasks:
-             del active_tasks[active_tasks_key]
+
+        # Send immediate SSE event to frontend to ensure UI updates
+        # This happens even if task is stuck and doesn't acknowledge cancellation
+        active_queues = APP_STATE.get("active_queues", {})
+        queue = active_queues.get(active_tasks_key)
+        if queue:
+            try:
+                from .executor import PlanExecutor
+                sse_event = PlanExecutor._format_sse(
+                    {"message": "Cancellation requested by user", "session_id": session_id},
+                    "cancelled"
+                )
+                await queue.put(sse_event)
+                app_logger.info(f"Sent immediate cancellation SSE event for session {session_id}")
+            except Exception as e:
+                app_logger.error(f"Failed to send SSE cancellation event: {e}")
+
+        # Delayed cleanup to allow event propagation and task cancellation
+        async def delayed_cleanup():
+            await asyncio.sleep(2)
+            if active_tasks_key in active_tasks:
+                del active_tasks[active_tasks_key]
+            cancellation_flags.pop(active_tasks_key, None)
+            app_logger.info(f"Cleaned up cancelled task for session {session_id}")
+
+        asyncio.create_task(delayed_cleanup())
+
         return jsonify({"status": "success", "message": "Cancellation request sent."}), 200
     elif task and task.done():
         app_logger.info(f"Cancellation request for user {user_uuid}, session {session_id} ignored: task already completed.")

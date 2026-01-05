@@ -403,14 +403,72 @@ async function handleStopExecutionClick() {
     if (!state.currentSessionId) {
         return;
     }
-    if(DOM.stopExecutionButton) DOM.stopExecutionButton.disabled = true;
+
+    // CRITICAL: Keep button enabled but show visual feedback
+    if(DOM.stopExecutionButton) {
+        const originalText = DOM.stopExecutionButton.textContent;
+        DOM.stopExecutionButton.textContent = 'Stopping...';
+        DOM.stopExecutionButton.classList.add('opacity-75', 'cursor-wait');
+
+        // Store original text for restoration
+        DOM.stopExecutionButton.dataset.originalText = originalText;
+    }
+
+    // Set a failsafe timeout - button MUST re-enable after 10 seconds
+    const failsafeTimer = setTimeout(() => {
+        console.warn('[FAILSAFE] Stop button timeout - forcing UI reset');
+        forceResetExecutionState();
+    }, 10000);
+
     try {
         const result = await API.cancelStream(state.currentSessionId);
+        console.log('[StopButton] Cancellation API response:', result);
+
+        // Success - wait for backend to emit 'cancelled' event
+        // But also set a backup timer in case event never arrives
+        setTimeout(() => {
+            if (DOM.stopExecutionButton && !DOM.stopExecutionButton.classList.contains('hidden')) {
+                console.warn('[FAILSAFE] Backend cancelled event never arrived - forcing reset');
+                forceResetExecutionState();
+            }
+        }, 5000);
+
     } catch (error) {
         console.error("Error sending cancellation request:", error);
         UI.addMessage('assistant', `Error trying to stop execution: ${error.message}`);
-        if(DOM.stopExecutionButton) DOM.stopExecutionButton.disabled = false;
+        // Force reset immediately on error
+        forceResetExecutionState();
+    } finally {
+        clearTimeout(failsafeTimer);
     }
+}
+
+/**
+ * Force reset execution state - ensures UI is always recoverable.
+ * This is a failsafe function that guarantees the stop button never stays disabled.
+ */
+function forceResetExecutionState() {
+    console.log('[FORCE RESET] Resetting execution state');
+
+    // Reset button state
+    if(DOM.stopExecutionButton) {
+        const originalText = DOM.stopExecutionButton.dataset.originalText || 'Stop';
+        DOM.stopExecutionButton.textContent = originalText;
+        DOM.stopExecutionButton.classList.remove('opacity-75', 'cursor-wait');
+        DOM.stopExecutionButton.disabled = false;
+        DOM.stopExecutionButton.classList.add('hidden');
+        delete DOM.stopExecutionButton.dataset.originalText;
+    }
+
+    // Reset execution state
+    UI.setExecutionState(false);
+
+    // Reset status window with error message
+    UI.updateStatusWindow({
+        step: "Execution Stopped (Forced)",
+        details: "Process forcibly terminated after timeout.",
+        type: 'error'
+    }, true);
 }
 
 /**
