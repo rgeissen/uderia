@@ -116,7 +116,7 @@ class RAGAccessContext:
         self._access_type_cache[collection_id] = access_type
         return access_type
     
-    def build_query_filter(self, collection_id: int, **conditions) -> Dict[str, Any]:
+    def build_query_filter(self, collection_id: int, extra_filter: Optional[Dict[str, Any]] = None, **conditions) -> Dict[str, Any]:
         """
         Build ChromaDB where clause with automatic context filtering.
         
@@ -126,28 +126,15 @@ class RAGAccessContext:
         
         Args:
             collection_id: Which collection to query.
-            **conditions: Additional ChromaDB where conditions to merge.
-                Example: strategy_type={"$eq": "successful"}, is_most_efficient={"$eq": True}
+            extra_filter: Optional dictionary of complex conditions (e.g. $or logic) to add to the AND block.
+            **conditions: Additional simple key-value conditions to merge.
+                Example: strategy_type={"$eq": "successful"}
         
         Returns:
             Complete ChromaDB where clause as a dictionary.
             
         Raises:
             PermissionError: If user cannot read from collection.
-            
-        Example:
-            # Old approach (no context):
-            where = {"$and": [
-                {"strategy_type": {"$eq": "successful"}},
-                {"is_most_efficient": {"$eq": True}}
-            ]}
-            
-            # New approach (with context):
-            where = context.build_query_filter(
-                collection_id=0,
-                strategy_type={"$eq": "successful"},
-                is_most_efficient={"$eq": True}
-            )
         """
         # Validate read access
         if not self.validate_collection_access(collection_id, write=False):
@@ -181,7 +168,11 @@ class RAGAccessContext:
             # For public collections, show all cases
             logger.debug(f"Query filter for public collection {collection_id}: no user_uuid filter (see all cases)")
         
-        # Merge user-provided conditions
+        # Add extra complex filter if provided
+        if extra_filter:
+            and_conditions.append(extra_filter)
+        
+        # Merge user-provided simple conditions
         for key, value in conditions.items():
             and_conditions.append({key: value})
         
