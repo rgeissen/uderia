@@ -3347,6 +3347,365 @@ async def get_template_plugin_info(template_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>/export", methods=["GET"])
+async def export_collection(collection_id: int):
+    """
+    Export a knowledge collection as a portable .zip file.
+
+    The export includes:
+    - collection_metadata.json: Collection configuration from database
+    - chroma_data/: ChromaDB collection data (embeddings + documents)
+
+    This allows fast import on other servers without re-embedding.
+    """
+    import zipfile
+    import tempfile
+    import shutil
+    from quart import send_file
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Get collection from database
+        from trusted_data_agent.core.collection_db import CollectionDatabase
+        db = CollectionDatabase()
+        collection = db.get_collection_by_id(collection_id)
+
+        if not collection:
+            return jsonify({"status": "error", "message": f"Collection {collection_id} not found"}), 404
+
+        # Check ownership
+        if collection['owner_user_id'] != user_uuid:
+            return jsonify({"status": "error", "message": "You don't own this collection"}), 403
+
+        # Get ChromaDB collection name and path
+        collection_name = collection['collection_name']
+        chroma_base_path = Path(__file__).resolve().parents[3] / ".chromadb_rag_cache"
+
+        # Find the ChromaDB collection directory (UUID-based)
+        retriever = APP_STATE.get("rag_retriever_instance")
+        if not retriever:
+            return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
+
+        # Get the actual ChromaDB collection to find its UUID
+        chroma_collection = None
+        try:
+            chroma_collection = retriever.client.get_collection(name=collection_name)
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"ChromaDB collection not found: {e}"}), 404
+
+        # ChromaDB uses segments for vector storage
+        # The directory names are segment IDs, not collection IDs
+        # We need to query the ChromaDB SQLite to find the segment ID for this collection
+        chroma_uuid = str(chroma_collection.id)
+
+        # Query ChromaDB's SQLite database to find the segment ID
+        import sqlite3
+        chroma_db_path = chroma_base_path / "chroma.sqlite3"
+
+        try:
+            conn = sqlite3.connect(str(chroma_db_path))
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM segments WHERE collection = ? AND scope = 'VECTOR'", (chroma_uuid,))
+            result = cursor.fetchone()
+            conn.close()
+
+            if not result:
+                app_logger.error(f"No vector segment found for collection {chroma_uuid}")
+                return jsonify({"status": "error", "message": "ChromaDB segment not found"}), 404
+
+            segment_id = result[0]
+            chroma_collection_path = chroma_base_path / segment_id
+
+            app_logger.info(f"Export: Collection UUID: {chroma_uuid}, Segment ID: {segment_id}")
+            app_logger.info(f"Export: ChromaDB data path: {chroma_collection_path}")
+
+        except Exception as e:
+            app_logger.error(f"Error querying ChromaDB database: {e}", exc_info=True)
+            return jsonify({"status": "error", "message": f"Failed to locate ChromaDB data: {e}"}), 500
+
+        if not chroma_collection_path.exists():
+            return jsonify({"status": "error", "message": "ChromaDB segment directory not found"}), 404
+
+        # Create temporary directory for export
+        temp_dir = tempfile.mkdtemp()
+        export_path = Path(temp_dir)
+
+        try:
+            # 1. Save collection metadata
+            metadata = {
+                "collection_id": collection_id,
+                "name": collection['name'],
+                "description": collection['description'],
+                "repository_type": collection['repository_type'],
+                "chunking_strategy": collection['chunking_strategy'],
+                "chunk_size": collection['chunk_size'],
+                "chunk_overlap": collection['chunk_overlap'],
+                "embedding_model": collection['embedding_model'],
+                "collection_name": collection_name,
+                "chroma_uuid": chroma_uuid,
+                "chroma_segment_id": segment_id,
+                "document_count": collection.get('document_count', 0),
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "export_version": "1.0"
+            }
+
+            metadata_file = export_path / "collection_metadata.json"
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+            # 2. Copy ChromaDB collection data
+            chroma_export_path = export_path / "chroma_data"
+            shutil.copytree(chroma_collection_path, chroma_export_path)
+
+            # 3. Create zip file
+            zip_filename = f"collection_{collection_id}_{collection['name'].replace(' ', '_')}.zip"
+            zip_path = Path(temp_dir) / zip_filename
+
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in export_path.rglob('*'):
+                    if file_path.is_file() and file_path != zip_path:
+                        arcname = file_path.relative_to(export_path)
+                        zipf.write(file_path, arcname)
+
+            app_logger.info(f"Exported collection {collection_id} to {zip_filename} ({zip_path.stat().st_size / 1024 / 1024:.2f} MB)")
+
+            # Send file and clean up after
+            response = await send_file(
+                str(zip_path),
+                as_attachment=True,
+                attachment_filename=zip_filename,
+                mimetype='application/zip'
+            )
+
+            # Schedule cleanup (Quart will clean up after sending)
+            return response
+
+        except Exception as e:
+            # Clean up temp directory on error
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise e
+
+    except Exception as e:
+        app_logger.error(f"Error exporting collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/rag/collections/import", methods=["POST"])
+async def import_collection():
+    """
+    Import a knowledge collection from an exported .zip file.
+
+    Request: multipart/form-data with 'file' field containing the .zip
+
+    The import will:
+    - Extract collection metadata
+    - Restore ChromaDB data (no re-embedding needed)
+    - Create new collection in database with new owner
+    """
+    import zipfile
+    import tempfile
+    import shutil
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Get uploaded file
+        files = await request.files
+        if 'file' not in files:
+            return jsonify({"status": "error", "message": "No file uploaded"}), 400
+
+        uploaded_file = files['file']
+        if not uploaded_file.filename.endswith('.zip'):
+            return jsonify({"status": "error", "message": "File must be a .zip archive"}), 400
+
+        # Create temporary directory
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
+
+        try:
+            # Save uploaded file
+            zip_path = temp_path / "import.zip"
+            await uploaded_file.save(str(zip_path))
+
+            # Extract zip
+            extract_path = temp_path / "extracted"
+            extract_path.mkdir()
+
+            with zipfile.ZipFile(zip_path, 'r') as zipf:
+                zipf.extractall(extract_path)
+
+            # Read metadata
+            metadata_file = extract_path / "collection_metadata.json"
+            if not metadata_file.exists():
+                return jsonify({"status": "error", "message": "Invalid export: metadata file missing"}), 400
+
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+
+            # Validate export version
+            if metadata.get('export_version') != "1.0":
+                return jsonify({"status": "error", "message": "Unsupported export version"}), 400
+
+            # Check if ChromaDB data exists
+            chroma_data_path = extract_path / "chroma_data"
+            if not chroma_data_path.exists():
+                return jsonify({"status": "error", "message": "Invalid export: ChromaDB data missing"}), 400
+
+            # Generate new collection name (avoid conflicts)
+            import time
+            original_name = metadata['name']
+            new_collection_name = f"col_{user_uuid}_{int(time.time())}"
+
+            # Get the RAG retriever to recreate the collection using ChromaDB's API
+            retriever = APP_STATE.get("rag_retriever_instance")
+            if not retriever:
+                return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
+
+            # Get the embedding model
+            embedding_model = metadata.get('embedding_model', 'all-MiniLM-L6-v2')
+
+            # Create embedding function
+            from chromadb.utils import embedding_functions
+            embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
+
+            # Import by directly copying segment data and registering in ChromaDB
+            # This is more reliable than creating empty collection and replacing data
+            chroma_base_path = Path(__file__).resolve().parents[3] / ".chromadb_rag_cache"
+
+            # Generate new UUIDs for the imported collection
+            import uuid
+            import sqlite3
+            new_collection_uuid = str(uuid.uuid4())
+            new_segment_uuid = str(uuid.uuid4())
+
+            # Copy segment data to new segment directory
+            new_segment_path = chroma_base_path / new_segment_uuid
+            shutil.copytree(chroma_data_path, new_segment_path)
+            app_logger.info(f"Copied segment data to {new_segment_path}")
+
+            # Register in ChromaDB's SQLite database
+            chroma_db_path = chroma_base_path / "chroma.sqlite3"
+            conn = sqlite3.connect(str(chroma_db_path))
+            cursor = conn.cursor()
+
+            try:
+                # Get dimension from embedding model
+                dimension_map = {
+                    'all-MiniLM-L6-v2': 384,
+                    'all-mpnet-base-v2': 768
+                }
+                dimension = dimension_map.get(embedding_model, 384)
+
+                # Get database_id (should be default ChromaDB database)
+                cursor.execute("SELECT DISTINCT database_id FROM collections LIMIT 1")
+                db_id_result = cursor.fetchone()
+                database_id = db_id_result[0] if db_id_result else "00000000-0000-0000-0000-000000000000"
+
+                # Insert into collections table
+                cursor.execute("""
+                    INSERT INTO collections (id, name, dimension, database_id, config_json_str, schema_str)
+                    VALUES (?, ?, ?, ?, '{}', NULL)
+                """, (new_collection_uuid, new_collection_name, dimension, database_id))
+
+                # Insert into segments table (both VECTOR and METADATA segments)
+                cursor.execute("""
+                    INSERT INTO segments (id, type, scope, collection)
+                    VALUES (?, 'urn:chroma:segment/vector/hnsw-local-persisted', 'VECTOR', ?)
+                """, (new_segment_uuid, new_collection_uuid))
+
+                # Create metadata segment (required by ChromaDB)
+                metadata_segment_uuid = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO segments (id, type, scope, collection)
+                    VALUES (?, 'urn:chroma:segment/metadata/sqlite', 'METADATA', ?)
+                """, (metadata_segment_uuid, new_collection_uuid))
+
+                # Insert collection metadata (required for HNSW)
+                cursor.execute("""
+                    INSERT INTO collection_metadata (collection_id, key, str_value, int_value, float_value, bool_value)
+                    VALUES (?, 'hnsw:space', 'cosine', NULL, NULL, NULL)
+                """, (new_collection_uuid,))
+
+                # Add repository_type metadata if it's a knowledge repository
+                repo_type = metadata.get('repository_type', 'knowledge')
+                cursor.execute("""
+                    INSERT INTO collection_metadata (collection_id, key, str_value, int_value, float_value, bool_value)
+                    VALUES (?, 'repository_type', ?, NULL, NULL, NULL)
+                """, (new_collection_uuid, repo_type))
+
+                conn.commit()
+                app_logger.info(f"Registered collection in ChromaDB database: {new_collection_name}")
+            except Exception as e:
+                conn.rollback()
+                app_logger.error(f"Failed to register collection in ChromaDB: {e}", exc_info=True)
+                return jsonify({"status": "error", "message": f"Failed to register collection: {e}"}), 500
+            finally:
+                conn.close()
+
+            # Create collection in our database
+            from trusted_data_agent.core.collection_db import CollectionDatabase
+            db = CollectionDatabase()
+
+            new_collection = {
+                "name": f"{original_name} (Imported)",
+                "collection_name": new_collection_name,
+                "description": metadata.get('description', ''),
+                "repository_type": metadata.get('repository_type', 'knowledge'),
+                "chunking_strategy": metadata.get('chunking_strategy', 'recursive'),
+                "chunk_size": metadata.get('chunk_size', 1000),
+                "chunk_overlap": metadata.get('chunk_overlap', 200),
+                "embedding_model": embedding_model,
+                "owner_user_id": user_uuid,
+                "enabled": True,
+                "mcp_server_id": None,
+                "visibility": "private",
+                "document_count": metadata.get('document_count', 0)
+            }
+
+            collection_id = db.create_collection(new_collection)
+
+            # Reload ChromaDB collection in retriever and get actual count
+            actual_count = metadata.get('document_count', 0)
+            try:
+                retriever.reload_collections_for_mcp_server()
+                app_logger.info(f"Reloaded RAG collections after import")
+
+                # Get the actual count from the imported collection
+                imported_collection = retriever.client.get_collection(name=new_collection_name)
+                actual_count = imported_collection.count()
+                app_logger.info(f"Imported collection has {actual_count} documents")
+
+                # Update the count in our database
+                if actual_count != metadata.get('document_count', 0):
+                    db.update_collection(collection_id, {"document_count": actual_count})
+
+            except Exception as e:
+                app_logger.warning(f"Failed to reload collections: {e}")
+
+            app_logger.info(f"Imported collection {collection_id} for user {user_uuid} from {uploaded_file.filename}")
+
+            return jsonify({
+                "status": "success",
+                "message": f"Collection imported successfully",
+                "collection_id": collection_id,
+                "collection_name": new_collection['name'],
+                "document_count": actual_count
+            }), 200
+
+        finally:
+            # Clean up temp directory
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    except Exception as e:
+        app_logger.error(f"Error importing collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/rag/templates/reload", methods=["POST"])
 async def reload_template_plugins():
     """

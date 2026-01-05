@@ -95,7 +95,19 @@ export function initializeKnowledgeRepositoryHandlers() {
     
     // File upload handlers
     initializeFileUpload();
-    
+
+    // Import collection button handler
+    const importBtn = document.getElementById('import-knowledge-collection-btn');
+    if (importBtn) {
+        importBtn.addEventListener('click', async () => {
+            try {
+                await importKnowledgeRepository();
+            } catch (error) {
+                console.error('[Knowledge] Import cancelled or failed:', error);
+            }
+        });
+    }
+
     console.log('[Knowledge] Knowledge repository handlers initialized');
 }
 
@@ -896,7 +908,29 @@ function attachKnowledgeRepositoryCardHandlers(container, repositories) {
             openUploadDocumentsModal(parseInt(repoId), repoName, repo);
         });
     });
-    
+
+    // Export button handlers
+    const exportButtons = container.querySelectorAll('.export-knowledge-repo-btn');
+    console.log('[Knowledge] Found', exportButtons.length, 'export buttons');
+
+    exportButtons.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const repoId = btn.dataset.repoId;
+            const repoName = btn.dataset.repoName;
+            const repo = repoMap.get(repoId);
+
+            if (!repo) {
+                console.error('[Knowledge] Repository not found:', repoId);
+                return;
+            }
+
+            console.log('[Knowledge] Export button clicked for:', repoName);
+            await exportKnowledgeRepository(parseInt(repoId), repoName);
+        });
+    });
+
     // Delete button handlers
     const deleteButtons = container.querySelectorAll('.delete-knowledge-repo-btn');
     console.log('[Knowledge] Found', deleteButtons.length, 'delete buttons');
@@ -1201,6 +1235,12 @@ function createKnowledgeRepositoryCard(repo) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                     </svg>
                     Upload
+                </button>
+                <button class="export-knowledge-repo-btn px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Export
                 </button>
                 <button class="delete-knowledge-repo-btn px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white" data-repo-id="${repoId}">
                     Delete
@@ -1567,3 +1607,123 @@ export function openUploadDocumentsModal(collectionId, collectionName, repoData)
 }
 
 // Note: openKnowledgeInspectionModal function is now deprecated in favor of openCollectionInspection from ui.js
+
+/**
+ * Export a knowledge repository as a .zip file
+ */
+async function exportKnowledgeRepository(collectionId, collectionName) {
+    try {
+        console.log(`[Knowledge] Exporting collection ${collectionId}...`);
+
+        // Show progress banner
+        if (window.showAppBanner) {
+            window.showAppBanner(`Exporting "${collectionName}"...`, 'info');
+        }
+
+        const token = localStorage.getItem('tda_auth_token');
+        const response = await fetch(`/api/v1/rag/collections/${collectionId}/export`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Export failed');
+        }
+
+        // Get the blob and trigger download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `collection_${collectionId}_${collectionName.replace(/\s+/g, '_')}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        console.log('[Knowledge] Export complete');
+        if (window.showAppBanner) {
+            window.showAppBanner(`Collection exported successfully!`, 'success');
+        }
+
+    } catch (error) {
+        console.error('[Knowledge] Export error:', error);
+        if (window.showAppBanner) {
+            window.showAppBanner(`Export failed: ${error.message}`, 'error');
+        }
+    }
+}
+
+/**
+ * Import a knowledge repository from a .zip file
+ */
+export async function importKnowledgeRepository() {
+    return new Promise((resolve, reject) => {
+        // Create file input
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.zip';
+
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) {
+                reject(new Error('No file selected'));
+                return;
+            }
+
+            try {
+                console.log('[Knowledge] Importing collection from:', file.name);
+
+                // Show progress banner
+                if (window.showAppBanner) {
+                    window.showAppBanner(`Importing collection from ${file.name}...`, 'info');
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const token = localStorage.getItem('tda_auth_token');
+                const response = await fetch('/api/v1/rag/collections/import', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Import failed');
+                }
+
+                const result = await response.json();
+                console.log('[Knowledge] Import successful:', result);
+
+                if (window.showAppBanner) {
+                    window.showAppBanner(
+                        `Collection "${result.collection_name}" imported successfully (${result.document_count} documents)!`,
+                        'success'
+                    );
+                }
+
+                // Reload collections to show the imported one
+                await loadKnowledgeRepositories();
+
+                resolve(result);
+
+            } catch (error) {
+                console.error('[Knowledge] Import error:', error);
+                if (window.showAppBanner) {
+                    window.showAppBanner(`Import failed: ${error.message}`, 'error');
+                }
+                reject(error);
+            }
+        };
+
+        // Trigger file selection
+        fileInput.click();
+    });
+}
