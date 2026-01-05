@@ -660,7 +660,8 @@ async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict
                 # Calculate cost
                 cost_manager = get_cost_manager()
                 cost_usd = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
-                cost_usd_cents = int(cost_usd * 100)  # Convert to cents
+                cost_usd_cents = int(cost_usd * 1000000)  # Convert to micro-dollars
+                app_logger.info(f"[Cost Tracking] {provider}/{model}: {input_tokens}in + {output_tokens}out = ${cost_usd:.6f} ({cost_usd_cents} micro-dollars)")
 
                 # Reload session to get latest name (might have been updated after initial load)
                 current_session = await _load_session(user_uuid, session_id)

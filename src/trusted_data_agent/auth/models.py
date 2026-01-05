@@ -773,8 +773,8 @@ class UserConsumption(Base):
     collections_subscribed = Column(Text, nullable=True)  # JSON array of collection IDs
     
     # === COST TRACKING ===
-    estimated_cost_usd = Column(Integer, nullable=False, default=0)  # In cents (USD × 100)
-    rag_cost_saved_usd = Column(Integer, nullable=False, default=0)  # In cents
+    estimated_cost_usd = Column(Integer, nullable=False, default=0)  # In micro-dollars (USD × 1,000,000)
+    rag_cost_saved_usd = Column(Integer, nullable=False, default=0)  # In micro-dollars (USD × 1,000,000)
     
     # === RATE LIMITING ===
     requests_this_hour = Column(Integer, nullable=False, default=0)
@@ -859,8 +859,8 @@ class UserConsumption(Base):
             'collections_subscribed': collections_subscribed,
             
             # Cost metrics
-            'estimated_cost_usd': self.estimated_cost_usd / 100.0,  # Convert cents to dollars
-            'rag_cost_saved_usd': self.rag_cost_saved_usd / 100.0,
+            'estimated_cost_usd': self.estimated_cost_usd / 1000000.0,  # Convert micro-dollars to dollars
+            'rag_cost_saved_usd': self.rag_cost_saved_usd / 1000000.0,
             
             # Rate limiting
             'requests_this_hour': self.requests_this_hour,
@@ -917,7 +917,7 @@ class ConsumptionTurn(Base):
     model = Column(String(100), nullable=False)
     
     # Cost
-    cost_usd_cents = Column(Integer, nullable=False, default=0)  # In cents
+    cost_usd_cents = Column(Integer, nullable=False, default=0)  # In micro-dollars (USD × 1,000,000)
     
     # Quality
     status = Column(String(20), nullable=False)  # success, failure, partial
@@ -955,7 +955,7 @@ class ConsumptionTurn(Base):
             'total_tokens': self.total_tokens,
             'provider': self.provider,
             'model': self.model,
-            'cost_usd': self.cost_usd_cents / 100.0,
+            'cost_usd': self.cost_usd_cents / 1000000.0,
             'status': self.status,
             'rag_used': self.rag_used,
             'rag_tokens_saved': self.rag_tokens_saved,
@@ -982,8 +982,8 @@ class ConsumptionPeriodsArchive(Base):
     rag_guided_turns = Column(Integer, nullable=False)
     rag_output_tokens_saved = Column(Integer, nullable=False)
     champion_cases_created = Column(Integer, nullable=False)
-    estimated_cost_usd = Column(Integer, nullable=False)  # In cents
-    rag_cost_saved_usd = Column(Integer, nullable=False)  # In cents
+    estimated_cost_usd = Column(Integer, nullable=False)  # In micro-dollars (USD × 1,000,000)
+    rag_cost_saved_usd = Column(Integer, nullable=False)  # In micro-dollars (USD × 1,000,000)
     total_sessions = Column(Integer, nullable=False)
     
     # Period boundaries
@@ -1023,8 +1023,8 @@ class ConsumptionPeriodsArchive(Base):
             'rag_activation_rate_percent': round(rag_activation_rate, 2),
             'rag_output_tokens_saved': self.rag_output_tokens_saved,
             'champion_cases_created': self.champion_cases_created,
-            'estimated_cost_usd': self.estimated_cost_usd / 100.0,
-            'rag_cost_saved_usd': self.rag_cost_saved_usd / 100.0,
+            'estimated_cost_usd': self.estimated_cost_usd / 1000000.0,
+            'rag_cost_saved_usd': self.rag_cost_saved_usd / 1000000.0,
             'total_sessions': self.total_sessions,
             'period_started_at': self.period_started_at.isoformat() if self.period_started_at else None,
             'period_ended_at': self.period_ended_at.isoformat() if self.period_ended_at else None,

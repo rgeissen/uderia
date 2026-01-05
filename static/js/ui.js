@@ -2550,18 +2550,25 @@ function createKnowledgeRepositoryCard(col) {
     meta.className = 'text-xs text-gray-500';
     const chunkInfo = col.chunking_strategy ? ` | ${col.chunking_strategy} chunking` : '';
     meta.textContent = `ChromaDB: ${col.collection_name}${chunkInfo}`;
-    
+
+    // Embedding model info
+    const embeddingInfo = document.createElement('p');
+    embeddingInfo.className = 'text-xs text-gray-400';
+    const embeddingModel = col.embedding_model || 'all-MiniLM-L6-v2';
+    embeddingInfo.innerHTML = `<span class="text-gray-500">Embedding Model:</span> ${embeddingModel}`;
+
     // Document and chunk counts for Knowledge repositories
     const countsInfo = document.createElement('p');
     countsInfo.className = 'text-xs text-gray-400';
     const docCount = col.document_count || '?';
     const chunkCount = col.count || col.example_count || 0;
     countsInfo.textContent = `${docCount} documents • ${chunkCount} chunks`;
-    
+
     card.appendChild(header);
     if (desc) card.appendChild(desc);
     card.appendChild(mcpInfo);
     card.appendChild(meta);
+    card.appendChild(embeddingInfo);
     card.appendChild(countsInfo);
     
     // Actions
@@ -2578,17 +2585,6 @@ function createKnowledgeRepositoryCard(col) {
     toggleBtn.addEventListener('click', () => {
         if (window.ragCollectionManagement) {
             window.ragCollectionManagement.toggleRagCollection(col.id, col.enabled);
-        }
-    });
-    
-    // Refresh button
-    const refreshBtn = document.createElement('button');
-    refreshBtn.type = 'button';
-    refreshBtn.className = 'px-3 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-sm text-gray-200';
-    refreshBtn.textContent = 'Refresh';
-    refreshBtn.addEventListener('click', () => {
-        if (window.ragCollectionManagement) {
-            window.ragCollectionManagement.refreshRagCollection(col.id, col.name);
         }
     });
     
@@ -2654,7 +2650,6 @@ function createKnowledgeRepositoryCard(col) {
     }
     
     actions.appendChild(toggleBtn);
-    actions.appendChild(refreshBtn);
     actions.appendChild(inspectBtn);
     actions.appendChild(editBtn);
     actions.appendChild(uploadBtn);
@@ -2763,7 +2758,13 @@ function createCollectionCard(col) {
             const meta = document.createElement('p');
             meta.className = 'text-xs text-gray-500';
             meta.textContent = `ChromaDB: ${col.collection_name}`;
-            
+
+            // Embedding model info
+            const embeddingInfo = document.createElement('p');
+            embeddingInfo.className = 'text-xs text-gray-400';
+            const embeddingModel = col.embedding_model || 'all-MiniLM-L6-v2';
+            embeddingInfo.innerHTML = `<span class="text-gray-500">Embedding Model:</span> ${embeddingModel}`;
+
             // Actions
             const actions = document.createElement('div');
             actions.className = 'mt-2 flex gap-2 flex-wrap';
@@ -2778,17 +2779,6 @@ function createCollectionCard(col) {
             toggleBtn.addEventListener('click', () => {
                 if (window.ragCollectionManagement) {
                     window.ragCollectionManagement.toggleRagCollection(col.id, col.enabled);
-                }
-            });
-            
-            // Refresh button
-            const refreshBtn = document.createElement('button');
-            refreshBtn.type = 'button';
-            refreshBtn.className = 'px-3 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-sm text-gray-200';
-            refreshBtn.textContent = 'Refresh';
-            refreshBtn.addEventListener('click', () => {
-                if (window.ragCollectionManagement) {
-                    window.ragCollectionManagement.refreshRagCollection(col.id, col.name);
                 }
             });
             
@@ -2847,15 +2837,15 @@ function createCollectionCard(col) {
             }
             
             actions.appendChild(toggleBtn);
-            actions.appendChild(refreshBtn);
             actions.appendChild(inspectBtn);
             actions.appendChild(editBtn);
             // Delete/Unsubscribe button already appended above
-            
+
     card.appendChild(header);
     if (desc) card.appendChild(desc);
     card.appendChild(mcpInfo);
     card.appendChild(meta);
+    card.appendChild(embeddingInfo);
     card.appendChild(actions);
     
     return card;

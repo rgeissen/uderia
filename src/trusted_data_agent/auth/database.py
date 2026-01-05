@@ -142,6 +142,7 @@ def _create_collections_table():
                 chunking_strategy TEXT DEFAULT 'none',
                 chunk_size INTEGER DEFAULT 1000,
                 chunk_overlap INTEGER DEFAULT 200,
+                embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
                 FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
@@ -150,7 +151,16 @@ def _create_collections_table():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_owner ON collections(owner_user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_marketplace ON collections(is_marketplace_listed, visibility)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_name ON collections(collection_name)")
-        
+
+        # Migration: Add embedding_model column if it doesn't exist
+        try:
+            cursor.execute("SELECT embedding_model FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            logger.info("Adding embedding_model column to collections table")
+            cursor.execute("ALTER TABLE collections ADD COLUMN embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2'")
+            conn.commit()
+
         # Create document_chunks table for Knowledge repositories
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_chunks (

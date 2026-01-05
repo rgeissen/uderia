@@ -834,20 +834,8 @@ function attachKnowledgeRepositoryCardHandlers(container, repositories) {
         });
     });
     
-    // Refresh button handlers
-    const refreshButtons = container.querySelectorAll('.refresh-knowledge-btn');
-    refreshButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const repoId = btn.dataset.repoId;
-            const repo = repoMap.get(repoId);
-            if (window.ragCollectionManagement && repo) {
-                window.ragCollectionManagement.refreshRagCollection(parseInt(repoId), repo.collection_name);
-            }
-        });
-    });
-    
+    // Refresh button handlers removed - refresh functionality is obsolete
+
     // Inspect button handlers
     const inspectButtons = container.querySelectorAll('.view-knowledge-repo-btn');
     console.log('[Knowledge] Found', inspectButtons.length, 'inspect buttons');
@@ -1185,9 +1173,13 @@ function createKnowledgeRepositoryCard(repo) {
             <p class="text-xs text-gray-500 mb-2">
                 <span class="text-gray-400">ChromaDB:</span> ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
             </p>
-            
+
+            <p class="text-xs text-gray-400 mb-2">
+                <span class="text-gray-500">Embedding Model:</span> ${repo.embedding_model || 'all-MiniLM-L6-v2'}
+            </p>
+
             ${repo.description ? `<p class="text-xs text-gray-400 mb-3">${repo.description}</p>` : ''}
-            
+
             <div class="text-xs text-gray-500 mb-3 flex items-center gap-3">
                 <span><span id="knowledge-doc-count-${repoId}" class="text-white font-medium">...</span> documents</span>
                 <span>•</span>
@@ -1197,9 +1189,6 @@ function createKnowledgeRepositoryCard(repo) {
             <div class="flex gap-2 flex-wrap">
                 <button class="toggle-knowledge-btn px-3 py-1 rounded-md ${repo.enabled ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-green-600 hover:bg-green-500'} text-sm text-white" data-repo-id="${repoId}" data-enabled="${repo.enabled}">
                     ${repo.enabled ? 'Disable' : 'Enable'}
-                </button>
-                <button class="refresh-knowledge-btn px-3 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-sm text-gray-200" data-repo-id="${repoId}">
-                    Refresh
                 </button>
                 <button class="view-knowledge-repo-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white" data-repo-id="${repoId}">
                     Inspect

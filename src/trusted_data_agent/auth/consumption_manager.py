@@ -222,7 +222,7 @@ class ConsumptionManager:
             status: Turn status (success, failure, partial)
             rag_used: Whether RAG was used
             rag_tokens_saved: Tokens saved by RAG efficiency
-            cost_usd_cents: Cost in cents (USD × 100)
+            cost_usd_cents: Cost in micro-dollars (USD × 1,000,000)
         """
         consumption = self.get_or_create_consumption(user_id)
         now = datetime.now(timezone.utc)

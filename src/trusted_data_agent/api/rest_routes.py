@@ -5081,8 +5081,10 @@ async def get_sessions_analytics():
                 return jsonify({
                     "total_sessions": 0,
                     "total_tokens": {"input": 0, "output": 0, "total": 0},
-                    "success_rate": 0,
-                    "estimated_cost": 0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "success_rate_percent": 0,
+                    "estimated_cost_usd": 0,
                     "model_distribution": {},
                     "top_expensive_queries": [],
                     "top_expensive_questions": [],
@@ -5095,8 +5097,10 @@ async def get_sessions_analytics():
                 return jsonify({
                     "total_sessions": 0,
                     "total_tokens": {"input": 0, "output": 0, "total": 0},
-                    "success_rate": 0,
-                    "estimated_cost": 0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "success_rate_percent": 0,
+                    "estimated_cost_usd": 0,
                     "model_distribution": {},
                     "top_expensive_queries": [],
                     "top_expensive_questions": [],
@@ -5205,29 +5209,33 @@ async def get_sessions_analytics():
         from trusted_data_agent.core.cost_manager import get_cost_manager
         cost_manager = get_cost_manager()
         estimated_cost = 0.0
-        
+
         # Recalculate costs with actual pricing
+        turns_processed = 0
         for session_dir in scan_dirs:
             for session_file in session_dir.glob('*.json'):
                 try:
                     with open(session_file, 'r', encoding='utf-8') as f:
                         session_data = json.load(f)
-                    
+
                     workflow_history = session_data.get('last_turn_data', {}).get('workflow_history', [])
                     for turn in workflow_history:
                         if not turn.get('isValid', True):
                             continue
-                        
+
                         provider = turn.get('provider', 'Unknown')
                         model = turn.get('model', 'unknown')
                         input_tokens = turn.get('turn_input_tokens', 0)
                         output_tokens = turn.get('turn_output_tokens', 0)
-                        
+
                         turn_cost = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
                         estimated_cost += turn_cost
-                        
-                except Exception:
-                    pass
+                        turns_processed += 1
+
+                except Exception as e:
+                    app_logger.warning(f"Error calculating cost for session {session_file.name}: {e}")
+
+        app_logger.info(f"[Analytics] Processed {turns_processed} turns, total cost: ${estimated_cost:.4f}")
         
         # Model distribution percentages
         total_model_count = sum(model_usage.values())
@@ -5299,8 +5307,10 @@ async def get_sessions_analytics():
                 "output": total_output_tokens,
                 "total": total_tokens_val
             },
-            "success_rate": round(success_rate, 1),
-            "estimated_cost": round(estimated_cost, 2),
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "success_rate_percent": round(success_rate, 1),
+            "estimated_cost_usd": round(estimated_cost, 2),
             "model_distribution": model_distribution,
             "top_expensive_queries": top_expensive_queries,
             "top_expensive_questions": top_expensive_questions,
@@ -5407,7 +5417,7 @@ async def get_consumption_summary():
                     'session_id': session_id,
                     'name': session_name or 'Untitled Session',
                     'tokens': tokens,
-                    'cost': cost / 100.0 if cost else 0.0
+                    'cost': cost / 1000000.0 if cost else 0.0
                 })
             
             # Get top expensive individual turns (questions)
@@ -5428,7 +5438,7 @@ async def get_consumption_summary():
                     'turn': turn_num,
                     'query': user_query or 'No query text',
                     'tokens': tokens,
-                    'cost': cost / 100.0 if cost else 0.0
+                    'cost': cost / 1000000.0 if cost else 0.0
                 })
             
             # Add all analytics data to summary
@@ -5573,7 +5583,7 @@ async def get_system_consumption_summary():
                 'success_rate_percent': round(success_rate, 2),
                 'rag_guided_turns': rag_guided_turns,
                 'rag_activation_rate_percent': round(rag_activation_rate, 2),
-                'estimated_cost_usd': (result.total_cost_cents or 0) / 100.0,
+                'estimated_cost_usd': (result.total_cost_cents or 0) / 1000000.0,
                 'sessions_last_24h': result.sessions_last_24h or 0,
                 'turns_last_24h': result.turns_last_24h or 0,
                 'velocity_data': velocity_data,

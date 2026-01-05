@@ -45,7 +45,7 @@ class RAGRetriever:
         else:
             self.client = chromadb.Client()
 
-        # Initialize embedding function
+        # Initialize default embedding function (for backward compatibility)
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=self.embedding_model_name
         )
@@ -53,7 +53,12 @@ class RAGRetriever:
         # --- MODIFICATION START: Support multiple collections ---
         # Store collections as a dict: {collection_id: chromadb_collection_object}
         self.collections = {}
-        
+
+        # Store embedding functions per collection: {embedding_model_name: embedding_function}
+        self.embedding_functions_cache = {
+            self.embedding_model_name: self.embedding_function
+        }
+
         # Initialize feedback cache: maps case_id -> feedback_score
         self.feedback_cache = {}
         
@@ -72,6 +77,24 @@ class RAGRetriever:
         # Load feedback cache from case files
         self._load_feedback_cache()
         # --- MODIFICATION END ---
+
+    def _get_embedding_function(self, embedding_model: str):
+        """
+        Get or create an embedding function for a specific model.
+        Uses caching to avoid creating duplicate embedding functions.
+
+        Args:
+            embedding_model: Name of the embedding model (e.g., 'all-MiniLM-L6-v2', 'all-mpnet-base-v2')
+
+        Returns:
+            ChromaDB embedding function for the specified model
+        """
+        if embedding_model not in self.embedding_functions_cache:
+            logger.info(f"Creating new embedding function for model: {embedding_model}")
+            self.embedding_functions_cache[embedding_model] = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=embedding_model
+            )
+        return self.embedding_functions_cache[embedding_model]
 
     def _ensure_default_collection(self):
         """
@@ -343,7 +366,8 @@ class RAGRetriever:
             coll_name = coll_meta["collection_name"]
             coll_mcp_server_id = coll_meta.get("mcp_server_id")
             repo_type = coll_meta.get("repository_type", "planner")
-            
+            coll_embedding_model = coll_meta.get("embedding_model", self.embedding_model_name)
+
             # Knowledge repositories are always loaded (not tied to MCP servers)
             # Planner repositories are filtered by MCP server
             if repo_type == "knowledge":
@@ -352,11 +376,15 @@ class RAGRetriever:
             elif filter_by_mcp and coll_mcp_server_id != current_mcp_server_id:
                 logger.debug(f"Skipping collection '{coll_id}': associated with server ID '{coll_mcp_server_id}', current server ID is '{current_mcp_server_id}'")
                 continue
-            
+
             try:
+                # Get collection-specific embedding function
+                embedding_func = self._get_embedding_function(coll_embedding_model)
+                logger.debug(f"Loading collection '{coll_id}' ({coll_name}) with embedding model: {coll_embedding_model}")
+
                 collection = self.client.get_or_create_collection(
                     name=coll_name,
-                    embedding_function=self.embedding_function,
+                    embedding_function=embedding_func,
                     metadata={"hnsw:space": "cosine"}
                 )
                 self.collections[coll_id] = collection
@@ -367,10 +395,11 @@ class RAGRetriever:
                         # Try to delete the corrupted collection
                         self.client.delete_collection(name=coll_name)
                         logger.info(f"Deleted corrupted collection '{coll_name}'")
-                        # Recreate it
+                        # Recreate it with collection-specific embedding model
+                        embedding_func = self._get_embedding_function(coll_embedding_model)
                         collection = self.client.create_collection(
                             name=coll_name,
-                            embedding_function=self.embedding_function,
+                            embedding_function=embedding_func,
                             metadata={"hnsw:space": "cosine"}
                         )
                         self.collections[coll_id] = collection
