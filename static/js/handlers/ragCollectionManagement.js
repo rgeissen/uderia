@@ -4018,6 +4018,54 @@ function stopAutoRefresh() {
     }
 }
 
+// Setup event listeners for Intelligence Performance auto-refresh controls
+function setupIntelligenceRefreshControls() {
+    // Manual refresh button
+    const refreshBtn = document.getElementById('refresh-intelligence-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            console.log('[Intelligence] Manual refresh triggered');
+            calculateRagImpactKPIs();
+        });
+    }
+
+    // Auto-refresh toggle
+    const autoRefreshToggle = document.getElementById('intelligence-auto-refresh-toggle');
+    if (autoRefreshToggle) {
+        // Load saved preference
+        const savedAutoRefresh = localStorage.getItem('intelligenceAutoRefresh');
+        const isEnabled = savedAutoRefresh !== null ? savedAutoRefresh === 'true' : false;
+
+        autoRefreshToggle.checked = isEnabled;
+
+        if (isEnabled) {
+            startAutoRefresh();
+        }
+
+        autoRefreshToggle.addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            localStorage.setItem('intelligenceAutoRefresh', enabled.toString());
+
+            if (enabled) {
+                console.log('[Intelligence] Auto-refresh enabled (30s interval)');
+                startAutoRefresh();
+                window.showNotification?.('Auto-refresh enabled', 'success');
+            } else {
+                console.log('[Intelligence] Auto-refresh disabled');
+                stopAutoRefresh();
+                window.showNotification?.('Auto-refresh disabled', 'info');
+            }
+        });
+    }
+}
+
+// Initialize controls when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupIntelligenceRefreshControls);
+} else {
+    setupIntelligenceRefreshControls();
+}
+
 window.ragCollectionManagement = {
     toggleRagCollection,
     deleteRagCollection,

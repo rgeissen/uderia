@@ -18,21 +18,43 @@ class CostManagementHandler {
         this.searchTerm = '';
         this.isLoadingMore = false;
         this.lastScrollTop = 0;
+        this.autoRefreshInterval = null;
+        this.autoRefreshEnabled = false;
         this.init();
     }
 
     init() {
         console.log('[CostManagement] Initializing cost management handler');
         this.attachEventListeners();
-        
+
         // Sync pageSize with dropdown value on init
         const pageSizeSelect = document.getElementById('costs-page-size');
         if (pageSizeSelect && pageSizeSelect.value) {
             this.pageSize = parseInt(pageSizeSelect.value);
         }
+
+        // Load auto-refresh preference
+        const savedAutoRefresh = localStorage.getItem('costAutoRefresh');
+        if (savedAutoRefresh === 'true') {
+            this.autoRefreshEnabled = true;
+            const toggle = document.getElementById('cost-auto-refresh-toggle');
+            if (toggle) toggle.checked = true;
+        }
     }
 
     attachEventListeners() {
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-costs-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.refreshData());
+        }
+
+        // Auto-refresh toggle
+        const autoRefreshToggle = document.getElementById('cost-auto-refresh-toggle');
+        if (autoRefreshToggle) {
+            autoRefreshToggle.addEventListener('change', (e) => this.toggleAutoRefresh(e.target.checked));
+        }
+
         // Sync from LiteLLM button
         const syncBtn = document.getElementById('sync-litellm-costs-btn');
         if (syncBtn) {
@@ -100,11 +122,25 @@ class CostManagementHandler {
         // Tab activation - load data when Cost tab is shown
         const costTab = document.querySelector('[data-tab="cost-management-tab"]');
         if (costTab) {
-            costTab.addEventListener('click', () => {
-                this.loadCostData();
-                this.loadCostAnalytics();
+            costTab.addEventListener('click', async () => {
+                await this.loadCostData();
+                await this.loadCostAnalytics();
+
+                // Start auto-refresh if enabled
+                if (this.autoRefreshEnabled) {
+                    this.startAutoRefresh();
+                }
             });
         }
+
+        // Stop auto-refresh when switching away from Cost tab
+        document.querySelectorAll('.admin-tab').forEach(tab => {
+            if (tab.dataset.tab !== 'cost-management-tab') {
+                tab.addEventListener('click', () => {
+                    this.stopAutoRefresh();
+                });
+            }
+        });
     }
 
     attachScrollListener() {
@@ -678,6 +714,81 @@ class CostManagementHandler {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    async refreshData() {
+        console.log('[CostManagement] Manual refresh triggered');
+        const refreshBtn = document.getElementById('refresh-costs-btn');
+
+        // Add spinning animation to refresh icon
+        if (refreshBtn) {
+            const icon = refreshBtn.querySelector('svg');
+            if (icon) {
+                icon.style.animation = 'spin 1s linear';
+            }
+        }
+
+        try {
+            await Promise.all([
+                this.loadCostData(),
+                this.loadCostAnalytics()
+            ]);
+            window.showNotification('Cost data refreshed', 'success');
+        } catch (error) {
+            console.error('[CostManagement] Refresh error:', error);
+            window.showNotification('Failed to refresh cost data', 'error');
+        } finally {
+            // Remove animation
+            if (refreshBtn) {
+                const icon = refreshBtn.querySelector('svg');
+                if (icon) {
+                    icon.style.animation = '';
+                }
+            }
+        }
+    }
+
+    toggleAutoRefresh(enabled) {
+        this.autoRefreshEnabled = enabled;
+        localStorage.setItem('costAutoRefresh', enabled.toString());
+
+        if (enabled) {
+            console.log('[CostManagement] Auto-refresh enabled (30s interval)');
+            this.startAutoRefresh();
+            window.showNotification('Auto-refresh enabled', 'success');
+        } else {
+            console.log('[CostManagement] Auto-refresh disabled');
+            this.stopAutoRefresh();
+            window.showNotification('Auto-refresh disabled', 'info');
+        }
+    }
+
+    startAutoRefresh() {
+        this.stopAutoRefresh(); // Clear any existing interval
+
+        console.log('[CostManagement] Starting auto-refresh interval (30s)');
+        this.autoRefreshInterval = setInterval(async () => {
+            console.log('[CostManagement] Auto-refresh triggered at', new Date().toLocaleTimeString());
+            try {
+                await Promise.all([
+                    this.loadCostData(),
+                    this.loadCostAnalytics()
+                ]);
+                console.log('[CostManagement] Auto-refresh completed successfully');
+            } catch (error) {
+                console.error('[CostManagement] Auto-refresh error:', error);
+            }
+        }, 30000); // 30 seconds
+
+        console.log('[CostManagement] Auto-refresh interval ID:', this.autoRefreshInterval);
+    }
+
+    stopAutoRefresh() {
+        if (this.autoRefreshInterval) {
+            console.log('[CostManagement] Stopping auto-refresh (interval ID:', this.autoRefreshInterval, ')');
+            clearInterval(this.autoRefreshInterval);
+            this.autoRefreshInterval = null;
+        }
     }
 }
 

@@ -95,7 +95,36 @@ class ExecutionDashboard {
         document.getElementById('refresh-dashboard-btn')?.addEventListener('click', () => {
             this.refreshDashboard();
         });
-        
+
+        // Auto-refresh toggle
+        const autoRefreshToggle = document.getElementById('execution-auto-refresh-toggle');
+        if (autoRefreshToggle) {
+            // Load saved preference
+            const savedAutoRefresh = localStorage.getItem('executionAutoRefresh');
+            if (savedAutoRefresh !== null) {
+                this.autoRefreshEnabled = savedAutoRefresh === 'true';
+                autoRefreshToggle.checked = this.autoRefreshEnabled;
+            } else {
+                // Default is true (as per constructor)
+                autoRefreshToggle.checked = this.autoRefreshEnabled;
+            }
+
+            autoRefreshToggle.addEventListener('change', (e) => {
+                this.autoRefreshEnabled = e.target.checked;
+                localStorage.setItem('executionAutoRefresh', this.autoRefreshEnabled.toString());
+
+                if (this.autoRefreshEnabled) {
+                    console.log('[ExecutionDashboard] Auto-refresh enabled');
+                    this.startAutoRefresh();
+                    window.showNotification?.('Auto-refresh enabled', 'success');
+                } else {
+                    console.log('[ExecutionDashboard] Auto-refresh disabled');
+                    this.stopAutoRefresh();
+                    window.showNotification?.('Auto-refresh disabled', 'info');
+                }
+            });
+        }
+
         // View all sessions toggle (only for users with feature)
         const viewAllToggle = document.getElementById('view-all-sessions-toggle');
         if (viewAllToggle) {
