@@ -112,8 +112,20 @@ class RAGRetriever:
     
     def get_collection_metadata(self, collection_id: int) -> Optional[Dict[str, Any]]:
         """Get metadata for a specific collection by ID."""
+        # Check planner collections in APP_STATE first
         collections_list = APP_STATE.get("rag_collections", [])
-        return next((c for c in collections_list if c["id"] == collection_id), None)
+        result = next((c for c in collections_list if c["id"] == collection_id), None)
+        if result:
+            return result
+
+        # If not found, check database (for knowledge collections)
+        from trusted_data_agent.core.collection_db import get_collection_db
+        try:
+            collection_db = get_collection_db()
+            return collection_db.get_collection_by_id(collection_id)
+        except Exception as e:
+            logger.warning(f"Error fetching collection {collection_id} from database: {e}")
+            return None
     
     def _get_user_accessible_collections(self, user_id: Optional[str] = None) -> List[int]:
         """
@@ -722,29 +734,30 @@ class RAGRetriever:
     def remove_collection(self, collection_id: int, user_id: Optional[str] = None):
         """
         Removes a RAG collection (except default).
-        
+
         Args:
             collection_id: ID of the collection to remove
             user_id: Optional user ID to check if this is their default collection
-        
+
         Returns:
             True if successful, False otherwise
         """
         if collection_id == 0:  # Legacy: Default collection is always ID 0
             logger.warning("Cannot remove default collection")
             return False
-        
+
         # If user_id provided, check if this is their default collection
         if user_id:
             default_collection_id = self._get_user_default_collection_id(user_id)
             if default_collection_id and collection_id == default_collection_id:
                 logger.warning(f"Cannot remove default collection {collection_id} for user {user_id}")
                 return False
-        
+
         config_manager = get_config_manager()
-        collections_list = APP_STATE.get("rag_collections", [])
-        coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
-        
+
+        # Get collection metadata (checks both APP_STATE and database)
+        coll_meta = self.get_collection_metadata(collection_id)
+
         if not coll_meta:
             logger.warning(f"Collection '{collection_id}' not found")
             return False
@@ -778,9 +791,10 @@ class RAGRetriever:
         Collections cannot be enabled without an MCP server assignment.
         """
         config_manager = get_config_manager()
-        collections_list = APP_STATE.get("rag_collections", [])
-        coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
-        
+
+        # Get collection metadata (checks both APP_STATE and database)
+        coll_meta = self.get_collection_metadata(collection_id)
+
         if not coll_meta:
             logger.warning(f"Collection '{collection_id}' not found")
             return False
