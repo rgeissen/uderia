@@ -382,11 +382,22 @@ class RAGRetriever:
                 embedding_func = self._get_embedding_function(coll_embedding_model)
                 logger.debug(f"Loading collection '{coll_id}' ({coll_name}) with embedding model: {coll_embedding_model}")
 
-                collection = self.client.get_or_create_collection(
-                    name=coll_name,
-                    embedding_function=embedding_func,
-                    metadata={"hnsw:space": "cosine"}
-                )
+                # Try to get existing collection first (for imported collections)
+                # Don't pass embedding_function to get_collection - it will use the stored one
+                try:
+                    collection = self.client.get_collection(name=coll_name)
+                    doc_count = collection.count()
+                    logger.info(f"Loaded existing collection '{coll_name}' with {doc_count} documents")
+                except Exception as get_error:
+                    # Collection doesn't exist, create it
+                    logger.info(f"Collection '{coll_name}' not found ({get_error}), creating new empty collection")
+                    collection = self.client.create_collection(
+                        name=coll_name,
+                        embedding_function=embedding_func,
+                        metadata={"hnsw:space": "cosine"}
+                    )
+                    logger.info(f"Created new empty collection '{coll_name}'")
+
                 self.collections[coll_id] = collection
             except KeyError as e:
                 if "'_type'" in str(e):

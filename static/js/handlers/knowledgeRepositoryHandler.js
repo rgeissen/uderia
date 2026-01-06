@@ -5,7 +5,7 @@
 
 import { state } from '../state.js';
 import { populateMcpServerDropdown } from './rag/utils.js';
-import { openCollectionInspection } from '../ui.js';
+import { openCollectionInspection, loadRagCollections } from '../ui.js';
 
 /**
  * Initialize Knowledge repository handlers
@@ -96,7 +96,7 @@ export function initializeKnowledgeRepositoryHandlers() {
     // File upload handlers
     initializeFileUpload();
 
-    // Import collection button handler
+    // Import collection button handler (Knowledge repositories)
     const importBtn = document.getElementById('import-knowledge-collection-btn');
     if (importBtn) {
         importBtn.addEventListener('click', async () => {
@@ -104,6 +104,18 @@ export function initializeKnowledgeRepositoryHandlers() {
                 await importKnowledgeRepository();
             } catch (error) {
                 console.error('[Knowledge] Import cancelled or failed:', error);
+            }
+        });
+    }
+
+    // Import collection button handler (Planner repositories)
+    const importPlannerBtn = document.getElementById('import-planner-collection-btn');
+    if (importPlannerBtn) {
+        importPlannerBtn.addEventListener('click', async () => {
+            try {
+                await importKnowledgeRepository();
+            } catch (error) {
+                console.error('[Planner] Import cancelled or failed:', error);
             }
         });
     }
@@ -1611,7 +1623,7 @@ export function openUploadDocumentsModal(collectionId, collectionName, repoData)
 /**
  * Export a knowledge repository as a .zip file
  */
-async function exportKnowledgeRepository(collectionId, collectionName) {
+export async function exportKnowledgeRepository(collectionId, collectionName) {
     try {
         console.log(`[Knowledge] Exporting collection ${collectionId}...`);
 
@@ -1709,8 +1721,17 @@ export async function importKnowledgeRepository() {
                     );
                 }
 
-                // Reload collections to show the imported one
-                await loadKnowledgeRepositories();
+                // Reload the appropriate collection list based on repository type
+                // The backend determines repository type from the export metadata
+                // We need to reload both lists to ensure the imported collection appears
+
+                // Reload knowledge repositories
+                if (typeof loadKnowledgeRepositories === 'function') {
+                    await loadKnowledgeRepositories();
+                }
+
+                // Reload planner repositories using the correct function
+                await loadRagCollections();
 
                 resolve(result);
 

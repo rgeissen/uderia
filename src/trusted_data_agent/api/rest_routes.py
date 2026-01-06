@@ -2834,13 +2834,34 @@ async def get_rag_collection_rows(collection_id: int):
         # Check if collection is loaded in ChromaDB
         if collection_id not in retriever.collections:
             # Collection exists in database but not loaded in ChromaDB yet
-            # Return empty result instead of 404
-            return jsonify({
-                "rows": [],
-                "total": 0,
-                "collection_id": collection_id,
-                "message": "Collection is empty. Add some RAG cases to get started."
-            }), 200
+            # Log which collections ARE loaded for debugging
+            loaded_ids = list(retriever.collections.keys())
+            app_logger.warning(f"Collection {collection_id} not in retriever.collections. Loaded IDs: {loaded_ids}")
+
+            # Try to reload collections to pick up newly imported ones
+            try:
+                retriever.reload_collections_for_mcp_server()
+                app_logger.info(f"Reloaded collections. Now have {len(retriever.collections)} loaded")
+
+                # Check again after reload
+                if collection_id in retriever.collections:
+                    app_logger.info(f"Collection {collection_id} successfully loaded after reload")
+                else:
+                    # Still not found - return empty
+                    return jsonify({
+                        "rows": [],
+                        "total": 0,
+                        "collection_id": collection_id,
+                        "message": f"Collection is not loaded. Loaded IDs: {loaded_ids}. Try refreshing the page."
+                    }), 200
+            except Exception as e:
+                app_logger.error(f"Failed to reload collections: {e}", exc_info=True)
+                return jsonify({
+                    "rows": [],
+                    "total": 0,
+                    "collection_id": collection_id,
+                    "message": "Collection is empty. Add some RAG cases to get started."
+                }), 200
         
         # Get the ChromaDB collection
         collection = retriever.collections[collection_id]
@@ -3454,6 +3475,7 @@ async def export_collection(collection_id: int):
                 "name": collection['name'],
                 "description": collection['description'],
                 "repository_type": collection['repository_type'],
+                "mcp_server_id": collection.get('mcp_server_id'),  # For planner repositories
                 "chunking_strategy": collection['chunking_strategy'],
                 "chunk_size": collection['chunk_size'],
                 "chunk_overlap": collection['chunk_overlap'],
@@ -3470,41 +3492,37 @@ async def export_collection(collection_id: int):
             with open(metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
 
-            # 2. Export embedding data from SQLite (if metadata segment exists)
-            if metadata_segment_id:
-                conn2 = sqlite3.connect(str(chroma_db_path))
-                cursor2 = conn2.cursor()
+            # 2. Export all documents with embeddings using ChromaDB API
+            # This is the proper way - ChromaDB handles all internal consistency
+            try:
+                # Get all documents with their embeddings and metadata
+                all_data = chroma_collection.get(include=['embeddings', 'documents', 'metadatas'])
 
-                # Export embeddings table rows
-                cursor2.execute("SELECT * FROM embeddings WHERE segment_id = ?", (metadata_segment_id,))
-                embeddings_data = cursor2.fetchall()
+                # Convert embeddings to lists (they might be numpy arrays)
+                # and handle NaN/Infinity values
+                embeddings_list = []
+                for emb in all_data['embeddings']:
+                    if isinstance(emb, list):
+                        embeddings_list.append(emb)
+                    else:
+                        # Convert numpy array to list
+                        embeddings_list.append(emb.tolist() if hasattr(emb, 'tolist') else list(emb))
 
-                # Export embedding_metadata table rows
-                # Get IDs from embeddings first
-                embedding_ids = [row[0] for row in embeddings_data]
-                if embedding_ids:
-                    placeholders = ','.join('?' * len(embedding_ids))
-                    cursor2.execute(f"SELECT * FROM embedding_metadata WHERE id IN ({placeholders})", embedding_ids)
-                    metadata_data = cursor2.fetchall()
-                else:
-                    metadata_data = []
+                # Save complete document data
+                documents_file = export_path / "documents.json"
+                documents_export = {
+                    'ids': all_data['ids'],
+                    'documents': all_data['documents'],
+                    'metadatas': all_data['metadatas'],
+                    'embeddings': embeddings_list
+                }
 
-                conn2.close()
+                with open(documents_file, 'w') as f:
+                    json.dump(documents_export, f, allow_nan=False)
 
-                # Save to JSON files
-                embeddings_file = export_path / "embeddings.json"
-                with open(embeddings_file, 'w') as f:
-                    json.dump(embeddings_data, f)
-
-                embedding_metadata_file = export_path / "embedding_metadata.json"
-                with open(embedding_metadata_file, 'w') as f:
-                    json.dump(metadata_data, f)
-
-                app_logger.info(f"Export: Saved {len(embeddings_data)} embeddings and {len(metadata_data)} metadata rows")
-
-            # 3. Copy ChromaDB collection data
-            chroma_export_path = export_path / "chroma_data"
-            shutil.copytree(chroma_collection_path, chroma_export_path)
+                app_logger.info(f"Export: Saved {len(all_data['ids'])} documents with embeddings and metadata")
+            except Exception as e:
+                app_logger.warning(f"Failed to export documents: {e}", exc_info=True)
 
             # 4. Create zip file
             zip_filename = f"collection_{collection_id}_{collection['name'].replace(' ', '_')}.zip"
@@ -3597,10 +3615,10 @@ async def import_collection():
             if metadata.get('export_version') != "1.0":
                 return jsonify({"status": "error", "message": "Unsupported export version"}), 400
 
-            # Check if ChromaDB data exists
-            chroma_data_path = extract_path / "chroma_data"
-            if not chroma_data_path.exists():
-                return jsonify({"status": "error", "message": "Invalid export: ChromaDB data missing"}), 400
+            # Check if documents data exists
+            documents_file = extract_path / "documents.json"
+            if not documents_file.exists():
+                return jsonify({"status": "error", "message": "Invalid export: documents.json missing"}), 400
 
             # Generate new collection name (avoid conflicts)
             import time
@@ -3619,180 +3637,145 @@ async def import_collection():
             from chromadb.utils import embedding_functions
             embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
 
-            # Import by directly copying segment data and registering in ChromaDB
-            # This is more reliable than creating empty collection and replacing data
-            chroma_base_path = Path(__file__).resolve().parents[3] / ".chromadb_rag_cache"
-
-            # Generate new UUIDs for the imported collection
-            import uuid
-            import sqlite3
-            new_collection_uuid = str(uuid.uuid4())
-            new_segment_uuid = str(uuid.uuid4())
-
-            # Copy segment data to new segment directory
-            new_segment_path = chroma_base_path / new_segment_uuid
-            app_logger.info(f"DEBUG: Copying from {chroma_data_path} to {new_segment_path}")
-
-            # List files being copied
-            files_to_copy = list(chroma_data_path.iterdir())
-            app_logger.info(f"DEBUG: Files to copy: {[f.name for f in files_to_copy]}")
-
-            shutil.copytree(chroma_data_path, new_segment_path)
-
-            # Verify copy
-            copied_files = list(new_segment_path.iterdir())
-            app_logger.info(f"DEBUG: Copied files: {[f.name for f in copied_files]}")
-            app_logger.info(f"Copied segment data to {new_segment_path}")
-
-            # Register in ChromaDB's SQLite database
-            chroma_db_path = chroma_base_path / "chroma.sqlite3"
-            conn = sqlite3.connect(str(chroma_db_path))
-            cursor = conn.cursor()
+            # Import documents using ChromaDB's proper API
+            # IMPORTANT: Use the retriever's client to avoid synchronization issues
+            # Creating a separate client can cause timing problems where the documents
+            # aren't immediately visible when we reload
+            chroma_client = retriever.client
 
             try:
-                # Get dimension from embedding model
-                dimension_map = {
-                    'all-MiniLM-L6-v2': 384,
-                    'all-mpnet-base-v2': 768
-                }
-                dimension = dimension_map.get(embedding_model, 384)
-                app_logger.info(f"DEBUG: Using embedding model {embedding_model} with dimension {dimension}")
-
-                # Get database_id (should be default ChromaDB database)
-                cursor.execute("SELECT DISTINCT database_id FROM collections LIMIT 1")
-                db_id_result = cursor.fetchone()
-                database_id = db_id_result[0] if db_id_result else "00000000-0000-0000-0000-000000000000"
-                app_logger.info(f"DEBUG: Using database_id: {database_id}")
-
-                # Insert into collections table
-                app_logger.info(f"DEBUG: Creating collection with UUID: {new_collection_uuid}, name: {new_collection_name}")
-                cursor.execute("""
-                    INSERT INTO collections (id, name, dimension, database_id, config_json_str, schema_str)
-                    VALUES (?, ?, ?, ?, '{}', NULL)
-                """, (new_collection_uuid, new_collection_name, dimension, database_id))
-                app_logger.info(f"DEBUG: Collection row inserted")
-
-                # Insert into segments table (both VECTOR and METADATA segments)
-                app_logger.info(f"DEBUG: Creating VECTOR segment with UUID: {new_segment_uuid}")
-                cursor.execute("""
-                    INSERT INTO segments (id, type, scope, collection)
-                    VALUES (?, 'urn:chroma:segment/vector/hnsw-local-persisted', 'VECTOR', ?)
-                """, (new_segment_uuid, new_collection_uuid))
-
-                # Create metadata segment (required by ChromaDB)
-                metadata_segment_uuid = str(uuid.uuid4())
-                app_logger.info(f"DEBUG: Creating METADATA segment with UUID: {metadata_segment_uuid}")
-                cursor.execute("""
-                    INSERT INTO segments (id, type, scope, collection)
-                    VALUES (?, 'urn:chroma:segment/metadata/sqlite', 'METADATA', ?)
-                """, (metadata_segment_uuid, new_collection_uuid))
-
-                # Insert collection metadata (required for HNSW)
-                app_logger.info(f"DEBUG: Adding collection metadata (hnsw:space=cosine)")
-                cursor.execute("""
-                    INSERT INTO collection_metadata (collection_id, key, str_value, int_value, float_value, bool_value)
-                    VALUES (?, 'hnsw:space', 'cosine', NULL, NULL, NULL)
-                """, (new_collection_uuid,))
-
-                # Add repository_type metadata if it's a knowledge repository
+                # Get repository type and create metadata
                 repo_type = metadata.get('repository_type', 'knowledge')
-                app_logger.info(f"DEBUG: Adding repository_type metadata: {repo_type}")
-                cursor.execute("""
-                    INSERT INTO collection_metadata (collection_id, key, str_value, int_value, float_value, bool_value)
-                    VALUES (?, 'repository_type', ?, NULL, NULL, NULL)
-                """, (new_collection_uuid, repo_type))
+                collection_metadata = {
+                    "hnsw:space": "cosine",
+                    "repository_type": repo_type
+                }
 
-                # Import embedding data if available
-                embeddings_file = extract_path / "embeddings.json"
-                embedding_metadata_file = extract_path / "embedding_metadata.json"
+                # Create new collection
+                app_logger.info(f"Creating ChromaDB collection: {new_collection_name}")
+                chroma_collection = chroma_client.create_collection(
+                    name=new_collection_name,
+                    metadata=collection_metadata,
+                    embedding_function=embedding_func
+                )
+                app_logger.info(f"Created ChromaDB collection: {new_collection_name}")
 
-                if embeddings_file.exists() and embedding_metadata_file.exists():
-                    app_logger.info(f"DEBUG: Importing embedding data from JSON files")
+                # Load documents data from export
+                documents_file = extract_path / "documents.json"
 
-                    with open(embeddings_file, 'r') as f:
-                        embeddings_data = json.load(f)
+                if documents_file.exists():
+                    app_logger.info(f"Loading documents from documents.json")
 
-                    with open(embedding_metadata_file, 'r') as f:
-                        metadata_data = json.load(f)
+                    with open(documents_file, 'r') as f:
+                        documents_data = json.load(f)
 
-                    # Get the max existing embedding ID to avoid conflicts
-                    cursor.execute("SELECT COALESCE(MAX(id), 0) FROM embeddings")
-                    max_id = cursor.fetchone()[0]
-                    id_offset = max_id + 1
-                    app_logger.info(f"DEBUG: Max existing embedding ID: {max_id}, using offset: {id_offset}")
+                    ids = documents_data.get('ids', [])
+                    documents = documents_data.get('documents', [])
+                    metadatas = documents_data.get('metadatas', [])
+                    embeddings = documents_data.get('embeddings', [])
 
-                    # Create ID mapping (old_id -> new_id)
-                    id_mapping = {}
-                    for row in embeddings_data:
-                        old_id = row[0]
-                        new_id = old_id + id_offset
-                        id_mapping[old_id] = new_id
+                    app_logger.info(f"Loaded {len(ids)} IDs, {len(documents)} documents, {len(metadatas)} metadatas, {len(embeddings)} embeddings")
 
-                    # Insert embeddings with new IDs
-                    for row in embeddings_data:
-                        old_id = row[0]
-                        new_id = id_mapping[old_id]
-                        cursor.execute("""
-                            INSERT INTO embeddings (id, segment_id, embedding_id, seq_id, created_at)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (new_id, metadata_segment_uuid, row[2], row[3], row[4]))
+                    # Add documents with their pre-computed embeddings
+                    # ChromaDB will handle all internal indexing and metadata
+                    if ids and documents and embeddings:
+                        try:
+                            chroma_collection.add(
+                                ids=ids,
+                                documents=documents,
+                                metadatas=metadatas if metadatas else None,
+                                embeddings=embeddings
+                            )
+                            app_logger.info(f"Successfully added {len(ids)} documents to ChromaDB collection")
+                        except Exception as add_error:
+                            app_logger.error(f"Failed to add documents to ChromaDB: {add_error}", exc_info=True)
+                            raise
+                    else:
+                        app_logger.warning(f"No valid document data found in export - ids={len(ids)}, docs={len(documents)}, embs={len(embeddings)}")
+                else:
+                    app_logger.warning(f"documents.json not found - collection will be empty")
 
-                    # Insert embedding_metadata with mapped IDs
-                    for row in metadata_data:
-                        old_id = row[0]
-                        new_id = id_mapping.get(old_id)
-                        if new_id:
-                            cursor.execute("""
-                                INSERT INTO embedding_metadata (id, key, string_value, int_value, float_value, bool_value)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """, (new_id, row[1], row[2], row[3], row[4], row[5]))
+                # Verify import
+                document_count = chroma_collection.count()
+                app_logger.info(f"Imported collection has {document_count} documents")
 
-                    app_logger.info(f"DEBUG: Imported {len(embeddings_data)} embeddings and {len(metadata_data)} metadata rows with ID offset {id_offset}")
-
-                conn.commit()
-                app_logger.info(f"DEBUG: Database transaction committed")
-                app_logger.info(f"Registered collection in ChromaDB database: {new_collection_name}")
             except Exception as e:
-                conn.rollback()
-                app_logger.error(f"Failed to register collection in ChromaDB: {e}", exc_info=True)
-                return jsonify({"status": "error", "message": f"Failed to register collection: {e}"}), 500
-            finally:
-                conn.close()
+                app_logger.error(f"Failed to import collection into ChromaDB: {e}", exc_info=True)
+                return jsonify({"status": "error", "message": f"Failed to import collection: {e}"}), 500
 
             # Create collection in our database
             from trusted_data_agent.core.collection_db import CollectionDatabase
             db = CollectionDatabase()
 
+            # For planner repositories, associate with current MCP server (not the original one)
+            # This ensures the imported collection is immediately usable
+            repo_type = metadata.get('repository_type', 'knowledge')
+            if repo_type == 'planner':
+                current_mcp_server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+                app_logger.info(f"Associating imported planner collection with current MCP server: {current_mcp_server_id}")
+                assigned_mcp_server_id = current_mcp_server_id
+            else:
+                # Knowledge repositories don't need MCP server association
+                assigned_mcp_server_id = None
+
             new_collection = {
                 "name": f"{original_name} (Imported)",
                 "collection_name": new_collection_name,
                 "description": metadata.get('description', ''),
-                "repository_type": metadata.get('repository_type', 'knowledge'),
+                "repository_type": repo_type,
+                "mcp_server_id": assigned_mcp_server_id,
                 "chunking_strategy": metadata.get('chunking_strategy', 'recursive'),
                 "chunk_size": metadata.get('chunk_size', 1000),
                 "chunk_overlap": metadata.get('chunk_overlap', 200),
                 "embedding_model": embedding_model,
                 "owner_user_id": user_uuid,
                 "enabled": True,
-                "mcp_server_id": None,
                 "visibility": "private"
             }
 
             collection_id = db.create_collection(new_collection)
 
+            # For planner repositories, update APP_STATE to include the new collection
+            if new_collection['repository_type'] == 'planner':
+                # Get the full collection metadata from database
+                from trusted_data_agent.core.collection_db import get_collection_db
+                collection_db = get_collection_db()
+                imported_collection_meta = collection_db.get_collection_by_id(collection_id)
+
+                # Add to APP_STATE rag_collections list
+                rag_collections = APP_STATE.get("rag_collections", [])
+                rag_collections.append(imported_collection_meta)
+                APP_STATE["rag_collections"] = rag_collections
+                app_logger.info(f"Added imported planner collection to APP_STATE (total: {len(rag_collections)})")
+
             # Reload ChromaDB collections in retriever
             try:
                 retriever.reload_collections_for_mcp_server()
                 app_logger.info(f"Reloaded RAG collections after import")
+                app_logger.info(f"Retriever now has collection IDs: {list(retriever.collections.keys())}")
 
-                # Verify the imported collection
-                imported_collection = retriever.client.get_collection(name=new_collection_name)
-                actual_count = imported_collection.count()
-                app_logger.info(f"Imported collection has {actual_count} chunks")
+                # Verify the imported collection using the retriever's loaded collection
+                if collection_id in retriever.collections:
+                    imported_collection = retriever.collections[collection_id]
+                    app_logger.info(f"Getting count for collection {collection_id} (name: {imported_collection.name})")
+                    actual_count = imported_collection.count()
+                    app_logger.info(f"Collection {collection_id} returned count: {actual_count}")
+
+                    # If count is 0 but we know we imported documents, use the import count
+                    if actual_count == 0 and document_count > 0:
+                        app_logger.warning(f"ChromaDB returned 0 but we imported {document_count} documents. Using import count.")
+                        actual_count = document_count
+                    else:
+                        app_logger.info(f"Imported collection has {actual_count} chunks (verified from retriever)")
+                else:
+                    app_logger.warning(f"Collection {collection_id} not found in retriever.collections after reload")
+                    app_logger.warning(f"Expected ID: {collection_id}, Available IDs: {list(retriever.collections.keys())}")
+                    # Use the document count from the import, not 0
+                    actual_count = document_count
 
             except Exception as e:
-                app_logger.warning(f"Failed to verify import: {e}")
-                actual_count = metadata.get('document_count', 0)
+                app_logger.warning(f"Failed to verify import: {e}", exc_info=True)
+                actual_count = document_count  # Use the count from before reload
 
             app_logger.info(f"Imported collection {collection_id} for user {user_uuid} from {uploaded_file.filename}")
 
