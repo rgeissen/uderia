@@ -930,8 +930,9 @@ class PlanExecutor:
                                 all_processed_tools = await load_mcp_tools(session)
                             
                             # Get enabled tool and prompt names for this profile
-                            enabled_tool_names = set(config_manager.get_profile_enabled_tools(self.profile_override_id))
-                            enabled_prompt_names = set(config_manager.get_profile_enabled_prompts(self.profile_override_id))
+                            # CRITICAL: Must pass user_uuid to load user-specific profile config (not bootstrap template)
+                            enabled_tool_names = set(config_manager.get_profile_enabled_tools(self.profile_override_id, self.user_uuid))
+                            enabled_prompt_names = set(config_manager.get_profile_enabled_prompts(self.profile_override_id, self.user_uuid))
                             
                             # Filter to only enabled tools (prompts handled separately via original structure)
                             filtered_tools = [tool for tool in all_processed_tools if tool.name in enabled_tool_names]
