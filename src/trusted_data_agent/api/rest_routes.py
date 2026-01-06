@@ -3757,25 +3757,15 @@ async def import_collection():
                 # Verify the imported collection using the retriever's loaded collection
                 if collection_id in retriever.collections:
                     imported_collection = retriever.collections[collection_id]
-                    app_logger.info(f"Getting count for collection {collection_id} (name: {imported_collection.name})")
                     actual_count = imported_collection.count()
-                    app_logger.info(f"Collection {collection_id} returned count: {actual_count}")
-
-                    # If count is 0 but we know we imported documents, use the import count
-                    if actual_count == 0 and document_count > 0:
-                        app_logger.warning(f"ChromaDB returned 0 but we imported {document_count} documents. Using import count.")
-                        actual_count = document_count
-                    else:
-                        app_logger.info(f"Imported collection has {actual_count} chunks (verified from retriever)")
+                    app_logger.info(f"Imported collection has {actual_count} documents (verified from retriever)")
                 else:
                     app_logger.warning(f"Collection {collection_id} not found in retriever.collections after reload")
-                    app_logger.warning(f"Expected ID: {collection_id}, Available IDs: {list(retriever.collections.keys())}")
-                    # Use the document count from the import, not 0
                     actual_count = document_count
 
             except Exception as e:
                 app_logger.warning(f"Failed to verify import: {e}", exc_info=True)
-                actual_count = document_count  # Use the count from before reload
+                actual_count = document_count
 
             app_logger.info(f"Imported collection {collection_id} for user {user_uuid} from {uploaded_file.filename}")
 

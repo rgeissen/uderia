@@ -102,11 +102,13 @@ class RAGRetriever:
         This method is kept for backward compatibility but does nothing.
         Default collections are created automatically when users log in or register.
         """
-        # Load collections from database into APP_STATE
+        # Load ONLY planner collections from database into APP_STATE
+        # Knowledge collections are loaded separately in _load_active_collections()
         config_manager = get_config_manager()
-        collections_list = config_manager.get_rag_collections()
-        APP_STATE["rag_collections"] = collections_list
-        logger.debug(f"Loaded {len(collections_list)} collections from database")
+        all_collections = config_manager.get_rag_collections()
+        planner_collections = [c for c in all_collections if c.get('repository_type') == 'planner']
+        APP_STATE["rag_collections"] = planner_collections
+        logger.debug(f"Loaded {len(planner_collections)} planner collections from database into APP_STATE")
     
     def get_collection_metadata(self, collection_id: int) -> Optional[Dict[str, Any]]:
         """Get metadata for a specific collection by ID."""
@@ -845,7 +847,7 @@ class RAGRetriever:
         
         # Reload collections using the standard method
         self._load_active_collections()
-        
+
         logger.info(f"Reload complete. {len(self.collections)} collection(s) now loaded for MCP server ID '{current_mcp_server_id}'")
 
     def refresh_vector_store(self, collection_id: Optional[int] = None):
@@ -1092,9 +1094,20 @@ class RAGRetriever:
         
         collection = self.collections[collection_id]
         collection_dir = self._get_collection_dir(collection_id)
-        
+
+        # Skip maintenance if collection directory doesn't exist or has no JSON files
+        # This handles imported collections that only exist in ChromaDB
+        if not collection_dir.exists():
+            logger.info(f"Skipping maintenance for collection '{collection_id}': Directory does not exist (likely imported)")
+            return
+
+        disk_case_files = list(collection_dir.glob("case_*.json"))
+        if not disk_case_files:
+            logger.info(f"Skipping maintenance for collection '{collection_id}': No JSON files found (likely imported or empty)")
+            return
+
         # 1. Get current state from disk and DB
-        disk_case_ids = {p.stem for p in collection_dir.glob("case_*.json")}
+        disk_case_ids = {p.stem for p in disk_case_files}
         db_results = collection.get(include=["metadatas"])
         db_case_ids = set(db_results["ids"])
         db_metadatas = {db_results["ids"][i]: meta for i, meta in enumerate(db_results["metadatas"])}
