@@ -2620,7 +2620,20 @@ function createKnowledgeRepositoryCard(col) {
             window.knowledgeRepositoryHandler.openUploadDocumentsModal(col.id, col.name, col);
         }
     });
-    
+
+    // Export button (Knowledge repositories only)
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1';
+    exportBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+    </svg>Export`;
+    exportBtn.addEventListener('click', () => {
+        if (exportKnowledgeRepository) {
+            exportKnowledgeRepository(col.id, col.name || col.collection_name);
+        }
+    });
+
     // Delete/Unsubscribe button for Knowledge repositories
     if (col.is_subscribed && !col.is_owned) {
         // Subscribed collection - show Unsubscribe button
@@ -2654,6 +2667,7 @@ function createKnowledgeRepositoryCard(col) {
     actions.appendChild(inspectBtn);
     actions.appendChild(editBtn);
     actions.appendChild(uploadBtn);
+    actions.appendChild(exportBtn);
     // Delete/Unsubscribe button already appended above
     
     card.appendChild(actions);

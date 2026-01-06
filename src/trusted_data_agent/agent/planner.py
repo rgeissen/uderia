@@ -1090,44 +1090,41 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
         
         knowledge_config = profile_config.get("knowledgeConfig", {})
         configured_collections = knowledge_config.get("collections", [])
-        
+
         if not configured_collections:
             return []
-        
-        # Enrich with collection metadata from APP_STATE
-        from trusted_data_agent.core.config import APP_STATE
-        all_collections = APP_STATE.get("rag_collections", [])
-        
+
         result = []
         for coll_config in configured_collections:
             # Support both 'id' and 'collectionId' for backwards compatibility
             coll_id = coll_config.get("id") or coll_config.get("collectionId")
             if coll_id is None:
                 continue
-            
-            # Find collection metadata
-            coll_meta = next((c for c in all_collections if c["id"] == coll_id), None)
+
+            # Find collection metadata using retriever's centralized method
+            # This checks both APP_STATE (planner collections) and database (knowledge collections)
+            coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
             if not coll_meta:
-                app_logger.warning(f"Collection {coll_id} configured in profile but not found in APP_STATE")
+                app_logger.warning(f"Collection {coll_id} configured in profile but not found in APP_STATE or database")
                 continue
-            
+
             # Only include knowledge repositories
             if coll_meta.get("repository_type") != "knowledge":
                 app_logger.debug(f"Skipping collection {coll_id} - not a knowledge repository")
                 continue
-            
+
             # Check if collection is enabled
             if not coll_meta.get("enabled", False):
                 app_logger.debug(f"Skipping collection {coll_id} - not enabled")
                 continue
-            
+
             result.append({
                 "id": coll_id,
                 "name": coll_meta.get("name"),
                 "reranking_enabled": coll_config.get("reranking", False),
                 "metadata": coll_meta
             })
-        
+
         return result
     
     def _balance_collection_diversity(self, results: list, max_docs: int) -> list:

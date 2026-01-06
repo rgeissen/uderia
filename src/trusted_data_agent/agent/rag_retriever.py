@@ -130,13 +130,13 @@ class RAGRetriever:
     def _get_user_accessible_collections(self, user_id: Optional[str] = None) -> List[int]:
         """
         Get collection IDs accessible to a specific user.
-        
+
         Args:
             user_id: User UUID. If None, returns only public collections.
-            
+
         Returns:
             List of collection IDs the user can access (owned + subscribed)
-            
+
         Access rules:
         - Admin users (owner_user_id is None): Accessible to everyone
         - Owner: User owns the collection (owner_user_id matches)
@@ -144,28 +144,50 @@ class RAGRetriever:
         - Public: Collection visibility is 'public' or 'unlisted'
         """
         accessible_ids = []
-        collections_list = APP_STATE.get("rag_collections", [])
-        
-        for coll in collections_list:
-            coll_id = coll["id"]
+
+        # Get planner collections from APP_STATE
+        planner_collections = APP_STATE.get("rag_collections", [])
+
+        # Get ALL collections from database (includes both planner and knowledge)
+        from trusted_data_agent.core.collection_db import get_collection_db
+        try:
+            collection_db = get_collection_db()
+            all_db_collections = collection_db.get_all_collections()
+        except Exception as e:
+            logger.warning(f"Error fetching collections from database: {e}")
+            all_db_collections = []
+
+        # Merge collections (database is source of truth)
+        collections_by_id = {}
+
+        # First add planner collections from APP_STATE
+        for coll in planner_collections:
+            collections_by_id[coll["id"]] = coll
+
+        # Then override/add from database (database wins for conflicts)
+        for coll in all_db_collections:
+            collections_by_id[coll["id"]] = coll
+
+        # Now check access for all collections
+        for coll_id, coll in collections_by_id.items():
             owner_id = coll.get("owner_user_id")
             visibility = coll.get("visibility", "private")
-            
+
             # Rule 1: Admin-owned collections (owner_user_id is None) are accessible to all
             if owner_id is None:
                 accessible_ids.append(coll_id)
                 continue
-            
+
             # Rule 2: User owns the collection
             if user_id and owner_id == user_id:
                 accessible_ids.append(coll_id)
                 continue
-            
+
             # Rule 3: Public or unlisted collections
             if visibility in ["public", "unlisted"]:
                 accessible_ids.append(coll_id)
                 continue
-            
+
             # Rule 4: User has active subscription
             if user_id:
                 try:
@@ -179,7 +201,7 @@ class RAGRetriever:
                             accessible_ids.append(coll_id)
                 except Exception as e:
                     logger.warning(f"Error checking subscription for collection {coll_id}: {e}")
-        
+
         return accessible_ids
     
     def is_user_collection_owner(self, collection_id: int, user_id: Optional[str]) -> bool:
