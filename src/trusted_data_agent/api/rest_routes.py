@@ -6059,6 +6059,8 @@ async def get_system_consumption_summary():
                 func.sum(UserConsumption.successful_turns).label('successful_turns'),
                 func.sum(UserConsumption.failed_turns).label('failed_turns'),
                 func.sum(UserConsumption.rag_guided_turns).label('rag_guided_turns'),
+                func.sum(UserConsumption.rag_output_tokens_saved).label('rag_output_tokens_saved'),
+                func.sum(UserConsumption.rag_cost_saved_usd).label('rag_cost_saved_usd'),
                 func.sum(UserConsumption.estimated_cost_usd).label('total_cost_cents'),
                 func.sum(UserConsumption.sessions_last_24h).label('sessions_last_24h'),
                 func.sum(UserConsumption.turns_last_24h).label('turns_last_24h')
@@ -6163,6 +6165,8 @@ async def get_system_consumption_summary():
                 'success_rate_percent': round(success_rate, 2),
                 'rag_guided_turns': rag_guided_turns,
                 'rag_activation_rate_percent': round(rag_activation_rate, 2),
+                'rag_output_tokens_saved': result.rag_output_tokens_saved or 0,
+                'rag_cost_saved_usd': (result.rag_cost_saved_usd or 0) / 1000000.0,  # Convert micro-dollars to dollars
                 'estimated_cost_usd': (result.total_cost_cents or 0) / 1000000.0,
                 'sessions_last_24h': result.sessions_last_24h or 0,
                 'turns_last_24h': result.turns_last_24h or 0,

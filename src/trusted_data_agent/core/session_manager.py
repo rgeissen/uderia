@@ -629,6 +629,14 @@ async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict
                     cost_per_output_token=cost_per_token,
                     user_uuid=user_uuid
                 )
+
+                # FIX: Store efficiency gain in turn_data for consumption database sync
+                # Credit the CURRENT turn if it used RAG and resulted in fewer output tokens
+                current_turn_has_rag = turn_data.get('rag_source_collection_id') is not None
+                if current_turn_has_rag and current_output < previous_output:
+                    tokens_saved = previous_output - current_output
+                    turn_data['rag_efficiency_gain'] = tokens_saved
+                    app_logger.debug(f"RAG efficiency gain for current turn: {tokens_saved} tokens saved")
         # --- EFFICIENCY TRACKING END ---
 
         # Append the new turn data (contains original_plan and user_query now)

@@ -1073,7 +1073,7 @@
                             <div class="flex items-center justify-between mb-6">
                                 <div>
                                     <h1 class="text-3xl font-bold text-white">Execution Insights</h1>
-                                    <p class="text-gray-400 mt-1">Real-time analytics and strategic insights</p>
+                                    <p class="text-gray-400 mt-1" id="execution-scope-indicator">Your Learning Performance</p>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <!-- Auto-refresh Toggle -->
@@ -1520,20 +1520,15 @@
                         </div>
                     </div>
 
-                    <!-- Admin Global Stats Section (visible only for admins) -->
-                    <div id="rag-global-stats" class="hidden mb-8">
-                        <div class="glass-panel rounded-xl p-6 border-l-4 border-purple-500">
-                            <h2 class="text-xl font-bold text-white mb-4">System-Wide Performance (All Users)</h2>
-                            <div class="grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <p class="text-sm text-gray-400">Total Tokens Saved</p>
-                                    <p class="text-2xl font-bold text-purple-400" id="rag-global-tokens-saved">--</p>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-gray-400">Total Cost Saved</p>
-                                    <p class="text-2xl font-bold text-purple-400" id="rag-global-cost-saved">$--</p>
-                                </div>
-                            </div>
+                    <!-- Intelligence Performance Tabs (Admin: My Performance + System Performance | User: My Performance only) -->
+                    <div id="intelligence-tabs-container" class="mb-6">
+                        <div class="flex border-b border-gray-700 mb-6">
+                            <button id="intel-tab-my-performance" class="px-6 py-3 font-medium text-sm border-b-2 border-[#F15F22] text-[#F15F22] transition-colors" onclick="window.ragCollectionManagement.switchIntelligenceTab('my')">
+                                My Performance
+                            </button>
+                            <button id="intel-tab-system-performance" class="hidden px-6 py-3 font-medium text-sm border-b-2 border-transparent text-gray-400 hover:text-gray-300 transition-colors" onclick="window.ragCollectionManagement.switchIntelligenceTab('system')">
+                                System Performance
+                            </button>
                         </div>
                     </div>
 

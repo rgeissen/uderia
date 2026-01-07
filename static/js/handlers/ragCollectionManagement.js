@@ -1192,14 +1192,20 @@ async function calculateRagImpactKPIs() {
         
         let isAdmin = false;
         let globalMetrics = null;
-        
+
         try {
-            const analyticsResponse = await fetch('/api/v1/consumption/summary', {
+            // Determine which endpoint to use based on current view
+            const isSystemView = (typeof intelligenceCurrentView !== 'undefined') && intelligenceCurrentView === 'system';
+            const endpoint = isSystemView
+                ? '/api/v1/consumption/system-summary'
+                : '/api/v1/consumption/summary';
+
+            const analyticsResponse = await fetch(endpoint, {
                 headers: { 'Authorization': `Bearer ${window.authClient.getToken()}` }
             });
             if (analyticsResponse.ok) {
                 const consumptionData = await analyticsResponse.json();
-                
+
                 // Extract RAG metrics from consumption data
                 ragMetrics = {
                     rag_guided_turns: consumptionData.rag_guided_turns || 0,
@@ -1211,17 +1217,17 @@ async function calculateRagImpactKPIs() {
                     tokens_saved: consumptionData.rag_output_tokens_saved || 0,
                     cost_saved: consumptionData.rag_cost_saved_usd || 0.0
                 };
-                
-                // Check if user is admin (from user object if available)
-                isAdmin = false;
-                
-                // For now, global metrics same as user metrics
-                // TODO: Add admin-only global endpoint if needed
+
+                // Check if user is admin
+                isAdmin = (typeof isIntelligenceAdmin !== 'undefined') ? isIntelligenceAdmin : false;
+
+                // Store global metrics for reference
                 globalMetrics = {
                     tokensSaved: ragMetrics.tokens_saved,
                     costSaved: ragMetrics.cost_saved,
                     totalImprovements: ragMetrics.rag_guided_turns,
-                    totalSessions: consumptionData.total_sessions || 0
+                    totalSessions: consumptionData.total_sessions || 0,
+                    totalUsers: consumptionData.total_users || 0  // Only available in system view
                 };
             }
         } catch (error) {
@@ -1286,33 +1292,28 @@ async function calculateRagImpactKPIs() {
  * Update KPI display elements
  */
 function updateKPIDisplay(kpis) {
-    // Update scope indicator
+    // Update scope indicator based on current tab view
     const scopeIndicator = document.getElementById('rag-kpi-scope-indicator');
     if (scopeIndicator) {
-        scopeIndicator.textContent = kpis.isAdmin ? 'Viewing: Your Personal Metrics' : 'Your Learning Performance';
-    }
-    
-    // Show/hide global stats for admins
-    const globalStatsSection = document.getElementById('rag-global-stats');
-    if (globalStatsSection && kpis.isAdmin && kpis.globalMetrics) {
-        globalStatsSection.classList.remove('hidden');
-        
-        const globalTokensEl = document.getElementById('rag-global-tokens-saved');
-        const globalCostEl = document.getElementById('rag-global-cost-saved');
-        
-        if (globalTokensEl) {
-            globalTokensEl.textContent = kpis.globalMetrics.tokensSaved.toLocaleString();
+        const isSystemView = (typeof intelligenceCurrentView !== 'undefined') && intelligenceCurrentView === 'system';
+        if (isSystemView) {
+            const userCount = kpis.globalMetrics?.totalUsers || '';
+            scopeIndicator.textContent = userCount
+                ? `System-Wide Performance (${userCount} Users)`
+                : 'System-Wide Performance (All Users)';
+        } else {
+            scopeIndicator.textContent = 'Your Learning Performance';
         }
-        if (globalCostEl) {
-            const costStr = kpis.globalMetrics.costSaved >= 0.01 
-                ? kpis.globalMetrics.costSaved.toFixed(2) 
-                : kpis.globalMetrics.costSaved.toFixed(4);
-            globalCostEl.textContent = `$${costStr}`;
-        }
-    } else if (globalStatsSection) {
-        globalStatsSection.classList.add('hidden');
     }
-    
+
+    // Show System Performance tab for admins
+    if (kpis.isAdmin) {
+        const systemTab = document.getElementById('intel-tab-system-performance');
+        if (systemTab) {
+            systemTab.classList.remove('hidden');
+        }
+    }
+
     // Champion Strategies
     const healingCountEl = document.getElementById('rag-kpi-healing-count');
     const healingTrendEl = document.getElementById('rag-kpi-healing-trend');
@@ -4075,6 +4076,124 @@ if (document.readyState === 'loading') {
     setupIntelligenceRefreshControls();
 }
 
+// ============================================================================
+// INTELLIGENCE PERFORMANCE TABS (My Performance / System Performance)
+// ============================================================================
+
+// State for Intelligence tabs
+let intelligenceCurrentView = 'my'; // 'my' or 'system'
+let isIntelligenceAdmin = false;
+
+/**
+ * Initialize Intelligence Performance tabs
+ * Checks if user is admin and shows System Performance tab accordingly
+ */
+async function initIntelligenceTabs() {
+    try {
+        // Check if user has VIEW_ALL_SESSIONS feature (same approach as Execution Dashboard)
+        const response = await fetch('/api/v1/auth/me/features', {
+            headers: {
+                'Authorization': `Bearer ${window.authClient?.getToken() || localStorage.getItem('tda_auth_token')}`
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success' && data.features) {
+                isIntelligenceAdmin = data.features.includes('view_all_sessions');
+
+                if (isIntelligenceAdmin) {
+                    // Show System Performance tab for admins
+                    const systemTab = document.getElementById('intel-tab-system-performance');
+                    if (systemTab) {
+                        systemTab.classList.remove('hidden');
+                    }
+                    console.log('[Intelligence] Admin detected - showing System Performance tab');
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('[Intelligence] Could not check admin status:', error);
+        isIntelligenceAdmin = false;
+    }
+}
+
+/**
+ * Switch between My Performance and System Performance tabs
+ * @param {string} view - 'my' or 'system'
+ */
+async function switchIntelligenceTab(view) {
+    if (view === 'system' && !isIntelligenceAdmin) {
+        console.warn('[Intelligence] System performance view is admin-only');
+        return;
+    }
+
+    intelligenceCurrentView = view;
+
+    // Update tab styling
+    const myTab = document.getElementById('intel-tab-my-performance');
+    const systemTab = document.getElementById('intel-tab-system-performance');
+
+    if (view === 'my') {
+        myTab.classList.remove('text-gray-400', 'border-transparent');
+        myTab.classList.add('text-[#F15F22]', 'border-[#F15F22]');
+        if (systemTab) {
+            systemTab.classList.remove('text-[#F15F22]', 'border-[#F15F22]');
+            systemTab.classList.add('text-gray-400', 'border-transparent');
+        }
+    } else {
+        if (systemTab) {
+            systemTab.classList.remove('text-gray-400', 'border-transparent');
+            systemTab.classList.add('text-[#F15F22]', 'border-[#F15F22]');
+        }
+        myTab.classList.remove('text-[#F15F22]', 'border-[#F15F22]');
+        myTab.classList.add('text-gray-400', 'border-transparent');
+    }
+
+    // Update scope indicator
+    const scopeIndicator = document.getElementById('rag-kpi-scope-indicator');
+    if (scopeIndicator) {
+        scopeIndicator.textContent = view === 'system'
+            ? 'System-Wide Performance (All Users)'
+            : 'Your Learning Performance';
+    }
+
+    // Refresh KPIs with new view
+    await calculateRagImpactKPIs();
+
+    console.log(`[Intelligence] Switched to ${view} performance view`);
+}
+
+/**
+ * Fetch system-wide metrics for System Performance view (admin only)
+ */
+async function fetchSystemIntelligenceMetrics() {
+    try {
+        const response = await fetch('/api/v1/consumption/system-summary', {
+            headers: {
+                'Authorization': `Bearer ${window.authClient?.getToken() || localStorage.getItem('tda_auth_token')}`
+            }
+        });
+
+        if (!response.ok) {
+            console.error('[Intelligence] Failed to fetch system metrics:', response.status);
+            return null;
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('[Intelligence] Error fetching system metrics:', error);
+        return null;
+    }
+}
+
+// Initialize tabs on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initIntelligenceTabs);
+} else {
+    initIntelligenceTabs();
+}
+
 window.ragCollectionManagement = {
     toggleRagCollection,
     deleteRagCollection,
@@ -4083,5 +4202,7 @@ window.ragCollectionManagement = {
     calculateRagImpactKPIs,
     openAddRagCollectionModal,
     startAutoRefresh,
-    stopAutoRefresh
+    stopAutoRefresh,
+    switchIntelligenceTab,
+    initIntelligenceTabs
 };
