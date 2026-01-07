@@ -2567,9 +2567,42 @@ async def create_rag_collection():
             }), 201
         else:
             return jsonify({"status": "error", "message": "Failed to create collection"}), 500
-            
+
     except Exception as e:
         app_logger.error(f"Error creating RAG collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>", methods=["GET"])
+async def get_rag_collection(collection_id: int):
+    """Get a single RAG collection by ID."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Get collection from database
+        from trusted_data_agent.core.collection_db import CollectionDatabase
+        db = CollectionDatabase()
+        collection = db.get_collection_by_id(collection_id)
+
+        if not collection:
+            return jsonify({"status": "error", "message": f"Collection {collection_id} not found"}), 404
+
+        # Check if user has access (owner or subscriber)
+        if collection['owner_user_id'] != user_uuid:
+            # Check if user is subscribed
+            subscription = db.get_subscription_by_user_and_collection(user_uuid, collection_id)
+            if not subscription:
+                return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        return jsonify({
+            "status": "success",
+            "collection": collection
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting collection {collection_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -2580,56 +2613,76 @@ async def update_rag_collection(collection_id: int):
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
-        
+
         from trusted_data_agent.core.config_manager import get_config_manager
-        
+        from trusted_data_agent.core.collection_db import CollectionDatabase
+
         data = await request.get_json()
-        
-        # Find the collection in APP_STATE
-        # Note: We allow updating metadata even if RAG retriever is not initialized
-        # This enables users to assign MCP servers before full configuration
-        collections_list = APP_STATE.get("rag_collections", [])
-        coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
-        
-        if not coll_meta:
+
+        # Get collection from database to determine its type
+        db = CollectionDatabase()
+        collection = db.get_collection_by_id(collection_id)
+
+        if not collection:
             return jsonify({"status": "error", "message": f"Collection with ID {collection_id} not found"}), 404
-        
-        # --- MARKETPLACE PHASE 2: Validate ownership ---
-        retriever = APP_STATE.get("rag_retriever_instance")
-        if retriever and not retriever.is_user_collection_owner(collection_id, user_uuid):
+
+        # Validate ownership
+        if collection['owner_user_id'] != user_uuid:
             return jsonify({"status": "error", "message": "Only collection owners can update collections"}), 403
-        # --- MARKETPLACE PHASE 2 END ---
-        
+
+        repository_type = collection.get('repository_type', 'planner')
+
         # ENFORCEMENT: Prevent removing mcp_server_id from ANY collection
         if "mcp_server_id" in data:
             new_mcp_server_id = data["mcp_server_id"]
             if not new_mcp_server_id:
                 return jsonify({
-                    "status": "error", 
+                    "status": "error",
                     "message": "Cannot remove mcp_server_id. All collections must be associated with an MCP server."
                 }), 400
-            coll_meta["mcp_server_id"] = new_mcp_server_id
-        
-        # Update other fields
+
+        # Update in database
+        update_data = {}
         if "name" in data:
-            coll_meta["name"] = data["name"]
+            update_data["name"] = data["name"]
         if "description" in data:
-            coll_meta["description"] = data["description"]
-        
-        # Save the updated collections list to APP_STATE
-        APP_STATE["rag_collections"] = collections_list
-        
-        # Persist to config file
-        config_manager = get_config_manager()
-        config_manager.save_rag_collections(collections_list, user_uuid)
-        
-        app_logger.info(f"Updated RAG collection {collection_id}: {coll_meta['name']} (MCP: {coll_meta.get('mcp_server_id')})")
+            update_data["description"] = data["description"]
+        if "mcp_server_id" in data:
+            update_data["mcp_server_id"] = data["mcp_server_id"]
+
+        db.update_collection(collection_id, update_data)
+
+        # For planner repositories, also update APP_STATE
+        if repository_type == 'planner':
+            collections_list = APP_STATE.get("rag_collections", [])
+            coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
+
+            if coll_meta:
+                # Update fields in APP_STATE
+                if "name" in data:
+                    coll_meta["name"] = data["name"]
+                if "description" in data:
+                    coll_meta["description"] = data["description"]
+                if "mcp_server_id" in data:
+                    coll_meta["mcp_server_id"] = data["mcp_server_id"]
+
+                # Save to APP_STATE
+                APP_STATE["rag_collections"] = collections_list
+
+                # Persist to config file
+                config_manager = get_config_manager()
+                config_manager.save_rag_collections(collections_list, user_uuid)
+
+        # Get updated collection from database
+        updated_collection = db.get_collection_by_id(collection_id)
+
+        app_logger.info(f"Updated {repository_type} collection {collection_id}: {updated_collection['name']}")
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "message": "Collection updated successfully",
-            "collection": coll_meta
+            "collection": updated_collection
         }), 200
-            
+
     except Exception as e:
         app_logger.error(f"Error updating RAG collection: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500

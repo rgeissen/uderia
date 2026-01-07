@@ -872,10 +872,12 @@ async function handleEditRagCollection(event) {
     
     try {
         // Call API with mcp_server_id
+        const token = localStorage.getItem('tda_auth_token');
         const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {
             method: 'PUT',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
                 name: name,
@@ -1088,11 +1090,18 @@ async function calculateRagImpactKPIs() {
         const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
         
         for (const collection of collections) {
-            
+
             if (collection.count) {
                 totalCases += collection.count;
-                
-                // Fetch all rows for accurate metrics (not limited)
+
+                // Skip knowledge repositories - they have chunks, not case rows
+                const repositoryType = collection.repository_type || 'planner';
+                if (repositoryType === 'knowledge') {
+                    console.log(`[RAG KPI] Skipping knowledge repository: ${collection.name} (ID: ${collection.id})`);
+                    continue;
+                }
+
+                // Fetch all rows for accurate metrics (not limited) - only for planner repositories
                 try {
                     const token = localStorage.getItem('tda_auth_token');
                     const detailResponse = await fetch(`/api/v1/rag/collections/${collection.id}/rows?limit=10000&light=true`, {
