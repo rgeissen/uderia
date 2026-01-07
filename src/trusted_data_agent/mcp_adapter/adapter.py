@@ -932,14 +932,31 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
     user_question = command.get("arguments", {}).get("user_question", "No user question provided.")
     final_call_id = call_id or str(uuid.uuid4())
 
+    # --- MODIFICATION START: Extract and format knowledge context separately for clarity ---
+    # Use .get() instead of .pop() to avoid modifying the original workflow_state
+    knowledge_context = workflow_state.get('_knowledge_context')
+    knowledge_section = ""
+    if knowledge_context:
+        knowledge_section = (
+            "--- KNOWLEDGE CONTEXT (Concepts, Syntax, Best Practices) ---\n"
+            f"{knowledge_context}\n\n"
+        )
+        # Create a copy without the knowledge context for the DATA section (avoid duplication)
+        workflow_state_for_data = {k: v for k, v in workflow_state.items() if k != '_knowledge_context'}
+    else:
+        workflow_state_for_data = workflow_state
+    # --- MODIFICATION END ---
+
     final_summary_prompt_text = (
         "You are an expert data analyst. Your task is to create a final report for the user by analyzing the provided data and their original question.\n\n"
         f"--- USER'S ORIGINAL QUESTION ---\n{user_question}\n\n"
-        f"--- DATA FOR ANALYSIS ---\n{json.dumps(workflow_state, indent=2)}\n\n"
+        f"{knowledge_section}"
+        f"--- DATA FOR ANALYSIS ---\n{json.dumps(workflow_state_for_data, indent=2)}\n\n"
         "--- INSTRUCTIONS ---\n"
         "Your response MUST be a single JSON object that strictly follows the schema for a `CanonicalResponse`.\n"
-        "You are required to populate its fields based on your analysis of the data provided above.\n\n"
-        "--- FIELD GUIDELINES ---\n"
+        "You are required to populate its fields based on your analysis of the data provided above.\n"
+        + ("If KNOWLEDGE CONTEXT is provided above, integrate relevant concepts, syntax examples, or best practices into your response alongside the data analysis.\n\n" if knowledge_context else "\n")
+        + "--- FIELD GUIDELINES ---\n"
         "1.  `direct_answer`: REQUIRED. A single, concise sentence that directly and factually answers the user's primary question.\n"
         "2.  `key_metric`: OPTIONAL. Use ONLY if the answer can be summarized by a single, primary value (e.g., a total count, a status). Requires `value` (string) and `label` (string). Omit the entire field if not applicable.\n"
         "3.  `key_observations`: OPTIONAL. A list of objects, each with a `text` field containing a single, narrative bullet point of supporting detail or context. Do NOT include raw data or code."

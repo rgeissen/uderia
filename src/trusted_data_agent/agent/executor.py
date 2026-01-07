@@ -1188,6 +1188,13 @@ class PlanExecutor:
                         app_logger.debug("Stored original plan (post-refinement) for history.")
                         # --- MODIFICATION END ---
 
+                        # --- MODIFICATION START: Inject knowledge context into workflow_state for hybrid plans ---
+                        # This allows TDA_FinalReport to access both gathered data AND knowledge context
+                        if hasattr(planner, '_last_knowledge_context') and planner._last_knowledge_context:
+                            self.workflow_state['_knowledge_context'] = planner._last_knowledge_context
+                            app_logger.info("Injected knowledge context into workflow_state for final report access.")
+                        # --- MODIFICATION END ---
+
                         plan_has_prompt = self.meta_plan and any('executable_prompt' in phase for phase in self.meta_plan)
                         replan_triggered = False
                         if plan_has_prompt:
