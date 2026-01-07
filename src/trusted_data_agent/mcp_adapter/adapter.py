@@ -964,6 +964,13 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
 
     reason = f"Client-Side Tool Call: TDA_FinalReport\nGoal: {user_question}"
 
+    # --- FIX: Log prompt size to help diagnose large data issues ---
+    workflow_data_json = json.dumps(workflow_state_for_data, indent=2)
+    prompt_char_count = len(final_summary_prompt_text)
+    workflow_data_char_count = len(workflow_data_json)
+    app_logger.info(f"TDA_FinalReport: Prompt size={prompt_char_count} chars, workflow_data size={workflow_data_char_count} chars")
+    # --- END FIX ---
+
     # --- MODIFICATION START: Pass user_uuid ---
     response_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
         llm_instance=llm_instance,
@@ -994,7 +1001,17 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
         }
         return result, input_tokens, output_tokens
     except (json.JSONDecodeError, ValidationError) as e:
-        app_logger.error(f"Failed to parse/validate TDA_FinalReport: {e}. Response: {response_text}")
+        # --- FIX: More detailed error logging to diagnose parsing failures ---
+        response_preview = response_text[:500] if len(response_text) > 500 else response_text
+        response_end = response_text[-200:] if len(response_text) > 200 else ""
+        app_logger.error(
+            f"Failed to parse/validate TDA_FinalReport.\n"
+            f"  Error: {e}\n"
+            f"  Response length: {len(response_text)} chars\n"
+            f"  Response start: {response_preview}\n"
+            f"  Response end: {response_end}"
+        )
+        # --- END FIX ---
         return {"status": "error", "error_message": "Failed to generate valid report JSON.", "data": str(e)}, input_tokens, output_tokens
 
 # --- MODIFICATION START: Add user_uuid ---
