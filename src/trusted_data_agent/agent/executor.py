@@ -52,9 +52,16 @@ class AgentState(Enum):
 
 
 def unwrap_exception(e: BaseException) -> BaseException:
-    """Recursively unwraps ExceptionGroups to find the root cause."""
-    if isinstance(e, ExceptionGroup) and e.exceptions:
-        return unwrap_exception(e.exceptions[0])
+    """Recursively unwraps ExceptionGroups to find the root cause.
+
+    Note: ExceptionGroup was added in Python 3.11. This function is compatible
+    with Python 3.10+ by checking if ExceptionGroup exists.
+    """
+    # ExceptionGroup was added in Python 3.11 - use sys.version_info for compatibility
+    import sys
+    if sys.version_info >= (3, 11):
+        if isinstance(e, ExceptionGroup) and e.exceptions:
+            return unwrap_exception(e.exceptions[0])
     return e
 
 

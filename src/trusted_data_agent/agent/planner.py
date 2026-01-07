@@ -1832,8 +1832,16 @@ Ranking:"""
 
         try:
             json_str = response_text
-            if response_text.strip().startswith("```json"):
-                match = re.search(r"```json\s*\n(.*?)\n\s*```", response_text, re.DOTALL)
+
+            # Look for ```json block ANYWHERE in the response (not just at start)
+            # Some LLMs add preamble text before the JSON block
+            if "```json" in response_text:
+                match = re.search(r"```json\s*\n?(.*?)\n?\s*```", response_text, re.DOTALL)
+                if match:
+                    json_str = match.group(1).strip()
+            elif "```" in response_text:
+                # Also handle generic ``` code blocks without json specifier
+                match = re.search(r"```\s*\n?(.*?)\n?\s*```", response_text, re.DOTALL)
                 if match:
                     json_str = match.group(1).strip()
 
