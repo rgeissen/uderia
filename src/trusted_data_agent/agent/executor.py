@@ -778,8 +778,11 @@ class PlanExecutor:
         return "tool_enabled"  # Default
 
 
-    async def _build_conversation_prompt(self, knowledge_context: Optional[str] = None) -> str:
-        """Build prompt for LLM-only direct execution.
+    async def _build_user_message_for_conversation(self, knowledge_context: Optional[str] = None) -> str:
+        """Build user message for LLM-only direct execution.
+
+        System prompt is handled separately via system_prompt_override parameter.
+        This method builds only the user-facing content: knowledge context + conversation history + current query.
 
         IMPORTANT: This retrieves conversation history from session_id, which is
         SHARED across all profile switches. This means LLM-only profiles can
@@ -791,16 +794,10 @@ class PlanExecutor:
 
         Args:
             knowledge_context: Optional knowledge context to inject before conversation history
-        """
-        # Load system prompt from database
-        from trusted_data_agent.agent.prompt_loader import get_prompt_loader
-        prompt_loader = get_prompt_loader()
-        system_prompt = prompt_loader.get_prompt("CONVERSATION_EXECUTION")
-        if not system_prompt:
-            # Fallback if prompt not found
-            system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
-            app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
 
+        Returns:
+            User message string with knowledge + history + current query
+        """
         # Get session history (includes ALL previous turns regardless of profile)
         try:
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
@@ -815,21 +812,20 @@ class PlanExecutor:
             app_logger.error(f"Failed to load session history: {e}")
             history_text = "(No conversation history available)"
 
-        # Build prompt with dynamic knowledge injection
-        prompt_parts = [system_prompt]
+        # Build user message (WITHOUT system prompt)
+        user_message_parts = []
 
         # Inject knowledge context if retrieved
         if knowledge_context:
-            prompt_parts.append(knowledge_context)
+            user_message_parts.append(knowledge_context)
 
-        # Add conversation history
-        prompt_parts.append(f"""
-Previous conversation:
+        # Add conversation history and current query
+        user_message_parts.append(f"""Previous conversation:
 {history_text}
 
 User: {self.original_user_input}""")
 
-        return "\n".join(prompt_parts)
+        return "\n".join(user_message_parts)
 
 
     def _get_profile_config(self) -> Dict[str, Any]:
@@ -1137,8 +1133,20 @@ The following domain knowledge may be relevant to this conversation:
                     app_logger.error(f"Error during knowledge retrieval for llm_only: {e}", exc_info=True)
                     # Continue without knowledge (graceful degradation)
 
-            # Build conversation prompt WITH knowledge context
-            prompt = await self._build_conversation_prompt(knowledge_context=knowledge_context_str)
+            # Load system prompt separately (NOT embedded in user message)
+            from trusted_data_agent.agent.prompt_loader import get_prompt_loader
+            prompt_loader = get_prompt_loader()
+            system_prompt = prompt_loader.get_prompt("CONVERSATION_EXECUTION")
+
+            if not system_prompt:
+                # Fallback if prompt not found
+                system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
+                app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
+
+            # Build user message (WITHOUT system prompt)
+            user_message = await self._build_user_message_for_conversation(
+                knowledge_context=knowledge_context_str
+            )
 
             # CRITICAL: Create clean dependencies without tools/prompts for llm_only
             # This prevents the LLM from seeing tool definitions and trying to use them
@@ -1157,10 +1165,12 @@ The following domain knowledge may be relevant to this conversation:
             self.dependencies = clean_dependencies
 
             try:
-                # Call LLM directly (with clean dependencies)
+                # Call LLM with proper system/user separation
+                # System prompt passed via override, user message contains only content
                 response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
-                    prompt=prompt,
+                    prompt=user_message,  # User message only (knowledge + history + query)
                     reason="Direct LLM Execution (Conversation Profile)",
+                    system_prompt_override=system_prompt,  # System prompt via override (correct architecture)
                     source=self.source
                 )
             finally:

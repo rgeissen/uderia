@@ -458,8 +458,18 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
                 condensed_prompts_parts.append(f"- **{category}**: {', '.join(enabled_prompts)}")
         prompts_context = "\n".join(condensed_prompts_parts) if len(condensed_prompts_parts) > 1 else "--- No Prompts Available ---"
 
+    # Only set full_context_sent if we actually sent tool/prompt context
+    # Don't set it for llm_only profiles with empty dependencies
     if not use_condensed_context and session_data:
-        session_data["full_context_sent"] = True
+        # Count actual tools inside categories (not just empty categories)
+        tool_count = sum(len(tools) for tools in STATE.get('structured_tools', {}).values())
+        prompt_count = sum(len(prompts) for prompts in STATE.get('structured_prompts', {}).values())
+
+        if tool_count > 0 or prompt_count > 0:
+            session_data["full_context_sent"] = True
+            app_logger.info(f"Session context: Marked full_context_sent=True ({tool_count} tools, {prompt_count} prompts shown)")
+        else:
+            app_logger.info("Session context: Skipping full_context_sent flag (no tools/prompts to show - likely llm_only profile or profile with all capabilities disabled)")
 
     # Get MCP system name from database (bootstrapped from tda_config.json)
     import sqlite3
