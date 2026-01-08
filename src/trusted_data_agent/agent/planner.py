@@ -68,9 +68,14 @@ class Planner:
     # --- MODIFICATION START: Update history creation to filter by context validity ---
     def _create_summary_from_history(self, history: dict) -> str:
         """
-        Creates a token-efficient, high-signal summary of a history dictionary
-        by formatting it into a canonical JSON structure for the planner.
-        This function now filters out any turns marked with 'isValid': false.
+        Creates an enhanced summary of previous workflow history for planning context.
+
+        Includes explicit turn metadata to help the planner:
+        - Identify the most recent turn
+        - Understand profile types used
+        - Extract SQL queries from conversation context
+
+        This function filters out any turns marked with 'isValid': false.
         """
         if not history or not isinstance(history, dict) or "workflow_history" not in history:
             return json.dumps({"workflow_history": []}, indent=2)
@@ -87,9 +92,9 @@ class Planner:
             if isinstance(turn, dict) and turn.get("isValid", True) is not False
         ]
 
-        # --- MODIFICATION START: Scrub TDA_SystemLog messages ---
+        # --- MODIFICATION START: Scrub TDA_SystemLog messages and add turn metadata ---
         scrubbed_workflow_history = []
-        for turn in valid_workflow_history:
+        for idx, turn in enumerate(valid_workflow_history):
             new_turn = copy.deepcopy(turn)
             if "execution_trace" in new_turn and isinstance(new_turn["execution_trace"], list):
                 scrubbed_trace = []
@@ -99,12 +104,45 @@ class Planner:
                         if isinstance(action_data, dict) and action_data.get("tool_name") != "TDA_SystemLog":
                             scrubbed_trace.append(entry)
                 new_turn["execution_trace"] = scrubbed_trace
+
+            # Add explicit metadata for planning context
+            new_turn["turn_metadata"] = {
+                "turn_number": new_turn.get("turn", idx + 1),
+                "profile_tag": new_turn.get("profile_tag", "unknown"),
+                "profile_type": new_turn.get("profile_type", "unknown"),
+                "is_most_recent": (idx == len(valid_workflow_history) - 1)
+            }
+
+            # Extract SQL queries from final_summary_text (for llm_only turns)
+            # This helps the planner find SQL queries that weren't executed
+            if "final_summary_text" in new_turn:
+                # Try multiple SQL extraction patterns
+                sql_pattern_with_backticks = r"```sql\n(.*?)\n```"
+                sql_pattern_generic = r"```\n(SELECT.*?)\n```"
+                sql_pattern_plain = r"(SELECT\s+.+?FROM\s+.+?(?:WHERE\s+.+?)?(?:GROUP\s+BY\s+.+?)?(?:ORDER\s+BY\s+.+?)?;)"
+
+                sql_matches = []
+                # Try markdown SQL block first
+                sql_matches.extend(re.findall(sql_pattern_with_backticks, new_turn["final_summary_text"], re.DOTALL | re.IGNORECASE))
+                # Try generic code block
+                if not sql_matches:
+                    sql_matches.extend(re.findall(sql_pattern_generic, new_turn["final_summary_text"], re.DOTALL | re.IGNORECASE))
+                # Try plain SELECT statement
+                if not sql_matches:
+                    sql_matches.extend(re.findall(sql_pattern_plain, new_turn["final_summary_text"], re.DOTALL | re.IGNORECASE))
+
+                if sql_matches:
+                    new_turn["turn_metadata"]["sql_mentioned_in_conversation"] = sql_matches
+                    app_logger.debug(f"Extracted {len(sql_matches)} SQL queries from turn {new_turn.get('turn', idx + 1)} (profile: {new_turn.get('profile_tag')})")
+
             scrubbed_workflow_history.append(new_turn)
         # --- MODIFICATION END ---
 
         # 3. Create the final history object with only valid turns
+        # Add summary header with context
         valid_history_summary = {
-            # We only pass the filtered list to the planner
+            "total_turns": len(scrubbed_workflow_history),
+            "most_recent_turn_number": scrubbed_workflow_history[-1].get("turn", len(scrubbed_workflow_history)) if scrubbed_workflow_history else 0,
             "workflow_history": scrubbed_workflow_history
         }
 
