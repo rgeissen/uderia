@@ -191,6 +191,11 @@ async function processStream(responseBody) {
                         UI.updateStatusWindow({ step: "Finished", details: "Response sent to chat." }, true);
                         UI.setExecutionState(false);
 
+                        // Auto-focus input field so user can immediately type next question
+                        if (DOM.userInput) {
+                            DOM.userInput.focus();
+                        }
+
                         if (eventData.source === 'voice' && eventData.tts_payload) {
                            const { direct_answer, key_observations } = eventData.tts_payload;
 

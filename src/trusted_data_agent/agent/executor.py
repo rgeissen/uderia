@@ -859,18 +859,22 @@ User: {self.original_user_input}"""
             app_logger.error(f"Failed to check consumption limits for user {self.user_uuid}: {e}")
         # --- CONSUMPTION ENFORCEMENT END ---
         
-        # --- MODIFICATION START: Calculate turn number once and store on self ---
-        self.current_turn_number = 1
-        session_data = await session_manager.get_session(self.user_uuid, self.session_id)
-        if session_data and isinstance(session_data.get("last_turn_data", {}).get("workflow_history"), list):
-            self.current_turn_number = len(session_data["last_turn_data"]["workflow_history"]) + 1
-        app_logger.info(f"PlanExecutor initialized for turn: {self.current_turn_number}")
-        # --- MODIFICATION END ---
-
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH START ---
         # Detect if using LLM-only profile and bypass planner if so
         profile_type = self._detect_profile_type()
         is_llm_only = (profile_type == "llm_only")
+
+        # --- MODIFICATION START: Calculate turn number from workflow_history ---
+        # Both llm_only and tool_enabled profiles now use workflow_history for consistency
+        self.current_turn_number = 1
+        session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+
+        if session_data and isinstance(session_data.get("last_turn_data", {}).get("workflow_history"), list):
+            self.current_turn_number = len(session_data["last_turn_data"]["workflow_history"]) + 1
+
+        profile_label = "llm_only" if is_llm_only else "tool_enabled"
+        app_logger.info(f"PlanExecutor initialized for {profile_label} turn: {self.current_turn_number}")
+        # --- MODIFICATION END ---
 
         if is_llm_only:
             # DIRECT EXECUTION PATH - Bypass planner entirely
@@ -888,12 +892,32 @@ User: {self.original_user_input}"""
             # Build conversation prompt
             prompt = await self._build_conversation_prompt()
 
-            # Call LLM directly
-            response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
-                prompt=prompt,
-                reason="Direct LLM Execution (Conversation Profile)",
-                source=self.source
-            )
+            # CRITICAL: Create clean dependencies without tools/prompts for llm_only
+            # This prevents the LLM from seeing tool definitions and trying to use them
+            clean_dependencies = {
+                'STATE': {
+                    'llm': self.dependencies['STATE']['llm'],
+                    'mcp_tools': {},  # Empty tools
+                    'structured_tools': {},  # Empty structured tools
+                    'structured_prompts': {},  # Empty structured prompts
+                    'prompts_context': ''  # No prompts context
+                }
+            }
+
+            # Temporarily swap dependencies for this call
+            original_dependencies = self.dependencies
+            self.dependencies = clean_dependencies
+
+            try:
+                # Call LLM directly (with clean dependencies)
+                response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
+                    prompt=prompt,
+                    reason="Direct LLM Execution (Conversation Profile)",
+                    source=self.source
+                )
+            finally:
+                # Restore original dependencies
+                self.dependencies = original_dependencies
 
             # Emit token update event for UI
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
@@ -969,6 +993,35 @@ User: {self.original_user_input}"""
                             app_logger.info(f"Session name updated to: '{new_name}'")
                         except Exception as e:
                             app_logger.error(f"Failed to update session name: {e}")
+
+            # Create dummy workflow_history entry for consistency
+            # This ensures turn reload, analytics, and cost tracking work the same for all profile types
+            profile_tag = self._get_current_profile_tag()
+
+            turn_summary = {
+                "turn": self.current_turn_number,
+                "user_query": self.original_user_input,
+                "final_summary_text": response_text,
+                "status": "success",
+                "execution_trace": [],  # No tool executions for llm_only
+                "original_plan": None,  # No plan for llm_only
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "provider": self.current_provider,
+                "model": self.current_model,
+                "profile_tag": profile_tag,
+                "profile_type": "llm_only",  # Mark as llm_only for turn reload
+                "task_id": self.task_id if hasattr(self, 'task_id') else None,
+                "turn_input_tokens": input_tokens,
+                "turn_output_tokens": output_tokens,
+                "session_id": self.session_id,
+                "rag_source_collection_id": None,  # LLM-only doesn't use RAG
+                "case_id": None,
+                "knowledge_accessed": [],
+                "knowledge_retrieval_event": None
+            }
+
+            await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+            app_logger.debug(f"Saved llm_only turn data to workflow_history for turn {self.current_turn_number}")
 
             app_logger.info("✅ LLM-only execution completed successfully")
             return
