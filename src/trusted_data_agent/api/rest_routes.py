@@ -6453,7 +6453,10 @@ async def get_sessions_list():
                     for turn in workflow_history:
                         if not turn.get('isValid', True):
                             continue
-                        if not turn.get('final_summary'):
+                        # LLM-only profiles don't have final_summary but are still successful
+                        # if they completed without errors
+                        is_llm_only_turn = turn.get('profile_type') == 'llm_only'
+                        if not is_llm_only_turn and not turn.get('final_summary'):
                             all_successful = False
                         # Check for errors in execution trace
                         exec_trace = turn.get('execution_trace', [])
@@ -6462,7 +6465,7 @@ async def get_sessions_list():
                                 result = entry.get('result', {})
                                 if isinstance(result, dict) and result.get('status') == 'error':
                                     has_errors = True
-                    
+
                     if all_successful and not has_errors and turn_count > 0:
                         status = 'success'
                     elif turn_count > 0:
