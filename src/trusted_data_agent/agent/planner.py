@@ -264,7 +264,9 @@ class Planner:
             # both won't trigger on the same phase in a single pass.
             if 'executable_prompt' in phase and isinstance(phase['executable_prompt'], str):
                 capability_name = phase['executable_prompt']
-                if capability_name in all_tools:
+                # Check if it's an MCP tool OR a TDA_* client-side tool (TDA_ContextReport, TDA_FinalReport, etc.)
+                is_tda_client_tool = capability_name.startswith('TDA_')
+                if capability_name in all_tools or is_tda_client_tool:
                     app_logger.warning(f"PLAN CORRECTION: Planner wrongly classified tool '{capability_name}' as a prompt. Correcting.")
                     phase['relevant_tools'] = [capability_name]
                     del phase['executable_prompt']
