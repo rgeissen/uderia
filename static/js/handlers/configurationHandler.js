@@ -1866,11 +1866,13 @@ function initializeConfigTabs() {
 // ============================================================================
 
 export function renderProfiles() {
-    const container = document.getElementById('profiles-container');
-    if (!container) return;
+    const conversationContainer = document.getElementById('conversation-profiles-container');
+    const toolContainer = document.getElementById('tool-profiles-container');
+
+    if (!conversationContainer || !toolContainer) return;
 
     console.log('[renderProfiles] Rendering', configState.profiles.length, 'profiles');
-    
+
     // Update Test All Profiles button state
     const testAllProfilesBtn = document.getElementById('test-all-profiles-btn');
     if (testAllProfilesBtn) {
@@ -1884,17 +1886,41 @@ export function renderProfiles() {
             testAllProfilesBtn.classList.add('hover:bg-blue-700');
         }
     }
-    
-    if (configState.profiles.length === 0) {
-        container.innerHTML = `
+
+    // Separate profiles by type
+    const conversationProfiles = configState.profiles.filter(p => p.profile_type === 'llm_only');
+    const toolProfiles = configState.profiles.filter(p => !p.profile_type || p.profile_type === 'tool_enabled');
+
+    // Render conversation profiles
+    if (conversationProfiles.length === 0) {
+        conversationContainer.innerHTML = `
             <div class="text-center text-gray-400 py-8">
-                <p>No profiles configured. Click "Add Profile" to get started.</p>
+                <p>No conversation profiles configured.</p>
             </div>
         `;
-        return;
+    } else {
+        conversationContainer.innerHTML = conversationProfiles.map(profile => renderProfileCard(profile)).join('');
     }
 
-    container.innerHTML = configState.profiles.map(profile => {
+    // Render tool-enabled profiles
+    if (toolProfiles.length === 0) {
+        toolContainer.innerHTML = `
+            <div class="text-center text-gray-400 py-8">
+                <p>No tool-enabled profiles configured.</p>
+            </div>
+        `;
+    } else {
+        toolContainer.innerHTML = toolProfiles.map(profile => renderProfileCard(profile)).join('');
+    }
+
+    // Setup tab switching
+    setupProfileTypeTabs();
+
+    // Attach event listeners to profile action buttons
+    attachProfileEventListeners();
+}
+
+function renderProfileCard(profile) {
         const isDefault = profile.id === configState.defaultProfileId;
         const isActiveForConsumption = configState.activeForConsumptionProfileIds.includes(profile.id);
         const testStatus = configState.profileTestStatus[profile.id];
@@ -1948,6 +1974,15 @@ export function renderProfiles() {
                                     @${escapeHtml(profile.tag)}
                                 </span>
                                 `}
+                                ${profile.profile_type === 'llm_only' ? `
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-500/20 text-green-300 border border-green-400/30">
+                                    💬 Chat Only
+                                </span>
+                                ` : `
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-400/30">
+                                    🛠️ Tools
+                                </span>
+                                `}
                                 <button type="button" data-action="copy-profile-id" data-profile-id="${profile.id}" 
                                     class="inline-flex items-center justify-center p-1 ml-1 text-gray-400 hover:text-[#F15F22] transition-colors rounded hover:bg-white/5 group relative"
                                     title="Copy Profile ID">
@@ -1969,8 +2004,10 @@ export function renderProfiles() {
                                 }
                                 return 'N/A';
                             })()}</p>
+                            ${profile.profile_type !== 'llm_only' ? `
                             <p><span class="font-medium">MCP:</span> ${escapeHtml(configState.mcpServers.find(s => s.id === profile.mcpServerId)?.name || 'Unknown')}</p>
-                            ${profile.classification_mode ? `
+                            ` : ''}
+                            ${profile.classification_mode && profile.profile_type !== 'llm_only' ? `
                             <p><span class="font-medium">Classification:</span> ${(() => {
                                 const mode = profile.classification_mode;
                                 const badges = {
@@ -2004,46 +2041,77 @@ export function renderProfiles() {
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button type="button" data-action="test-profile" data-profile-id="${profile.id}" 
+                    <button type="button" data-action="test-profile" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white">
                         Test
                     </button>
-                    <button type="button" data-action="inherit-classification" data-profile-id="${profile.id}" 
+                    ${profile.profile_type !== 'llm_only' ? `
+                    <button type="button" data-action="inherit-classification" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium ${!isDefault && isActiveForConsumption ? (profile.inherit_classification ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-700 hover:bg-orange-600') : 'bg-gray-600 cursor-not-allowed opacity-50'} rounded-lg transition-colors text-white"
                         title="${isDefault ? 'Default profile cannot inherit classification' : (!isActiveForConsumption ? 'Activate profile to enable classification inheritance' : (profile.inherit_classification ? 'Disable classification inheritance' : 'Inherit classification from default profile'))}"
                         ${!isDefault && isActiveForConsumption ? '' : 'disabled'}>
                         ${profile.inherit_classification ? '✓ ' : ''}Inherit Classification
                     </button>
-                    <button type="button" data-action="reclassify-profile" data-profile-id="${profile.id}" 
+                    <button type="button" data-action="reclassify-profile" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium ${profile.active_for_consumption && !profile.inherit_classification ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 cursor-not-allowed opacity-50'} rounded-lg transition-colors text-white"
                         title="${profile.inherit_classification ? 'Disable inherit classification to reclassify' : (profile.active_for_consumption ? 'Re-run classification for this profile' : 'Activate profile to enable reclassification')}"
                         ${profile.active_for_consumption && !profile.inherit_classification ? '' : 'disabled'}>
                         Reclassify
                     </button>
-                    <button type="button" data-action="show-classification" data-profile-id="${profile.id}" 
+                    <button type="button" data-action="show-classification" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium ${isActiveForConsumption && profile.classification_results && !profile.inherit_classification ? 'bg-teal-600 hover:bg-teal-700' : 'bg-gray-600 cursor-not-allowed opacity-50'} rounded-lg transition-colors text-white"
                         title="${profile.inherit_classification ? 'Disable inherit classification to view own classification' : (!isActiveForConsumption ? 'Activate profile to view classification' : (profile.classification_results ? 'View classification results' : 'No classification results available'))}"
                         ${isActiveForConsumption && profile.classification_results && !profile.inherit_classification ? '' : 'disabled'}>
                         Show Classification
                     </button>
-                    <button type="button" data-action="copy-profile" data-profile-id="${profile.id}" 
+                    ` : ''}
+                    <button type="button" data-action="copy-profile" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 rounded-lg transition-colors text-white">
                         Copy
                     </button>
-                    <button type="button" data-action="edit-profile" data-profile-id="${profile.id}" 
+                    <button type="button" data-action="edit-profile" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white">
                         Edit
                     </button>
-                    <button type="button" data-action="delete-profile" data-profile-id="${profile.id}" 
+                    <button type="button" data-action="delete-profile" data-profile-id="${profile.id}"
                         class="px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-red-600 rounded-lg transition-colors text-red-400 hover:text-white">
                         Delete
                     </button>
                 </div>
             </div>
         </div>
-    `}).join('');
+    `;
+}
 
-    attachProfileEventListeners();
+function setupProfileTypeTabs() {
+    const tabs = document.querySelectorAll('.profile-type-tab');
+    const contents = document.querySelectorAll('.profile-type-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.tab;
+
+            // Update tab styles
+            tabs.forEach(t => {
+                if (t === tab) {
+                    t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                    t.classList.add('text-white', 'border-[#F15F22]');
+                } else {
+                    t.classList.remove('text-white', 'border-[#F15F22]');
+                    t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                }
+            });
+
+            // Show/hide content
+            contents.forEach(content => {
+                if (content.id === targetTab + '-container') {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
+            });
+        });
+    });
 }
 
 function attachProfileEventListeners() {
@@ -2973,6 +3041,77 @@ async function showProfileModal(profileId = null) {
 
     modal.querySelector('#profile-modal-title').textContent = isEdit ? 'Edit Profile' : 'Add Profile';
 
+    // Set profile type radio button
+    const profileType = profile ? (profile.profile_type || 'tool_enabled') : 'tool_enabled';
+    const profileTypeRadioLLMOnly = modal.querySelector('#profile-modal-type-llm-only');
+    const profileTypeRadioToolEnabled = modal.querySelector('#profile-modal-type-tool-enabled');
+
+    if (profileType === 'llm_only') {
+        profileTypeRadioLLMOnly.checked = true;
+    } else {
+        profileTypeRadioToolEnabled.checked = true;
+    }
+
+    // Function to show/hide tool-related sections based on profile type
+    const updateSectionVisibility = (isLLMOnly) => {
+        // Find MCP Server container - it's the parent div of the select
+        const mcpServerSelect = modal.querySelector('#profile-modal-mcp-server');
+        const mcpServerContainer = mcpServerSelect ? mcpServerSelect.parentElement : null;
+
+        // Find classification section - search for the section with classification radio buttons
+        const classificationRadio = modal.querySelector('input[name="classification-mode"]');
+        let classificationSection = classificationRadio;
+        // Traverse up to find the parent section (the rounded-xl div with purple gradient)
+        while (classificationSection && !classificationSection.classList.contains('rounded-xl')) {
+            classificationSection = classificationSection.parentElement;
+        }
+
+        const mcpResourcesTab = modal.querySelector('#profile-tab-mcp-resources');
+        const intelligenceTab = modal.querySelector('#profile-tab-intelligence');
+        const mcpResourcesContent = modal.querySelector('#profile-content-mcp-resources');
+        const intelligenceContent = modal.querySelector('#profile-content-intelligence');
+
+        if (isLLMOnly) {
+            // Hide MCP server dropdown container
+            if (mcpServerContainer) mcpServerContainer.style.display = 'none';
+
+            // Hide classification section
+            if (classificationSection) classificationSection.style.display = 'none';
+
+            // Hide MCP Resources tab and content
+            if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
+            if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+
+            // Hide Intelligence Collections tab and content
+            if (intelligenceTab) intelligenceTab.style.display = 'none';
+            if (intelligenceContent) intelligenceContent.style.display = 'none';
+        } else {
+            // Show all sections for tool-enabled profiles
+            if (mcpServerContainer) mcpServerContainer.style.display = '';
+            if (classificationSection) classificationSection.style.display = '';
+            if (mcpResourcesTab) mcpResourcesTab.style.display = '';
+            if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+            if (intelligenceTab) intelligenceTab.style.display = '';
+            if (intelligenceContent) intelligenceContent.style.display = '';
+        }
+    };
+
+    // Initial visibility update
+    updateSectionVisibility(profileType === 'llm_only');
+
+    // Add event listeners to profile type radio buttons
+    profileTypeRadioLLMOnly.addEventListener('change', () => {
+        if (profileTypeRadioLLMOnly.checked) {
+            updateSectionVisibility(true);
+        }
+    });
+
+    profileTypeRadioToolEnabled.addEventListener('change', () => {
+        if (profileTypeRadioToolEnabled.checked) {
+            updateSectionVisibility(false);
+        }
+    });
+
     // Populate LLM configurations
     const llmSelect = modal.querySelector('#profile-modal-llm-provider');
     const activeLLMId = configState.activeLLM || configState.llmConfigurations[0]?.id;
@@ -3464,11 +3603,16 @@ async function showProfileModal(profileId = null) {
             }
         }
 
+        // Get selected profile type
+        const profileTypeRadio = modal.querySelector('input[name="profile-type"]:checked');
+        const selectedProfileType = profileTypeRadio ? profileTypeRadio.value : 'tool_enabled';
+
         const profileData = {
             id: profile ? profile.id : `profile-${generateId()}`,
             name,
             tag,
             description,
+            profile_type: selectedProfileType,
             llmConfigurationId: llmSelect.value,
             mcpServerId: mcpSelect.value,
             classification_mode: classificationMode,

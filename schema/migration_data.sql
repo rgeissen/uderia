@@ -100,6 +100,18 @@ INSERT INTO prompts (name, display_name, content, description, class_id, role, p
     1,
     1,
     1
+),
+(
+    'CONVERSATION_EXECUTION',
+    'Conversation Execution Prompt',
+    '[MIGRATE]',
+    'LLM-only conversation execution prompt for direct chat interactions',
+    2,
+    'system',
+    NULL,
+    1,
+    1,
+    1
 );
 
 -- Error Recovery & Self-Correction (class_id = 3)

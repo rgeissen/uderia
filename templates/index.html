@@ -1935,8 +1935,31 @@
                                                                 + Add Profile
                                                             </button>
                                                         </div>                                    </div>
-                                    <div id="profiles-container" class="space-y-4">
-                                        <!-- Profile cards will be dynamically added here -->
+
+                                    <!-- Profile Type Tabs -->
+                                    <div class="flex gap-2 border-b border-white/10 mb-6">
+                                        <button class="profile-type-tab active px-6 py-3 text-sm font-medium transition-all border-b-2 border-[#F15F22] text-white" data-tab="conversation-profiles">
+                                            <div class="flex items-center gap-2">
+                                                <span>💬</span>
+                                                Conversation Profiles
+                                            </div>
+                                        </button>
+                                        <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="tool-profiles">
+                                            <div class="flex items-center gap-2">
+                                                <span>🛠️</span>
+                                                Tool-Enabled Profiles
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    <!-- Conversation Profiles Container -->
+                                    <div id="conversation-profiles-container" class="profile-type-content space-y-4">
+                                        <!-- Conversation profile cards will be dynamically added here -->
+                                    </div>
+
+                                    <!-- Tool-Enabled Profiles Container -->
+                                    <div id="tool-profiles-container" class="profile-type-content space-y-4 hidden">
+                                        <!-- Tool-enabled profile cards will be dynamically added here -->
                                     </div>
                                 </div>
                             </div>
@@ -5271,6 +5294,42 @@
                                class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg 
                                       focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all
                                       placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50">
+                    </div>
+                </div>
+
+                <!-- Profile Type Selection -->
+                <div class="bg-gradient-to-br from-blue-900/10 to-purple-900/10 rounded-xl p-6 border border-blue-700/20">
+                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
+                        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                        </svg>
+                        Profile Type
+                    </h4>
+                    <p class="text-xs text-gray-400 mb-4">Choose the capabilities for this profile</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-green-500/30 transition-all group">
+                            <input type="radio" name="profile-type" value="llm_only" id="profile-modal-type-llm-only"
+                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Conversation (LLM Only)</span>
+                                    <span class="px-2 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">Simple</span>
+                                </div>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Direct conversation with the LLM without external tools or databases</p>
+                            </div>
+                        </label>
+
+                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-orange-500/30 transition-all group">
+                            <input type="radio" name="profile-type" value="tool_enabled" id="profile-modal-type-tool-enabled" checked
+                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Tool-Enabled</span>
+                                    <span class="px-2 py-0.5 text-xs font-bold bg-orange-500/30 text-orange-300 rounded-full border border-orange-400/30">Advanced</span>
+                                </div>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Full MCP integration with database access, tools, and intelligent planning</p>
+                            </div>
+                        </label>
                     </div>
                 </div>
 

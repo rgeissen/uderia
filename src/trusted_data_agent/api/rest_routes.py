@@ -104,10 +104,18 @@ def _validate_user_profile(user_uuid: str) -> tuple[bool, dict]:
         # Extract LLM and MCP configuration from profile
         llm_config_id = default_profile.get("llmConfigurationId")
         mcp_server_id = default_profile.get("mcpServerId")
-        
-        if not llm_config_id or not mcp_server_id:
+        profile_type = default_profile.get("profile_type", "tool_enabled")
+
+        # LLM always required
+        if not llm_config_id:
             return False, {
-                "error": "Profile is incomplete. Please ensure both LLM Provider and MCP Server are configured."
+                "error": "Profile is incomplete. LLM Provider is required."
+            }
+
+        # MCP only required for tool-enabled profiles
+        if profile_type == "tool_enabled" and not mcp_server_id:
+            return False, {
+                "error": "Tool-enabled profiles require an MCP Server configuration."
             }
         
         return True, {}
@@ -2097,10 +2105,18 @@ async def create_session():
         # Extract LLM and MCP configuration from profile
         llm_config_id = default_profile.get("llmConfigurationId")
         mcp_server_id = default_profile.get("mcpServerId")
-        
-        if not llm_config_id or not mcp_server_id:
+        profile_type = default_profile.get("profile_type", "tool_enabled")
+
+        # LLM always required
+        if not llm_config_id:
             return jsonify({
-                "error": "Profile is incomplete. Please ensure both LLM Provider and MCP Server are configured."
+                "error": "Profile is incomplete. LLM Provider is required."
+            }), 503
+
+        # MCP only required for tool-enabled profiles
+        if profile_type == "tool_enabled" and not mcp_server_id:
+            return jsonify({
+                "error": "Tool-enabled profiles require an MCP Server configuration."
             }), 503
         
         # Get LLM configuration
@@ -5530,17 +5546,22 @@ async def test_profile(profile_id: str):
         else:
             results["llm_connection"] = {"status": "error", "message": "No LLM configuration selected."}
 
-        # Test MCP connection
-        mcp_server_id = profile.get("mcpServerId")
-        if mcp_server_id:
-            mcp_server = next((s for s in config_manager.get_mcp_servers(user_uuid) 
-                             if s.get("id") == mcp_server_id), None)
-            if mcp_server:
-                results["mcp_connection"] = {"status": "success", "message": f"MCP server configured: {mcp_server.get('name', 'Unknown')}."}
+        # Test MCP connection (skip for llm_only profiles)
+        profile_type = profile.get("profile_type", "tool_enabled")
+        if profile_type == "tool_enabled":
+            mcp_server_id = profile.get("mcpServerId")
+            if mcp_server_id:
+                mcp_server = next((s for s in config_manager.get_mcp_servers(user_uuid)
+                                 if s.get("id") == mcp_server_id), None)
+                if mcp_server:
+                    results["mcp_connection"] = {"status": "success", "message": f"MCP server configured: {mcp_server.get('name', 'Unknown')}."}
+                else:
+                    results["mcp_connection"] = {"status": "error", "message": f"MCP server '{mcp_server_id}' not found."}
             else:
-                results["mcp_connection"] = {"status": "error", "message": f"MCP server '{mcp_server_id}' not found."}
+                results["mcp_connection"] = {"status": "warning", "message": "No MCP server configured."}
         else:
-            results["mcp_connection"] = {"status": "warning", "message": "No MCP server configured."}
+            # LLM-only profile - MCP not required
+            results["profile_type"] = {"status": "success", "message": "Conversation profile (LLM only - no tools required)."}
 
         # Test RAG collections (check database for user-accessible collections)
         try:

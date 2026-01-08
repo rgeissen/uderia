@@ -383,129 +383,144 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             else:
                 set_user_model_provider_in_profile(None, user_uuid)
         
-        # Load MCP server configuration from profile
-        mcp_server_id = profile.get('mcpServerId')
-        if not mcp_server_id:
-            return {
-                "status": "error",
-                "message": f"Profile {profile_id} has no mcpServerId configured"
-            }
-        
-        mcp_servers = config_manager.get_mcp_servers(user_uuid)
-        mcp_server = next((s for s in mcp_servers if s.get('id') == mcp_server_id), None)
-        
-        if not mcp_server:
-            return {
-                "status": "error",
-                "message": f"MCP server {mcp_server_id} not found in configuration"
-            }
-        
-        server_name = mcp_server.get('name')
-        host = mcp_server.get('host')
-        port = mcp_server.get('port')
-        path = mcp_server.get('path')
-        
-        if not all([server_name, host, port, path]):
-            return {
-                "status": "error",
-                "message": f"Incomplete MCP server configuration for {mcp_server_id}"
-            }
-        
-        mcp_server_url = f"http://{host}:{port}{path}"
-        app_logger.info(f"Initializing MCP client for profile {profile_id}: {mcp_server_url}")
-        
-        # Initialize and validate MCP client
-        try:
-            import asyncio
-            server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
-            temp_mcp_client = MultiServerMCPClient(server_configs)
-            
-            # Test MCP connection with 10 second timeout
-            app_logger.info(f"Testing MCP connection to {server_name}...")
-            async def test_mcp():
-                async with temp_mcp_client.session(server_name) as temp_session:
-                    await temp_session.list_tools()
-            
-            await asyncio.wait_for(test_mcp(), timeout=10.0)
-            app_logger.info(f"MCP server connection validated successfully: {server_name}")
-            
-        except asyncio.TimeoutError:
-            app_logger.error(f"MCP server connection timed out after 10 seconds: {mcp_server_url}")
-            return {
-                "status": "error",
-                "message": f"MCP server connection timed out. Server may be down or unreachable: {mcp_server_url}"
-            }
-        except Exception as e:
-            app_logger.error(f"Failed to initialize MCP client: {e}", exc_info=True)
-            return {
-                "status": "error",
-                "message": f"Failed to connect to MCP server: {str(e)}"
-            }
-        
-        # Store MCP client in APP_STATE
-        set_user_mcp_client(temp_mcp_client, user_uuid)
-        set_user_server_configs(server_configs, user_uuid)
-        set_user_mcp_server_name(server_name, user_uuid)
-        set_user_mcp_server_id(mcp_server_id, user_uuid)
-        
-        APP_CONFIG.MCP_SERVER_CONNECTED = True
-        APP_CONFIG.SERVICES_CONFIGURED = True
-        
-        app_logger.info(f"Profile {profile_id} fully initialized and validated")
-        
-        # Try to load cached classification
-        app_logger.info(f"Checking for cached classification for profile {profile_id}...")
-        cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
-        app_logger.info(f"Cached classification loaded: {cached_loaded}")
-        
-        # If no cache, run classification
-        if not cached_loaded:
-            app_logger.info(f"No cached classification, running classification for profile {profile_id}")
-            await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
-            
-            # After first classification, initialize profile's enabled tools/prompts with ALL discovered capabilities
-            # This makes all capabilities enabled by default, simplifying the selection process
-            profile = config_manager.get_profile(profile_id, user_uuid)
-            if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
-                # Get all discovered tools from APP_STATE
-                all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
-                all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
-                
-                if all_tools or all_prompts:
-                    app_logger.info(f"Initializing profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
-                    config_manager.update_profile(profile_id, {
-                        "tools": all_tools,
-                        "prompts": all_prompts
-                    }, user_uuid)
-            
-            # Clear needs_reclassification flag after successful classification
-            config_manager.update_profile(profile_id, {"needs_reclassification": False}, user_uuid)
-            app_logger.info(f"Cleared needs_reclassification flag for profile {profile_id} after classification")
+        # Load MCP server configuration from profile (skip for llm_only profiles)
+        profile_type = profile.get('profile_type', 'tool_enabled')
+        cached_loaded = None  # Initialize for both paths
+
+        if profile_type == 'tool_enabled':
+            # Tool-enabled profiles require MCP server
+            mcp_server_id = profile.get('mcpServerId')
+            if not mcp_server_id:
+                return {
+                    "status": "error",
+                    "message": f"Profile {profile_id} has no mcpServerId configured"
+                }
+
+            mcp_servers = config_manager.get_mcp_servers(user_uuid)
+            mcp_server = next((s for s in mcp_servers if s.get('id') == mcp_server_id), None)
+
+            if not mcp_server:
+                return {
+                    "status": "error",
+                    "message": f"MCP server {mcp_server_id} not found in configuration"
+                }
+
+            server_name = mcp_server.get('name')
+            host = mcp_server.get('host')
+            port = mcp_server.get('port')
+            path = mcp_server.get('path')
+
+            if not all([server_name, host, port, path]):
+                return {
+                    "status": "error",
+                    "message": f"Incomplete MCP server configuration for {mcp_server_id}"
+                }
+
+            mcp_server_url = f"http://{host}:{port}{path}"
+            app_logger.info(f"Initializing MCP client for profile {profile_id}: {mcp_server_url}")
+
+            # Initialize and validate MCP client
+            try:
+                import asyncio
+                server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
+                temp_mcp_client = MultiServerMCPClient(server_configs)
+
+                # Test MCP connection with 10 second timeout
+                app_logger.info(f"Testing MCP connection to {server_name}...")
+                async def test_mcp():
+                    async with temp_mcp_client.session(server_name) as temp_session:
+                        await temp_session.list_tools()
+
+                await asyncio.wait_for(test_mcp(), timeout=10.0)
+                app_logger.info(f"MCP server connection validated successfully: {server_name}")
+
+            except asyncio.TimeoutError:
+                app_logger.error(f"MCP server connection timed out after 10 seconds: {mcp_server_url}")
+                return {
+                    "status": "error",
+                    "message": f"MCP server connection timed out. Server may be down or unreachable: {mcp_server_url}"
+                }
+            except Exception as e:
+                app_logger.error(f"Failed to initialize MCP client: {e}", exc_info=True)
+                return {
+                    "status": "error",
+                    "message": f"Failed to connect to MCP server: {str(e)}"
+                }
+
+            # Store MCP client in APP_STATE
+            set_user_mcp_client(temp_mcp_client, user_uuid)
+            set_user_server_configs(server_configs, user_uuid)
+            set_user_mcp_server_name(server_name, user_uuid)
+            set_user_mcp_server_id(mcp_server_id, user_uuid)
+
+            APP_CONFIG.MCP_SERVER_CONNECTED = True
+            APP_CONFIG.SERVICES_CONFIGURED = True
+
+            app_logger.info(f"Profile {profile_id} fully initialized and validated")
+
+            # Try to load cached classification
+            app_logger.info(f"Checking for cached classification for profile {profile_id}...")
+            cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
+            app_logger.info(f"Cached classification loaded: {cached_loaded}")
+
+            # If no cache, run classification
+            if not cached_loaded:
+                app_logger.info(f"No cached classification, running classification for profile {profile_id}")
+                await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
+
+                # After first classification, initialize profile's enabled tools/prompts with ALL discovered capabilities
+                # This makes all capabilities enabled by default, simplifying the selection process
+                profile = config_manager.get_profile(profile_id, user_uuid)
+                if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                    # Get all discovered tools from APP_STATE
+                    all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
+                    all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
+
+                    if all_tools or all_prompts:
+                        app_logger.info(f"Initializing profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
+                        config_manager.update_profile(profile_id, {
+                            "tools": all_tools,
+                            "prompts": all_prompts
+                        }, user_uuid)
+
+                # Clear needs_reclassification flag after successful classification
+                config_manager.update_profile(profile_id, {"needs_reclassification": False}, user_uuid)
+                app_logger.info(f"Cleared needs_reclassification flag for profile {profile_id} after classification")
+            else:
+                # For cached classification, also ensure profile has tools/prompts initialized
+                # This fixes the bug where cached profiles had all resources deactivated
+                app_logger.info(f"Using cached classification for profile {profile_id}, checking profile initialization...")
+                profile = config_manager.get_profile(profile_id, user_uuid)
+                if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                    # Profile doesn't have tools list yet - initialize with all discovered tools from cache
+                    all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
+                    all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
+
+                    if all_tools or all_prompts:
+                        app_logger.info(f"Initializing cached profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
+                        config_manager.update_profile(profile_id, {
+                            "tools": all_tools,
+                            "prompts": all_prompts
+                        }, user_uuid)
         else:
-            # For cached classification, also ensure profile has tools/prompts initialized
-            # This fixes the bug where cached profiles had all resources deactivated
-            app_logger.info(f"Using cached classification for profile {profile_id}, checking profile initialization...")
-            profile = config_manager.get_profile(profile_id, user_uuid)
-            if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
-                # Profile doesn't have tools list yet - initialize with all discovered tools from cache
-                all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
-                all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
-                
-                if all_tools or all_prompts:
-                    app_logger.info(f"Initializing cached profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
-                    config_manager.update_profile(profile_id, {
-                        "tools": all_tools,
-                        "prompts": all_prompts
-                    }, user_uuid)
-        
-        # Calculate disabled tools/prompts from profile's enabled lists
-        APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
-        APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
-        
-        app_logger.info(f"Loaded profile {profile_id}: {len(APP_STATE['disabled_tools'])} disabled tools, {len(APP_STATE['disabled_prompts'])} disabled prompts")
-        
-        # Regenerate contexts with new classification
-        _regenerate_contexts()
+            # LLM-only profile - skip MCP setup
+            app_logger.info(f"Profile {profile_id} is llm_only - skipping MCP server initialization")
+            APP_CONFIG.MCP_SERVER_CONNECTED = False
+            APP_CONFIG.SERVICES_CONFIGURED = True
+
+            # Clear disabled tools/prompts for llm_only profiles
+            APP_STATE["disabled_tools"] = []
+            APP_STATE["disabled_prompts"] = []
+
+        # Calculate disabled tools/prompts from profile's enabled lists (for tool-enabled profiles)
+        if profile_type == 'tool_enabled':
+            APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
+            APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
+
+            app_logger.info(f"Loaded profile {profile_id}: {len(APP_STATE['disabled_tools'])} disabled tools, {len(APP_STATE['disabled_prompts'])} disabled prompts")
+
+            # Regenerate contexts with new classification
+            _regenerate_contexts()
         
         return {
             "status": "success",

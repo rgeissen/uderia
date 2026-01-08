@@ -501,7 +501,32 @@ async function handleReloadPlanClick(element) {
         // Fetch the full turn details (plan + trace)
         const turnData = await API.fetchTurnDetails(sessionId, turnId);
 
-        // Check if data is valid
+        // Check if this is an llm_only profile (conversation profile)
+        if (turnData && turnData.profile_type === 'llm_only') {
+            // Display message for conversation profiles
+            DOM.statusWindowContent.innerHTML = `
+                <div class="p-4 status-step info">
+                    <h4 class="font-bold text-sm text-white mb-2">💬 Conversation Profile</h4>
+                    <p class="text-xs text-gray-300 mb-2">${turnData.message || 'This turn used a conversation profile (LLM-only).'}</p>
+                    <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> Conversation profiles bypass the planner and execute directly via LLM without tool calls.</p>
+                    </div>
+                </div>`;
+
+            // Hide replay buttons for conversation profiles (no plan to replay)
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.add('hidden');
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.add('hidden');
+            }
+
+            return; // Exit early
+        }
+
+        // Check if data is valid for tool-enabled profiles
         if (!turnData || (!turnData.original_plan && !turnData.execution_trace)) {
             throw new Error("Received empty or invalid turn details from the server.");
         }
@@ -509,9 +534,9 @@ async function handleReloadPlanClick(element) {
         // Render the historical trace using the new UI function
         // Pass knowledge_retrieval_event so it renders FIRST (before execution trace)
         UI.renderHistoricalTrace(
-            turnData.original_plan || [], 
-            turnData.execution_trace || [], 
-            turnId, 
+            turnData.original_plan || [],
+            turnData.execution_trace || [],
+            turnId,
             turnData.user_query,
             turnData.knowledge_retrieval_event || null  // Pass knowledge event for proper ordering
         );

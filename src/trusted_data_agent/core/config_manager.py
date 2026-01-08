@@ -135,8 +135,21 @@ class ConfigManager:
         
         # Create deep copy for this user
         user_config = copy.deepcopy(bootstrap_config)
+
+        # Assign first LLM to @CHAT profile during bootstrap
+        llm_configs = user_config.get("llm_configurations", [])
+        first_llm_id = llm_configs[0]["id"] if llm_configs else None
+
+        if first_llm_id:
+            profiles = user_config.get("profiles", [])
+            for profile in profiles:
+                if profile.get("tag") == "CHAT" and profile.get("profile_type") == "llm_only":
+                    if not profile.get("llmConfigurationId"):
+                        profile["llmConfigurationId"] = first_llm_id
+                        app_logger.info(f"✅ Assigned LLM {first_llm_id} to @CHAT profile during bootstrap")
+
         self._user_configs[user_uuid] = user_config
-        
+
         # Save to database for future loads
         self.save_config(user_config, user_uuid)
         

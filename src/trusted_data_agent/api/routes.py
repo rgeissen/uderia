@@ -1347,7 +1347,28 @@ async def get_turn_details(current_user, session_id: str, turn_id: int):
         return jsonify({"error": "Session not found"}), 404
 
     workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
-    if not isinstance(workflow_history, list) or turn_id <= 0 or turn_id > len(workflow_history):
+
+    # Handle llm_only profiles (no workflow history)
+    if not isinstance(workflow_history, list) or len(workflow_history) == 0:
+        # Try to get data from conversation history instead
+        chat_object = session_data.get("chat_object", [])
+        if turn_id <= 0 or turn_id > (len(chat_object) // 2):  # Each turn has user + assistant messages
+            return jsonify({"error": f"Turn {turn_id} not found in session history."}), 404
+
+        # Create minimal turn data for llm_only profiles
+        return jsonify({
+            "turn_id": turn_id,
+            "profile_type": "llm_only",
+            "user_input": session_data.get("last_user_input", ""),
+            "final_answer": session_data.get("last_turn_data", {}).get("final_summary_text", ""),
+            "provider": session_data.get("provider"),
+            "model": session_data.get("model"),
+            "execution_trace": [],  # No trace for llm_only
+            "strategic_plan": None,  # No plan for llm_only
+            "message": "This is a conversation profile (LLM-only). No execution plan or tool trace available."
+        })
+
+    if turn_id <= 0 or turn_id > len(workflow_history):
         return jsonify({"error": f"Turn {turn_id} not found in session history."}), 404
 
     # --- MODIFICATION START: Prioritize turn-level data over session-level ---
@@ -1362,7 +1383,7 @@ async def get_turn_details(current_user, session_id: str, turn_id: int):
     # Fallback for model: use turn-specific, otherwise session-specific
     if "model" not in turn_data_copy:
         turn_data_copy["model"] = session_data.get("model")
-    
+
     # Return the copy with ensured model/provider info
     return jsonify(turn_data_copy)
     # --- MODIFICATION END ---

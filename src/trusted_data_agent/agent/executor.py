@@ -753,6 +753,77 @@ class PlanExecutor:
             return "New Chat" # Fallback on error
 
 
+    def _detect_profile_type(self) -> str:
+        """Detect whether current profile is llm_only or tool_enabled."""
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+
+            if self.profile_override_id:
+                # Check override profile
+                profiles = config_manager.get_profiles(self.user_uuid)
+                override = next((p for p in profiles if p.get("id") == self.profile_override_id), None)
+                if override:
+                    return override.get("profile_type", "tool_enabled")
+            else:
+                # Check default profile
+                default_profile_id = config_manager.get_default_profile_id(self.user_uuid)
+                if default_profile_id:
+                    default = config_manager.get_profile(default_profile_id, self.user_uuid)
+                    if default:
+                        return default.get("profile_type", "tool_enabled")
+        except Exception as e:
+            app_logger.error(f"Error detecting profile type: {e}")
+
+        return "tool_enabled"  # Default
+
+
+    def _build_conversation_prompt(self) -> str:
+        """Build prompt for LLM-only direct execution.
+
+        IMPORTANT: This retrieves conversation history from session_id, which is
+        SHARED across all profile switches. This means LLM-only profiles can
+        reference and build upon results from previous tool-enabled turns.
+
+        Example flow:
+          Turn 1 (@SQL): "Query products table" → Returns SQL results
+          Turn 2 (@CHAT): "Summarize those results" → Sees SQL results in history
+        """
+        # Load system prompt from database
+        from trusted_data_agent.agent.prompt_loader import get_prompt_loader
+        prompt_loader = get_prompt_loader()
+        system_prompt = prompt_loader.get_prompt("CONVERSATION_EXECUTION")
+        if not system_prompt:
+            # Fallback if prompt not found
+            system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
+            app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
+
+        # Get session history (includes ALL previous turns regardless of profile)
+        try:
+            import asyncio
+            session_data = asyncio.run(session_manager.get_session(self.user_uuid, self.session_id))
+            session_history = session_data.get('chat_object', []) if session_data else []
+
+            # Format last 10 messages for context
+            history_text = "\n".join([
+                f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
+                for msg in session_history[-10:]
+            ])
+        except Exception as e:
+            app_logger.error(f"Failed to load session history: {e}")
+            history_text = "(No conversation history available)"
+
+        # Combine system prompt with conversation context
+        prompt = f"""{system_prompt}
+
+Previous conversation:
+{history_text}
+
+User: {self.original_user_input}"""
+
+        return prompt
+
+
     async def run(self):
         """The main, unified execution loop for the agent."""
         final_answer_override = None
@@ -796,6 +867,88 @@ class PlanExecutor:
             self.current_turn_number = len(session_data["last_turn_data"]["workflow_history"]) + 1
         app_logger.info(f"PlanExecutor initialized for turn: {self.current_turn_number}")
         # --- MODIFICATION END ---
+
+        # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH START ---
+        # Detect if using LLM-only profile and bypass planner if so
+        profile_type = self._detect_profile_type()
+        is_llm_only = (profile_type == "llm_only")
+
+        if is_llm_only:
+            # DIRECT EXECUTION PATH - Bypass planner entirely
+            app_logger.info("🗨️ LLM-only profile detected - direct execution mode")
+
+            # Emit status event
+            event_data = {
+                "step": "Calling LLM for Execution",
+                "type": "llm_execution",
+                "metadata": {"profile_type": "llm_only"}
+            }
+            self._log_system_event(event_data)
+            yield self._format_sse(event_data)
+
+            # Build conversation prompt
+            prompt = self._build_conversation_prompt()
+
+            # Call LLM directly
+            response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
+                prompt=prompt,
+                reason="Direct LLM Execution (Conversation Profile)",
+                source=self.source
+            )
+
+            # Emit token update event for UI
+            updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+            if updated_session:
+                yield self._format_sse({
+                    "statement_input": input_tokens,
+                    "statement_output": output_tokens,
+                    "total_input": updated_session.get("input_tokens", 0),
+                    "total_output": updated_session.get("output_tokens", 0),
+                    "call_id": str(uuid.uuid4())
+                }, "token_update")
+
+            # Store as final answer
+            self.final_summary_text = response_text
+
+            # Format and emit final answer event (UI expects 'final_answer' type)
+            event_data = {
+                "step": "Finished",
+                "type": "final_answer",
+                "final_answer": response_text,
+                "turn_id": self.turn_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
+            }
+            self._log_system_event(event_data)
+            yield self._format_sse(event_data)
+
+            # Save to session
+            await session_manager.add_message_to_histories(
+                self.user_uuid,
+                self.session_id,
+                'assistant',
+                content=response_text,
+                html_content=None
+            )
+
+            # Update cost manager
+            try:
+                from trusted_data_agent.core.cost_manager import get_cost_manager
+                cost_manager = get_cost_manager()
+                cost_manager.log_interaction_cost(
+                    self.user_uuid,
+                    self.session_id,
+                    input_tokens,
+                    output_tokens,
+                    get_user_provider(self.user_uuid),
+                    get_user_model(self.user_uuid)
+                )
+            except Exception as e:
+                app_logger.error(f"Failed to log cost: {e}")
+
+            app_logger.info("✅ LLM-only execution completed successfully")
+            return
+        # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH END ---
 
         # --- MODIFICATION START: Setup temporary profile override if requested ---
         temp_llm_instance = None
@@ -913,7 +1066,12 @@ class PlanExecutor:
                     
                     # Get override profile's MCP server configuration
                     override_mcp_server_id = override_profile.get('mcpServerId')
-                    if override_mcp_server_id:
+                    override_profile_type = override_profile.get("profile_type", "tool_enabled")
+
+                    if override_profile_type == "llm_only":
+                        # LLM-only profile: Skip MCP setup entirely
+                        app_logger.info(f"🗨️ LLM-only profile - skipping MCP")
+                    elif override_mcp_server_id:
                         mcp_servers = config_manager.get_mcp_servers()
                         override_mcp_server = next((srv for srv in mcp_servers if srv['id'] == override_mcp_server_id), None)
                         
