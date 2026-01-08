@@ -418,6 +418,244 @@ The cost management system stores all pricing data locally in SQLite (`llm_model
 
 ---
 
+## 🎭 Profile Classes: Conversational vs Tool-Enabled Modes
+
+The Uderia Platform implements a sophisticated dual-mode architecture through **profile classes**, enabling seamless transitions between conversational intelligence and operational tool execution. Understanding these profile classes is essential for maximizing the agent's capabilities and efficiency.
+
+### Overview: Two Fundamental Modes
+
+Every profile in the system belongs to one of two classes that determine how the agent processes user requests:
+
+#### 1. LLM-Only Profiles (Conversational Mode)
+
+**Characteristics:**
+- Pure conversational interaction with the LLM
+- No access to MCP tools or external data sources
+- Agent provides information, analysis, and guidance based on its training
+- Ideal for conceptual questions, explanations, and general knowledge queries
+
+**When to Use:**
+- "How do I write a SQL query to join two tables?"
+- "What is the difference between INNER JOIN and LEFT JOIN?"
+- "Explain database indexing strategies"
+- Draft SQL queries for review before execution
+
+**Example Profiles:**
+- `@CHAT` - Conversational profile for knowledge queries
+- `@EXPLAIN` - Detailed explanations and documentation
+- `@REVIEW` - Code review and analysis without execution
+
+**Technical Behavior:**
+- `profile_type: "llm_only"` in session metadata
+- Strategic planner operates without tool context
+- Responses stored in `final_summary_text` as plain text
+- No `execution_trace` generated (no tools executed)
+- SQL queries mentioned appear in conversation text, not structured actions
+
+#### 2. Tool-Enabled Profiles (Operational Mode)
+
+**Characteristics:**
+- Full access to MCP server capabilities (tools, prompts, resources)
+- Agent can execute database queries, API calls, and data operations
+- Real-time data retrieval and manipulation
+- Complete transparency via execution traces
+
+**When to Use:**
+- "Show me all tables in the sales_db database"
+- "Execute this query: SELECT * FROM customers WHERE status = 'active'"
+- "Generate a quality report for the inventory table"
+- Any request requiring live data or system operations
+
+**Example Profiles:**
+- `@GOGET` - Production database operations (Teradata MCP)
+- `@PROD` - Production workloads with enterprise LLM
+- `@DEV` - Development environment testing
+
+**Technical Behavior:**
+- `profile_type: "tool_enabled"` in session metadata
+- Strategic planner includes full tool/prompt/resource context
+- Tool executions stored in `execution_trace` with structured arguments
+- Complete audit trail of all actions taken
+- Supports self-correction and error recovery
+
+### The Value of Profile Classes
+
+#### 1. **Cost Optimization**
+
+**LLM-Only Mode:**
+- Minimal token usage (no tool descriptions in context)
+- Fast responses without tool execution overhead
+- Ideal for exploratory conversations and learning
+
+**Tool-Enabled Mode:**
+- Higher token cost (includes tool context)
+- Necessary for data access and operations
+- Justified by business value of live data
+
+**Best Practice:** Use `@CHAT` for learning SQL syntax, then switch to `@GOGET` to execute the query.
+
+#### 2. **Workflow Flexibility**
+
+Profile classes enable sophisticated multi-turn workflows:
+
+```
+Turn 1 (@CHAT - llm_only):
+  User: "What is the SQL to get all active users?"
+  Agent: "Here's the SQL: SELECT UserName FROM DBC.SessionsV WHERE SessionID <> 0..."
+
+Turn 2 (@GOGET - tool_enabled):
+  User: "execute this query"
+  Agent: [Executes SQL against database, returns real data]
+```
+
+This pattern separates **knowledge retrieval** (cheap) from **data execution** (expensive but necessary).
+
+#### 3. **Safety and Governance**
+
+**LLM-Only Profiles:**
+- Cannot modify data or execute destructive operations
+- Safe for junior users exploring the system
+- Audit trail shows no actual database access
+
+**Tool-Enabled Profiles:**
+- Full operational capabilities require appropriate permissions
+- Complete execution trace for compliance and audit
+- Can be restricted by user tier or role
+
+#### 4. **Strategic Planner Intelligence**
+
+The strategic planner understands profile class context and adapts behavior:
+
+**Recent Enhancement (Jan 2026):** The planner now correctly disambiguates SQL queries when switching between profile classes. It prioritizes:
+1. SQL mentioned in most recent llm_only conversation
+2. SQL from most recent tool execution
+3. Historical queries with explicit turn metadata
+
+This prevents the planner from executing the wrong query when users switch from `@CHAT` to `@GOGET`.
+
+### Profile Class Specifications
+
+#### Session Metadata Tracking
+
+Every turn in a session records:
+
+```json
+{
+  "turn": 3,
+  "profile_id": "profile-uuid",
+  "profile_tag": "CHAT",
+  "profile_type": "llm_only",
+  "turn_metadata": {
+    "turn_number": 3,
+    "profile_tag": "CHAT",
+    "profile_type": "llm_only",
+    "is_most_recent": true,
+    "sql_mentioned_in_conversation": [
+      "SELECT UserName FROM DBC.SessionsV WHERE SessionID <> 0"
+    ]
+  }
+}
+```
+
+**Key Fields:**
+- `profile_type` - "llm_only" or "tool_enabled"
+- `profile_tag` - Short identifier for quick switching
+- `sql_mentioned_in_conversation` - Extracted SQL from llm_only responses
+- `execution_trace` - Structured tool calls (only in tool_enabled)
+
+#### Profile Classification Modes
+
+Profiles can be classified as:
+
+**Light Classification:**
+- Simple filter-based tool/prompt selection
+- Fast, deterministic, no LLM call required
+- Suitable for well-defined tool sets
+
+**Full Classification (LLM-Assisted):**
+- Dynamic categorization using LLM intelligence
+- Adapts to ambiguous or complex tool selection
+- Higher cost but more flexible
+
+### Real-World Usage Patterns
+
+#### Pattern 1: Learn, Then Execute
+
+```
+@CHAT: "How do I calculate the average sale price by region?"
+  → Agent provides SQL template and explanation
+
+@GOGET: "execute this query for the sales_data table"
+  → Agent runs the query against live database
+```
+
+#### Pattern 2: Review Before Production
+
+```
+@CHAT: "Write a query to delete inactive customers"
+  → Agent drafts DELETE query for review
+
+[User reviews, approves]
+
+@PROD: "execute this query"
+  → Agent executes against production database with audit trail
+```
+
+#### Pattern 3: Cost-Conscious Analysis
+
+```
+@CHAT: "What are the best practices for analyzing customer churn?"
+  → Agent provides methodology (free knowledge)
+
+@GOGET: "apply this analysis to our customer_activity table"
+  → Agent executes analysis with live data (necessary cost)
+```
+
+### Implementation Details
+
+**Profile Switching:**
+- Type `@` in chat input to see all available profiles
+- Select with Tab/Enter or click
+- Profile badge shows active override
+- Session header displays both default (★) and override (⚡)
+
+**Planner Context:**
+- LLM-only: System prompt + conversation history
+- Tool-enabled: System prompt + conversation + tools + prompts + resources
+
+**Cost Implications:**
+- LLM-only: ~2,000 input tokens per turn
+- Tool-enabled: ~8,000+ input tokens per turn (includes full tool context)
+
+**Historical Tracking:**
+- `profile_tags_used[]` - All profiles used in session
+- `models_used[]` - All LLM models used in session
+- Complete audit trail for cost attribution
+
+### Best Practices
+
+1. **Start Conversational:** Use llm_only profiles to explore, learn, and draft queries
+2. **Execute When Needed:** Switch to tool-enabled only when live data is required
+3. **Review Before Execution:** Draft destructive queries in `@CHAT`, review, then execute in `@GOGET`
+4. **Cost Attribution:** Use profile tags to track which workloads drive costs
+5. **Security:** Restrict tool-enabled profiles to authorized users via role-based access
+
+### Technical Architecture
+
+**File References:**
+- [executor.py:69-152](src/trusted_data_agent/agent/executor.py#L69-L152) - Enhanced history with profile metadata
+- [profile_prompt_resolver.py](src/trusted_data_agent/agent/profile_prompt_resolver.py) - Profile-specific prompt resolution
+- [WORKFLOW_META_PLANNING_PROMPT.txt:99-105](../trusted-data-agent-license/default_prompts/WORKFLOW_META_PLANNING_PROMPT.txt#L99-L105) - Disambiguation directive for profile switches
+
+**Database Schema:**
+- `profiles` table stores profile class configuration
+- `user_sessions` tracks profile usage per turn
+- `efficiency_metrics` attributes cost savings by profile type
+
+[⬆️ Back to Table of Contents](#table-of-contents)
+
+---
+
 ### Collaborative Intelligence Marketplace
 
 * **Dual Repository Sharing**: Share and discover both repository types through a unified marketplace:
