@@ -764,8 +764,23 @@ class ConfigurationState {
     }
 
     canReconnect() {
-        const mcpServer = this.getActiveMCPServer();
-        const llmConfig = this.getActiveLLMConfiguration();
+        // First check global active MCP/LLM
+        let mcpServer = this.getActiveMCPServer();
+        let llmConfig = this.getActiveLLMConfiguration();
+
+        // If no global active MCP/LLM, check the default profile's configuration
+        if ((!mcpServer || !llmConfig) && this.defaultProfileId) {
+            const defaultProfile = this.profiles.find(p => p.id === this.defaultProfileId);
+            if (defaultProfile) {
+                if (!mcpServer && defaultProfile.mcpServerId) {
+                    mcpServer = this.mcpServers.find(s => s.id === defaultProfile.mcpServerId);
+                }
+                if (!llmConfig && defaultProfile.llmConfigurationId) {
+                    llmConfig = this.llmConfigurations.find(c => c.id === defaultProfile.llmConfigurationId);
+                }
+            }
+        }
+
         return !!(mcpServer && llmConfig && llmConfig.model);
     }
 }
@@ -2405,36 +2420,106 @@ function attachProfileEventListeners() {
                     }
                     
                     // Tests passed - activate the profile
-                    // Note: Classification will happen when user clicks "Reclassify" button or when profile is actually used
                     if (!activeIds.includes(profileId)) {
                         activeIds.push(profileId);
                     }
                     await configState.setActiveForConsumptionProfiles(activeIds);
-                    
+
                     // If no default profile exists, set this profile as default
                     const wasSetAsDefault = !configState.defaultProfileId;
                     if (wasSetAsDefault) {
                         await configState.setDefaultProfile(profileId);
                     }
-                    
-                    // Update the profile object's active_for_consumption property
+
+                    // Get the profile to check if it's tool-enabled
                     const profile = configState.profiles.find(p => p.id === profileId);
+                    const isToolEnabled = profile && profile.profile_type === 'tool_enabled';
+
+                    // If tool-enabled and no master classification profile exists, set as master
+                    let wasSetAsMaster = false;
+                    if (isToolEnabled && !configState.masterClassificationProfileId) {
+                        try {
+                            await API.setMasterClassificationProfile(profileId);
+                            configState.masterClassificationProfileId = profileId;
+                            wasSetAsMaster = true;
+                            showNotification('info', `Profile "${profile.name}" set as master classification profile.`);
+                        } catch (masterError) {
+                            console.error('Failed to set master classification profile:', masterError);
+                        }
+                    }
+
+                    // Update the profile object's active_for_consumption property
                     const profileIndex = configState.profiles.findIndex(p => p.id === profileId);
                     if (profileIndex !== -1) {
                         configState.profiles[profileIndex].active_for_consumption = true;
                     }
-                    
+
                     await configState.loadProfiles(); // Reload to sync state
+
+                    // If profile became master classification profile, trigger auto-classification
+                    let classificationTriggered = false;
+                    if (wasSetAsMaster) {
+                        showNotification('info', `Running auto-classification for master profile "${profile.name}"...`);
+
+                        // Disable Save & Connect button during classification
+                        const reconnectBtn = document.getElementById('reconnect-and-load-btn');
+                        const reconnectBtnText = document.getElementById('reconnect-button-text');
+                        const originalBtnText = reconnectBtnText ? reconnectBtnText.textContent : 'Save & Connect';
+                        if (reconnectBtn) {
+                            reconnectBtn.disabled = true;
+                            reconnectBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                            if (reconnectBtnText) {
+                                reconnectBtnText.textContent = 'Classifying...';
+                            }
+                        }
+
+                        try {
+                            const headers = { 'Content-Type': 'application/json' };
+                            const authToken = localStorage.getItem('tda_auth_token');
+                            if (authToken) {
+                                headers['Authorization'] = `Bearer ${authToken}`;
+                            }
+
+                            const classifyResponse = await fetch(`/api/v1/profiles/${profileId}/reclassify`, {
+                                method: 'POST',
+                                headers: headers,
+                                credentials: 'include'
+                            });
+
+                            const classifyResult = await classifyResponse.json();
+
+                            if (classifyResponse.ok && classifyResult.status === 'success') {
+                                showNotification('success', `Master profile "${profile.name}" classified successfully.`);
+                                classificationTriggered = true;
+                            } else {
+                                showNotification('warning', `Master profile set, but classification failed: ${classifyResult.message || 'Unknown error'}`);
+                            }
+                        } catch (classifyError) {
+                            console.error('Auto-classification error:', classifyError);
+                            showNotification('warning', `Master profile set, but auto-classification failed: ${classifyError.message}`);
+                        } finally {
+                            // Restore Save & Connect button text and update state
+                            if (reconnectBtnText) {
+                                reconnectBtnText.textContent = originalBtnText;
+                            }
+                            updateReconnectButton(); // Let the function determine proper state
+                        }
+
+                        // Reload profiles to get updated classification results
+                        await configState.loadProfiles();
+                    }
+
                     renderProfiles(); // Re-render with updated state (reclassify button will be enabled)
                     renderLLMProviders(); // Re-render to update default/active badges
                     renderMCPServers(); // Re-render to update default/active badges
-                    
+                    updateReconnectButton(); // Update Save & Connect button state
+
                     // Update status indicators after activation
                     DOM.mcpStatusDot.classList.remove('disconnected');
                     DOM.mcpStatusDot.classList.add('connected');
                     DOM.llmStatusDot.classList.remove('disconnected', 'busy');
                     DOM.llmStatusDot.classList.add('idle');
-                    
+
                     // Update RAG indicator
                     if (DOM.ragStatusDot) {
                         const status = await API.checkServerStatus();
@@ -2446,10 +2531,18 @@ function attachProfileEventListeners() {
                             DOM.ragStatusDot.classList.add('disconnected');
                         }
                     }
-                    
-                    const message = wasSetAsDefault 
-                        ? `Profile "${profile ? profile.name : 'Profile'}" activated and set as default. Click "Reclassify" to classify tools and prompts.`
-                        : `Profile "${profile ? profile.name : 'Profile'}" activated successfully. Click "Reclassify" to classify tools and prompts.`;
+
+                    // Build notification message based on what happened
+                    let message;
+                    if (wasSetAsDefault && wasSetAsMaster && classificationTriggered) {
+                        message = `Profile "${profile ? profile.name : 'Profile'}" activated, set as default and master classification profile, and classified successfully.`;
+                    } else if (wasSetAsDefault && wasSetAsMaster) {
+                        message = `Profile "${profile ? profile.name : 'Profile'}" activated and set as default and master classification profile.`;
+                    } else if (wasSetAsDefault) {
+                        message = `Profile "${profile ? profile.name : 'Profile'}" activated and set as default. Click "Reclassify" to classify tools and prompts.`;
+                    } else {
+                        message = `Profile "${profile ? profile.name : 'Profile'}" activated successfully. Click "Reclassify" to classify tools and prompts.`;
+                    }
                     showNotification('success', message);
                     
                     // Re-apply test results after render
@@ -2662,6 +2755,18 @@ function attachProfileEventListeners() {
                 return;
             }
 
+            // Disable Save & Connect button during the process
+            const reconnectBtn = document.getElementById('reconnect-and-load-btn');
+            const reconnectBtnText = document.getElementById('reconnect-button-text');
+            const originalReconnectText = reconnectBtnText ? reconnectBtnText.textContent : 'Save & Connect';
+            if (reconnectBtn) {
+                reconnectBtn.disabled = true;
+                reconnectBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                if (reconnectBtnText) {
+                    reconnectBtnText.textContent = 'Setting Master...';
+                }
+            }
+
             try {
                 // Disable button and show loading state
                 button.disabled = true;
@@ -2670,12 +2775,45 @@ function attachProfileEventListeners() {
 
                 // Call API to set master classification profile
                 await API.setMasterClassificationProfile(profileId);
+                configState.masterClassificationProfileId = profileId;
+
+                showNotification('success', `Profile "${profile.name}" is now the master classification profile`);
+
+                // Trigger auto-classification for the new master profile
+                showNotification('info', `Running auto-classification for master profile "${profile.name}"...`);
+
+                if (reconnectBtn && reconnectBtnText) {
+                    reconnectBtnText.textContent = 'Classifying...';
+                }
+
+                try {
+                    const headers = { 'Content-Type': 'application/json' };
+                    const authToken = localStorage.getItem('tda_auth_token');
+                    if (authToken) {
+                        headers['Authorization'] = `Bearer ${authToken}`;
+                    }
+
+                    const classifyResponse = await fetch(`/api/v1/profiles/${profileId}/reclassify`, {
+                        method: 'POST',
+                        headers: headers,
+                        credentials: 'include'
+                    });
+
+                    const classifyResult = await classifyResponse.json();
+
+                    if (classifyResponse.ok && classifyResult.status === 'success') {
+                        showNotification('success', `Master profile "${profile.name}" classified successfully.`);
+                    } else {
+                        showNotification('warning', `Master profile set, but classification failed: ${classifyResult.message || 'Unknown error'}`);
+                    }
+                } catch (classifyError) {
+                    console.error('Auto-classification error:', classifyError);
+                    showNotification('warning', `Master profile set, but auto-classification failed: ${classifyError.message}`);
+                }
 
                 // Reload profiles to get updated state
                 await configState.loadProfiles();
                 renderProfiles();
-
-                showNotification('success', `Profile "${profile.name}" is now the master classification profile`);
 
                 // Restore button state
                 button.disabled = false;
@@ -2687,6 +2825,12 @@ function attachProfileEventListeners() {
                 // Restore button state
                 button.disabled = false;
                 button.textContent = 'Set as Master Classification';
+            } finally {
+                // Restore Save & Connect button text and update state
+                if (reconnectBtnText) {
+                    reconnectBtnText.textContent = originalReconnectText;
+                }
+                updateReconnectButton(); // Let the function determine proper state
             }
         });
     });

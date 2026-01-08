@@ -58,7 +58,7 @@
       "all_prompts": []
     }
   ],
-  "active_mcp_server_id": "1763483266562-a6kulj4xc",
+  "active_mcp_server_id": null,
   "llm_configurations": [
     {
       "name": "Google Flash",
@@ -103,7 +103,7 @@
       "id": "1763892251792-fvxyy5msd"
     }
   ],
-  "active_llm_configuration_id": "1763819257473-ivpnukbbe",
+  "active_llm_configuration_id": null,
   "profiles": [
     {
       "id": "profile-default-chat",
@@ -184,11 +184,9 @@
     }
   ],
   "active_profile_id": null,
-  "default_profile_id": "profile-default-chat",
-  "master_classification_profile_id": "profile-1763993711628-vvbh23q09",
-  "active_for_consumption_profile_ids": [
-    "profile-1763993711628-vvbh23q09"
-  ],
+  "default_profile_id": null,
+  "master_classification_profile_id": null,
+  "active_for_consumption_profile_ids": [],
   "rate_limit_enabled": "on",
   "rate_limit_global_override": "off",
   "window_defaults": {

@@ -149,45 +149,12 @@ class ConfigManager:
                         profile["llmConfigurationId"] = first_llm_id
                         app_logger.info(f"✅ Assigned LLM {first_llm_id} to @CHAT profile during bootstrap")
 
-        # Auto-set profile defaults for new users
-        profiles = user_config.get("profiles", [])
+        # Bootstrap configuration - do NOT auto-set profile defaults
+        # The first profile activated by the user will become the default
+        # This allows a clean bootstrap state where no profiles are pre-selected
+        # Values are inherited from tda_config.json template (which has null/empty defaults)
 
-        # Find @CHAT profile (llm_only) for default
-        chat_profile = next(
-            (p for p in profiles if p.get('tag') == 'CHAT' and p.get('profile_type') == 'llm_only'),
-            None
-        )
-
-        # Find first tool_enabled profile
-        first_tool_enabled = next(
-            (p for p in profiles if p.get('profile_type') != 'llm_only' and p.get('mcpServerId')),
-            None
-        )
-
-        # Set default_profile_id to @CHAT (for "when no @TAG is specified")
-        if chat_profile:
-            user_config['default_profile_id'] = chat_profile['id']
-            app_logger.info(f"✅ Auto-set default profile to @CHAT ({chat_profile['id']}) for new user {user_uuid}")
-        elif first_tool_enabled:
-            # Fallback: If no @CHAT profile, use first tool-enabled as default
-            user_config['default_profile_id'] = first_tool_enabled['id']
-            app_logger.info(f"✅ Auto-set default profile to {first_tool_enabled['id']} (no @CHAT profile found) for new user {user_uuid}")
-
-        # Set master_classification_profile_id to first tool_enabled (for inheritance)
-        if first_tool_enabled:
-            user_config['master_classification_profile_id'] = first_tool_enabled['id']
-            app_logger.info(f"✅ Auto-set master classification profile to {first_tool_enabled['id']} ({first_tool_enabled.get('name', first_tool_enabled.get('tag'))}) for new user {user_uuid}")
-        else:
-            app_logger.warning(f"No tool_enabled profiles with MCP server found for user {user_uuid} - master classification profile not set")
-
-        # Set active_for_consumption_profile_ids to include first tool-enabled
-        # This determines which profile's tools/prompts are loaded in APP_STATE
-        if first_tool_enabled:
-            user_config['active_for_consumption_profile_ids'] = [first_tool_enabled['id']]
-            app_logger.info(f"✅ Auto-set active profile to {first_tool_enabled['id']} for new user {user_uuid}")
-        else:
-            user_config['active_for_consumption_profile_ids'] = []
-            app_logger.warning(f"No tool_enabled profiles found - active_for_consumption is empty for user {user_uuid}")
+        app_logger.info(f"Bootstrap complete for user {user_uuid} - no default/master/active profiles auto-set (user must activate a profile first)")
 
         self._user_configs[user_uuid] = user_config
 
