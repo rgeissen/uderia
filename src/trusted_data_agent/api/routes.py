@@ -1420,16 +1420,30 @@ async def new_session():
     if not user_uuid:
         return jsonify({"status": "error", "message": "Authentication required. Please login."}), 401
 
-    # Validate LLM client before creating session (if not already validated)
-    if not APP_STATE.get('llm') or not APP_CONFIG.MCP_SERVER_CONNECTED:
+    # Get default profile to determine validation requirements
+    from trusted_data_agent.core.config_manager import get_config_manager
+    from trusted_data_agent.core import configuration_service
+    config_manager = get_config_manager()
+    default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
+    # Determine profile type to know what validation is needed
+    default_profile = None
+    profile_type = "tool_enabled"  # Default for backward compatibility
+
+    if default_profile_id:
+        profiles = config_manager.get_profiles(user_uuid)
+        default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+        if default_profile:
+            profile_type = default_profile.get("profile_type", "tool_enabled")
+
+    # Validate based on profile type
+    # LLM is always required, MCP only required for tool-enabled profiles
+    needs_mcp = (profile_type == "tool_enabled")
+
+    if not APP_STATE.get('llm') or (needs_mcp and not APP_CONFIG.MCP_SERVER_CONNECTED):
         # Try to initialize and validate with default profile
-        from trusted_data_agent.core.config_manager import get_config_manager
-        from trusted_data_agent.core import configuration_service
-        config_manager = get_config_manager()
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        
         if default_profile_id:
-            app_logger.info(f"Validating LLM client for session creation using profile {default_profile_id}")
+            app_logger.info(f"Validating {'LLM+MCP' if needs_mcp else 'LLM'} for session creation using profile {default_profile_id} (type: {profile_type})")
             result = await configuration_service.switch_profile_context(default_profile_id, user_uuid, validate_llm=True)
             app_logger.info(f"Validation result: {result}")
             if result["status"] != "success":
@@ -1437,11 +1451,15 @@ async def new_session():
                 app_logger.warning(f"Returning 400 error to client: {error_msg}")
                 return jsonify({"error": error_msg}), 400
         else:
-            return jsonify({"error": "Application not configured. Please set MCP and LLM details in Config."}), 400
-    
+            return jsonify({"error": "Application not configured. Please set LLM details in Config."}), 400
+
     # Double-check after validation attempt
-    if not APP_STATE.get('llm') or not APP_CONFIG.MCP_SERVER_CONNECTED:
-        return jsonify({"error": "Application not configured. Please set MCP and LLM details in Config."}), 400
+    # LLM always required, MCP only for tool-enabled profiles
+    if not APP_STATE.get('llm'):
+        return jsonify({"error": "Application not configured. Please set LLM details in Config."}), 400
+
+    if needs_mcp and not APP_CONFIG.MCP_SERVER_CONNECTED:
+        return jsonify({"error": "Tool-enabled profile requires MCP server. Please configure MCP details in Config."}), 400
 
     try:
         loggers_to_purge = ["llm_conversation", "llm_conversation_history"]
@@ -1742,13 +1760,6 @@ async def ask_stream():
         # Fail open - allow execution if consumption check fails
         pass
 
-    if not APP_STATE.get('mcp_tools'):
-        async def error_gen():
-            yield PlanExecutor._format_sse({
-                "error": "The agent is not fully configured. Please ensure the LLM and MCP server details are set correctly in the 'Config' tab before starting a chat."
-            }, "error")
-        return Response(error_gen(), mimetype="text/event-stream")
-
     data = await request.get_json()
     user_input = data.get("message")
     session_id = data.get("session_id")
@@ -1777,6 +1788,32 @@ async def ask_stream():
     # the override tag here, as it may fail during executor initialization.
     from trusted_data_agent.core.config_manager import get_config_manager
     config_manager = get_config_manager()
+
+    # Determine active profile type to conditionally validate MCP requirement
+    # Check profile override first, then fall back to default profile
+    active_profile = None
+    if profile_override_id:
+        profiles = config_manager.get_profiles(user_uuid)
+        active_profile = next((p for p in profiles if p.get("id") == profile_override_id), None)
+
+    if not active_profile:
+        # Get default profile
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+        if default_profile_id:
+            profiles = config_manager.get_profiles(user_uuid)
+            active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+
+    # Get profile type (default to tool_enabled for backward compatibility)
+    active_profile_type = active_profile.get("profile_type", "tool_enabled") if active_profile else "tool_enabled"
+
+    # Only validate MCP tools for tool-enabled profiles
+    # LLM-only profiles bypass planner/tools and execute directly
+    if active_profile_type == "tool_enabled" and not APP_STATE.get('mcp_tools'):
+        async def error_gen():
+            yield PlanExecutor._format_sse({
+                "error": "The agent is not fully configured. Please ensure the LLM and MCP server details are set correctly in the 'Config' tab before starting a chat."
+            }, "error")
+        return Response(error_gen(), mimetype="text/event-stream")
     
     # Always use default profile here - executor will update if override succeeds
     default_profile_id = config_manager.get_default_profile_id(user_uuid)

@@ -778,7 +778,7 @@ class PlanExecutor:
         return "tool_enabled"  # Default
 
 
-    def _build_conversation_prompt(self) -> str:
+    async def _build_conversation_prompt(self) -> str:
         """Build prompt for LLM-only direct execution.
 
         IMPORTANT: This retrieves conversation history from session_id, which is
@@ -800,8 +800,7 @@ class PlanExecutor:
 
         # Get session history (includes ALL previous turns regardless of profile)
         try:
-            import asyncio
-            session_data = asyncio.run(session_manager.get_session(self.user_uuid, self.session_id))
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
             session_history = session_data.get('chat_object', []) if session_data else []
 
             # Format last 10 messages for context
@@ -887,7 +886,7 @@ User: {self.original_user_input}"""
             yield self._format_sse(event_data)
 
             # Build conversation prompt
-            prompt = self._build_conversation_prompt()
+            prompt = await self._build_conversation_prompt()
 
             # Call LLM directly
             response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
@@ -910,25 +909,37 @@ User: {self.original_user_input}"""
             # Store as final answer
             self.final_summary_text = response_text
 
+            # Format the response using OutputFormatter's markdown renderer
+            # Use llm_response_text path which has proper markdown formatting
+            formatter_kwargs = {
+                "llm_response_text": response_text,  # Triggers markdown rendering
+                "collected_data": self.structured_collected_data,
+                "original_user_input": self.original_user_input,
+                "active_prompt_name": None  # No active prompt for llm_only
+            }
+            formatter = OutputFormatter(**formatter_kwargs)
+            final_html, tts_payload = formatter.render()
+
             # Format and emit final answer event (UI expects 'final_answer' type)
             event_data = {
                 "step": "Finished",
-                "type": "final_answer",
-                "final_answer": response_text,
-                "turn_id": self.turn_id,
+                "final_answer": final_html,  # Send formatted HTML
+                "final_answer_text": response_text,  # Also include clean text
+                "turn_id": self.current_turn_number,
                 "input_tokens": input_tokens,
-                "output_tokens": output_tokens
+                "output_tokens": output_tokens,
+                "tts_payload": tts_payload
             }
             self._log_system_event(event_data)
-            yield self._format_sse(event_data)
+            yield self._format_sse(event_data, "final_answer")
 
-            # Save to session
+            # Save to session (with formatted HTML for UI)
             await session_manager.add_message_to_histories(
                 self.user_uuid,
                 self.session_id,
                 'assistant',
-                content=response_text,
-                html_content=None
+                content=response_text,  # Clean text for LLM consumption
+                html_content=final_html  # Formatted HTML for UI display
             )
 
             # Update cost manager
@@ -945,6 +956,19 @@ User: {self.original_user_input}"""
                 )
             except Exception as e:
                 app_logger.error(f"Failed to log cost: {e}")
+
+            # Generate session name for first turn
+            if self.current_turn_number == 1:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                if session_data and session_data.get("name") == "New Chat":
+                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
+                    new_name = await self._generate_session_name(self.original_user_input)
+                    if new_name != "New Chat":
+                        try:
+                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                            app_logger.info(f"Session name updated to: '{new_name}'")
+                        except Exception as e:
+                            app_logger.error(f"Failed to update session name: {e}")
 
             app_logger.info("✅ LLM-only execution completed successfully")
             return
