@@ -52,9 +52,16 @@ class AgentState(Enum):
 
 
 def unwrap_exception(e: BaseException) -> BaseException:
-    """Recursively unwraps ExceptionGroups to find the root cause."""
-    if isinstance(e, ExceptionGroup) and e.exceptions:
-        return unwrap_exception(e.exceptions[0])
+    """Recursively unwraps ExceptionGroups to find the root cause.
+
+    Note: ExceptionGroup was added in Python 3.11. This function is compatible
+    with Python 3.10+ by checking if ExceptionGroup exists.
+    """
+    # ExceptionGroup was added in Python 3.11 - use sys.version_info for compatibility
+    import sys
+    if sys.version_info >= (3, 11):
+        if isinstance(e, ExceptionGroup) and e.exceptions:
+            return unwrap_exception(e.exceptions[0])
     return e
 
 
@@ -1186,6 +1193,13 @@ class PlanExecutor:
                         # Store the plan that was actually generated and refined before any execution begins
                         self.original_plan_for_history = copy.deepcopy(self.meta_plan)
                         app_logger.debug("Stored original plan (post-refinement) for history.")
+                        # --- MODIFICATION END ---
+
+                        # --- MODIFICATION START: Inject knowledge context into workflow_state for hybrid plans ---
+                        # This allows TDA_FinalReport to access both gathered data AND knowledge context
+                        if hasattr(planner, '_last_knowledge_context') and planner._last_knowledge_context:
+                            self.workflow_state['_knowledge_context'] = planner._last_knowledge_context
+                            app_logger.info("Injected knowledge context into workflow_state for final report access.")
                         # --- MODIFICATION END ---
 
                         plan_has_prompt = self.meta_plan and any('executable_prompt' in phase for phase in self.meta_plan)

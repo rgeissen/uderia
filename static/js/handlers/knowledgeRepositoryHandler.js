@@ -1627,38 +1627,141 @@ export async function exportKnowledgeRepository(collectionId, collectionName) {
     try {
         console.log(`[Knowledge] Exporting collection ${collectionId}...`);
 
+        // Show directory selection dialog
+        const exportPath = await showExportDirectoryDialog(collectionName);
+        if (exportPath === null) {
+            // User explicitly cancelled (clicked Cancel button or ESC)
+            console.log('[Knowledge] Export cancelled by user');
+            return;
+        }
+
         // Show progress banner
         if (window.showAppBanner) {
             window.showAppBanner(`Exporting "${collectionName}"...`, 'info');
         }
 
         const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch(`/api/v1/rag/collections/${collectionId}/export`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
+
+        // Check if user selected a folder via browser picker
+        if (typeof exportPath === 'object' && exportPath.type === 'browser-folder') {
+            // Download file to browser-selected folder using File System Access API
+            const directoryHandle = exportPath.directoryHandle;
+
+            try {
+                // Fetch the file from server
+                const response = await fetch(`/api/v1/rag/collections/${collectionId}/export`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Export failed');
+                }
+
+                const blob = await response.blob();
+                const fileName = `collection_${collectionId}_${collectionName.replace(/\s+/g, '_')}.zip`;
+
+                // Try to create file in selected directory
+                const fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+
+                console.log('[Knowledge] Export saved to selected folder:', fileName);
+                if (window.showAppBanner) {
+                    window.showAppBanner(
+                        `Collection exported to ${directoryHandle.name}/${fileName}`,
+                        'success'
+                    );
+                }
+            } catch (folderError) {
+                console.error('[Knowledge] Browser folder export error:', folderError);
+
+                // If folder access fails, fall back to regular browser download
+                if (window.showAppBanner) {
+                    window.showAppBanner(
+                        'Cannot write to selected folder (may be a system directory). Downloading to browser default location...',
+                        'warning'
+                    );
+                }
+
+                // Fall back to regular download
+                const response = await fetch(`/api/v1/rag/collections/${collectionId}/export`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Export failed');
+                }
+
+                const blob = await response.blob();
+                const fileName = `collection_${collectionId}_${collectionName.replace(/\s+/g, '_')}.zip`;
+                const blobUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+
+                console.log('[Knowledge] Fell back to browser download');
             }
-        });
+        } else {
+            // Standard export: server-side save or browser download
+            const url = exportPath
+                ? `/api/v1/rag/collections/${collectionId}/export?export_path=${encodeURIComponent(exportPath)}`
+                : `/api/v1/rag/collections/${collectionId}/export`;
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Export failed');
-        }
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
 
-        // Get the blob and trigger download
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `collection_${collectionId}_${collectionName.replace(/\s+/g, '_')}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Export failed');
+            }
 
-        console.log('[Knowledge] Export complete');
-        if (window.showAppBanner) {
-            window.showAppBanner(`Collection exported successfully!`, 'success');
+            // Check if response is JSON (server-side save) or blob (browser download)
+            const contentType = response.headers.get('content-type');
+
+            if (contentType && contentType.includes('application/json')) {
+                // Server-side save - get success message
+                const result = await response.json();
+                console.log('[Knowledge] Export saved to server:', result.file_path);
+                if (window.showAppBanner) {
+                    window.showAppBanner(
+                        `Collection exported to ${result.file_path} (${result.file_size_mb} MB)`,
+                        'success'
+                    );
+                }
+            } else {
+                // Browser download - get blob and trigger download
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `collection_${collectionId}_${collectionName.replace(/\s+/g, '_')}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+
+                console.log('[Knowledge] Export downloaded to browser');
+                if (window.showAppBanner) {
+                    window.showAppBanner(`Collection exported successfully!`, 'success');
+                }
+            }
         }
 
     } catch (error) {
@@ -1670,9 +1773,267 @@ export async function exportKnowledgeRepository(collectionId, collectionName) {
 }
 
 /**
+ * Show dialog to let user specify export directory
+ */
+async function showExportDirectoryDialog(collectionName) {
+    return new Promise((resolve) => {
+        let selectedDirectoryHandle = null;
+
+        // Check if File System Access API is supported
+        const supportsFileSystemAccess = 'showDirectoryPicker' in window;
+
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
+        // Create modal content
+        const modal = document.createElement('div');
+        modal.className = 'bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4';
+        modal.innerHTML = `
+            <h3 class="text-xl font-semibold text-white mb-4">Export Collection</h3>
+            <p class="text-gray-300 mb-4">Specify the directory where you want to export "${collectionName}":</p>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Export Directory</label>
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        id="export-path-input"
+                        class="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="/path/to/export/directory"
+                        value="${getDefaultExportPath()}"
+                    />
+                    ${supportsFileSystemAccess ? `
+                    <button
+                        id="export-browse-btn"
+                        class="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white border border-gray-600 transition-colors flex items-center gap-2 whitespace-nowrap"
+                        title="Browse for folder"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                        </svg>
+                        Browse...
+                    </button>
+                    ` : ''}
+                </div>
+                <p class="text-xs text-gray-400 mt-2">
+                    ${supportsFileSystemAccess
+                        ? 'Click "Browse..." to select a folder graphically, or enter a path manually'
+                        : 'Enter server path, or leave empty to download to browser'
+                    }
+                </p>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button
+                    id="export-cancel-btn"
+                    class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    id="export-confirm-btn"
+                    class="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                >
+                    Export
+                </button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Focus input
+        const input = document.getElementById('export-path-input');
+        setTimeout(() => input.focus(), 100);
+
+        // Handle browse button (if supported)
+        if (supportsFileSystemAccess) {
+            const browseBtn = document.getElementById('export-browse-btn');
+            browseBtn.onclick = async () => {
+                try {
+                    // Show native folder picker
+                    const directoryHandle = await window.showDirectoryPicker({
+                        mode: 'readwrite',
+                        startIn: 'downloads'
+                    });
+
+                    selectedDirectoryHandle = directoryHandle;
+
+                    // Show selected directory name in input
+                    input.value = `[Selected: ${directoryHandle.name}]`;
+                    input.dataset.browserSelected = 'true';
+
+                    console.log('[Export] Selected directory:', directoryHandle.name);
+                } catch (error) {
+                    // User cancelled the picker or error occurred
+                    if (error.name !== 'AbortError') {
+                        console.error('[Export] Folder picker error:', error);
+                        if (window.showAppBanner) {
+                            window.showAppBanner('Failed to open folder picker', 'error');
+                        }
+                    }
+                }
+            };
+        }
+
+        // Handle confirm
+        document.getElementById('export-confirm-btn').onclick = () => {
+            const path = input.value.trim();
+
+            // Save as default for next time (only if non-empty and not browser-selected)
+            if (path && !input.dataset.browserSelected) {
+                localStorage.setItem('tda_export_directory', path);
+            }
+
+            document.body.removeChild(overlay);
+
+            // If user selected via browser picker, return special object
+            if (selectedDirectoryHandle) {
+                resolve({
+                    type: 'browser-folder',
+                    directoryHandle: selectedDirectoryHandle
+                });
+            } else {
+                // Return empty string for browser download, or the path for server-side save
+                resolve(path);
+            }
+        };
+
+        // Handle cancel
+        document.getElementById('export-cancel-btn').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve(null);
+        };
+
+        // Handle ESC key
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.body.removeChild(overlay);
+                resolve(null);
+            }
+        });
+
+        // Handle Enter key in input
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('export-confirm-btn').click();
+            }
+        });
+    });
+}
+
+/**
+ * Get default export path from localStorage or system default
+ */
+function getDefaultExportPath() {
+    return localStorage.getItem('tda_export_directory') || '';
+}
+
+/**
  * Import a knowledge repository from a .zip file
  */
 export async function importKnowledgeRepository() {
+    // Show dialog to choose import method
+    const importMode = await showImportModeDialog();
+    if (!importMode) {
+        return; // User cancelled
+    }
+
+    if (importMode === 'file') {
+        return importFromFile();
+    } else {
+        return importFromServerPath();
+    }
+}
+
+/**
+ * Show dialog to choose import method
+ */
+async function showImportModeDialog() {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
+        const modal = document.createElement('div');
+        modal.className = 'bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4';
+        modal.innerHTML = `
+            <h3 class="text-xl font-semibold text-white mb-4">Import Collection</h3>
+            <p class="text-gray-300 mb-6">Choose how you want to import the collection:</p>
+
+            <div class="space-y-3 mb-6">
+                <button
+                    id="import-from-file-btn"
+                    class="w-full px-4 py-3 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-left transition-colors flex items-center"
+                >
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <div>
+                        <div class="font-semibold">Upload from Computer</div>
+                        <div class="text-sm text-gray-300">Select a .zip file from your local machine</div>
+                    </div>
+                </button>
+
+                <button
+                    id="import-from-path-btn"
+                    class="w-full px-4 py-3 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-left transition-colors flex items-center"
+                >
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
+                    </svg>
+                    <div>
+                        <div class="font-semibold">Import from Server Path</div>
+                        <div class="text-sm text-gray-300">Specify a file path on the server</div>
+                    </div>
+                </button>
+            </div>
+
+            <div class="flex justify-end">
+                <button
+                    id="import-cancel-btn"
+                    class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                >
+                    Cancel
+                </button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Handle file upload
+        document.getElementById('import-from-file-btn').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve('file');
+        };
+
+        // Handle server path
+        document.getElementById('import-from-path-btn').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve('path');
+        };
+
+        // Handle cancel
+        document.getElementById('import-cancel-btn').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve(null);
+        };
+
+        // Handle ESC key
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.body.removeChild(overlay);
+                resolve(null);
+            }
+        });
+    });
+}
+
+/**
+ * Import from file upload
+ */
+async function importFromFile() {
     return new Promise((resolve, reject) => {
         // Create file input
         const fileInput = document.createElement('input');
@@ -1721,17 +2082,8 @@ export async function importKnowledgeRepository() {
                     );
                 }
 
-                // Reload the appropriate collection list based on repository type
-                // The backend determines repository type from the export metadata
-                // We need to reload both lists to ensure the imported collection appears
-
-                // Reload knowledge repositories
-                if (typeof loadKnowledgeRepositories === 'function') {
-                    await loadKnowledgeRepositories();
-                }
-
-                // Reload planner repositories using the correct function
-                await loadRagCollections();
+                // Reload collections
+                await reloadCollections();
 
                 resolve(result);
 
@@ -1747,4 +2099,165 @@ export async function importKnowledgeRepository() {
         // Trigger file selection
         fileInput.click();
     });
+}
+
+/**
+ * Import from server path
+ */
+async function importFromServerPath() {
+    const importPath = await showImportPathDialog();
+    if (!importPath) {
+        return; // User cancelled
+    }
+
+    try {
+        console.log('[Knowledge] Importing from server path:', importPath);
+
+        // Show progress banner
+        if (window.showAppBanner) {
+            window.showAppBanner(`Importing collection from ${importPath}...`, 'info');
+        }
+
+        const token = localStorage.getItem('tda_auth_token');
+        const response = await fetch('/api/v1/rag/collections/import', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                import_path: importPath
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Import failed');
+        }
+
+        const result = await response.json();
+        console.log('[Knowledge] Import successful:', result);
+
+        if (window.showAppBanner) {
+            window.showAppBanner(
+                `Collection "${result.collection_name}" imported successfully (${result.document_count} documents)!`,
+                'success'
+            );
+        }
+
+        // Reload collections
+        await reloadCollections();
+
+        return result;
+
+    } catch (error) {
+        console.error('[Knowledge] Import error:', error);
+        if (window.showAppBanner) {
+            window.showAppBanner(`Import failed: ${error.message}`, 'error');
+        }
+        throw error;
+    }
+}
+
+/**
+ * Show dialog for server path input
+ */
+async function showImportPathDialog() {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
+        const modal = document.createElement('div');
+        modal.className = 'bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4';
+        modal.innerHTML = `
+            <h3 class="text-xl font-semibold text-white mb-4">Import from Server Path</h3>
+            <p class="text-gray-300 mb-4">Enter the full path to the .zip file on the server:</p>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Import File Path</label>
+                <input
+                    type="text"
+                    id="import-path-input"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="/path/to/collection.zip"
+                    value="${getDefaultImportPath()}"
+                />
+                <p class="text-xs text-gray-400 mt-2">
+                    Example: /exports/collection_3_MyCollection.zip
+                </p>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button
+                    id="import-path-cancel-btn"
+                    class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    id="import-path-confirm-btn"
+                    class="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                >
+                    Import
+                </button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const input = document.getElementById('import-path-input');
+        setTimeout(() => input.focus(), 100);
+
+        // Handle confirm
+        document.getElementById('import-path-confirm-btn').onclick = () => {
+            const path = input.value.trim();
+            if (path) {
+                localStorage.setItem('tda_import_directory', path);
+            }
+            document.body.removeChild(overlay);
+            resolve(path || null);
+        };
+
+        // Handle cancel
+        document.getElementById('import-path-cancel-btn').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve(null);
+        };
+
+        // Handle ESC key
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.body.removeChild(overlay);
+                resolve(null);
+            }
+        });
+
+        // Handle Enter key
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('import-path-confirm-btn').click();
+            }
+        });
+    });
+}
+
+/**
+ * Get default import path from localStorage
+ */
+function getDefaultImportPath() {
+    return localStorage.getItem('tda_import_directory') || '';
+}
+
+/**
+ * Reload both knowledge and planner collections
+ */
+async function reloadCollections() {
+    // Reload knowledge repositories
+    if (typeof loadKnowledgeRepositories === 'function') {
+        await loadKnowledgeRepositories();
+    }
+
+    // Reload planner repositories using the correct function
+    await loadRagCollections();
 }

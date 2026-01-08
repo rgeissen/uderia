@@ -865,11 +865,31 @@ It is highly recommended to use a Python virtual environment.
    
    ```
 
-### Step 3: 🔐 Regenerate JWT Secret Key (Security)
+### Step 3: 🔐 Configure Secret Keys (Security)
 
-> **⚠️ CRITICAL SECURITY STEP**
+> **⚠️ CRITICAL SECURITY STEPS**
 
-The application ships with a default JWT secret key for user authentication. You **must** regenerate this key for your installation to ensure security.
+The application requires two secret keys for secure operation:
+
+#### 3a. Create `.env` File with SECRET_KEY (REQUIRED)
+
+The application uses `SECRET_KEY` for session management (cookies, CSRF protection). This **must** be set before starting the application.
+
+```bash
+# Generate secure SECRET_KEY and create .env file
+python -c "import secrets; key=secrets.token_urlsafe(32); open('.env', 'w').write(f'SECRET_KEY={key}\n'); print(f'✓ Created .env with SECRET_KEY')"
+```
+
+Alternatively, manually create `.env` in the project root:
+```
+SECRET_KEY=your_random_secret_key_here_make_it_long_and_random
+```
+
+**Note:** Without this file, the application **will not start** and will show: `ValueError: SECRET_KEY is not set`
+
+#### 3b. Regenerate JWT Secret Key (REQUIRED)
+
+The application ships with a default JWT secret key for user authentication tokens. You **must** regenerate this key for your installation.
 
 ```bash
 python maintenance/regenerate_jwt_secret.py

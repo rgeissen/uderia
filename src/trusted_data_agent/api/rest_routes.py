@@ -2567,9 +2567,42 @@ async def create_rag_collection():
             }), 201
         else:
             return jsonify({"status": "error", "message": "Failed to create collection"}), 500
-            
+
     except Exception as e:
         app_logger.error(f"Error creating RAG collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>", methods=["GET"])
+async def get_rag_collection(collection_id: int):
+    """Get a single RAG collection by ID."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Get collection from database
+        from trusted_data_agent.core.collection_db import CollectionDatabase
+        db = CollectionDatabase()
+        collection = db.get_collection_by_id(collection_id)
+
+        if not collection:
+            return jsonify({"status": "error", "message": f"Collection {collection_id} not found"}), 404
+
+        # Check if user has access (owner or subscriber)
+        if collection['owner_user_id'] != user_uuid:
+            # Check if user is subscribed
+            subscription = db.get_subscription_by_user_and_collection(user_uuid, collection_id)
+            if not subscription:
+                return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        return jsonify({
+            "status": "success",
+            "collection": collection
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting collection {collection_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -2580,56 +2613,76 @@ async def update_rag_collection(collection_id: int):
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
-        
+
         from trusted_data_agent.core.config_manager import get_config_manager
-        
+        from trusted_data_agent.core.collection_db import CollectionDatabase
+
         data = await request.get_json()
-        
-        # Find the collection in APP_STATE
-        # Note: We allow updating metadata even if RAG retriever is not initialized
-        # This enables users to assign MCP servers before full configuration
-        collections_list = APP_STATE.get("rag_collections", [])
-        coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
-        
-        if not coll_meta:
+
+        # Get collection from database to determine its type
+        db = CollectionDatabase()
+        collection = db.get_collection_by_id(collection_id)
+
+        if not collection:
             return jsonify({"status": "error", "message": f"Collection with ID {collection_id} not found"}), 404
-        
-        # --- MARKETPLACE PHASE 2: Validate ownership ---
-        retriever = APP_STATE.get("rag_retriever_instance")
-        if retriever and not retriever.is_user_collection_owner(collection_id, user_uuid):
+
+        # Validate ownership
+        if collection['owner_user_id'] != user_uuid:
             return jsonify({"status": "error", "message": "Only collection owners can update collections"}), 403
-        # --- MARKETPLACE PHASE 2 END ---
-        
+
+        repository_type = collection.get('repository_type', 'planner')
+
         # ENFORCEMENT: Prevent removing mcp_server_id from ANY collection
         if "mcp_server_id" in data:
             new_mcp_server_id = data["mcp_server_id"]
             if not new_mcp_server_id:
                 return jsonify({
-                    "status": "error", 
+                    "status": "error",
                     "message": "Cannot remove mcp_server_id. All collections must be associated with an MCP server."
                 }), 400
-            coll_meta["mcp_server_id"] = new_mcp_server_id
-        
-        # Update other fields
+
+        # Update in database
+        update_data = {}
         if "name" in data:
-            coll_meta["name"] = data["name"]
+            update_data["name"] = data["name"]
         if "description" in data:
-            coll_meta["description"] = data["description"]
-        
-        # Save the updated collections list to APP_STATE
-        APP_STATE["rag_collections"] = collections_list
-        
-        # Persist to config file
-        config_manager = get_config_manager()
-        config_manager.save_rag_collections(collections_list, user_uuid)
-        
-        app_logger.info(f"Updated RAG collection {collection_id}: {coll_meta['name']} (MCP: {coll_meta.get('mcp_server_id')})")
+            update_data["description"] = data["description"]
+        if "mcp_server_id" in data:
+            update_data["mcp_server_id"] = data["mcp_server_id"]
+
+        db.update_collection(collection_id, update_data)
+
+        # For planner repositories, also update APP_STATE
+        if repository_type == 'planner':
+            collections_list = APP_STATE.get("rag_collections", [])
+            coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
+
+            if coll_meta:
+                # Update fields in APP_STATE
+                if "name" in data:
+                    coll_meta["name"] = data["name"]
+                if "description" in data:
+                    coll_meta["description"] = data["description"]
+                if "mcp_server_id" in data:
+                    coll_meta["mcp_server_id"] = data["mcp_server_id"]
+
+                # Save to APP_STATE
+                APP_STATE["rag_collections"] = collections_list
+
+                # Persist to config file
+                config_manager = get_config_manager()
+                config_manager.save_rag_collections(collections_list, user_uuid)
+
+        # Get updated collection from database
+        updated_collection = db.get_collection_by_id(collection_id)
+
+        app_logger.info(f"Updated {repository_type} collection {collection_id}: {updated_collection['name']}")
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "message": "Collection updated successfully",
-            "collection": coll_meta
+            "collection": updated_collection
         }), 200
-            
+
     except Exception as e:
         app_logger.error(f"Error updating RAG collection: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -3373,6 +3426,10 @@ async def export_collection(collection_id: int):
     """
     Export a knowledge collection as a portable .zip file.
 
+    Query Parameters:
+        export_path (optional): Custom directory path for server-side export.
+                               If not provided, file is downloaded to browser.
+
     The export includes:
     - collection_metadata.json: Collection configuration from database
     - chroma_data/: ChromaDB collection data (embeddings + documents)
@@ -3383,11 +3440,15 @@ async def export_collection(collection_id: int):
     import tempfile
     import shutil
     from quart import send_file
+    import os
 
     try:
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Get optional export_path parameter
+        export_path = request.args.get('export_path', '').strip()
 
         # Get collection from database
         from trusted_data_agent.core.collection_db import CollectionDatabase
@@ -3466,7 +3527,7 @@ async def export_collection(collection_id: int):
 
         # Create temporary directory for export
         temp_dir = tempfile.mkdtemp()
-        export_path = Path(temp_dir)
+        temp_export_dir = Path(temp_dir)
 
         try:
             # 1. Save collection metadata
@@ -3488,7 +3549,7 @@ async def export_collection(collection_id: int):
                 "export_version": "1.0"
             }
 
-            metadata_file = export_path / "collection_metadata.json"
+            metadata_file = temp_export_dir / "collection_metadata.json"
             with open(metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
 
@@ -3509,7 +3570,7 @@ async def export_collection(collection_id: int):
                         embeddings_list.append(emb.tolist() if hasattr(emb, 'tolist') else list(emb))
 
                 # Save complete document data
-                documents_file = export_path / "documents.json"
+                documents_file = temp_export_dir / "documents.json"
                 documents_export = {
                     'ids': all_data['ids'],
                     'documents': all_data['documents'],
@@ -3525,27 +3586,61 @@ async def export_collection(collection_id: int):
                 app_logger.warning(f"Failed to export documents: {e}", exc_info=True)
 
             # 4. Create zip file
-            zip_filename = f"collection_{collection_id}_{collection['name'].replace(' ', '_')}.zip"
-            zip_path = Path(temp_dir) / zip_filename
+            # Sanitize collection name for filesystem (remove invalid characters including slashes)
+            safe_name = re.sub(r'[<>:"/\\|?*]', '-', collection['name'])  # Replace invalid chars with dash
+            safe_name = safe_name.replace(' ', '_')  # Replace spaces with underscores
+            safe_name = safe_name.strip('-_')  # Remove leading/trailing dashes/underscores
+            zip_filename = f"collection_{collection_id}_{safe_name}.zip"
+
+            # Determine zip file location
+            if export_path:
+                # Validate and create custom export directory
+                try:
+                    custom_export_dir = Path(export_path).expanduser().resolve()
+                    if not custom_export_dir.exists():
+                        custom_export_dir.mkdir(parents=True, exist_ok=True)
+                    if not custom_export_dir.is_dir():
+                        raise ValueError(f"Export path is not a directory: {export_path}")
+                    zip_path = custom_export_dir / zip_filename
+                    app_logger.info(f"Export: Using custom directory: {custom_export_dir}")
+                except Exception as e:
+                    app_logger.error(f"Invalid export path '{export_path}': {e}")
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Invalid export path: {str(e)}"
+                    }), 400
+            else:
+                # Use temp directory for browser download
+                zip_path = Path(temp_dir) / zip_filename
 
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for file_path in export_path.rglob('*'):
+                for file_path in temp_export_dir.rglob('*'):
                     if file_path.is_file() and file_path != zip_path:
-                        arcname = file_path.relative_to(export_path)
+                        arcname = file_path.relative_to(temp_export_dir)
                         zipf.write(file_path, arcname)
 
             app_logger.info(f"Exported collection {collection_id} to {zip_filename} ({zip_path.stat().st_size / 1024 / 1024:.2f} MB)")
 
-            # Send file and clean up after
-            response = await send_file(
-                str(zip_path),
-                as_attachment=True,
-                attachment_filename=zip_filename,
-                mimetype='application/zip'
-            )
-
-            # Schedule cleanup (Quart will clean up after sending)
-            return response
+            # If custom export path, save file there and return success message
+            if export_path:
+                # File already saved to custom location, clean up temp directory
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return jsonify({
+                    "status": "success",
+                    "message": f"Collection exported to {zip_path}",
+                    "file_path": str(zip_path),
+                    "file_size_mb": round(zip_path.stat().st_size / 1024 / 1024, 2)
+                }), 200
+            else:
+                # Send file to browser and clean up after
+                response = await send_file(
+                    str(zip_path),
+                    as_attachment=True,
+                    attachment_filename=zip_filename,
+                    mimetype='application/zip'
+                )
+                # Schedule cleanup (Quart will clean up after sending)
+                return response
 
         except Exception as e:
             # Clean up temp directory on error
@@ -3562,7 +3657,9 @@ async def import_collection():
     """
     Import a knowledge collection from an exported .zip file.
 
-    Request: multipart/form-data with 'file' field containing the .zip
+    Two modes:
+    1. File upload: multipart/form-data with 'file' field containing the .zip
+    2. Server path: JSON body with 'import_path' field pointing to .zip on server
 
     The import will:
     - Extract collection metadata
@@ -3572,29 +3669,73 @@ async def import_collection():
     import zipfile
     import tempfile
     import shutil
+    import os
 
     try:
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
 
-        # Get uploaded file
-        files = await request.files
-        if 'file' not in files:
-            return jsonify({"status": "error", "message": "No file uploaded"}), 400
-
-        uploaded_file = files['file']
-        if not uploaded_file.filename.endswith('.zip'):
-            return jsonify({"status": "error", "message": "File must be a .zip archive"}), 400
-
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
         temp_path = Path(temp_dir)
 
         try:
-            # Save uploaded file
-            zip_path = temp_path / "import.zip"
-            await uploaded_file.save(str(zip_path))
+            # Determine import mode: file upload or server path
+            content_type = request.content_type or ''
+
+            if 'multipart/form-data' in content_type:
+                # Mode 1: File upload from browser
+                files = await request.files
+                if 'file' not in files:
+                    return jsonify({"status": "error", "message": "No file uploaded"}), 400
+
+                uploaded_file = files['file']
+                if not uploaded_file.filename.endswith('.zip'):
+                    return jsonify({"status": "error", "message": "File must be a .zip archive"}), 400
+
+                # Save uploaded file
+                zip_path = temp_path / "import.zip"
+                await uploaded_file.save(str(zip_path))
+                app_logger.info(f"Import: Received uploaded file {uploaded_file.filename}")
+
+            elif 'application/json' in content_type:
+                # Mode 2: Import from server path
+                data = await request.get_json()
+                import_path = data.get('import_path', '').strip()
+
+                if not import_path:
+                    return jsonify({"status": "error", "message": "import_path required"}), 400
+
+                # Validate and resolve server path
+                try:
+                    server_zip_path = Path(import_path).expanduser().resolve()
+
+                    if not server_zip_path.exists():
+                        raise FileNotFoundError(f"File not found: {import_path}")
+
+                    if not server_zip_path.is_file():
+                        raise ValueError(f"Path is not a file: {import_path}")
+
+                    if not str(server_zip_path).endswith('.zip'):
+                        raise ValueError(f"File must be a .zip archive")
+
+                    # Copy to temp directory for processing
+                    zip_path = temp_path / "import.zip"
+                    shutil.copy2(server_zip_path, zip_path)
+                    app_logger.info(f"Import: Using server file {server_zip_path}")
+
+                except Exception as e:
+                    app_logger.error(f"Invalid import path '{import_path}': {e}")
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Invalid import path: {str(e)}"
+                    }), 400
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": "Request must be multipart/form-data (file upload) or application/json (server path)"
+                }), 400
 
             # Extract zip
             extract_path = temp_path / "extracted"
@@ -5918,6 +6059,8 @@ async def get_system_consumption_summary():
                 func.sum(UserConsumption.successful_turns).label('successful_turns'),
                 func.sum(UserConsumption.failed_turns).label('failed_turns'),
                 func.sum(UserConsumption.rag_guided_turns).label('rag_guided_turns'),
+                func.sum(UserConsumption.rag_output_tokens_saved).label('rag_output_tokens_saved'),
+                func.sum(UserConsumption.rag_cost_saved_usd).label('rag_cost_saved_usd'),
                 func.sum(UserConsumption.estimated_cost_usd).label('total_cost_cents'),
                 func.sum(UserConsumption.sessions_last_24h).label('sessions_last_24h'),
                 func.sum(UserConsumption.turns_last_24h).label('turns_last_24h')
@@ -6022,6 +6165,8 @@ async def get_system_consumption_summary():
                 'success_rate_percent': round(success_rate, 2),
                 'rag_guided_turns': rag_guided_turns,
                 'rag_activation_rate_percent': round(rag_activation_rate, 2),
+                'rag_output_tokens_saved': result.rag_output_tokens_saved or 0,
+                'rag_cost_saved_usd': (result.rag_cost_saved_usd or 0) / 1000000.0,  # Convert micro-dollars to dollars
                 'estimated_cost_usd': (result.total_cost_cents or 0) / 1000000.0,
                 'sessions_last_24h': result.sessions_last_24h or 0,
                 'turns_last_24h': result.turns_last_24h or 0,

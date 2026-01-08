@@ -568,6 +568,9 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                 )
                 # --- MODIFICATION END ---
 
+                # --- FIX: Set max_output_tokens to prevent truncation (consistent with other providers) ---
+                google_generation_config = genai.GenerationConfig(max_output_tokens=8192)
+
                 if is_session_call:
                     chat_session = session_data['chat_object']
                     # --- MODIFICATION START: Send ONLY the user prompt to the session ---
@@ -576,7 +579,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                          # Condense history *before* sending the message
                          chat_session.history = _condense_and_clean_history(chat_session.history)
 
-                    response = await chat_session.send_message_async(prompt)
+                    response = await chat_session.send_message_async(prompt, generation_config=google_generation_config)
                     # --- MODIFICATION END ---
                 else:
                     app_logger.debug("Google API Call: Using GenerativeModel.generate_content_async with full prompt.")
@@ -586,7 +589,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     # Google's generate_content_async doesn't directly take history like ChatSession
                     # We would need to format history into the full_prompt_for_api if disabled_history is False
                     # For now, assuming non-session calls don't use prior history in this flow.
-                    response = await llm_instance.generate_content_async(full_prompt_for_api)
+                    response = await llm_instance.generate_content_async(full_prompt_for_api, generation_config=google_generation_config)
 
                 # --- Debugging: Log raw response object ---
                 app_logger.debug(f"RAW LLM Response Object (Google): {pprint.pformat(response)}")
@@ -599,6 +602,37 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     app_logger.error(f"Google LLM returned an invalid response ({error_detail}). Safety Ratings: {safety_ratings}")
                     raise RuntimeError(f"Google LLM returned an invalid response ({error_detail}). Check logs for safety ratings.")
                     # --- MODIFICATION END ---
+
+                # --- FIX: Check finish_reason to detect incomplete/blocked responses ---
+                # Google's finish_reason enum values: STOP (0), MAX_TOKENS (1), SAFETY (2), RECITATION (3), OTHER (4)
+                finish_reason = None
+                finish_reason_name = "UNKNOWN"
+                if hasattr(response, 'candidates') and response.candidates:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'finish_reason'):
+                        finish_reason = candidate.finish_reason
+                        # Convert enum to string for logging
+                        finish_reason_name = getattr(finish_reason, 'name', str(finish_reason))
+
+                # Log finish_reason for debugging
+                app_logger.debug(f"Google API finish_reason: {finish_reason_name}")
+
+                # Warn if response was terminated for non-STOP reasons
+                if finish_reason_name not in ["STOP", "UNKNOWN", "FinishReason.STOP"]:
+                    # Check for safety/recitation blocks
+                    if finish_reason_name in ["SAFETY", "FinishReason.SAFETY"]:
+                        safety_ratings = []
+                        if hasattr(response, 'candidates') and response.candidates:
+                            safety_ratings = getattr(response.candidates[0], 'safety_ratings', [])
+                        app_logger.warning(f"Google API response blocked by SAFETY filter. Safety ratings: {safety_ratings}")
+                    elif finish_reason_name in ["RECITATION", "FinishReason.RECITATION"]:
+                        app_logger.warning(f"Google API response blocked due to RECITATION (potential copyrighted content).")
+                    elif finish_reason_name in ["MAX_TOKENS", "FinishReason.MAX_TOKENS"]:
+                        app_logger.warning(f"Google API response truncated due to MAX_TOKENS limit.")
+                    else:
+                        app_logger.warning(f"Google API response terminated with unexpected finish_reason: {finish_reason_name}")
+                # --- END FIX ---
+
                 response_text = response.text
                 response_text = _sanitize_llm_output(response_text)
 

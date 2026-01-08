@@ -278,6 +278,19 @@ class ExecutionDashboard {
 
         const data = this.analyticsData;
 
+        // Update scope indicator with user count (consistent with Intelligence Performance)
+        const scopeIndicator = document.getElementById('execution-scope-indicator');
+        if (scopeIndicator) {
+            if (this.currentPerformanceView === 'system') {
+                const userCount = data.total_users || data.active_users || '';
+                scopeIndicator.textContent = userCount
+                    ? `System-Wide Performance (${userCount} Users)`
+                    : 'System-Wide Performance (All Users)';
+            } else {
+                scopeIndicator.textContent = 'Your Learning Performance';
+            }
+        }
+
         // Update metric cards
         document.getElementById('metric-total-sessions').textContent = (data.total_sessions || 0).toLocaleString();
         document.getElementById('metric-total-tokens').textContent = (data.total_tokens || 0).toLocaleString();
@@ -1048,13 +1061,13 @@ Tokens: ${c.output_tokens || 0}
             console.warn('System performance view is admin-only');
             return;
         }
-        
+
         this.currentPerformanceView = view;
-        
+
         // Update tab styling (match Intelligence Pane repository tabs)
         const myTab = document.getElementById('tab-my-performance');
         const systemTab = document.getElementById('tab-system-performance');
-        
+
         if (view === 'my') {
             myTab.classList.remove('text-gray-400', 'border-transparent');
             myTab.classList.add('text-[#F15F22]', 'border-[#F15F22]');
@@ -1066,7 +1079,15 @@ Tokens: ${c.output_tokens || 0}
             myTab.classList.remove('text-[#F15F22]', 'border-[#F15F22]');
             myTab.classList.add('text-gray-400', 'border-transparent');
         }
-        
+
+        // Update scope indicator (consistent with Intelligence Performance)
+        const scopeIndicator = document.getElementById('execution-scope-indicator');
+        if (scopeIndicator) {
+            scopeIndicator.textContent = view === 'system'
+                ? 'System-Wide Performance (All Users)'
+                : 'Your Learning Performance';
+        }
+
         // Refresh only the analytics section (not session gallery)
         await this.refreshAnalytics();
     }
