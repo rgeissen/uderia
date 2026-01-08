@@ -8,7 +8,7 @@ import uuid
 import asyncio
 # --- MODIFICATION END ---
 from enum import Enum, auto
-from typing import Tuple, List
+from typing import Tuple, List, Optional, Dict, Any
 # --- MODIFICATION START: Import datetime and timezone ---
 from datetime import datetime, timezone
 # --- MODIFICATION END ---
@@ -778,7 +778,7 @@ class PlanExecutor:
         return "tool_enabled"  # Default
 
 
-    async def _build_conversation_prompt(self) -> str:
+    async def _build_conversation_prompt(self, knowledge_context: Optional[str] = None) -> str:
         """Build prompt for LLM-only direct execution.
 
         IMPORTANT: This retrieves conversation history from session_id, which is
@@ -788,6 +788,9 @@ class PlanExecutor:
         Example flow:
           Turn 1 (@SQL): "Query products table" → Returns SQL results
           Turn 2 (@CHAT): "Summarize those results" → Sees SQL results in history
+
+        Args:
+            knowledge_context: Optional knowledge context to inject before conversation history
         """
         # Load system prompt from database
         from trusted_data_agent.agent.prompt_loader import get_prompt_loader
@@ -812,15 +815,127 @@ class PlanExecutor:
             app_logger.error(f"Failed to load session history: {e}")
             history_text = "(No conversation history available)"
 
-        # Combine system prompt with conversation context
-        prompt = f"""{system_prompt}
+        # Build prompt with dynamic knowledge injection
+        prompt_parts = [system_prompt]
 
+        # Inject knowledge context if retrieved
+        if knowledge_context:
+            prompt_parts.append(knowledge_context)
+
+        # Add conversation history
+        prompt_parts.append(f"""
 Previous conversation:
 {history_text}
 
-User: {self.original_user_input}"""
+User: {self.original_user_input}""")
 
-        return prompt
+        return "\n".join(prompt_parts)
+
+
+    def _get_profile_config(self) -> Dict[str, Any]:
+        """Get current profile configuration (with override support)."""
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        if self.profile_override_id:
+            profiles = config_manager.get_profiles(self.user_uuid)
+            override = next((p for p in profiles if p['id'] == self.profile_override_id), None)
+            if override:
+                return override
+
+        default_profile_id = config_manager.get_default_profile_id(self.user_uuid)
+        if default_profile_id:
+            default = config_manager.get_profile(default_profile_id, self.user_uuid)
+            if default:
+                return default
+
+        return {}
+
+
+    def _format_knowledge_for_prompt(
+        self,
+        results: List[Dict[str, Any]],
+        max_tokens: int = 2000
+    ) -> str:
+        """Format knowledge documents for prompt injection with token limiting."""
+        if not results:
+            return ""
+
+        formatted_docs = []
+        total_chars = 0
+        char_limit = max_tokens * 4  # 1 token ≈ 4 chars
+
+        for doc in results:
+            content = doc.get("content", "")
+            metadata = doc.get("metadata", {})
+            source = metadata.get("source", "Unknown")
+            # Get collection_name from document level (matching RAG retriever behavior)
+            collection_name = doc.get("collection_name", "Unknown")
+
+            doc_text = f"""
+Source: {source} (Collection: {collection_name})
+Content: {content}
+---"""
+
+            if total_chars + len(doc_text) > char_limit:
+                app_logger.info(f"Knowledge context truncated at {len(formatted_docs)} documents")
+                break
+
+            formatted_docs.append(doc_text)
+            total_chars += len(doc_text)
+
+        return "\n".join(formatted_docs)
+
+
+    async def _rerank_knowledge_with_llm(
+        self,
+        query: str,
+        documents: List[Dict[str, Any]],
+        max_docs: int
+    ) -> List[Dict[str, Any]]:
+        """Rerank knowledge documents using LLM for improved relevance."""
+        if not documents or not self.llm_handler:
+            return documents
+
+        docs_text = "\n\n".join([
+            f"Document {i+1}:\n{doc.get('content', '')[:500]}"
+            for i, doc in enumerate(documents)
+        ])
+
+        rerank_prompt = f"""You are helping rank documents by relevance to a query.
+
+Query: {query}
+
+Documents:
+{docs_text}
+
+Rank these documents by relevance to the query. Return ONLY a JSON array of document numbers in order of relevance (most relevant first).
+Example: [3, 1, 5, 2, 4]
+
+Response:"""
+
+        try:
+            response_text, _, _ = await self._call_llm_and_update_tokens(
+                prompt=rerank_prompt,
+                reason="Knowledge Reranking",
+                source="knowledge_retrieval"
+            )
+
+            import json
+            import re
+            match = re.search(r'\[[\d,\s]+\]', response_text)
+            if match:
+                ranking = json.loads(match.group(0))
+                reranked = []
+                for doc_num in ranking[:max_docs]:
+                    if 0 < doc_num <= len(documents):
+                        reranked.append(documents[doc_num - 1])
+                return reranked if reranked else documents[:max_docs]
+
+        except Exception as e:
+            app_logger.warning(f"Reranking failed, using original order: {e}")
+
+        return documents[:max_docs]
 
 
     async def run(self):
@@ -889,8 +1004,141 @@ User: {self.original_user_input}"""
             self._log_system_event(event_data)
             yield self._format_sse(event_data)
 
-            # Build conversation prompt
-            prompt = await self._build_conversation_prompt()
+            # --- NEW: Knowledge Retrieval for LLM-Only ---
+            knowledge_context_str = None
+            knowledge_accessed = []
+
+            # Get profile configuration
+            profile_config = self._get_profile_config()
+            knowledge_config = profile_config.get("knowledgeConfig", {})
+            knowledge_enabled = knowledge_config.get("enabled", False)
+
+            if knowledge_enabled and self.rag_retriever:
+                app_logger.info("🔍 Knowledge retrieval enabled for llm_only profile")
+
+                try:
+                    knowledge_collections = knowledge_config.get("collections", [])
+                    max_docs = knowledge_config.get("maxDocs", 3)
+                    min_relevance = knowledge_config.get("minRelevanceScore", 0.7)
+                    max_tokens = knowledge_config.get("maxTokens", 2000)
+
+                    if knowledge_collections:
+                        collection_ids = [c["id"] for c in knowledge_collections]
+
+                        # Create access context (same as planner)
+                        from trusted_data_agent.agent.rag_access_context import RAGAccessContext
+                        rag_context = RAGAccessContext(
+                            user_id=self.user_uuid,
+                            retriever=self.rag_retriever
+                        )
+
+                        # Retrieve knowledge documents
+                        all_results = self.rag_retriever.retrieve_examples(
+                            query=self.original_user_input,
+                            k=max_docs * len(knowledge_collections),
+                            min_score=min_relevance,
+                            allowed_collection_ids=set(collection_ids),
+                            rag_context=rag_context,
+                            repository_type="knowledge"  # Filter for knowledge only
+                        )
+
+                        if all_results:
+                            # Apply reranking if configured
+                            reranked_results = all_results
+                            for coll_config in knowledge_collections:
+                                if coll_config.get("reranking", False):
+                                    coll_results = [r for r in all_results
+                                                  if r.get("metadata", {}).get("collection_id") == coll_config["id"]]
+                                    if coll_results and self.llm_handler:
+                                        reranked = await self._rerank_knowledge_with_llm(
+                                            query=self.original_user_input,
+                                            documents=coll_results,
+                                            max_docs=max_docs
+                                        )
+                                        reranked_results = [r for r in reranked_results
+                                                          if r.get("metadata", {}).get("collection_id") != coll_config["id"]]
+                                        reranked_results.extend(reranked)
+
+                            # Limit total documents
+                            final_results = reranked_results[:max_docs]
+
+                            # Enrich documents with collection_name at document level (matching RAG retriever behavior)
+                            for doc in final_results:
+                                # If collection_name is missing, fetch from collection metadata
+                                if not doc.get("collection_name"):
+                                    coll_id = doc.get("collection_id")
+                                    if coll_id and self.rag_retriever:
+                                        coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                                        if coll_meta:
+                                            doc["collection_name"] = coll_meta.get("name", "Unknown")
+                                            app_logger.info(f"Enriched doc with collection_name: {doc['collection_name']}")
+
+                            # Format knowledge context
+                            knowledge_docs = self._format_knowledge_for_prompt(final_results, max_tokens)
+
+                            if knowledge_docs.strip():
+                                knowledge_context_str = f"""
+
+--- KNOWLEDGE CONTEXT ---
+The following domain knowledge may be relevant to this conversation:
+
+{knowledge_docs}
+
+(End of Knowledge Context)
+"""
+
+                                # Track accessed collections (get collection_name from document level)
+                                knowledge_accessed = [
+                                    {
+                                        "collection_id": r.get("collection_id"),
+                                        "collection_name": r.get("collection_name", "Unknown"),
+                                        "source": r.get("metadata", {}).get("source", "Unknown")
+                                    }
+                                    for r in final_results
+                                ]
+
+                                # Build detailed chunks metadata (matching planner.py format)
+                                knowledge_chunks = []
+                                collection_names = set()
+                                for doc in final_results:
+                                    # Get collection_name from document level, not metadata
+                                    collection_name = doc.get("collection_name", "Unknown")
+                                    collection_names.add(collection_name)
+
+                                    # Get metadata for source info
+                                    doc_metadata = doc.get("metadata", {})
+
+                                    knowledge_chunks.append({
+                                        "source": doc_metadata.get("source", "Unknown"),
+                                        "content": doc.get("content", ""),
+                                        "similarity_score": doc.get("similarity_score", 0),
+                                        "document_id": doc.get("document_id"),
+                                        "chunk_index": doc.get("chunk_index", 0)
+                                    })
+
+                                # Build event details matching planner.py format
+                                event_details = {
+                                    "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)",
+                                    "collections": list(collection_names),
+                                    "document_count": len(final_results),
+                                    "chunks": knowledge_chunks
+                                }
+
+                                # Emit SSE event with details (matching planner.py)
+                                event_data = {
+                                    "step": "Knowledge Retrieved",
+                                    "type": "knowledge_retrieval",
+                                    "details": event_details
+                                }
+                                self._log_system_event(event_data)
+                                yield self._format_sse(event_data)
+
+                except Exception as e:
+                    app_logger.error(f"Error during knowledge retrieval for llm_only: {e}", exc_info=True)
+                    # Continue without knowledge (graceful degradation)
+
+            # Build conversation prompt WITH knowledge context
+            prompt = await self._build_conversation_prompt(knowledge_context=knowledge_context_str)
 
             # CRITICAL: Create clean dependencies without tools/prompts for llm_only
             # This prevents the LLM from seeing tool definitions and trying to use them
@@ -966,20 +1214,10 @@ User: {self.original_user_input}"""
                 html_content=final_html  # Formatted HTML for UI display
             )
 
-            # Update cost manager
-            try:
-                from trusted_data_agent.core.cost_manager import get_cost_manager
-                cost_manager = get_cost_manager()
-                cost_manager.log_interaction_cost(
-                    self.user_uuid,
-                    self.session_id,
-                    input_tokens,
-                    output_tokens,
-                    get_user_provider(self.user_uuid),
-                    get_user_model(self.user_uuid)
-                )
-            except Exception as e:
-                app_logger.error(f"Failed to log cost: {e}")
+            # Cost tracking for llm_only profiles
+            # Note: Cost manager doesn't have log_interaction_cost method
+            # Cost is already calculated and logged via _call_llm_and_update_tokens
+            # No additional logging needed here
 
             # Generate session name for first turn
             if self.current_turn_number == 1:
@@ -1044,8 +1282,12 @@ User: {self.original_user_input}"""
                 "session_id": self.session_id,
                 "rag_source_collection_id": None,  # LLM-only doesn't use RAG
                 "case_id": None,
-                "knowledge_accessed": [],
-                "knowledge_retrieval_event": None
+                "knowledge_accessed": knowledge_accessed,  # Track knowledge collections accessed
+                "knowledge_retrieval_event": {
+                    "enabled": knowledge_enabled,
+                    "retrieved": len(knowledge_accessed) > 0,
+                    "document_count": len(knowledge_accessed)
+                } if knowledge_enabled else None
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)

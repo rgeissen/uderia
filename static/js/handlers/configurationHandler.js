@@ -2017,7 +2017,7 @@ function renderProfileCard(profile) {
                                 return badges[mode] || badges['light'];
                             })()}</p>
                             ` : ''}
-                            ${profile.needs_reclassification ? `
+                            ${profile.needs_reclassification && profile.profile_type !== 'llm_only' ? `
                             <p><span class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
@@ -3046,71 +3046,152 @@ async function showProfileModal(profileId = null) {
     const profileTypeRadioLLMOnly = modal.querySelector('#profile-modal-type-llm-only');
     const profileTypeRadioToolEnabled = modal.querySelector('#profile-modal-type-tool-enabled');
 
-    if (profileType === 'llm_only') {
-        profileTypeRadioLLMOnly.checked = true;
-    } else {
-        profileTypeRadioToolEnabled.checked = true;
-    }
-
     // Function to show/hide tool-related sections based on profile type
     const updateSectionVisibility = (isLLMOnly) => {
-        // Find MCP Server container - it's the parent div of the select
+        console.log('[Profile Modal] updateSectionVisibility called with isLLMOnly:', isLLMOnly);
+
+        // Find MCP Server container - it's the column div containing label and select
         const mcpServerSelect = modal.querySelector('#profile-modal-mcp-server');
+        // The parent is the <div> containing both label and select (the grid column)
         const mcpServerContainer = mcpServerSelect ? mcpServerSelect.parentElement : null;
+        console.log('[Profile Modal] mcpServerContainer found:', !!mcpServerContainer);
+        if (mcpServerContainer) {
+            console.log('[Profile Modal] mcpServerContainer current display:', mcpServerContainer.style.display || 'default');
+        }
 
         // Find classification section - search for the section with classification radio buttons
         const classificationRadio = modal.querySelector('input[name="classification-mode"]');
-        let classificationSection = classificationRadio;
-        // Traverse up to find the parent section (the rounded-xl div with purple gradient)
-        while (classificationSection && !classificationSection.classList.contains('rounded-xl')) {
-            classificationSection = classificationSection.parentElement;
+        let classificationSection = classificationRadio ? classificationRadio.closest('.rounded-xl') : null;
+        console.log('[Profile Modal] classificationSection found:', !!classificationSection);
+        if (classificationSection) {
+            console.log('[Profile Modal] classificationSection current display:', classificationSection.style.display || 'default');
         }
+
+        // Find Planner Repositories section within Intelligence tab
+        const plannerCollectionsList = modal.querySelector('#profile-modal-planner-collections');
+        const plannerSection = plannerCollectionsList ? plannerCollectionsList.closest('.mb-6') : null;
+        console.log('[Profile Modal] plannerSection found:', !!plannerSection);
 
         const mcpResourcesTab = modal.querySelector('#profile-tab-mcp-resources');
         const intelligenceTab = modal.querySelector('#profile-tab-intelligence');
         const mcpResourcesContent = modal.querySelector('#profile-content-mcp-resources');
         const intelligenceContent = modal.querySelector('#profile-content-intelligence');
+        console.log('[Profile Modal] Tabs found - MCP:', !!mcpResourcesTab, 'Intelligence:', !!intelligenceTab);
 
         if (isLLMOnly) {
-            // Hide MCP server dropdown container
-            if (mcpServerContainer) mcpServerContainer.style.display = 'none';
-
-            // Hide classification section
-            if (classificationSection) classificationSection.style.display = 'none';
-
-            // Hide MCP Resources tab and content
-            if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
+            console.log('[Profile Modal] Hiding MCP-related sections for LLM-only profile');
+            // Hide MCP-related sections only
+            if (mcpServerContainer) {
+                mcpServerContainer.style.display = 'none';
+                console.log('[Profile Modal] Set mcpServerContainer display to none');
+            }
+            if (classificationSection) {
+                classificationSection.style.display = 'none';
+                console.log('[Profile Modal] Set classificationSection display to none');
+            }
+            if (mcpResourcesTab) {
+                mcpResourcesTab.style.display = 'none';
+                console.log('[Profile Modal] Set mcpResourcesTab display to none');
+            }
             if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
 
-            // Hide Intelligence Collections tab and content
-            if (intelligenceTab) intelligenceTab.style.display = 'none';
-            if (intelligenceContent) intelligenceContent.style.display = 'none';
-        } else {
-            // Show all sections for tool-enabled profiles
-            if (mcpServerContainer) mcpServerContainer.style.display = '';
-            if (classificationSection) classificationSection.style.display = '';
-            if (mcpResourcesTab) mcpResourcesTab.style.display = '';
-            if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+            // Hide Planner Repositories section (llm_only profiles don't use planner)
+            if (plannerSection) {
+                plannerSection.style.display = 'none';
+                console.log('[Profile Modal] Set plannerSection display to none');
+            }
+
+            // KEEP Intelligence tab visible for knowledge configuration
             if (intelligenceTab) intelligenceTab.style.display = '';
             if (intelligenceContent) intelligenceContent.style.display = '';
+
+            // Update Intelligence tab tooltip
+            if (intelligenceTab) {
+                intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection (no tools required)');
+            }
+        } else {
+            console.log('[Profile Modal] Showing all sections for tool-enabled profile');
+            // Show all sections for tool-enabled profiles
+            if (mcpServerContainer) {
+                mcpServerContainer.style.display = '';
+                console.log('[Profile Modal] Set mcpServerContainer display to default');
+            }
+            if (classificationSection) {
+                classificationSection.style.display = '';
+                console.log('[Profile Modal] Set classificationSection display to default');
+            }
+            if (mcpResourcesTab) {
+                mcpResourcesTab.style.display = '';
+                console.log('[Profile Modal] Set mcpResourcesTab display to default');
+            }
+            if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+
+            // Show Planner Repositories section for tool-enabled profiles
+            if (plannerSection) {
+                plannerSection.style.display = '';
+                console.log('[Profile Modal] Set plannerSection display to default');
+            }
+
+            if (intelligenceTab) intelligenceTab.style.display = '';
+            if (intelligenceContent) intelligenceContent.style.display = '';
+
+            // Update Intelligence tab tooltip for tool-enabled
+            if (intelligenceTab) {
+                intelligenceTab.setAttribute('title', 'Configure planner repositories and knowledge collections');
+            }
         }
+
+        console.log('[Profile Modal] updateSectionVisibility completed');
     };
 
-    // Initial visibility update
-    updateSectionVisibility(profileType === 'llm_only');
+    // Add event listeners to profile type radio buttons FIRST (before setting checked state)
+    // Clone the radio buttons to remove any existing event listeners
+    const llmOnlyClone = profileTypeRadioLLMOnly.cloneNode(true);
+    const toolEnabledClone = profileTypeRadioToolEnabled.cloneNode(true);
+    profileTypeRadioLLMOnly.parentNode.replaceChild(llmOnlyClone, profileTypeRadioLLMOnly);
+    profileTypeRadioToolEnabled.parentNode.replaceChild(toolEnabledClone, profileTypeRadioToolEnabled);
 
-    // Add event listeners to profile type radio buttons
-    profileTypeRadioLLMOnly.addEventListener('change', () => {
-        if (profileTypeRadioLLMOnly.checked) {
+    // Update references to the cloned elements
+    const cleanLLMOnlyRadio = modal.querySelector('#profile-modal-type-llm-only');
+    const cleanToolEnabledRadio = modal.querySelector('#profile-modal-type-tool-enabled');
+
+    // Add our event listeners to the clean radio buttons
+    cleanLLMOnlyRadio.addEventListener('change', () => {
+        if (cleanLLMOnlyRadio.checked) {
+            console.log('[Profile Modal] Radio changed to LLM-only');
             updateSectionVisibility(true);
         }
     });
 
-    profileTypeRadioToolEnabled.addEventListener('change', () => {
-        if (profileTypeRadioToolEnabled.checked) {
+    cleanToolEnabledRadio.addEventListener('change', () => {
+        if (cleanToolEnabledRadio.checked) {
+            console.log('[Profile Modal] Radio changed to tool-enabled');
             updateSectionVisibility(false);
         }
     });
+
+    // NOW set the checked state (won't trigger old listeners since we cloned)
+    if (profileType === 'llm_only') {
+        cleanLLMOnlyRadio.checked = true;
+        // CRITICAL: Disable Tool-Enabled radio when editing llm_only profiles
+        // LLM-only profiles are fundamentally different and should not switch types
+        if (profile && profile.profile_type === 'llm_only') {
+            cleanToolEnabledRadio.disabled = true;
+            cleanToolEnabledRadio.parentElement.classList.add('opacity-50', 'cursor-not-allowed');
+            cleanToolEnabledRadio.parentElement.setAttribute('title', 'Cannot change LLM-only profiles to tool-enabled. Create a new profile instead.');
+        }
+    } else {
+        cleanToolEnabledRadio.checked = true;
+        // Disable LLM-only radio when editing tool-enabled profiles
+        if (profile && profile.profile_type === 'tool_enabled') {
+            cleanLLMOnlyRadio.disabled = true;
+            cleanLLMOnlyRadio.parentElement.classList.add('opacity-50', 'cursor-not-allowed');
+            cleanLLMOnlyRadio.parentElement.setAttribute('title', 'Cannot change tool-enabled profiles to LLM-only. Create a new profile instead.');
+        }
+    }
+
+    // Initial visibility update will happen at the END after all async initialization
+    // (Deferred to prevent race conditions with collection rendering)
 
     // Populate LLM configurations
     const llmSelect = modal.querySelector('#profile-modal-llm-provider');
@@ -3749,6 +3830,15 @@ async function showProfileModal(profileId = null) {
             showNotification('error', error.message);
         }
     };
+
+    // FINAL VISIBILITY UPDATE - Execute after all async initialization completes
+    // This ensures the correct sections are hidden/shown based on profile type,
+    // even if something changed the radio button state during initialization
+    setTimeout(() => {
+        const finalProfileType = profile?.profile_type || 'tool_enabled';
+        console.log('[Profile Modal] Final visibility update with profileType:', finalProfileType);
+        updateSectionVisibility(finalProfileType === 'llm_only');
+    }, 100); // Small delay to ensure all DOM updates are complete
 }
 
 

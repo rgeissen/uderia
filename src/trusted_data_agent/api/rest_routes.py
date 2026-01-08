@@ -5255,75 +5255,82 @@ async def update_profile(profile_id: str):
         
         if not current_profile:
             return jsonify({"status": "error", "message": f"Profile '{profile_id}' not found"}), 404
-        
-        # Track if reclassification is needed
-        # Only flag reclassification when provider configuration changes AND profile was previously classified
-        # New/never-classified profiles should not show reclassification warning
-        needs_reclassification = False
-        
-        # Check if this profile has ever been classified
-        classification_results = current_profile.get("classification_results", {})
-        was_previously_classified = classification_results.get("last_classified") is not None
-        
-        # Validate classification_mode if provided
-        if "classification_mode" in data:
-            if data["classification_mode"] not in ["light", "full"]:
-                return jsonify({
-                    "status": "error", 
-                    "message": f"Invalid classification_mode: '{data['classification_mode']}'. Must be 'light' or 'full'."
-                }), 400
-            
-            # If classification mode is changing, clear cached results and flag for reclassification
-            if current_profile.get("classification_mode") != data["classification_mode"]:
-                data["classification_results"] = {
-                    "tools": {},
-                    "prompts": {},
-                    "resources": {},
-                    "last_classified": None,
-                    "classified_with_mode": None
-                }
-                # Only flag if profile was previously classified
-                if was_previously_classified:
+
+        # CRITICAL: Skip reclassification logic entirely for llm_only profiles
+        # LLM-only profiles don't use MCP tools/prompts and never need reclassification
+        profile_type = data.get("profile_type", current_profile.get("profile_type", "tool_enabled"))
+
+        if profile_type == "llm_only":
+            app_logger.info(f"Skipping reclassification logic for llm_only profile {profile_id}")
+        else:
+            # Track if reclassification is needed (tool_enabled profiles only)
+            # Only flag reclassification when provider configuration changes AND profile was previously classified
+            # New/never-classified profiles should not show reclassification warning
+            needs_reclassification = False
+
+            # Check if this profile has ever been classified
+            classification_results = current_profile.get("classification_results", {})
+            was_previously_classified = classification_results.get("last_classified") is not None
+
+            # Validate classification_mode if provided
+            if "classification_mode" in data:
+                if data["classification_mode"] not in ["light", "full"]:
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Invalid classification_mode: '{data['classification_mode']}'. Must be 'light' or 'full'."
+                    }), 400
+
+                # If classification mode is changing, clear cached results and flag for reclassification
+                if current_profile.get("classification_mode") != data["classification_mode"]:
+                    data["classification_results"] = {
+                        "tools": {},
+                        "prompts": {},
+                        "resources": {},
+                        "last_classified": None,
+                        "classified_with_mode": None
+                    }
+                    # Only flag if profile was previously classified
+                    if was_previously_classified:
+                        needs_reclassification = True
+                        app_logger.info(f"Classification mode changed for profile {profile_id}, clearing cached results")
+                    else:
+                        app_logger.info(f"Classification mode changed for never-classified profile {profile_id}, no reclassification flag needed")
+
+            # Check if MCP server changed (affects available tools/prompts)
+            if "mcpServerId" in data:
+                current_server = current_profile.get("mcpServerId")
+                new_server = data["mcpServerId"]
+                if current_server != new_server and was_previously_classified:
                     needs_reclassification = True
-                    app_logger.info(f"Classification mode changed for profile {profile_id}, clearing cached results")
-                else:
-                    app_logger.info(f"Classification mode changed for never-classified profile {profile_id}, no reclassification flag needed")
-        
-        # Check if MCP server changed (affects available tools/prompts)
-        if "mcpServerId" in data:
-            current_server = current_profile.get("mcpServerId")
-            new_server = data["mcpServerId"]
-            if current_server != new_server and was_previously_classified:
-                needs_reclassification = True
-                app_logger.info(f"MCP server changed for profile {profile_id}, reclassification needed")
-        
-        # Check if MCP servers changed (legacy field - affects available tools/prompts)
-        if "mcp_servers" in data:
-            current_servers = current_profile.get("mcp_servers", [])
-            new_servers = data["mcp_servers"]
-            if current_servers != new_servers and was_previously_classified:
-                needs_reclassification = True
-                app_logger.info(f"MCP servers changed for profile {profile_id}, reclassification needed")
-        
-        # Check if LLM configuration changed (affects full mode categorization)
-        if "llmConfigurationId" in data:
-            current_llm_config = current_profile.get("llmConfigurationId")
-            new_llm_config = data["llmConfigurationId"]
-            if current_llm_config != new_llm_config and current_profile.get("classification_mode") == "full" and was_previously_classified:
-                needs_reclassification = True
-                app_logger.info(f"LLM configuration changed for profile {profile_id} (full mode), reclassification recommended")
-        
-        # Check if LLM provider/model changed (legacy fields - affects full mode categorization)
-        if "llm_provider" in data or "llm_model" in data:
-            provider_changed = "llm_provider" in data and current_profile.get("llm_provider") != data["llm_provider"]
-            model_changed = "llm_model" in data and current_profile.get("llm_model") != data["llm_model"]
-            if (provider_changed or model_changed) and current_profile.get("classification_mode") == "full" and was_previously_classified:
-                needs_reclassification = True
-                app_logger.info(f"LLM configuration changed for profile {profile_id} (full mode), reclassification recommended")
-        
-        # Set the reclassification flag
-        if needs_reclassification:
-            data["needs_reclassification"] = True
+                    app_logger.info(f"MCP server changed for profile {profile_id}, reclassification needed")
+
+            # Check if MCP servers changed (legacy field - affects available tools/prompts)
+            if "mcp_servers" in data:
+                current_servers = current_profile.get("mcp_servers", [])
+                new_servers = data["mcp_servers"]
+                if current_servers != new_servers and was_previously_classified:
+                    needs_reclassification = True
+                    app_logger.info(f"MCP servers changed for profile {profile_id}, reclassification needed")
+
+            # Check if LLM configuration changed (affects full mode categorization)
+            if "llmConfigurationId" in data:
+                current_llm_config = current_profile.get("llmConfigurationId")
+                new_llm_config = data["llmConfigurationId"]
+                if current_llm_config != new_llm_config and current_profile.get("classification_mode") == "full" and was_previously_classified:
+                    needs_reclassification = True
+                    app_logger.info(f"LLM configuration changed for profile {profile_id} (full mode), reclassification recommended")
+
+            # Check if LLM provider/model changed (legacy fields - affects full mode categorization)
+            if "llm_provider" in data or "llm_model" in data:
+                provider_changed = "llm_provider" in data and current_profile.get("llm_provider") != data["llm_provider"]
+                model_changed = "llm_model" in data and current_profile.get("llm_model") != data["llm_model"]
+                if (provider_changed or model_changed) and current_profile.get("classification_mode") == "full" and was_previously_classified:
+                    needs_reclassification = True
+                    app_logger.info(f"LLM configuration changed for profile {profile_id} (full mode), reclassification recommended")
+
+            # Set the reclassification flag
+            if needs_reclassification:
+                data["needs_reclassification"] = True
 
         # Validate tag uniqueness if tag is being changed
         tag = data.get("tag")
@@ -5461,14 +5468,18 @@ async def set_active_for_consumption_profiles():
                 total_prompts = sum(len(prompts) for prompts in prompts_dict.values()) if prompts_dict else 0
                 
                 # Profile needs classification if it has no tools/prompts OR needs_reclassification flag is set
+                # CRITICAL: Skip classification for llm_only profiles (they don't use MCP tools/prompts)
+                profile_type = profile.get('profile_type', 'tool_enabled')
                 needs_classification = (total_tools == 0 and total_prompts == 0) or profile.get('needs_reclassification', False)
-                
-                if needs_classification:
+
+                if needs_classification and profile_type != 'llm_only':
                     app_logger.info(f"Profile {primary_profile_id} needs classification, triggering context switch")
                     # Use switch_profile_context to trigger classification
                     result = await configuration_service.switch_profile_context(primary_profile_id, user_uuid)
                     if result["status"] != "success":
                         return jsonify(result), 400
+                elif needs_classification and profile_type == 'llm_only':
+                    app_logger.info(f"Skipping classification for llm_only profile {primary_profile_id}")
             
             APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(primary_profile_id, user_uuid)
             APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(primary_profile_id, user_uuid)
