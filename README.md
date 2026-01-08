@@ -380,6 +380,74 @@ The Intelligence Marketplace transforms individual agent expertise into collecti
   - Cost savings from marketplace-sourced knowledge
   - Community engagement metrics
 
+#### Collaborative Intelligence Marketplace
+
+* **Dual Repository Sharing**: Share and discover both repository types through a unified marketplace:
+  - **Planner Repositories (📋):** Proven execution patterns and strategies for task completion
+  - **Knowledge Repositories (📄):** Reference documents and domain knowledge for planning context
+  - Visual separation with dedicated tabs and distinct badges (blue for Planner, purple for Knowledge)
+
+* **Smart Discovery & Search**: Find exactly what you need through powerful search and filtering:
+  - Keyword search across collection names and descriptions
+  - Filter by repository type (Planner vs. Knowledge)
+  - Filter by visibility (Public, Unlisted)
+  - Pagination for browsing large catalogs
+  - View metadata: owner, subscriber count, ratings, case/document counts
+
+* **Reference-Based Subscriptions**: Access shared collections without data duplication:
+  - Subscribe to expert-curated collections with one click
+  - Automatic integration into your RAG system
+  - Planner retrieves cases from subscribed collections seamlessly
+  - No storage overhead—references original collection
+  - Unsubscribe anytime to manage your collection portfolio
+
+* **Fork for Customization**: Create independent copies for your specific needs:
+  - Full copy including embeddings, files, and metadata
+  - Customize forked collections without affecting originals
+  - Perfect for adapting community patterns to your domain
+  - Iterative refinement through fork-and-improve workflow
+  - Build on proven strategies while maintaining independence
+
+* **Community Quality Assurance**: Trust community validation through ratings and reviews:
+  - 1-5 star rating system with optional text reviews
+  - Average ratings displayed on collection cards
+  - Cannot rate own collections (ensures objectivity)
+  - Browse top-rated collections for proven quality
+  - Community feedback guides collection discovery
+
+* **Flexible Publishing Options**: Share your expertise with granular visibility control:
+  - **Public:** Fully discoverable in marketplace browse
+  - **Unlisted:** Accessible via direct link only (share with specific teams)
+  - **Private:** Owner-only access (default)
+  - Update visibility anytime
+  - Must have at least 1 RAG case/document to publish
+  - Maintain full ownership and control
+
+* **Cost Reduction Through Reuse**: Leverage proven patterns to minimize token consumption:
+  - Reuse champion execution strategies instead of trial-and-error
+  - Access domain expertise without rebuilding from scratch
+  - Community-validated patterns reduce failed attempts
+  - Lower onboarding costs for new users and use cases
+  - Network effects: more users = more valuable patterns
+
+* **Secure Access Control**: Enterprise-grade authorization and privacy:
+  - JWT-authenticated API endpoints
+  - Ownership validation on all operations
+  - Cannot subscribe to own collections
+  - Must be owner to publish or modify
+  - Usernames visible for transparency and attribution
+  - Privacy-first design with granular visibility controls
+
+* **REST API Integration**: Programmatic marketplace operations for automation:
+  - Browse collections with search/filter parameters
+  - Subscribe/unsubscribe programmatically
+  - Fork collections via API for CI/CD workflows
+  - Publish collections as part of deployment pipelines
+  - Rate collections for automated quality tracking
+  - Full CRUD operations for marketplace management
+
+The marketplace transforms the Uderia Platform from a single-user tool into a **collaborative intelligence platform**. By enabling pattern sharing, community validation, and knowledge reuse, it reduces costs, improves quality, and accelerates time-to-value for all users. Whether you're publishing your expertise or subscribing to community wisdom, the marketplace creates a powerful ecosystem where collective intelligence amplifies individual capabilities.
+
 ### Financial Governance and Cost Management
 
 * **Real-Time Cost Tracking**: Every LLM interaction is tracked with precise cost calculation based on actual token usage (input/output tokens) and model-specific pricing. View cumulative costs across all sessions with transparent, token-level granularity.
@@ -640,90 +708,6 @@ Profiles can be classified as:
 3. **Review Before Execution:** Draft destructive queries in `@CHAT`, review, then execute in `@GOGET`
 4. **Cost Attribution:** Use profile tags to track which workloads drive costs
 5. **Security:** Restrict tool-enabled profiles to authorized users via role-based access
-
-### Technical Architecture
-
-**File References:**
-- [executor.py:69-152](src/trusted_data_agent/agent/executor.py#L69-L152) - Enhanced history with profile metadata
-- [profile_prompt_resolver.py](src/trusted_data_agent/agent/profile_prompt_resolver.py) - Profile-specific prompt resolution
-- [WORKFLOW_META_PLANNING_PROMPT.txt:99-105](../trusted-data-agent-license/default_prompts/WORKFLOW_META_PLANNING_PROMPT.txt#L99-L105) - Disambiguation directive for profile switches
-
-**Database Schema:**
-- `profiles` table stores profile class configuration
-- `user_sessions` tracks profile usage per turn
-- `efficiency_metrics` attributes cost savings by profile type
-
-[⬆️ Back to Table of Contents](#table-of-contents)
-
----
-
-### Collaborative Intelligence Marketplace
-
-* **Dual Repository Sharing**: Share and discover both repository types through a unified marketplace:
-  - **Planner Repositories (📋):** Proven execution patterns and strategies for task completion
-  - **Knowledge Repositories (📄):** Reference documents and domain knowledge for planning context
-  - Visual separation with dedicated tabs and distinct badges (blue for Planner, purple for Knowledge)
-
-* **Smart Discovery & Search**: Find exactly what you need through powerful search and filtering:
-  - Keyword search across collection names and descriptions
-  - Filter by repository type (Planner vs. Knowledge)
-  - Filter by visibility (Public, Unlisted)
-  - Pagination for browsing large catalogs
-  - View metadata: owner, subscriber count, ratings, case/document counts
-
-* **Reference-Based Subscriptions**: Access shared collections without data duplication:
-  - Subscribe to expert-curated collections with one click
-  - Automatic integration into your RAG system
-  - Planner retrieves cases from subscribed collections seamlessly
-  - No storage overhead—references original collection
-  - Unsubscribe anytime to manage your collection portfolio
-
-* **Fork for Customization**: Create independent copies for your specific needs:
-  - Full copy including embeddings, files, and metadata
-  - Customize forked collections without affecting originals
-  - Perfect for adapting community patterns to your domain
-  - Iterative refinement through fork-and-improve workflow
-  - Build on proven strategies while maintaining independence
-
-* **Community Quality Assurance**: Trust community validation through ratings and reviews:
-  - 1-5 star rating system with optional text reviews
-  - Average ratings displayed on collection cards
-  - Cannot rate own collections (ensures objectivity)
-  - Browse top-rated collections for proven quality
-  - Community feedback guides collection discovery
-
-* **Flexible Publishing Options**: Share your expertise with granular visibility control:
-  - **Public:** Fully discoverable in marketplace browse
-  - **Unlisted:** Accessible via direct link only (share with specific teams)
-  - **Private:** Owner-only access (default)
-  - Update visibility anytime
-  - Must have at least 1 RAG case/document to publish
-  - Maintain full ownership and control
-
-* **Cost Reduction Through Reuse**: Leverage proven patterns to minimize token consumption:
-  - Reuse champion execution strategies instead of trial-and-error
-  - Access domain expertise without rebuilding from scratch
-  - Community-validated patterns reduce failed attempts
-  - Lower onboarding costs for new users and use cases
-  - Network effects: more users = more valuable patterns
-
-* **Secure Access Control**: Enterprise-grade authorization and privacy:
-  - JWT-authenticated API endpoints
-  - Ownership validation on all operations
-  - Cannot subscribe to own collections
-  - Must be owner to publish or modify
-  - Usernames visible for transparency and attribution
-  - Privacy-first design with granular visibility controls
-
-* **REST API Integration**: Programmatic marketplace operations for automation:
-  - Browse collections with search/filter parameters
-  - Subscribe/unsubscribe programmatically
-  - Fork collections via API for CI/CD workflows
-  - Publish collections as part of deployment pipelines
-  - Rate collections for automated quality tracking
-  - Full CRUD operations for marketplace management
-
-The marketplace transforms the Uderia Platform from a single-user tool into a **collaborative intelligence platform**. By enabling pattern sharing, community validation, and knowledge reuse, it reduces costs, improves quality, and accelerates time-to-value for all users. Whether you're publishing your expertise or subscribing to community wisdom, the marketplace creates a powerful ecosystem where collective intelligence amplifies individual capabilities.
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
