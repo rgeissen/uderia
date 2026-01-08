@@ -998,6 +998,34 @@ User: {self.original_user_input}"""
             # This ensures turn reload, analytics, and cost tracking work the same for all profile types
             profile_tag = self._get_current_profile_tag()
 
+            # Update session-level profile_tags_used array (same as tool-enabled profiles)
+            await session_manager.update_models_used(
+                self.user_uuid,
+                self.session_id,
+                self.current_provider,
+                self.current_model,
+                profile_tag
+            )
+            app_logger.info(f"✅ Updated session {self.session_id} with llm_only profile_tag={profile_tag}")
+
+            # Send SSE notification to update UI sidebar in real-time
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            if session_data:
+                notification_payload = {
+                    "session_id": self.session_id,
+                    "models_used": session_data.get("models_used", []),
+                    "profile_tags_used": session_data.get("profile_tags_used", []),
+                    "last_updated": session_data.get("last_updated"),
+                    "provider": self.current_provider,
+                    "model": self.current_model,
+                    "name": session_data.get("name", "Unnamed Session"),
+                }
+                app_logger.info(f"🔔 [LLM-only] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}")
+                yield self._format_sse({
+                    "type": "session_model_update",
+                    "payload": notification_payload
+                }, event="notification")
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,

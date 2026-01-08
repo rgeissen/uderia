@@ -841,9 +841,36 @@ class ExecutionDashboard {
         const html = workflow.map((turn, index) => {
             if (turn.isValid === false) return '';
 
-            const hasError = turn.execution_trace?.some(entry => 
+            const hasError = turn.execution_trace?.some(entry =>
                 entry.result?.status === 'error'
             );
+
+            // Build profile tag badge if available
+            let profileBadgeHTML = '';
+            if (turn.profile_tag) {
+                // Find profile by tag to get color
+                const profile = window.configState?.profiles?.find(p => p.tag === turn.profile_tag);
+                let badgeStyle = '';
+
+                if (profile && profile.color) {
+                    // Helper to convert hex to rgba
+                    const hexToRgba = (hex, alpha) => {
+                        const r = parseInt(hex.slice(1, 3), 16);
+                        const g = parseInt(hex.slice(3, 5), 16);
+                        const b = parseInt(hex.slice(5, 7), 16);
+                        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                    };
+                    const color1 = hexToRgba(profile.color, 0.3);
+                    const color2 = hexToRgba(profile.color, 0.15);
+                    const borderColor = hexToRgba(profile.color, 0.5);
+                    badgeStyle = `background: linear-gradient(135deg, ${color1}, ${color2}); border-color: ${borderColor}; color: ${profile.color};`;
+                } else {
+                    // Fallback to orange
+                    badgeStyle = 'background: rgba(241, 95, 34, 0.2); border-color: rgba(241, 95, 34, 0.3); color: #F15F22;';
+                }
+
+                profileBadgeHTML = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-semibold border mr-2" style="${badgeStyle}">@${turn.profile_tag}</span>`;
+            }
 
             return `
                 <div class="flex gap-4">
@@ -855,7 +882,10 @@ class ExecutionDashboard {
                     </div>
                     <div class="flex-1 pb-8">
                         <div class="rounded-lg p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);">
-                            <p class="text-white font-semibold mb-2">${turn.user_query || 'Query ' + (index + 1)}</p>
+                            <div class="flex items-center mb-2">
+                                ${profileBadgeHTML}
+                                <p class="text-white font-semibold flex-1">${turn.user_query || 'Query ' + (index + 1)}</p>
+                            </div>
                             <p class="text-gray-400 text-sm mb-2">${turn.final_summary || 'No summary available'}</p>
                             <div class="flex items-center gap-4 text-xs text-gray-500">
                                 <span>Tokens: ${(turn.turn_input_tokens || 0) + (turn.turn_output_tokens || 0)}</span>
