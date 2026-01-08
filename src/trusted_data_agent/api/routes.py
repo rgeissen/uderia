@@ -567,23 +567,36 @@ async def text_to_speech():
 @api_bp.route("/tools")
 async def get_tools():
     """Returns the categorized list of MCP tools."""
-    # Auto-load default profile if not already loaded
+    # Auto-load profile if not already loaded
     if not APP_STATE.get("mcp_client"):
         from trusted_data_agent.core.config_manager import get_config_manager
         from trusted_data_agent.core import configuration_service
         config_manager = get_config_manager()
         user_uuid = _get_user_uuid_from_request()
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        
-        if not default_profile_id:
-            return jsonify({"error": "Not configured"}), 400
-        
-        # Load default profile into APP_STATE (without LLM validation for resource viewing)
-        app_logger.info(f"Auto-loading default profile {default_profile_id} for /tools endpoint")
-        result = await configuration_service.switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
+
+        # CRITICAL: Use active_for_consumption profile, not default
+        # The resource panel should show tools/prompts for the active profile
+        active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+        profile_id_to_load = None
+
+        if active_profile_ids:
+            profile_id_to_load = active_profile_ids[0]  # Primary active profile
+            app_logger.info(f"Auto-loading active profile {profile_id_to_load} for /tools endpoint")
+        else:
+            # Fallback to default if no active profiles
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profile_id_to_load = default_profile_id
+                app_logger.info(f"No active profiles, auto-loading default profile {profile_id_to_load} for /tools endpoint")
+
+        if not profile_id_to_load:
+            return jsonify({"error": "No profiles configured"}), 400
+
+        # Load profile into APP_STATE (without LLM validation for resource viewing)
+        result = await configuration_service.switch_profile_context(profile_id_to_load, user_uuid, validate_llm=False)
         if result["status"] != "success":
-            return jsonify({"error": f"Failed to load default profile: {result['message']}"}), 400
-    
+            return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
+
     # Return structured tools (disabled flags already set by _regenerate_contexts)
     return jsonify(APP_STATE.get("structured_tools", {}))
 
@@ -592,23 +605,36 @@ async def get_prompts():
     """
     Returns the categorized list of MCP prompts with metadata only.
     """
-    # Auto-load default profile if not already loaded
+    # Auto-load profile if not already loaded
     if not APP_STATE.get("mcp_client"):
         from trusted_data_agent.core.config_manager import get_config_manager
         from trusted_data_agent.core import configuration_service
         config_manager = get_config_manager()
         user_uuid = _get_user_uuid_from_request()
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        
-        if not default_profile_id:
-            return jsonify({"error": "Not configured"}), 400
-        
-        # Load default profile into APP_STATE (without LLM validation for resource viewing)
-        app_logger.info(f"Auto-loading default profile {default_profile_id} for /prompts endpoint")
-        result = await configuration_service.switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
+
+        # CRITICAL: Use active_for_consumption profile, not default
+        # The resource panel should show prompts for the active profile
+        active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+        profile_id_to_load = None
+
+        if active_profile_ids:
+            profile_id_to_load = active_profile_ids[0]  # Primary active profile
+            app_logger.info(f"Auto-loading active profile {profile_id_to_load} for /prompts endpoint")
+        else:
+            # Fallback to default if no active profiles
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profile_id_to_load = default_profile_id
+                app_logger.info(f"No active profiles, auto-loading default profile {profile_id_to_load} for /prompts endpoint")
+
+        if not profile_id_to_load:
+            return jsonify({"error": "No profiles configured"}), 400
+
+        # Load profile into APP_STATE (without LLM validation for resource viewing)
+        result = await configuration_service.switch_profile_context(profile_id_to_load, user_uuid, validate_llm=False)
         if result["status"] != "success":
-            return jsonify({"error": f"Failed to load default profile: {result['message']}"}), 400
-    
+            return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
+
     # Return structured prompts (disabled flags already set by _regenerate_contexts)
     return jsonify(APP_STATE.get("structured_prompts", {}))
 
@@ -618,23 +644,36 @@ async def get_resources():
     Returns a categorized list of MCP resources.
     This is a placeholder for future functionality.
     """
-    # Auto-load default profile if not already loaded
+    # Auto-load profile if not already loaded
     if not APP_STATE.get("mcp_client"):
         from trusted_data_agent.core.config_manager import get_config_manager
         from trusted_data_agent.core import configuration_service
         config_manager = get_config_manager()
         user_uuid = _get_user_uuid_from_request()
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        
-        if not default_profile_id:
-            return jsonify({"error": "Not configured"}), 400
-        
-        # Load default profile into APP_STATE (without LLM validation for resource viewing)
-        app_logger.info(f"Auto-loading default profile {default_profile_id} for /resources endpoint")
-        result = await configuration_service.switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
+
+        # CRITICAL: Use active_for_consumption profile, not default
+        # The resource panel should show resources for the active profile
+        active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+        profile_id_to_load = None
+
+        if active_profile_ids:
+            profile_id_to_load = active_profile_ids[0]  # Primary active profile
+            app_logger.info(f"Auto-loading active profile {profile_id_to_load} for /resources endpoint")
+        else:
+            # Fallback to default if no active profiles
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profile_id_to_load = default_profile_id
+                app_logger.info(f"No active profiles, auto-loading default profile {profile_id_to_load} for /resources endpoint")
+
+        if not profile_id_to_load:
+            return jsonify({"error": "No profiles configured"}), 400
+
+        # Load profile into APP_STATE (without LLM validation for resource viewing)
+        result = await configuration_service.switch_profile_context(profile_id_to_load, user_uuid, validate_llm=False)
         if result["status"] != "success":
-            return jsonify({"error": f"Failed to load default profile: {result['message']}"}), 400
-    
+            return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
+
     # Placeholder: Return empty dict until implemented
     return jsonify({})
 

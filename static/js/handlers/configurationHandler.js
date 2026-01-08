@@ -213,6 +213,7 @@ class ConfigurationState {
         this.activeLLM = null;
         this.profiles = [];
         this.activeProfileId = null;
+        this.masterClassificationProfileId = null; // Master profile for classification inheritance
         this.initialized = false;
         this.profileTestStatus = {}; // Track test status: profileId -> { tested: boolean, passed: boolean, timestamp: number }
     }
@@ -304,15 +305,26 @@ class ConfigurationState {
             this.profiles = profiles || [];
             this.defaultProfileId = default_profile_id;
             this.activeForConsumptionProfileIds = active_for_consumption_profile_ids || [];
-            
+
+            // Load master classification profile ID
+            try {
+                const { master_classification_profile_id } = await API.getMasterClassificationProfile();
+                this.masterClassificationProfileId = master_classification_profile_id;
+                console.log('[ConfigState] Loaded master classification profile:', master_classification_profile_id);
+            } catch (error) {
+                console.error('Failed to load master classification profile:', error);
+                this.masterClassificationProfileId = null;
+            }
+
             // Set active_for_consumption flag on each profile based on the active list
             this.profiles.forEach(profile => {
                 profile.active_for_consumption = this.activeForConsumptionProfileIds.includes(profile.id);
             });
-            
+
             console.log('[ConfigState] State after load:', {
                 profileCount: this.profiles.length,
                 defaultProfileId: this.defaultProfileId,
+                masterClassificationProfileId: this.masterClassificationProfileId,
                 activeCount: this.activeForConsumptionProfileIds.length,
                 activeIds: this.activeForConsumptionProfileIds
             });
@@ -1922,6 +1934,7 @@ export function renderProfiles() {
 
 function renderProfileCard(profile) {
         const isDefault = profile.id === configState.defaultProfileId;
+        const isMasterClassification = profile.id === configState.masterClassificationProfileId;
         const isActiveForConsumption = configState.activeForConsumptionProfileIds.includes(profile.id);
         const testStatus = configState.profileTestStatus[profile.id];
         const testsPassedForDefault = testStatus?.passed === true;
@@ -1964,7 +1977,7 @@ function renderProfileCard(profile) {
                             <h4 class="font-semibold text-white">${escapeHtml(profile.name || profile.tag)}</h4>
                             <div class="flex items-center gap-1">
                                 ${profile.color ? `
-                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono font-semibold border" 
+                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono font-semibold border"
                                       style="background: linear-gradient(135deg, ${profile.color}30, ${profile.color}15); border-color: ${profile.color}50; color: ${profile.color};">
                                     <span class="w-2 h-2 rounded-full" style="background: ${profile.color};"></span>
                                     @${escapeHtml(profile.tag)}
@@ -1974,16 +1987,7 @@ function renderProfileCard(profile) {
                                     @${escapeHtml(profile.tag)}
                                 </span>
                                 `}
-                                ${profile.profile_type === 'llm_only' ? `
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-500/20 text-green-300 border border-green-400/30">
-                                    💬 Chat Only
-                                </span>
-                                ` : `
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-400/30">
-                                    🛠️ Tools
-                                </span>
-                                `}
-                                <button type="button" data-action="copy-profile-id" data-profile-id="${profile.id}" 
+                                <button type="button" data-action="copy-profile-id" data-profile-id="${profile.id}"
                                     class="inline-flex items-center justify-center p-1 ml-1 text-gray-400 hover:text-[#F15F22] transition-colors rounded hover:bg-white/5 group relative"
                                     title="Copy Profile ID">
                                     <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1994,6 +1998,38 @@ function renderProfileCard(profile) {
                                 </button>
                             </div>
                         </div>
+                        ${(() => {
+                            // Status badges section - non-interactive indicators
+                            const badges = [];
+
+                            // Master Classification status badge
+                            if (isMasterClassification) {
+                                badges.push(`
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-400/30 rounded-full" title="This is the master classification profile - other profiles inherit classification from this one">
+                                    <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                    </svg>
+                                    Master Classification
+                                </span>
+                                `);
+                            }
+
+                            // Inheritance status badge (only for tool-enabled profiles)
+                            if (profile.profile_type !== 'llm_only' && profile.inherit_classification && !isMasterClassification) {
+                                const masterProfile = configState.profiles.find(p => p.id === configState.masterClassificationProfileId);
+                                const masterName = masterProfile ? escapeHtml(masterProfile.name) : 'master profile';
+                                badges.push(`
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-400/30 rounded-full" title="Inheriting classification from ${masterName}">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Inherits from ${masterName}
+                                </span>
+                                `);
+                            }
+
+                            return badges.length > 0 ? `<div class="flex items-center gap-2 mb-2">${badges.join('')}</div>` : '';
+                        })()}
                         <p class="text-sm text-gray-400 mb-3">${escapeHtml(profile.description)}</p>
                         <div class="text-sm text-gray-400 space-y-1">
                             <p><span class="font-medium">LLM:</span> ${(() => {
@@ -2041,42 +2077,123 @@ function renderProfileCard(profile) {
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <!-- Test Button (always visible for all profile types) -->
                     <button type="button" data-action="test-profile" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white">
+                        class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white flex items-center gap-2"
+                        title="Test profile configuration">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
                         Test
                     </button>
+
+                    <!-- Classification Dropdown (only for tool-enabled profiles) -->
                     ${profile.profile_type !== 'llm_only' ? `
-                    <button type="button" data-action="inherit-classification" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium ${!isDefault && isActiveForConsumption ? (profile.inherit_classification ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-700 hover:bg-orange-600') : 'bg-gray-600 cursor-not-allowed opacity-50'} rounded-lg transition-colors text-white"
-                        title="${isDefault ? 'Default profile cannot inherit classification' : (!isActiveForConsumption ? 'Activate profile to enable classification inheritance' : (profile.inherit_classification ? 'Disable classification inheritance' : 'Inherit classification from default profile'))}"
-                        ${!isDefault && isActiveForConsumption ? '' : 'disabled'}>
-                        ${profile.inherit_classification ? '✓ ' : ''}Inherit Classification
-                    </button>
-                    <button type="button" data-action="reclassify-profile" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium ${profile.active_for_consumption && !profile.inherit_classification ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 cursor-not-allowed opacity-50'} rounded-lg transition-colors text-white"
-                        title="${profile.inherit_classification ? 'Disable inherit classification to reclassify' : (profile.active_for_consumption ? 'Re-run classification for this profile' : 'Activate profile to enable reclassification')}"
-                        ${profile.active_for_consumption && !profile.inherit_classification ? '' : 'disabled'}>
-                        Reclassify
-                    </button>
-                    <button type="button" data-action="show-classification" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium ${isActiveForConsumption && profile.classification_results && !profile.inherit_classification ? 'bg-teal-600 hover:bg-teal-700' : 'bg-gray-600 cursor-not-allowed opacity-50'} rounded-lg transition-colors text-white"
-                        title="${profile.inherit_classification ? 'Disable inherit classification to view own classification' : (!isActiveForConsumption ? 'Activate profile to view classification' : (profile.classification_results ? 'View classification results' : 'No classification results available'))}"
-                        ${isActiveForConsumption && profile.classification_results && !profile.inherit_classification ? '' : 'disabled'}>
-                        Show Classification
-                    </button>
+                    <div class="relative inline-block">
+                        <button type="button" data-action="toggle-classification-menu" data-profile-id="${profile.id}"
+                            class="px-4 py-2 text-sm font-medium bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors text-white flex items-center gap-2"
+                            title="Classification options">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                            </svg>
+                            Classification
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                        <div class="classification-menu hidden absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50" data-profile-id="${profile.id}">
+                            <div class="py-1">
+                                <!-- Set as Master Classification -->
+                                <button type="button" data-action="set-master-classification" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-700 flex items-center gap-3 ${isMasterClassification ? 'text-amber-300 bg-amber-500/10' : 'text-gray-300'} ${!profile.mcpServerId ? 'opacity-50 cursor-not-allowed' : ''}"
+                                    title="${(() => {
+                                        if (!profile.mcpServerId) return 'Profile must have an MCP server configured';
+                                        if (isMasterClassification) return 'This is the master classification profile';
+                                        return 'Set as master classification profile (other profiles inherit from this)';
+                                    })()}"
+                                    ${!profile.mcpServerId ? 'disabled' : ''}>
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                    </svg>
+                                    <span class="flex-1">${isMasterClassification ? '⭐ Master Classification' : 'Set as Master'}</span>
+                                </button>
+
+                                <!-- Inherit Classification Toggle -->
+                                <button type="button" data-action="inherit-classification" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-700 flex items-center gap-3 ${profile.inherit_classification ? 'text-orange-300 bg-orange-500/10' : 'text-gray-300'} ${!isActiveForConsumption || isMasterClassification ? 'opacity-50 cursor-not-allowed' : ''}"
+                                    title="${isMasterClassification ? 'Master profile cannot inherit (it is the source)' : (!isActiveForConsumption ? 'Activate profile to enable inheritance' : (profile.inherit_classification ? 'Currently inheriting - click to disable' : 'Inherit from master classification profile'))}"
+                                    ${!isActiveForConsumption || isMasterClassification ? 'disabled' : ''}>
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                                    </svg>
+                                    <span class="flex-1">${profile.inherit_classification ? '✓ Inheriting' : 'Inherit Classification'}</span>
+                                </button>
+
+                                <div class="border-t border-gray-700 my-1"></div>
+
+                                <!-- Reclassify Profile -->
+                                <button type="button" data-action="reclassify-profile" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3 ${!isActiveForConsumption || profile.inherit_classification ? 'opacity-50 cursor-not-allowed' : ''}"
+                                    title="${profile.inherit_classification ? 'Disable inherit to reclassify' : (!isActiveForConsumption ? 'Activate profile to reclassify' : 'Re-run classification for this profile')}"
+                                    ${!isActiveForConsumption || profile.inherit_classification ? 'disabled' : ''}>
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                    </svg>
+                                    <span class="flex-1">Reclassify</span>
+                                </button>
+
+                                <!-- Show Classification -->
+                                <button type="button" data-action="show-classification" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3 ${!isActiveForConsumption || !profile.classification_results || profile.inherit_classification ? 'opacity-50 cursor-not-allowed' : ''}"
+                                    title="${profile.inherit_classification ? 'Disable inherit to view own classification' : (!isActiveForConsumption ? 'Activate profile to view' : (profile.classification_results ? 'View classification results' : 'No classification results'))}"
+                                    ${!isActiveForConsumption || !profile.classification_results || profile.inherit_classification ? 'disabled' : ''}>
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    <span class="flex-1">Show Results</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     ` : ''}
-                    <button type="button" data-action="copy-profile" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 rounded-lg transition-colors text-white">
-                        Copy
-                    </button>
-                    <button type="button" data-action="edit-profile" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white">
-                        Edit
-                    </button>
-                    <button type="button" data-action="delete-profile" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-red-600 rounded-lg transition-colors text-red-400 hover:text-white">
-                        Delete
-                    </button>
+
+                    <!-- Overflow Menu (Copy/Edit/Delete - consistent across all profile types) -->
+                    <div class="relative inline-block">
+                        <button type="button" data-action="toggle-profile-menu" data-profile-id="${profile.id}"
+                            class="px-3 py-2 text-sm font-medium bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white"
+                            title="More options">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+                            </svg>
+                        </button>
+                        <div class="profile-menu hidden absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50" data-profile-id="${profile.id}">
+                            <div class="py-1">
+                                <button type="button" data-action="copy-profile" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>
+                                    <span class="flex-1">Copy Profile</span>
+                                </button>
+                                <button type="button" data-action="edit-profile" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                    </svg>
+                                    <span class="flex-1">Edit Profile</span>
+                                </button>
+                                <div class="border-t border-gray-700 my-1"></div>
+                                <button type="button" data-action="delete-profile" data-profile-id="${profile.id}"
+                                    class="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    <span class="flex-1">Delete Profile</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2149,15 +2266,18 @@ function attachProfileEventListeners() {
                 const originalHTML = button.innerHTML;
                 button.innerHTML = '<svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
                 
-                // Step 1: If profile has inherit_classification enabled, disable it
-                // (Default profiles cannot inherit from themselves)
-                if (profile.inherit_classification) {
-                    showNotification('info', 'Disabling classification inheritance for new default profile...');
+                // Step 1: If profile is also the master classification profile AND has inherit_classification enabled, disable it
+                // (Master classification profile cannot inherit - circular dependency)
+                const isMasterClassification = configState.masterClassificationProfileId === profileId;
+                if (isMasterClassification && profile.inherit_classification) {
+                    showNotification('info', 'Disabling classification inheritance (master classification profile cannot inherit from itself)...');
                     await configState.updateProfile(profileId, {
                         inherit_classification: false
                     });
                     await configState.loadProfiles();
                 }
+                // Note: If profile is NOT the master, it can remain with inherit_classification enabled
+                // and will inherit from the master classification profile
                 
                 // Step 2: Set as default
                 await configState.setDefaultProfile(profileId);
@@ -2361,8 +2481,13 @@ function attachProfileEventListeners() {
     // Test Profile button
     document.querySelectorAll('[data-action="test-profile"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-            const profileId = e.target.dataset.profileId;
+            const button = e.currentTarget;
+            const profileId = button.dataset.profileId;
             const resultsContainer = document.getElementById(`test-results-${profileId}`);
+            if (!resultsContainer) {
+                console.error(`Test results container not found for profile ${profileId}`);
+                return;
+            }
             resultsContainer.innerHTML = `<span class="text-yellow-400">Testing...</span>`;
             try {
                 const result = await API.testProfile(profileId);
@@ -2479,29 +2604,38 @@ function attachProfileEventListeners() {
     // Reclassify Profile button
     document.querySelectorAll('[data-action="inherit-classification"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-            const button = e.target;
+            const button = e.currentTarget;
             const profileId = button.dataset.profileId;
             const profile = configState.profiles.find(p => p.id === profileId);
-            
+
             if (button.disabled) {
                 return;
             }
-            
+
+            // Prevent master classification profile from inheriting
+            if (configState.masterClassificationProfileId === profileId) {
+                showNotification('error', 'Master classification profile cannot inherit classification (it is the source for other profiles)');
+                return;
+            }
+
             // Toggle the inherit_classification flag
             const newInheritState = !profile.inherit_classification;
-            
+
             try {
                 // Update the profile with the new inherit_classification state
                 await configState.updateProfile(profileId, {
                     inherit_classification: newInheritState
                 });
-                
+
                 // Reload profiles to get updated state
                 await configState.loadProfiles();
                 renderProfiles();
-                
-                const message = newInheritState 
-                    ? `Profile "${profile.name}" will now inherit classification from default profile`
+
+                const masterProfile = configState.profiles.find(p => p.id === configState.masterClassificationProfileId);
+                const masterProfileName = masterProfile ? masterProfile.name : 'master classification profile';
+
+                const message = newInheritState
+                    ? `Profile "${profile.name}" will now inherit classification from ${masterProfileName}`
                     : `Profile "${profile.name}" will use its own classification`;
                 showNotification('success', message);
             } catch (error) {
@@ -2511,9 +2645,55 @@ function attachProfileEventListeners() {
         });
     });
 
+    // Set Master Classification Profile button
+    document.querySelectorAll('[data-action="set-master-classification"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const button = e.currentTarget;
+            const profileId = button.dataset.profileId;
+            const profile = configState.profiles.find(p => p.id === profileId);
+
+            if (button.disabled) {
+                return;
+            }
+
+            // Check if this profile is already the master
+            if (configState.masterClassificationProfileId === profileId) {
+                showNotification('info', `Profile "${profile.name}" is already the master classification profile`);
+                return;
+            }
+
+            try {
+                // Disable button and show loading state
+                button.disabled = true;
+                const originalText = button.textContent;
+                button.textContent = 'Setting...';
+
+                // Call API to set master classification profile
+                await API.setMasterClassificationProfile(profileId);
+
+                // Reload profiles to get updated state
+                await configState.loadProfiles();
+                renderProfiles();
+
+                showNotification('success', `Profile "${profile.name}" is now the master classification profile`);
+
+                // Restore button state
+                button.disabled = false;
+                button.textContent = originalText;
+            } catch (error) {
+                console.error('Set master classification profile error:', error);
+                showNotification('error', `Failed to set master classification profile: ${error.message}`);
+
+                // Restore button state
+                button.disabled = false;
+                button.textContent = 'Set as Master Classification';
+            }
+        });
+    });
+
     document.querySelectorAll('[data-action="reclassify-profile"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-            const button = e.target;
+            const button = e.currentTarget;
             const profileId = button.dataset.profileId;
             const profile = configState.profiles.find(p => p.id === profileId);
             const profileName = profile ? profile.name : 'this profile';
@@ -2598,7 +2778,7 @@ function attachProfileEventListeners() {
 
     document.querySelectorAll('[data-action="show-classification"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-            const profileId = e.target.dataset.profileId;
+            const profileId = e.currentTarget.dataset.profileId;
             const profile = configState.profiles.find(p => p.id === profileId);
             
             if (!profile) {
@@ -2633,14 +2813,14 @@ function attachProfileEventListeners() {
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const button = e.target.closest('[data-action="copy-profile-id"]');
             const profileId = button.dataset.profileId;
             const profile = configState.profiles.find(p => p.id === profileId);
-            
+
             try {
                 await navigator.clipboard.writeText(profileId);
-                
+
                 // Show visual feedback - find the tooltip span
                 const tooltipSpan = button.querySelector('span');
                 if (tooltipSpan) {
@@ -2649,7 +2829,7 @@ function attachProfileEventListeners() {
                         tooltipSpan.style.opacity = '0';
                     }, 1500);
                 }
-                
+
                 // Show notification
                 showNotification('success', `Profile ID copied: ${profileId}`);
             } catch (err) {
@@ -2657,6 +2837,68 @@ function attachProfileEventListeners() {
                 showNotification('error', 'Failed to copy profile ID to clipboard');
             }
         });
+    });
+
+    // Toggle Classification Dropdown Menu
+    document.querySelectorAll('[data-action="toggle-classification-menu"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const profileId = btn.dataset.profileId;
+            const menu = document.querySelector(`.classification-menu[data-profile-id="${profileId}"]`);
+
+            if (menu) {
+                // Close all other menus first
+                document.querySelectorAll('.classification-menu, .profile-menu').forEach(m => {
+                    if (m !== menu) m.classList.add('hidden');
+                });
+
+                // Toggle this menu
+                menu.classList.toggle('hidden');
+            }
+        });
+    });
+
+    // Toggle Profile Overflow Menu
+    document.querySelectorAll('[data-action="toggle-profile-menu"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const profileId = btn.dataset.profileId;
+            const menu = document.querySelector(`.profile-menu[data-profile-id="${profileId}"]`);
+
+            if (menu) {
+                // Close all other menus first
+                document.querySelectorAll('.classification-menu, .profile-menu').forEach(m => {
+                    if (m !== menu) m.classList.add('hidden');
+                });
+
+                // Toggle this menu
+                menu.classList.toggle('hidden');
+            }
+        });
+    });
+
+    // Close dropdown menus when clicking menu items (they will trigger their own actions)
+    document.querySelectorAll('.classification-menu button, .profile-menu button').forEach(menuItem => {
+        menuItem.addEventListener('click', (e) => {
+            // Find parent menu and close it
+            const menu = e.target.closest('.classification-menu, .profile-menu');
+            if (menu) {
+                menu.classList.add('hidden');
+            }
+        });
+    });
+
+    // Click outside to close menus
+    document.addEventListener('click', (e) => {
+        // If click is not on a dropdown button or menu, close all menus
+        if (!e.target.closest('[data-action="toggle-classification-menu"]') &&
+            !e.target.closest('[data-action="toggle-profile-menu"]') &&
+            !e.target.closest('.classification-menu') &&
+            !e.target.closest('.profile-menu')) {
+            document.querySelectorAll('.classification-menu, .profile-menu').forEach(menu => {
+                menu.classList.add('hidden');
+            });
+        }
     });
 }
 

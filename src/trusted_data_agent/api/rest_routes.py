@@ -5188,11 +5188,24 @@ async def reclassify_profile(profile_id: str):
         # Now run classification via switch_profile_context
         from trusted_data_agent.core import configuration_service
         result = await configuration_service.switch_profile_context(profile_id, user_uuid)
-        
+
         if result["status"] == "success":
             # Get updated results
             classification_results = config_manager.get_profile_classification(profile_id, user_uuid)
-            
+
+            # CRITICAL: If this profile is active for consumption, update APP_STATE disabled lists
+            # This ensures the resource panel shows the correct enabled/disabled state after reclassification
+            if is_active_for_consumption:
+                APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
+                APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
+
+                app_logger.info(f"Reclassified profile {profile_id} is active - updated APP_STATE with {len(APP_STATE['disabled_tools'])} disabled tools and {len(APP_STATE['disabled_prompts'])} disabled prompts")
+
+                # Regenerate contexts to update disabled flags in structured data
+                from trusted_data_agent.core.utils import _regenerate_contexts
+                _regenerate_contexts()
+                app_logger.info("Regenerated contexts after reclassification to update resource panel state")
+
             return jsonify({
                 "status": "success",
                 "message": "Profile reclassified successfully",
@@ -7624,4 +7637,105 @@ async def get_cost_analytics():
         
     except Exception as e:
         app_logger.error(f"Failed to get cost analytics: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ========================================================================
+# MASTER CLASSIFICATION PROFILE ENDPOINTS
+# ========================================================================
+
+@rest_api_bp.route('/v1/config/master-classification-profile', methods=['GET'])
+async def get_master_classification_profile():
+    """
+    Get master classification profile ID.
+
+    The master profile is the reference for classification inheritance.
+    Returns the profile ID that other profiles inherit their tool/prompt
+    classification from when inherit_classification=true.
+
+    Returns:
+        JSON response with master_classification_profile_id
+    """
+    try:
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        config_manager = get_config_manager()
+        master_id = config_manager.get_master_classification_profile_id(user_uuid)
+
+        return jsonify({
+            "status": "success",
+            "master_classification_profile_id": master_id
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get master classification profile: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route('/v1/config/master-classification-profile', methods=['PUT'])
+async def set_master_classification_profile():
+    """
+    Set master classification profile ID.
+
+    Validates that the profile is tool_enabled (not llm_only) before setting.
+    The master profile must have an MCP server configured.
+
+    Request body:
+        {
+            "profile_id": "profile-123-abc"
+        }
+
+    Returns:
+        JSON response with status and error message if validation fails
+    """
+    try:
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        data = await request.get_json()
+        profile_id = data.get('profile_id')
+
+        if not profile_id:
+            return jsonify({"status": "error", "message": "profile_id is required"}), 400
+
+        config_manager = get_config_manager()
+        result = config_manager.set_master_classification_profile_id(profile_id, user_uuid)
+
+        if result["status"] == "error":
+            return jsonify(result), 400
+
+        # CRITICAL: If the currently active profile inherits classification, update APP_STATE
+        # This ensures the resource panel shows the correct enabled/disabled state after master profile change
+        active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+
+        if active_profile_ids:
+            # Check if any active profile inherits classification
+            for active_profile_id in active_profile_ids:
+                active_profile = config_manager.get_profile(active_profile_id, user_uuid)
+
+                if active_profile and active_profile.get('inherit_classification', False):
+                    # This profile inherits - it will now inherit from the new master
+                    # Recalculate disabled lists from the new master's classification
+                    APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(active_profile_id, user_uuid)
+                    APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(active_profile_id, user_uuid)
+
+                    app_logger.info(f"Master classification profile changed - active profile {active_profile_id} inherits classification, updated APP_STATE with {len(APP_STATE['disabled_tools'])} disabled tools and {len(APP_STATE['disabled_prompts'])} disabled prompts")
+
+                    # Regenerate contexts to update disabled flags in structured data
+                    from trusted_data_agent.core.utils import _regenerate_contexts
+                    _regenerate_contexts()
+                    app_logger.info("Regenerated contexts after master profile change to update resource panel state")
+                    break  # Only need to update once for the first inheriting active profile
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to set master classification profile: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500

@@ -50,17 +50,28 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
         app_logger.warning(f"Profile {profile_id} not found")
         return False
     
-    # Check if this profile inherits classification from default profile
+    # Check if this profile inherits classification from master classification profile
     target_profile_id = profile_id
     if profile.get('inherit_classification', False):
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        if default_profile_id and default_profile_id != profile_id:
-            app_logger.info(f"Profile {profile_id} inherits classification from default profile {default_profile_id}")
-            target_profile_id = default_profile_id
-            profile = config_manager.get_profile(default_profile_id, user_uuid)
+        # Use master classification profile instead of default profile for inheritance
+        master_profile_id = config_manager.get_master_classification_profile_id(user_uuid)
+        if master_profile_id and master_profile_id != profile_id:
+            app_logger.info(f"Profile {profile_id} inherits classification from master classification profile {master_profile_id}")
+            target_profile_id = master_profile_id
+            profile = config_manager.get_profile(master_profile_id, user_uuid)
             if not profile:
-                app_logger.warning(f"Default profile {default_profile_id} not found")
+                app_logger.warning(f"Master classification profile {master_profile_id} not found")
                 return False
+        else:
+            # Fallback: Use default profile if no master set (backward compatibility)
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id and default_profile_id != profile_id:
+                app_logger.warning(f"No master classification profile set, falling back to default profile {default_profile_id} for inheritance")
+                target_profile_id = default_profile_id
+                profile = config_manager.get_profile(default_profile_id, user_uuid)
+                if not profile:
+                    app_logger.warning(f"Default profile {default_profile_id} not found")
+                    return False
     
     classification_results = config_manager.get_profile_classification(target_profile_id, user_uuid)
     
@@ -841,16 +852,26 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                     app_logger.info(f"Set runtime classification mode to '{APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE}'")
             
             # --- 4a. Load Enabled/Disabled Tools/Prompts from Active Profile ---
-            # Calculate disabled lists from default profile if one exists
-            if profile_id:
+            # CRITICAL: Use active_for_consumption profile, not default profile
+            # The active profile is what determines which tools/prompts are available in the conversation
+            active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+
+            if active_profile_ids:
+                # Use the first active profile (primary profile)
+                primary_profile_id = active_profile_ids[0]
+                APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(primary_profile_id, user_uuid)
+                APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(primary_profile_id, user_uuid)
+                app_logger.info(f"Loaded disabled lists from active profile {primary_profile_id}: {len(APP_STATE['disabled_tools'])} tools, {len(APP_STATE['disabled_prompts'])} prompts")
+            elif profile_id:
+                # Fallback: Use default profile if no active profiles
                 APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
                 APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
-                app_logger.info(f"Loaded disabled lists from profile {profile_id}: {len(APP_STATE['disabled_tools'])} tools, {len(APP_STATE['disabled_prompts'])} prompts")
+                app_logger.info(f"Loaded disabled lists from default profile {profile_id}: {len(APP_STATE['disabled_tools'])} tools, {len(APP_STATE['disabled_prompts'])} prompts")
             else:
-                # No profile exists yet, initialize with empty lists
+                # No profiles exist yet, initialize with empty lists
                 APP_STATE["disabled_tools"] = []
                 APP_STATE["disabled_prompts"] = []
-                app_logger.info("No default profile found. Initialized with empty disabled lists.")
+                app_logger.info("No profiles found. Initialized with empty disabled lists.")
             
             APP_CONFIG.CHART_MCP_CONNECTED = True
 

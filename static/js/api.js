@@ -531,6 +531,31 @@ export async function deleteProfile(profileId) {
     return await res.json();
 }
 
+export async function getMasterClassificationProfile() {
+    const res = await fetch('/api/v1/config/master-classification-profile', {
+        method: 'GET',
+        headers: _getHeaders(false)
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to fetch master classification profile');
+    }
+    return await res.json();
+}
+
+export async function setMasterClassificationProfile(profileId) {
+    const res = await fetch('/api/v1/config/master-classification-profile', {
+        method: 'PUT',
+        headers: _getHeaders(),
+        body: JSON.stringify({ profile_id: profileId })
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to set master classification profile');
+    }
+    return await res.json();
+}
+
 export async function getProfileClassification(profileId) {
     const res = await fetch(`/api/v1/profiles/${profileId}/classification`, {
         method: 'GET',

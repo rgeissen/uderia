@@ -184,8 +184,11 @@
     }
   ],
   "active_profile_id": null,
-  "default_profile_id": null,
-  "active_for_consumption_profile_ids": [],
+  "default_profile_id": "profile-default-chat",
+  "master_classification_profile_id": "profile-1763993711628-vvbh23q09",
+  "active_for_consumption_profile_ids": [
+    "profile-1763993711628-vvbh23q09"
+  ],
   "rate_limit_enabled": "on",
   "rate_limit_global_override": "off",
   "window_defaults": {

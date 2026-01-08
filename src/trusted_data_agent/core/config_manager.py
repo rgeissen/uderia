@@ -50,10 +50,10 @@ class ConfigManager:
     def _get_default_config(self) -> Dict[str, Any]:
         """
         Returns the default configuration structure.
-        
+
         The default collection is NOT created here, but rather by RAGRetriever
         when it initializes, so it can use the current MCP server name.
-        
+
         Returns:
             Default configuration dictionary
         """
@@ -67,7 +67,8 @@ class ConfigManager:
             "llm_configurations": [],  # LLM configuration settings
             "active_llm_configuration_id": None,  # ID of currently active LLM configuration
             "profiles": [],  # Profile configurations
-            "default_profile_id": None,  # ID of the default profile
+            "default_profile_id": None,  # ID of the default profile (for consumption)
+            "master_classification_profile_id": None,  # ID of the master classification profile (for inheritance)
             "active_for_consumption_profile_ids": []  # IDs of profiles active for consumption
         }
     
@@ -147,6 +148,46 @@ class ConfigManager:
                     if not profile.get("llmConfigurationId"):
                         profile["llmConfigurationId"] = first_llm_id
                         app_logger.info(f"✅ Assigned LLM {first_llm_id} to @CHAT profile during bootstrap")
+
+        # Auto-set profile defaults for new users
+        profiles = user_config.get("profiles", [])
+
+        # Find @CHAT profile (llm_only) for default
+        chat_profile = next(
+            (p for p in profiles if p.get('tag') == 'CHAT' and p.get('profile_type') == 'llm_only'),
+            None
+        )
+
+        # Find first tool_enabled profile
+        first_tool_enabled = next(
+            (p for p in profiles if p.get('profile_type') != 'llm_only' and p.get('mcpServerId')),
+            None
+        )
+
+        # Set default_profile_id to @CHAT (for "when no @TAG is specified")
+        if chat_profile:
+            user_config['default_profile_id'] = chat_profile['id']
+            app_logger.info(f"✅ Auto-set default profile to @CHAT ({chat_profile['id']}) for new user {user_uuid}")
+        elif first_tool_enabled:
+            # Fallback: If no @CHAT profile, use first tool-enabled as default
+            user_config['default_profile_id'] = first_tool_enabled['id']
+            app_logger.info(f"✅ Auto-set default profile to {first_tool_enabled['id']} (no @CHAT profile found) for new user {user_uuid}")
+
+        # Set master_classification_profile_id to first tool_enabled (for inheritance)
+        if first_tool_enabled:
+            user_config['master_classification_profile_id'] = first_tool_enabled['id']
+            app_logger.info(f"✅ Auto-set master classification profile to {first_tool_enabled['id']} ({first_tool_enabled.get('name', first_tool_enabled.get('tag'))}) for new user {user_uuid}")
+        else:
+            app_logger.warning(f"No tool_enabled profiles with MCP server found for user {user_uuid} - master classification profile not set")
+
+        # Set active_for_consumption_profile_ids to include first tool-enabled
+        # This determines which profile's tools/prompts are loaded in APP_STATE
+        if first_tool_enabled:
+            user_config['active_for_consumption_profile_ids'] = [first_tool_enabled['id']]
+            app_logger.info(f"✅ Auto-set active profile to {first_tool_enabled['id']} for new user {user_uuid}")
+        else:
+            user_config['active_for_consumption_profile_ids'] = []
+            app_logger.warning(f"No tool_enabled profiles found - active_for_consumption is empty for user {user_uuid}")
 
         self._user_configs[user_uuid] = user_config
 
@@ -506,74 +547,74 @@ class ConfigManager:
     def get_profile_enabled_tools(self, profile_id: str, user_uuid: Optional[str] = None) -> list:
         """
         Get the list of enabled tools for a specific profile.
-        
-        If the profile has inherit_classification=true, returns the default profile's enabled tools instead.
-        
+
+        If the profile has inherit_classification=true, returns the master classification profile's enabled tools instead.
+
         Args:
             profile_id: Profile ID
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
-            List of enabled tool names for this profile (or default profile if inheriting)
+            List of enabled tool names for this profile (or master classification profile if inheriting)
         """
         profiles = self.get_profiles(user_uuid)
         target_profile = None
-        
+
         for profile in profiles:
             if profile.get("id") == profile_id:
                 target_profile = profile
                 break
-        
+
         if not target_profile:
             return []
-        
-        # Check if profile inherits classification from default profile
+
+        # Check if profile inherits classification from master classification profile
         if target_profile.get("inherit_classification", False):
-            default_profile_id = self.get_default_profile_id(user_uuid)
-            if default_profile_id and default_profile_id != profile_id:
-                app_logger.info(f"Profile {profile_id} inherits classification from default profile {default_profile_id}")
-                # Recursively get default profile's tools (without infinite loop since default can't inherit)
+            master_profile_id = self.get_master_classification_profile_id(user_uuid)
+            if master_profile_id and master_profile_id != profile_id:
+                app_logger.info(f"Profile {profile_id} inherits classification from master classification profile {master_profile_id}")
+                # Recursively get master profile's tools (without infinite loop since master can't inherit)
                 for profile in profiles:
-                    if profile.get("id") == default_profile_id:
+                    if profile.get("id") == master_profile_id:
                         return profile.get("tools", profile.get("enabled_tools", []))
-        
+
         # Frontend stores as 'tools', legacy field was 'enabled_tools'
         return target_profile.get("tools", target_profile.get("enabled_tools", []))
     
     def get_profile_enabled_prompts(self, profile_id: str, user_uuid: Optional[str] = None) -> list:
         """
         Get the list of enabled prompts for a specific profile.
-        
-        If the profile has inherit_classification=true, returns the default profile's enabled prompts instead.
-        
+
+        If the profile has inherit_classification=true, returns the master classification profile's enabled prompts instead.
+
         Args:
             profile_id: Profile ID
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
-            List of enabled prompt names for this profile (or default profile if inheriting)
+            List of enabled prompt names for this profile (or master classification profile if inheriting)
         """
         profiles = self.get_profiles(user_uuid)
         target_profile = None
-        
+
         for profile in profiles:
             if profile.get("id") == profile_id:
                 target_profile = profile
                 break
-        
+
         if not target_profile:
             return []
-        
-        # Check if profile inherits classification from default profile
+
+        # Check if profile inherits classification from master classification profile
         if target_profile.get("inherit_classification", False):
-            default_profile_id = self.get_default_profile_id(user_uuid)
-            if default_profile_id and default_profile_id != profile_id:
-                app_logger.info(f"Profile {profile_id} inherits classification from default profile {default_profile_id}")
-                # Recursively get default profile's prompts (without infinite loop since default can't inherit)
+            master_profile_id = self.get_master_classification_profile_id(user_uuid)
+            if master_profile_id and master_profile_id != profile_id:
+                app_logger.info(f"Profile {profile_id} inherits classification from master classification profile {master_profile_id}")
+                # Recursively get master profile's prompts (without infinite loop since master can't inherit)
                 for profile in profiles:
-                    if profile.get("id") == default_profile_id:
+                    if profile.get("id") == master_profile_id:
                         return profile.get("prompts", profile.get("enabled_prompts", []))
-        
+
         # Frontend stores as 'prompts', legacy field was 'enabled_prompts'
         return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
     
@@ -793,17 +834,105 @@ class ConfigManager:
     def set_active_for_consumption_profile_ids(self, profile_ids: list, user_uuid: Optional[str] = None) -> bool:
         """
         Set the IDs of the profiles active for consumption.
-        
+
         Args:
             profile_ids: List of profile IDs to set as active
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
             True if successful, False otherwise
         """
         config = self.load_config(user_uuid)
         config["active_for_consumption_profile_ids"] = profile_ids
         return self.save_config(config, user_uuid)
+
+    def get_master_classification_profile_id(self, user_uuid: Optional[str] = None) -> Optional[str]:
+        """
+        Get master classification profile ID for user.
+
+        The master profile is the reference for classification inheritance.
+        Always returns a tool_enabled profile ID (not llm_only).
+
+        If no master is explicitly set, falls back to the first tool_enabled profile.
+
+        Args:
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Master classification profile ID or None if no tool_enabled profiles exist
+        """
+        config = self.load_config(user_uuid)
+        master_id = config.get('master_classification_profile_id')
+
+        # If master is explicitly set, return it
+        if master_id:
+            return master_id
+
+        # Fallback: Find first tool_enabled profile if no master set
+        profiles = self.get_profiles(user_uuid)
+        for profile in profiles:
+            if profile.get('profile_type') != 'llm_only':
+                app_logger.debug(f"No master classification profile set for user {user_uuid}, using first tool_enabled profile: {profile['id']}")
+                return profile['id']
+
+        app_logger.warning(f"No tool_enabled profiles found for user {user_uuid} - cannot determine master classification profile")
+        return None
+
+    def set_master_classification_profile_id(
+        self,
+        profile_id: str,
+        user_uuid: Optional[str] = None
+    ) -> Dict[str, str]:
+        """
+        Set master classification profile for user.
+
+        Validates that profile is tool_enabled before setting.
+        Master classification profile must have an MCP server configured.
+        If the profile has inherit_classification enabled, it will be disabled automatically.
+
+        Args:
+            profile_id: ID of the profile to set as master
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Dictionary with "status" key:
+            - {"status": "success"} if successful
+            - {"status": "error", "message": "..."} if validation fails
+        """
+        # Validate profile exists
+        profile = self.get_profile(profile_id, user_uuid)
+        if not profile:
+            return {"status": "error", "message": f"Profile {profile_id} not found"}
+
+        # Validate profile is tool_enabled (not llm_only)
+        if profile.get('profile_type') == 'llm_only':
+            return {
+                "status": "error",
+                "message": "Master classification profile must be tool-enabled (llm_only profiles have no tools/prompts to inherit)"
+            }
+
+        # Validate profile has MCP server
+        if not profile.get('mcpServerId'):
+            return {
+                "status": "error",
+                "message": "Master classification profile must have an MCP server configured"
+            }
+
+        # If profile has inherit_classification enabled, disable it (prevent circular dependency)
+        if profile.get('inherit_classification', False):
+            app_logger.info(f"Disabling inherit_classification for profile {profile_id} as it's being set as master")
+            self.update_profile(profile_id, {'inherit_classification': False}, user_uuid)
+
+        # Update config
+        config = self.load_config(user_uuid)
+        config['master_classification_profile_id'] = profile_id
+        success = self.save_config(config, user_uuid)
+
+        if not success:
+            return {"status": "error", "message": "Failed to save configuration"}
+
+        app_logger.info(f"Set master classification profile to {profile_id} for user {user_uuid}")
+        return {"status": "success"}
 
     # ========================================================================
     # PROFILE CLASSIFICATION METHODS
