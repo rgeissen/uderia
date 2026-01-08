@@ -23,12 +23,13 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 
 1. [Core Principles: A Superior Approach](#core-principles-a-superior-approach)
 2. [Key Features](#-key-features)
-3. [The Heart of the Application - The Engine & its Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
-4. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
-5. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
-6. [Installation and Setup Guide](#-installation-and-setup-guide)
-7. [Developer Mode: Unlocking Models](#developer-mode-unlocking-models)
-8. [User Guide](#-user-guide)
+3. [Profile Classes: Conversational vs Tool-Enabled Modes](#-profile-classes-conversational-vs-tool-enabled-modes)
+4. [The Heart of the Application - The Engine & its Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
+5. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
+6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
+7. [Installation and Setup Guide](#-installation-and-setup-guide)
+8. [Developer Mode: Unlocking Models](#developer-mode-unlocking-models)
+9. [User Guide](#-user-guide)
    - [Getting Started](#getting-started)
    - [Using the Interface](#using-the-interface)
    - [Advanced Context Management](#advanced-context-management)
@@ -36,10 +37,10 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
    - [Real-Time Monitoring](#real-time-monitoring)
    - [Operationalization](#operationalization)
    - [Troubleshooting](#troubleshooting)
-9. [Docker Deployment](#docker-deployment)
-10. [License](#license)
-11. [Author & Contributions](#author-contributions)
-12. [Appendix: Feature Update List](#appendix-feature-update-list)
+10. [Docker Deployment](#docker-deployment)
+11. [License](#license)
+12. [Author & Contributions](#author-contributions)
+13. [Appendix: Feature Update List](#appendix-feature-update-list)
 
 
 ---
@@ -2128,6 +2129,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **08-Jan-2026:** Profile Classes - Conversational vs Tool-Enabled Architecture
 *   **06-Jan-2026:** Export/Import Knowledge Repositories
 *   **05-Jan-2026:** Export/Import Planner Repositories
 *   **02-Jan-2026:** OAuth Implementation - Google, Github
