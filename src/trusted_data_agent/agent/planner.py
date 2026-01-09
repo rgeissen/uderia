@@ -264,9 +264,7 @@ class Planner:
             # both won't trigger on the same phase in a single pass.
             if 'executable_prompt' in phase and isinstance(phase['executable_prompt'], str):
                 capability_name = phase['executable_prompt']
-                # Check if it's an MCP tool OR a TDA_* client-side tool (TDA_ContextReport, TDA_FinalReport, etc.)
-                is_tda_client_tool = capability_name.startswith('TDA_')
-                if capability_name in all_tools or is_tda_client_tool:
+                if capability_name in all_tools:
                     app_logger.warning(f"PLAN CORRECTION: Planner wrongly classified tool '{capability_name}' as a prompt. Correcting.")
                     phase['relevant_tools'] = [capability_name]
                     del phase['executable_prompt']
@@ -1805,6 +1803,9 @@ Ranking:"""
         tools_context = APP_STATE.get('tools_context', '--- No Tools Available ---')
         prompts_context = APP_STATE.get('prompts_context', '--- No Prompts Available ---')
 
+        # Determine knowledge status for early LLM signal
+        knowledge_status = "HAS_KNOWLEDGE - See KNOWLEDGE CONTEXT section below" if knowledge_context_str else "NO_KNOWLEDGE"
+
         planning_prompt = WORKFLOW_META_PLANNING_PROMPT.format(
             workflow_goal=self.executor.workflow_goal_prompt,
             explicit_parameters_section=explicit_parameters_section,
@@ -1819,6 +1820,7 @@ Ranking:"""
             reporting_tool_name=reporting_tool_name_injection,
             rag_few_shot_examples=rag_few_shot_examples_str,  # Pass the populated examples
             knowledge_context=knowledge_context_str,  # Pass the knowledge context
+            knowledge_status=knowledge_status,  # Early signal for knowledge availability
             available_tools=tools_context,  # Pass tools context
             available_prompts=prompts_context  # Pass prompts context
         )

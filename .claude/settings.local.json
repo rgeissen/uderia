@@ -5,7 +5,9 @@
       "Bash(sqlite3:*)",
       "Bash(python3:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(python update_prompt.py:*)"
     ]
   }
 }

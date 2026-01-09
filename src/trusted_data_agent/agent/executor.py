@@ -1966,6 +1966,17 @@ The following domain knowledge may be relevant to this conversation:
         prompt_name = single_phase.get('executable_prompt')
         prompt_args = single_phase.get('arguments', {})
 
+        # TDA_ContextReport is a client-side tool, not an MCP prompt.
+        # If LLM put it in executable_prompt, convert to relevant_tools and exit.
+        # This allows the normal tool execution path to handle it (e.g., for knowledge queries).
+        if prompt_name == 'TDA_ContextReport':
+            app_logger.info(f"PLAN CORRECTION: '{prompt_name}' is a tool, not a prompt. Converting to tool execution.")
+            single_phase['relevant_tools'] = [prompt_name]
+            if 'executable_prompt' in single_phase:
+                del single_phase['executable_prompt']
+            self.is_single_prompt_plan = False
+            return  # Exit - plan will be executed as a tool call
+
         event_data = {
             "step": "System Correction", "type": "workaround",
             "details": f"Single Prompt('{prompt_name}') identified. Expanding plan in-process to improve efficiency."
