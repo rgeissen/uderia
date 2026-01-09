@@ -169,157 +169,382 @@ CERTIFIED_FRIENDLI_MODELS = ["google/gemma-3-27b-it"]
 # Per-user runtime context removed - all configuration now stored in database
 
 
-def get_user_provider(user_uuid: str = None) -> str:
+def get_user_provider(user_uuid: str) -> str:
     """
     Get current provider for user.
-    
+
     Args:
-        user_uuid: Optional user UUID (for compatibility, always uses global config)
-        
+        user_uuid: User UUID (required)
+
     Returns:
         Provider name (e.g., "Google", "Anthropic")
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
-    return APP_CONFIG.CURRENT_PROVIDER
-def set_user_provider(provider: str, user_uuid: str = None):
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_provider")
+    return APP_STATE.get("current_provider_by_user", {}).get(user_uuid)
+
+def set_user_provider(provider: str, user_uuid: str):
     """
     Set current provider for user.
-    
+
     Args:
         provider: Provider name
-        user_uuid: Optional user UUID (for compatibility, always uses global config)
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_provider")
+    if "current_provider_by_user" not in APP_STATE:
+        APP_STATE["current_provider_by_user"] = {}
+    APP_STATE["current_provider_by_user"][user_uuid] = provider
+    # Also update APP_CONFIG for backwards compatibility with status checks
     APP_CONFIG.CURRENT_PROVIDER = provider
 
 
-def get_user_model(user_uuid: str = None) -> str:
+def get_user_model(user_uuid: str) -> str:
     """
     Get current model for user.
-    
+
     Args:
-        user_uuid: Optional user UUID (for compatibility, always uses global config)
-        
+        user_uuid: User UUID (required)
+
     Returns:
         Model name (e.g., "gemini-2.0-flash", "claude-3-5-haiku")
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
-    return APP_CONFIG.CURRENT_MODEL
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_model")
+    return APP_STATE.get("current_model_by_user", {}).get(user_uuid)
 
 
-def set_user_model(model: str, user_uuid: str = None):
+def set_user_model(model: str, user_uuid: str):
     """
     Set current model for user.
-    
+
     Args:
         model: Model name
-        user_uuid: Optional user UUID (for compatibility, always uses global config)
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_model")
+    if "current_model_by_user" not in APP_STATE:
+        APP_STATE["current_model_by_user"] = {}
+    APP_STATE["current_model_by_user"][user_uuid] = model
+    # Also update APP_CONFIG for backwards compatibility with status checks
     APP_CONFIG.CURRENT_MODEL = model
 
 
-def get_user_mcp_server_id(user_uuid: str = None) -> str:
-    """Get current MCP server ID for user."""
-    return APP_CONFIG.CURRENT_MCP_SERVER_ID
+def get_user_mcp_server_id(user_uuid: str) -> str:
+    """
+    Get current MCP server ID for user.
+
+    Args:
+        user_uuid: User UUID (required)
+
+    Returns:
+        MCP server ID
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_mcp_server_id")
+    return APP_STATE.get("current_server_id_by_user", {}).get(user_uuid)
 
 
-def set_user_mcp_server_id(server_id: str, user_uuid: str = None):
-    """Set current MCP server ID for user."""
+def set_user_mcp_server_id(server_id: str, user_uuid: str):
+    """
+    Set current MCP server ID for user.
+
+    Args:
+        server_id: MCP server ID
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_mcp_server_id")
+    if "current_server_id_by_user" not in APP_STATE:
+        APP_STATE["current_server_id_by_user"] = {}
+    APP_STATE["current_server_id_by_user"][user_uuid] = server_id
+    # Also update APP_CONFIG for backwards compatibility with status checks
     APP_CONFIG.CURRENT_MCP_SERVER_ID = server_id
 
 
-def get_user_aws_region(user_uuid: str = None) -> str:
-    """Get AWS region for user."""
-    return APP_CONFIG.CURRENT_AWS_REGION
+def get_user_aws_region(user_uuid: str) -> str:
+    """
+    Get AWS region for user.
+
+    Args:
+        user_uuid: User UUID (required)
+
+    Returns:
+        AWS region
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_aws_region")
+    return APP_STATE.get("current_aws_region_by_user", {}).get(user_uuid)
 
 
-def set_user_aws_region(region: str, user_uuid: str = None):
-    """Set AWS region for user."""
+def set_user_aws_region(region: str, user_uuid: str):
+    """
+    Set AWS region for user.
+
+    Args:
+        region: AWS region
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_aws_region")
+    if "current_aws_region_by_user" not in APP_STATE:
+        APP_STATE["current_aws_region_by_user"] = {}
+    APP_STATE["current_aws_region_by_user"][user_uuid] = region
+    # Also update APP_CONFIG for backwards compatibility
     APP_CONFIG.CURRENT_AWS_REGION = region
 
 
-def get_user_azure_deployment_details(user_uuid: str = None) -> dict:
-    """Get Azure deployment details for user."""
-    return APP_CONFIG.CURRENT_AZURE_DEPLOYMENT_DETAILS
+def get_user_azure_deployment_details(user_uuid: str) -> dict:
+    """
+    Get Azure deployment details for user.
+
+    Args:
+        user_uuid: User UUID (required)
+
+    Returns:
+        Azure deployment details dict
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_azure_deployment_details")
+    return APP_STATE.get("current_azure_details_by_user", {}).get(user_uuid)
 
 
-def set_user_azure_deployment_details(details: dict, user_uuid: str = None):
-    """Set Azure deployment details for user."""
+def set_user_azure_deployment_details(details: dict, user_uuid: str):
+    """
+    Set Azure deployment details for user.
+
+    Args:
+        details: Azure deployment details dict
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_azure_deployment_details")
+    if "current_azure_details_by_user" not in APP_STATE:
+        APP_STATE["current_azure_details_by_user"] = {}
+    APP_STATE["current_azure_details_by_user"][user_uuid] = details
+    # Also update APP_CONFIG for backwards compatibility
     APP_CONFIG.CURRENT_AZURE_DEPLOYMENT_DETAILS = details
 
 
-def get_user_friendli_details(user_uuid: str = None) -> dict:
-    """Get Friendli.ai details for user."""
-    return APP_CONFIG.CURRENT_FRIENDLI_DETAILS
+def get_user_friendli_details(user_uuid: str) -> dict:
+    """
+    Get Friendli.ai details for user.
+
+    Args:
+        user_uuid: User UUID (required)
+
+    Returns:
+        Friendli.ai details dict
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_friendli_details")
+    return APP_STATE.get("current_friendli_details_by_user", {}).get(user_uuid)
 
 
-def set_user_friendli_details(details: dict, user_uuid: str = None):
-    """Set Friendli.ai details for user."""
+def set_user_friendli_details(details: dict, user_uuid: str):
+    """
+    Set Friendli.ai details for user.
+
+    Args:
+        details: Friendli.ai details dict
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_friendli_details")
+    if "current_friendli_details_by_user" not in APP_STATE:
+        APP_STATE["current_friendli_details_by_user"] = {}
+    APP_STATE["current_friendli_details_by_user"][user_uuid] = details
+    # Also update APP_CONFIG for backwards compatibility
     APP_CONFIG.CURRENT_FRIENDLI_DETAILS = details
 
 
-def get_user_model_provider_in_profile(user_uuid: str = None) -> str:
-    """Get model provider in profile (for AWS Bedrock) for user."""
-    return APP_CONFIG.CURRENT_MODEL_PROVIDER_IN_PROFILE
+def get_user_model_provider_in_profile(user_uuid: str) -> str:
+    """
+    Get model provider in profile (for AWS Bedrock) for user.
+
+    Args:
+        user_uuid: User UUID (required)
+
+    Returns:
+        Model provider string
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_model_provider_in_profile")
+    return APP_STATE.get("current_model_provider_by_user", {}).get(user_uuid)
 
 
-def set_user_model_provider_in_profile(provider: str, user_uuid: str = None):
-    """Set model provider in profile (for AWS Bedrock) for user."""
+def set_user_model_provider_in_profile(provider: str, user_uuid: str):
+    """
+    Set model provider in profile (for AWS Bedrock) for user.
+
+    Args:
+        provider: Model provider string
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_model_provider_in_profile")
+    if "current_model_provider_by_user" not in APP_STATE:
+        APP_STATE["current_model_provider_by_user"] = {}
+    APP_STATE["current_model_provider_by_user"][user_uuid] = provider
+    # Also update APP_CONFIG for backwards compatibility
     APP_CONFIG.CURRENT_MODEL_PROVIDER_IN_PROFILE = provider
 
 
-def get_user_llm_instance(user_uuid: str = None):
+def get_user_llm_instance(user_uuid: str):
     """
     Get LLM instance for user.
-    
+
     Args:
-        user_uuid: Optional user UUID (for compatibility, always uses global state)
-        
+        user_uuid: User UUID (required)
+
     Returns:
         LLM client instance
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
-    return APP_STATE.get("llm")
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_llm_instance")
+    return APP_STATE.get("llm_by_user", {}).get(user_uuid)
 
 
-def set_user_llm_instance(llm_instance, user_uuid: str = None):
+def set_user_llm_instance(llm_instance, user_uuid: str):
     """
     Set LLM instance for user.
-    
+
     Args:
         llm_instance: LLM client instance
-        user_uuid: Optional user UUID (for compatibility, always uses global state)
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_llm_instance")
+    if "llm_by_user" not in APP_STATE:
+        APP_STATE["llm_by_user"] = {}
+    APP_STATE["llm_by_user"][user_uuid] = llm_instance
+    # Also update global APP_STATE for backwards compatibility
     APP_STATE["llm"] = llm_instance
 
 
-def get_user_mcp_client(user_uuid: str = None):
+def get_user_mcp_client(user_uuid: str):
     """
     Get MCP client for user.
-    
+
     Args:
-        user_uuid: Optional user UUID (for compatibility, always uses global state)
-        
+        user_uuid: User UUID (required)
+
     Returns:
         MCP client instance
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
-    return APP_STATE.get("mcp_client")
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_mcp_client")
+    return APP_STATE.get("mcp_clients", {}).get(user_uuid)
 
 
-def set_user_mcp_client(mcp_client, user_uuid: str = None):
+def set_user_mcp_client(mcp_client, user_uuid: str):
     """
     Set MCP client for user.
-    
+
     Args:
         mcp_client: MCP client instance
-        user_uuid: Optional user UUID (for compatibility, always uses global state)
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
     """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_mcp_client")
+    if "mcp_clients" not in APP_STATE:
+        APP_STATE["mcp_clients"] = {}
+    APP_STATE["mcp_clients"][user_uuid] = mcp_client
+    # Also update global APP_STATE for backwards compatibility
     APP_STATE["mcp_client"] = mcp_client
 
 
-def get_user_server_configs(user_uuid: str = None) -> dict:
-    """Get MCP server configs for user."""
-    return APP_STATE.get("server_configs", {})
+def get_user_server_configs(user_uuid: str) -> dict:
+    """
+    Get MCP server configs for user.
+
+    Args:
+        user_uuid: User UUID (required)
+
+    Returns:
+        Server configs dict
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for get_user_server_configs")
+    return APP_STATE.get("server_configs_by_user", {}).get(user_uuid, {})
 
 
-def set_user_server_configs(server_configs: dict, user_uuid: str = None):
-    """Set MCP server configs for user."""
+def set_user_server_configs(server_configs: dict, user_uuid: str):
+    """
+    Set MCP server configs for user.
+
+    Args:
+        server_configs: Server configs dict
+        user_uuid: User UUID (required)
+
+    Raises:
+        ValueError: If user_uuid is not provided
+    """
+    if not user_uuid:
+        raise ValueError("user_uuid is required for set_user_server_configs")
+    if "server_configs_by_user" not in APP_STATE:
+        APP_STATE["server_configs_by_user"] = {}
+    APP_STATE["server_configs_by_user"][user_uuid] = server_configs
+    # Also update global APP_STATE for backwards compatibility
     APP_STATE["server_configs"] = server_configs
 
 
