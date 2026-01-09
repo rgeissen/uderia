@@ -1118,58 +1118,80 @@ async function showWelcomeScreen() {
         });
     }
     
-    // Check if user has previously saved MCP servers and LLM providers
+    // Check if user has previously saved configurations
+    // For tool_enabled: MCP server + LLM required
+    // For llm_only/rag_focused: LLM only required
     let hasSavedConfig = false;
     let configDetails = '';
+
     try {
         const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch('/api/v1/mcp/servers', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        if (response.ok) {
-            const data = await response.json();
-            // API returns {status, servers: [...], active_server_id}
-            const hasMCPServer = data && data.servers && data.servers.length > 0;
-            
-            if (hasMCPServer && data.active_server_id) {
-                // Find the active server
-                const activeServer = data.servers.find(s => s.id === data.active_server_id);
-                if (activeServer) {
-                    const mcpName = activeServer.name || 'Unknown Server';
-                    
-                    // Get the active LLM configuration from ConfigurationState
-                    const activeLLM = configState.getActiveLLMConfiguration();
-                    
-                    if (activeLLM) {
-                        const llmProvider = activeLLM.provider || 'Unknown Provider';
-                        const llmModel = activeLLM.model || 'Unknown Model';
-                        configDetails = `${mcpName} • ${llmProvider} / ${llmModel}`;
-                        // Only set hasSavedConfig to true if BOTH MCP and LLM are configured
-                        hasSavedConfig = true;
-                    } else {
-                        configDetails = `${mcpName} • LLM not configured`;
-                        // MCP configured but LLM missing - don't enable Connect & Load
-                        hasSavedConfig = false;
+
+        // Get default profile to determine requirements
+        const defaultProfile = window.configState?.defaultProfileId
+            ? window.configState.profiles?.find(p => p.id === window.configState.defaultProfileId)
+            : null;
+
+        const profileType = defaultProfile?.profile_type || 'tool_enabled';
+        const activeLLM = configState.getActiveLLMConfiguration();
+
+        if (profileType === 'tool_enabled') {
+            // Tool Focused: Requires MCP server + LLM
+            const response = await fetch('/api/v1/mcp/servers', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const hasMCPServer = data && data.servers && data.servers.length > 0;
+
+                if (hasMCPServer && data.active_server_id) {
+                    const activeServer = data.servers.find(s => s.id === data.active_server_id);
+                    if (activeServer) {
+                        const mcpName = activeServer.name || 'Unknown Server';
+
+                        if (activeLLM) {
+                            const llmProvider = activeLLM.provider || 'Unknown Provider';
+                            const llmModel = activeLLM.model || 'Unknown Model';
+                            configDetails = `${mcpName} • ${llmProvider} / ${llmModel}`;
+                            hasSavedConfig = true;
+                        } else {
+                            configDetails = `${mcpName} • LLM not configured`;
+                            hasSavedConfig = false;
+                        }
                     }
                 }
+            }
+        } else {
+            // Conversation Focused or RAG Focused: Only LLM required
+            if (activeLLM) {
+                const llmProvider = activeLLM.provider || 'Unknown Provider';
+                const llmModel = activeLLM.model || 'Unknown Model';
+                const profileName = defaultProfile?.name || 'Conversation';
+                configDetails = `${profileName} • ${llmProvider} / ${llmModel}`;
+                hasSavedConfig = true;
+            } else {
+                configDetails = 'LLM not configured';
+                hasSavedConfig = false;
             }
         }
     } catch (error) {
         console.error("Error checking for saved configurations:", error);
     }
-    
+
     // Check if default profile exists and is valid
     let isDefaultProfileValid = false;
-    if (hasSavedConfig && window.configState?.defaultProfileId) {
+    if (window.configState?.defaultProfileId) {
         try {
             console.log('[Welcome Screen] Testing default profile:', window.configState.defaultProfileId);
             const { testProfile } = await import('./api.js');
             const result = await testProfile(window.configState.defaultProfileId);
             
-            // Check if all tests passed
-            isDefaultProfileValid = Object.values(result.results).every(r => r.status === 'success');
+            // Check if all tests passed (accept both 'success' and 'info' as valid)
+            // 'info' status is used for optional features (e.g., RAG collections in conversation profiles)
+            isDefaultProfileValid = Object.values(result.results).every(r =>
+                r.status === 'success' || r.status === 'info'
+            );
             console.log('[Welcome Screen] Default profile validation result:', isDefaultProfileValid);
             
             if (!isDefaultProfileValid) {
@@ -1194,7 +1216,7 @@ async function showWelcomeScreen() {
         } else if (hasSavedConfig && !isDefaultProfileValid) {
             welcomeSubtext.textContent = "Default profile needs validation. Please check your credentials.";
         } else {
-            welcomeSubtext.textContent = "You'll need an MCP server and an LLM provider";
+            welcomeSubtext.textContent = "Please activate a Profile";
         }
     }
     

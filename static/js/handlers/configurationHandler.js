@@ -500,18 +500,24 @@ class ConfigurationState {
     }
 
     async setActiveMCP(serverId) {
+        // Skip activation if serverId is null (for llm_only and rag_focused profiles)
+        if (!serverId) {
+            this.activeMCP = null;
+            return;
+        }
+
         try {
             const headers = {};
             const authToken = localStorage.getItem('tda_auth_token');
             if (authToken) {
                 headers['Authorization'] = `Bearer ${authToken}`;
             }
-            
+
             const response = await fetch(`/api/v1/mcp/servers/${serverId}/activate`, {
                 method: 'POST',
                 headers: headers
             });
-            
+
             if (response.ok) {
                 this.activeMCP = serverId;
                 updateReconnectButton();
@@ -767,10 +773,11 @@ class ConfigurationState {
         // First check global active MCP/LLM
         let mcpServer = this.getActiveMCPServer();
         let llmConfig = this.getActiveLLMConfiguration();
+        let defaultProfile = null;
 
         // If no global active MCP/LLM, check the default profile's configuration
         if ((!mcpServer || !llmConfig) && this.defaultProfileId) {
-            const defaultProfile = this.profiles.find(p => p.id === this.defaultProfileId);
+            defaultProfile = this.profiles.find(p => p.id === this.defaultProfileId);
             if (defaultProfile) {
                 if (!mcpServer && defaultProfile.mcpServerId) {
                     mcpServer = this.mcpServers.find(s => s.id === defaultProfile.mcpServerId);
@@ -781,7 +788,20 @@ class ConfigurationState {
             }
         }
 
-        return !!(mcpServer && llmConfig && llmConfig.model);
+        // Get profile type to determine requirements
+        if (!defaultProfile && this.defaultProfileId) {
+            defaultProfile = this.profiles.find(p => p.id === this.defaultProfileId);
+        }
+
+        const profileType = defaultProfile?.profile_type || 'tool_enabled';
+
+        // Conversation Focused (LLM) and Knowledge Focused (RAG) profiles only need LLM
+        // Tool Focused (MCP) profiles need both MCP and LLM
+        if (profileType === 'llm_only' || profileType === 'rag_focused') {
+            return !!(llmConfig && llmConfig.model);
+        } else {
+            return !!(mcpServer && llmConfig && llmConfig.model);
+        }
     }
 }
 
@@ -1616,22 +1636,26 @@ export async function reconnectAndLoad() {
 
     const mcpServer = configState.getActiveMCPServer();
     const llmConfig = configState.getActiveLLMConfiguration();
+    const profileType = defaultProfile.profile_type || 'tool_enabled';
 
-    // Validate that both MCP server and LLM configuration are configured
-    if (!mcpServer) {
-        showNotification('error', 'Please configure and select an MCP Server first (go to MCP Servers tab)');
-        return;
-    }
-
+    // Validate LLM configuration (required for all profile types)
     if (!llmConfig) {
         showNotification('error', 'Please configure and select an LLM Configuration first (go to LLM Providers tab)');
         return;
     }
 
-    // Additional validation for required fields
-    if (!mcpServer.host || !mcpServer.port) {
-        showNotification('error', 'MCP Server configuration is incomplete (missing host or port)');
-        return;
+    // Validate MCP server only for Tool Focused profiles
+    if (profileType === 'tool_enabled') {
+        if (!mcpServer) {
+            showNotification('error', 'Please configure and select an MCP Server first (go to MCP Servers tab)');
+            return;
+        }
+
+        // Additional validation for required fields
+        if (!mcpServer.host || !mcpServer.port) {
+            showNotification('error', 'MCP Server configuration is incomplete (missing host or port)');
+            return;
+        }
     }
 
     // Credentials are now fetched from backend database during connection
@@ -1649,23 +1673,28 @@ export async function reconnectAndLoad() {
     statusDiv.innerHTML = '<span class="text-gray-400">Initializing connection...</span>';
 
     try {
+        // Build base config data
         const configData = {
             provider: llmConfig.provider,
             model: llmConfig.model,
             credentials: llmConfig.credentials,
-            server_name: mcpServer.name,
-            server_id: mcpServer.id,
-            mcp_server: {
+            listing_method: llmConfig.listingMethod || 'foundation_models',
+            tts_credentials_json: document.getElementById('tts-credentials-json')?.value || '',
+            charting_intensity: document.getElementById('charting-intensity')?.value || 'none'
+        };
+
+        // Add MCP server data only for Tool Focused profiles
+        if (profileType === 'tool_enabled' && mcpServer) {
+            configData.server_name = mcpServer.name;
+            configData.server_id = mcpServer.id;
+            configData.mcp_server = {
                 id: mcpServer.id,
                 name: mcpServer.name,
                 host: mcpServer.host,
                 port: mcpServer.port,
                 path: mcpServer.path
-            },
-            listing_method: llmConfig.listingMethod || 'foundation_models',
-            tts_credentials_json: document.getElementById('tts-credentials-json')?.value || '',
-            charting_intensity: document.getElementById('charting-intensity')?.value || 'none'
-        };
+            };
+        }
 
 
         const headers = { 'Content-Type': 'application/json' };
@@ -4024,19 +4053,26 @@ async function showProfileModal(profileId = null) {
         const llmConfig = configState.llmConfigurations.find(c => c.id === llmSelect.value);
         const mcpServer = configState.mcpServers.find(s => s.id === mcpSelect.value);
         const profileName = profileNameInput.value.trim();
-        
-        if (!llmConfig || !mcpServer || !profileName) {
+        const currentProfileType = modal.querySelector('input[name="profile-type"]:checked')?.value || 'tool_enabled';
+
+        // For llm_only and rag_focused profiles, mcpServer is optional
+        if (!llmConfig || !profileName) {
             return '';
         }
-        
-        // Extract characters: 2 from profile name, 1 from provider, 1 from model, 1 from server
+
+        // For tool_enabled profiles, mcpServer is required
+        if (currentProfileType === 'tool_enabled' && !mcpServer) {
+            return '';
+        }
+
+        // Extract characters: 2 from profile name, 1 from provider, 1 from model, 1 from server (if available)
         const namePart = profileName.substring(0, 2).toUpperCase();
         const providerPart = (llmConfig.provider || '').substring(0, 1).toUpperCase();
         const modelPart = (llmConfig.model || '').substring(0, 1).toUpperCase();
-        const serverPart = (mcpServer.name || '').substring(0, 1).toUpperCase();
-        
+        const serverPart = mcpServer ? (mcpServer.name || '').substring(0, 1).toUpperCase() : '';
+
         let tag = (namePart + providerPart + modelPart + serverPart).substring(0, 5);
-        
+
         // Ensure uniqueness
         let suffix = '';
         let counter = 1;
@@ -4044,7 +4080,7 @@ async function showProfileModal(profileId = null) {
             suffix = counter.toString();
             counter++;
         }
-        
+
         return tag + suffix;
     }
 

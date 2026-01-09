@@ -565,18 +565,16 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
         tts_credentials_json = config_data.get("tts_credentials_json")
         user_uuid = config_data.get("user_uuid")  # Extract user_uuid for per-user isolation
 
+        # Determine if MCP server configuration is provided
+        # MCP server is optional for llm_only and rag_focused profiles
+        has_mcp_config = bool(server_name and server_id)
 
-        if not server_name:
-            return {"status": "error", "message": "Configuration failed: 'mcp_server.name' or 'server_name' is a required field."}
-        
-        if not server_id:
-            return {"status": "error", "message": "Configuration failed: 'mcp_server.id' or 'server_id' is a required field."}
-
+        # Check if already configured (skip MCP check if no MCP config provided)
         is_already_configured = (
             APP_CONFIG.SERVICES_CONFIGURED and
             provider == APP_CONFIG.ACTIVE_PROVIDER and
             model == APP_CONFIG.ACTIVE_MODEL and
-            server_id == APP_CONFIG.CURRENT_MCP_SERVER_ID  # Use ID instead of name
+            (not has_mcp_config or server_id == APP_CONFIG.CURRENT_MCP_SERVER_ID)
         )
 
         if is_already_configured:
@@ -680,24 +678,28 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                 raise NotImplementedError(f"Provider '{provider}' is not yet supported.")
             app_logger.info("LLM credentials/connection validated successfully.")
 
-            # --- 2. MCP Client Validation ---
-            mcp_server_config = config_data.get("mcp_server", {})
-            host = mcp_server_config.get('host')
-            port = mcp_server_config.get('port')
-            path = mcp_server_config.get('path')
-            
-            # Validate MCP server configuration
-            if not host or not port or not path:
-                raise ValueError(f"Incomplete MCP server configuration: host={host}, port={port}, path={path}")
-            
-            mcp_server_url = f"http://{host}:{port}{path}"
-            app_logger.info(f"Connecting to MCP server at: {mcp_server_url}")
-            
-            temp_server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
-            temp_mcp_client = MultiServerMCPClient(temp_server_configs)
-            async with temp_mcp_client.session(server_name) as temp_session:
-                await temp_session.list_tools()
-            app_logger.info("MCP server connection validated successfully.")
+            # --- 2. MCP Client Validation (Optional - only for tool_enabled profiles) ---
+            temp_server_configs = None
+            if has_mcp_config:
+                mcp_server_config = config_data.get("mcp_server", {})
+                host = mcp_server_config.get('host')
+                port = mcp_server_config.get('port')
+                path = mcp_server_config.get('path')
+
+                # Validate MCP server configuration
+                if not host or not port or not path:
+                    raise ValueError(f"Incomplete MCP server configuration: host={host}, port={port}, path={path}")
+
+                mcp_server_url = f"http://{host}:{port}{path}"
+                app_logger.info(f"Connecting to MCP server at: {mcp_server_url}")
+
+                temp_server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
+                temp_mcp_client = MultiServerMCPClient(temp_server_configs)
+                async with temp_mcp_client.session(server_name) as temp_session:
+                    await temp_session.list_tools()
+                app_logger.info("MCP server connection validated successfully.")
+            else:
+                app_logger.info("No MCP server configuration provided. Skipping MCP validation (llm_only or rag_focused profile).")
 
             app_logger.info("All validations passed. Committing configuration to application state.")
             
@@ -737,12 +739,21 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                 set_user_friendli_details(friendli_details, user_uuid)
             
             set_user_model_provider_in_profile(None, user_uuid)
-            set_user_mcp_server_name(server_name, user_uuid)
-            set_user_mcp_server_id(server_id, user_uuid)
-            
+
+            # Only set MCP-related state if MCP configuration was provided
+            if has_mcp_config:
+                set_user_mcp_server_name(server_name, user_uuid)
+                set_user_mcp_server_id(server_id, user_uuid)
+                set_user_mcp_client(temp_mcp_client, user_uuid)
+                set_user_server_configs(temp_server_configs, user_uuid)
+            else:
+                # Clear MCP state for llm_only and rag_focused profiles
+                set_user_mcp_server_name(None, user_uuid)
+                set_user_mcp_server_id(None, user_uuid)
+                set_user_mcp_client(None, user_uuid)
+                set_user_server_configs(None, user_uuid)
+
             set_user_llm_instance(temp_llm_instance, user_uuid)
-            set_user_mcp_client(temp_mcp_client, user_uuid)
-            set_user_server_configs(temp_server_configs, user_uuid)
 
             if provider == "Amazon" and model.startswith("arn:aws:bedrock:"):
                 profile_part = model.split('/')[-1]
@@ -750,12 +761,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             
             # --- MODIFICATION START: Initialize and store RAGRetriever instance ---
             # Note: RAGRetriever is now initialized at application startup independently
-            # Here we only reload collections if MCP server changes
-            if APP_CONFIG.RAG_ENABLED:
+            # Here we only reload collections if MCP server changes (only for tool_enabled profiles)
+            if APP_CONFIG.RAG_ENABLED and has_mcp_config:
                 try:
                     # Check if RAGRetriever already exists (should be initialized at startup)
                     existing_retriever = APP_STATE.get('rag_retriever_instance')
-                    
+
                     if existing_retriever:
                         # MCP server changed - reload collections for new server
                         app_logger.info("RAGRetriever already exists. Reloading collections for new MCP server.")
@@ -766,12 +777,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                         project_root = Path(__file__).resolve().parents[3]
                         rag_cases_dir = project_root / APP_CONFIG.RAG_CASES_DIR
                         persist_dir = project_root / APP_CONFIG.RAG_PERSIST_DIR
-                        
+
                         config_manager = get_config_manager()
                         collections_list = config_manager.get_rag_collections()
                         APP_STATE["rag_collections"] = collections_list
                         app_logger.info(f"Loaded {len(collections_list)} RAG collections from persistent config")
-                        
+
                         app_logger.info(f"Initializing RAGRetriever with cases dir: {rag_cases_dir}")
                         retriever_instance = RAGRetriever(
                             rag_cases_dir=rag_cases_dir,
@@ -780,12 +791,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                         )
                         APP_STATE['rag_retriever_instance'] = retriever_instance
                         app_logger.info("RAGRetriever initialized and stored in APP_STATE successfully.")
-                    
+
                     # Auto-enable and assign default collection to current MCP server if needed
                     config_manager = get_config_manager()
                     collections_list = config_manager.get_rag_collections()
                     default_collection = next((c for c in collections_list if c["id"] == 0), None)
-                    
+
                     collection_needs_update = False
                     if default_collection:
                         # Check if default collection needs to be assigned to this MCP server or enabled
@@ -799,7 +810,7 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                             app_logger.info(f"Updating default collection from server '{default_collection.get('mcp_server_id')}' to '{server_id}'")
                             default_collection["mcp_server_id"] = server_id
                             collection_needs_update = True
-                    
+
                     if collection_needs_update:
                         config_manager.save_rag_collections(collections_list)
                         APP_STATE["rag_collections"] = collections_list
@@ -822,34 +833,43 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             # --- MODIFICATION END ---
 
             # --- 4. Load and Classify Capabilities (The Automatic Step) ---
-            # Get default or active profile to use its classification mode
+            # Only needed for tool_enabled profiles that use MCP
             config_manager = get_config_manager()
             profile_id = config_manager.get_default_profile_id(user_uuid)
-            if profile_id:
-                APP_CONFIG.CURRENT_PROFILE_ID = profile_id
-                app_logger.info(f"Using profile {profile_id} for MCP classification")
+
+            if has_mcp_config:
+                # Get default or active profile to use its classification mode
+                if profile_id:
+                    APP_CONFIG.CURRENT_PROFILE_ID = profile_id
+                    app_logger.info(f"Using profile {profile_id} for MCP classification")
+                else:
+                    app_logger.warning("No default profile found, classification will use default mode 'full'")
+
+                # Try to load cached classification first
+                cached_loaded = False
+                if profile_id:
+                    cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
+
+                # Run classification if no cache available
+                if not cached_loaded:
+                    await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
+                else:
+                    app_logger.info("Using cached classification results, skipping LLM classification")
+
+                APP_CONFIG.MCP_SERVER_CONNECTED = True
+
+                # Update classification mode in runtime state
+                if profile_id:
+                    profile = config_manager.get_profile(profile_id, user_uuid)
+                    if profile:
+                        APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE = profile.get('classification_mode', 'light')
+                        app_logger.info(f"Set runtime classification mode to '{APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE}'")
             else:
-                app_logger.warning("No default profile found, classification will use default mode 'full'")
-            
-            # Try to load cached classification first
-            cached_loaded = False
-            if profile_id:
-                cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
-            
-            # Run classification if no cache available
-            if not cached_loaded:
-                await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
-            else:
-                app_logger.info("Using cached classification results, skipping LLM classification")
-            
-            APP_CONFIG.MCP_SERVER_CONNECTED = True
-            
-            # Update classification mode in runtime state
-            if profile_id:
-                profile = config_manager.get_profile(profile_id, user_uuid)
-                if profile:
-                    APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE = profile.get('classification_mode', 'light')
-                    app_logger.info(f"Set runtime classification mode to '{APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE}'")
+                # For llm_only and rag_focused profiles, skip MCP classification
+                app_logger.info("Skipping MCP classification for non-tool profile (llm_only or rag_focused)")
+                APP_CONFIG.MCP_SERVER_CONNECTED = False
+                if profile_id:
+                    APP_CONFIG.CURRENT_PROFILE_ID = profile_id
             
             # --- 4a. Load Enabled/Disabled Tools/Prompts from Active Profile ---
             # CRITICAL: Use active_for_consumption profile, not default profile
@@ -872,8 +892,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                 APP_STATE["disabled_tools"] = []
                 APP_STATE["disabled_prompts"] = []
                 app_logger.info("No profiles found. Initialized with empty disabled lists.")
-            
-            APP_CONFIG.CHART_MCP_CONNECTED = True
+
+            # Only set CHART_MCP_CONNECTED if MCP is configured
+            if has_mcp_config:
+                APP_CONFIG.CHART_MCP_CONNECTED = True
+            else:
+                APP_CONFIG.CHART_MCP_CONNECTED = False
 
             APP_STATE['tts_credentials_json'] = tts_credentials_json
             if APP_CONFIG.VOICE_CONVERSATION_ENABLED:
@@ -887,9 +911,13 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             APP_CONFIG.SERVICES_CONFIGURED = True
             APP_CONFIG.ACTIVE_PROVIDER = provider
             APP_CONFIG.ACTIVE_MODEL = model
-            APP_CONFIG.ACTIVE_MCP_SERVER_NAME = server_name
 
-            return {"status": "success", "message": f"MCP Server '{server_name}' and LLM configured successfully."}
+            if has_mcp_config:
+                APP_CONFIG.ACTIVE_MCP_SERVER_NAME = server_name
+                return {"status": "success", "message": f"MCP Server '{server_name}' and LLM configured successfully."}
+            else:
+                APP_CONFIG.ACTIVE_MCP_SERVER_NAME = None
+                return {"status": "success", "message": f"LLM ({provider}/{model}) configured successfully for {profile_id or 'conversation'} profile."}
 
         except (APIError, OpenAI_APIError, google_exceptions.PermissionDenied, ClientError, RuntimeError, Exception) as e:
             app_logger.error(f"Configuration failed during validation: {e}", exc_info=True)
@@ -906,9 +934,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             
             root_exception = unwrap_exception(e)
             error_message = ""
-            
+
             if isinstance(root_exception, (httpx.ConnectTimeout, httpx.ConnectError)):
-                error_message = "Connection to MCP server failed. Please check the Host and Port and ensure the server is running."
+                if has_mcp_config:
+                    error_message = "Connection to MCP server failed. Please check the Host and Port and ensure the server is running."
+                else:
+                    error_message = "Connection to LLM provider failed. Please check your network connection and credentials."
             elif isinstance(root_exception, (google_exceptions.PermissionDenied, ClientError)):
                 if 'AccessDeniedException' in str(e):
                     error_message = "Access denied. Please check your AWS IAM permissions for the selected model."

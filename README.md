@@ -23,7 +23,7 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 
 1. [Core Principles: A Superior Approach](#core-principles-a-superior-approach)
 2. [Key Features](#-key-features)
-3. [Profile Classes: Conversational vs Tool-Enabled Modes](#-profile-classes-conversational-vs-tool-enabled-modes)
+3. [Profile Classes: Three Execution Modes](#-profile-classes-three-execution-modes)
 4. [The Heart of the Application - The Engine & its Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
 5. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
 6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
@@ -487,19 +487,20 @@ The cost management system stores all pricing data locally in SQLite (`llm_model
 
 ---
 
-## 🎭 Profile Classes: Conversational vs Tool-Enabled Modes
+## 🎭 Profile Classes: Three Execution Modes
 
-The Uderia Platform implements a sophisticated dual-mode architecture through **profile classes**, enabling seamless transitions between conversational intelligence and operational tool execution. Understanding these profile classes is essential for maximizing the agent's capabilities and efficiency.
+The Uderia Platform implements a sophisticated tri-mode architecture through **profile classes**, enabling seamless transitions between conversational intelligence, operational tool execution, and knowledge base synthesis. Understanding these profile classes is essential for maximizing the agent's capabilities and efficiency.
 
-### Overview: Two Fundamental Modes
+### Overview: Three Fundamental Modes
 
-Every profile in the system belongs to one of two classes that determine how the agent processes user requests:
+Every profile in the system belongs to one of three classes that determine how the agent processes user requests:
 
-#### 1. LLM-Only Profiles (Conversational Mode)
+#### 1. Conversation Focused (LLM) Profiles
 
 **Characteristics:**
 - Pure conversational interaction with the LLM
-- No access to MCP tools or external data sources
+- Optional knowledge repository access for context injection
+- No MCP tools or operational capabilities
 - Agent provides information, analysis, and guidance based on its training
 - Ideal for conceptual questions, explanations, and general knowledge queries
 
@@ -520,14 +521,16 @@ Every profile in the system belongs to one of two classes that determine how the
 - Responses stored in `final_summary_text` as plain text
 - No `execution_trace` generated (no tools executed)
 - SQL queries mentioned appear in conversation text, not structured actions
+- Knowledge collections are optional for additional context
 
-#### 2. Tool-Enabled Profiles (Operational Mode)
+#### 2. Tool Focused (MCP) Profiles
 
 **Characteristics:**
 - Full access to MCP server capabilities (tools, prompts, resources)
 - Agent can execute database queries, API calls, and data operations
 - Real-time data retrieval and manipulation
 - Complete transparency via execution traces
+- Optional knowledge repository and planner repository access
 
 **When to Use:**
 - "Show me all tables in the sales_db database"
@@ -547,49 +550,96 @@ Every profile in the system belongs to one of two classes that determine how the
 - Complete audit trail of all actions taken
 - Supports self-correction and error recovery
 
+#### 3. Knowledge Focused (RAG) Profiles
+
+**Characteristics:**
+- **Mandatory** knowledge repository retrieval before every response
+- LLM synthesis of retrieved documents ONLY (no general knowledge)
+- No MCP tools or operational capabilities
+- Strict anti-hallucination safeguards prevent answers without knowledge context
+- Ideal for document Q&A, knowledge base search, and reference-only queries
+
+**When to Use:**
+- "What does our employee handbook say about remote work policies?"
+- "Search our technical documentation for API rate limits"
+- "What are the safety procedures in the facility manual?"
+- Any query that must be answered exclusively from verified documents
+
+**Example Profiles:**
+- `@RAG` - Knowledge base search with document synthesis
+- `@DOCS` - Technical documentation lookup
+- `@POLICY` - Policy and procedure reference
+
+**Technical Behavior:**
+- `profile_type: "rag_focused"` in session metadata
+- Knowledge retrieval is **MANDATORY** - queries fail gracefully if no documents found
+- LLM forbidden from using general training knowledge (enforced via system prompt)
+- Responses include summary + expandable source documents with similarity scores
+- Each source shows collection name, relevance score, and full content
+- No `execution_trace` (no tools), only `knowledge_retrieval_event`
+- **Three-layer safety net:**
+  1. Executor level: No retrieval = immediate error (no LLM synthesis)
+  2. System prompt level: Explicitly states if documents don't contain answer
+  3. UI level: Clear messaging about knowledge requirements
+
 ### The Value of Profile Classes
 
 #### 1. **Cost Optimization**
 
-**LLM-Only Mode:**
+**Conversation Focused (LLM) Mode:**
 - Minimal token usage (no tool descriptions in context)
 - Fast responses without tool execution overhead
 - Ideal for exploratory conversations and learning
 
-**Tool-Enabled Mode:**
+**Tool Focused (MCP) Mode:**
 - Higher token cost (includes tool context)
 - Necessary for data access and operations
 - Justified by business value of live data
 
-**Best Practice:** Use `@CHAT` for learning SQL syntax, then switch to `@GOGET` to execute the query.
+**Knowledge Focused (RAG) Mode:**
+- Moderate token usage (knowledge context + synthesis prompt)
+- Cost proportional to number of retrieved documents
+- Efficient for document-based Q&A vs full web search
+
+**Best Practice:** Use `@CHAT` for learning SQL syntax, `@RAG` for policy lookups, then switch to `@GOGET` to execute queries.
 
 #### 2. **Workflow Flexibility**
 
 Profile classes enable sophisticated multi-turn workflows:
 
 ```
-Turn 1 (@CHAT - llm_only):
+Turn 1 (@CHAT - Conversation Focused):
   User: "What is the SQL to get all active users?"
   Agent: "Here's the SQL: SELECT UserName FROM DBC.SessionsV WHERE SessionID <> 0..."
 
-Turn 2 (@GOGET - tool_enabled):
+Turn 2 (@GOGET - Tool Focused):
   User: "execute this query"
   Agent: [Executes SQL against database, returns real data]
+
+Turn 3 (@RAG - Knowledge Focused):
+  User: "What does our data governance policy say about user data retention?"
+  Agent: [Retrieves from policy documents, synthesizes answer with sources]
 ```
 
-This pattern separates **knowledge retrieval** (cheap) from **data execution** (expensive but necessary).
+This pattern separates **knowledge retrieval** (cheap), **document synthesis** (moderate), and **data execution** (necessary cost).
 
 #### 3. **Safety and Governance**
 
-**LLM-Only Profiles:**
+**Conversation Focused (LLM) Profiles:**
 - Cannot modify data or execute destructive operations
 - Safe for junior users exploring the system
 - Audit trail shows no actual database access
 
-**Tool-Enabled Profiles:**
+**Tool Focused (MCP) Profiles:**
 - Full operational capabilities require appropriate permissions
 - Complete execution trace for compliance and audit
 - Can be restricted by user tier or role
+
+**Knowledge Focused (RAG) Profiles:**
+- Answers constrained to verified documents only
+- Eliminates hallucination risk for policy/compliance queries
+- Complete source traceability with document citations
+- Knowledge repository access can be controlled by user tier
 
 #### 4. **Strategic Planner Intelligence**
 
@@ -627,10 +677,11 @@ Every turn in a session records:
 ```
 
 **Key Fields:**
-- `profile_type` - "llm_only" or "tool_enabled"
+- `profile_type` - "llm_only", "tool_enabled", or "rag_focused"
 - `profile_tag` - Short identifier for quick switching
 - `sql_mentioned_in_conversation` - Extracted SQL from llm_only responses
 - `execution_trace` - Structured tool calls (only in tool_enabled)
+- `knowledge_retrieval_event` - Document retrieval details (only in rag_focused)
 
 #### Profile Classification Modes
 
@@ -646,38 +697,53 @@ Profiles can be classified as:
 - Adapts to ambiguous or complex tool selection
 - Higher cost but more flexible
 
+**Note:** Classification only applies to Tool Focused (MCP) profiles with multiple tools/prompts available.
+
 ### Real-World Usage Patterns
 
 #### Pattern 1: Learn, Then Execute
 
 ```
 @CHAT: "How do I calculate the average sale price by region?"
-  → Agent provides SQL template and explanation
+  → Agent provides SQL template and explanation (Conversation Focused)
 
 @GOGET: "execute this query for the sales_data table"
-  → Agent runs the query against live database
+  → Agent runs the query against live database (Tool Focused)
 ```
 
 #### Pattern 2: Review Before Production
 
 ```
 @CHAT: "Write a query to delete inactive customers"
-  → Agent drafts DELETE query for review
+  → Agent drafts DELETE query for review (Conversation Focused)
 
 [User reviews, approves]
 
 @PROD: "execute this query"
-  → Agent executes against production database with audit trail
+  → Agent executes against production database with audit trail (Tool Focused)
 ```
 
-#### Pattern 3: Cost-Conscious Analysis
+#### Pattern 3: Document-Driven Decisions
 
 ```
-@CHAT: "What are the best practices for analyzing customer churn?"
-  → Agent provides methodology (free knowledge)
+@RAG: "What are our approved customer retention strategies?"
+  → Agent retrieves from strategy documents, synthesizes answer (Knowledge Focused)
 
-@GOGET: "apply this analysis to our customer_activity table"
-  → Agent executes analysis with live data (necessary cost)
+@CHAT: "Help me design a retention campaign based on those strategies"
+  → Agent provides implementation guidance (Conversation Focused)
+
+@GOGET: "Execute a query to identify at-risk customers for the campaign"
+  → Agent runs the query against live database (Tool Focused)
+```
+
+#### Pattern 4: Compliance and Policy Verification
+
+```
+@RAG: "What does our security policy say about API key rotation?"
+  → Agent retrieves exact policy language with citations (Knowledge Focused)
+
+@GOGET: "Check which API keys in our system are older than 90 days"
+  → Agent queries credential store via MCP tools (Tool Focused)
 ```
 
 ### Implementation Details
@@ -688,26 +754,31 @@ Profiles can be classified as:
 - Profile badge shows active override
 - Session header displays both default (★) and override (⚡)
 
-**Planner Context:**
-- LLM-only: System prompt + conversation history
-- Tool-enabled: System prompt + conversation + tools + prompts + resources
+**Execution Context:**
+- Conversation Focused (LLM): System prompt + conversation history
+- Tool Focused (MCP): System prompt + conversation + tools + prompts + resources
+- Knowledge Focused (RAG): RAG synthesis prompt + conversation + retrieved documents
 
 **Cost Implications:**
-- LLM-only: ~2,000 input tokens per turn
-- Tool-enabled: ~8,000+ input tokens per turn (includes full tool context)
+- Conversation Focused: ~2,000 input tokens per turn
+- Tool Focused: ~8,000+ input tokens per turn (includes full tool context)
+- Knowledge Focused: ~3,000-5,000 input tokens per turn (depends on documents retrieved)
 
 **Historical Tracking:**
 - `profile_tags_used[]` - All profiles used in session
 - `models_used[]` - All LLM models used in session
+- `knowledge_retrieval_event` - Document sources and relevance scores (RAG profiles)
 - Complete audit trail for cost attribution
 
 ### Best Practices
 
-1. **Start Conversational:** Use llm_only profiles to explore, learn, and draft queries
-2. **Execute When Needed:** Switch to tool-enabled only when live data is required
-3. **Review Before Execution:** Draft destructive queries in `@CHAT`, review, then execute in `@GOGET`
-4. **Cost Attribution:** Use profile tags to track which workloads drive costs
-5. **Security:** Restrict tool-enabled profiles to authorized users via role-based access
+1. **Start Conversational:** Use Conversation Focused profiles to explore, learn, and draft queries
+2. **Verify with Documents:** Use Knowledge Focused profiles for policy, compliance, and reference lookups
+3. **Execute When Needed:** Switch to Tool Focused profiles only when live data operations are required
+4. **Review Before Execution:** Draft destructive queries in `@CHAT`, review, then execute in `@GOGET`
+5. **Cost Attribution:** Use profile tags to track which workloads drive costs
+6. **Security:** Restrict Tool Focused profiles to authorized users via role-based access
+7. **Knowledge Quality:** Ensure Knowledge Focused profiles have well-curated knowledge collections
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
@@ -2113,7 +2184,8 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
-*   **08-Jan-2026:** Profile Classes - Conversational vs Tool-Enabled Architecture
+*   **09-Jan-2026:** Knowledge Focused (RAG) Profile Type - Mandatory knowledge retrieval with anti-hallucination safeguards
+*   **08-Jan-2026:** Profile Classes - Three Execution Modes (Conversation, Tool, Knowledge)
 *   **06-Jan-2026:** Export/Import Knowledge Repositories
 *   **05-Jan-2026:** Export/Import Planner Repositories
 *   **02-Jan-2026:** OAuth Implementation - Google, Github

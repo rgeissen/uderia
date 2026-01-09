@@ -1481,7 +1481,6 @@ The following domain knowledge may be relevant to this conversation:
             )
 
             # --- Format Response with Sources ---
-            from trusted_data_agent.agent.formatter import OutputFormatter
             formatter = OutputFormatter(
                 llm_response_text=response_text,
                 collected_data=self.structured_collected_data,
