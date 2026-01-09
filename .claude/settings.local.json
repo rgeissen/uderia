@@ -9,7 +9,8 @@
       "Bash(xargs:*)",
       "Bash(python update_prompt.py:*)",
       "Bash(git fetch:*)",
-      "Bash(git rebase:*)"
+      "Bash(git rebase:*)",
+      "Bash(ls:*)"
     ]
   }
 }
