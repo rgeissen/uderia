@@ -2385,16 +2385,25 @@ function attachProfileEventListeners() {
                     showNotification('error', 'Please run and pass the test before activating this profile.');
                     return;
                 }
+                // Get profile to check type
+                const profile = configState.profiles.find(p => p.id === profileId);
+                const isLLMOnly = profile && profile.profile_type === 'llm_only';
+
                 // Test the profile first before any other checks
                 const resultsContainer = document.getElementById(`test-results-${profileId}`);
                 if (resultsContainer) {
+                    // Show different message based on profile type
+                    const testingMessage = isLLMOnly
+                        ? 'Testing profile...'
+                        : 'Testing and classifying profile...';
+
                     resultsContainer.innerHTML = `
                         <div class="flex items-center gap-2">
                             <svg class="animate-spin h-4 w-4 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            <span class="text-yellow-400">Testing and classifying profile...</span>
+                            <span class="text-yellow-400">${testingMessage}</span>
                         </div>
                     `;
                 }
@@ -3706,17 +3715,34 @@ async function showProfileModal(profileId = null) {
         }
 
         // For autocomplete, also enable only default collection for new profiles
+        // Note: Knowledge repositories DON'T support autocomplete (they lack user_query metadata)
         let isAutocompleteEnabled;
-        if (!isEdit) {
-            // New profiles: only default collection has autocomplete enabled
-            isAutocompleteEnabled = isDefaultCollection;
-        } else {
-            // Existing profiles: respect saved selections
-            isAutocompleteEnabled = profile?.autocompleteCollections?.includes(coll.id) || profile?.autocompleteCollections?.includes('*');
+        if (isPlanner) {
+            if (!isEdit) {
+                // New profiles: only default collection has autocomplete enabled
+                isAutocompleteEnabled = isDefaultCollection;
+            } else {
+                // Existing profiles: respect saved selections
+                isAutocompleteEnabled = profile?.autocompleteCollections?.includes(coll.id) || profile?.autocompleteCollections?.includes('*');
+            }
         }
-        // Knowledge repositories: default autocomplete to OFF for both new and existing profiles
-        const defaultAutocomplete = isPlanner ? isAutocompleteEnabled : false;
-        
+
+        // Build autocomplete toggle HTML only for Planner repositories
+        const autocompleteToggleHTML = isPlanner ? `
+            <!-- Autocomplete Toggle -->
+            <div class="flex items-center justify-center" style="width: 50px;">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                           data-collection-id="${coll.id}"
+                           data-collection-type="autocomplete"
+                           ${isAutocompleteEnabled ? 'checked' : ''}
+                           class="sr-only peer"
+                           style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
+                    <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                </label>
+            </div>
+        ` : '';
+
         return `
             <div class="flex items-center justify-between py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all group" style="padding-left: 16px; padding-right: 16px;">
                 <span class="text-sm text-gray-200 group-hover:text-white transition-colors truncate flex-1 min-w-0">${escapeHtml(coll.name)}</span>
@@ -3724,27 +3750,16 @@ async function showProfileModal(profileId = null) {
                     <!-- Query Toggle -->
                     <div class="flex items-center justify-center" style="width: 50px;">
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" 
-                                   data-collection-id="${coll.id}" 
+                            <input type="checkbox"
+                                   data-collection-id="${coll.id}"
                                    data-collection-type="query"
-                                   ${isQueryEnabled ? 'checked' : ''} 
+                                   ${isQueryEnabled ? 'checked' : ''}
                                    class="sr-only peer"
                                    style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
                             <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
                         </label>
                     </div>
-                    <!-- Autocomplete Toggle -->
-                    <div class="flex items-center justify-center" style="width: 50px;">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" 
-                                   data-collection-id="${coll.id}" 
-                                   data-collection-type="autocomplete"
-                                   ${defaultAutocomplete ? 'checked' : ''} 
-                                   class="sr-only peer"
-                                   style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
-                        </label>
-                    </div>
+                    ${autocompleteToggleHTML}
                 </div>
             </div>
         `;
@@ -3825,7 +3840,35 @@ async function showProfileModal(profileId = null) {
     const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
     const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
     const maxTokensInput = modal.querySelector('#profile-modal-max-tokens');
-    
+
+    // Fetch global defaults from Administration panel to set as placeholders
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        if (token) {
+            const response = await fetch('/api/v1/admin/knowledge-config', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                const globalConfig = data.config || {};
+
+                // Set placeholders to actual global defaults
+                minRelevanceInput.placeholder = globalConfig.min_relevance_score !== undefined
+                    ? globalConfig.min_relevance_score.toString()
+                    : '0.70';
+                maxDocsInput.placeholder = globalConfig.num_docs !== undefined
+                    ? globalConfig.num_docs.toString()
+                    : '3';
+                maxTokensInput.placeholder = globalConfig.max_tokens !== undefined
+                    ? globalConfig.max_tokens.toString()
+                    : '2000';
+            }
+        }
+    } catch (error) {
+        console.warn('[Profile Modal] Failed to fetch global knowledge defaults:', error);
+        // Keep default placeholders on error
+    }
+
     if (profile?.knowledgeConfig) {
         minRelevanceInput.value = profile.knowledgeConfig.minRelevanceScore !== undefined ? profile.knowledgeConfig.minRelevanceScore : '';
         maxDocsInput.value = profile.knowledgeConfig.maxDocs !== undefined ? profile.knowledgeConfig.maxDocs : '';

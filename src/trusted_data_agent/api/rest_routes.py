@@ -5588,19 +5588,47 @@ async def test_profile(profile_id: str):
             results["profile_type"] = {"status": "success", "message": "Conversation profile (LLM only - no tools required)."}
 
         # Test RAG collections (check database for user-accessible collections)
+        # Note: Only show relevant collection types based on profile type
         try:
             from trusted_data_agent.core.collection_db import get_collection_db
             collection_db = get_collection_db()
-            
+
             # Get collections accessible to this user
             user_collections = collection_db.get_all_collections(user_id=user_uuid)
-            
+
             if user_collections and len(user_collections) > 0:
-                results["rag_collections"] = {"status": "success", "message": f"RAG collections available ({len(user_collections)} collection(s))."}
+                # Count by repository type for clearer messaging
+                planner_count = sum(1 for c in user_collections if c.get('repository_type') == 'planner')
+                knowledge_count = sum(1 for c in user_collections if c.get('repository_type') == 'knowledge')
+
+                # Build descriptive message based on profile type
+                parts = []
+
+                if profile_type == "llm_only":
+                    # LLM-only profiles: Only knowledge repositories are relevant
+                    if knowledge_count > 0:
+                        parts.append(f"{knowledge_count} knowledge")
+                    message_prefix = "Knowledge collections available"
+                else:
+                    # Tool-enabled profiles: Both planner and knowledge repositories are relevant
+                    if planner_count > 0:
+                        parts.append(f"{planner_count} planner")
+                    if knowledge_count > 0:
+                        parts.append(f"{knowledge_count} knowledge")
+                    message_prefix = "Intelligence collections available"
+
+                if parts:
+                    message = f"{message_prefix} ({', '.join(parts)})."
+                    results["rag_collections"] = {"status": "success", "message": message}
+                elif profile_type == "llm_only":
+                    # LLM-only profile with no knowledge repositories
+                    results["rag_collections"] = {"status": "warning", "message": "No knowledge collections found (planner collections not applicable for conversation profiles)."}
+                else:
+                    results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
             else:
-                results["rag_collections"] = {"status": "warning", "message": "No RAG collections found."}
+                results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
         except Exception as rag_error:
-            results["rag_collections"] = {"status": "error", "message": f"RAG test failed: {str(rag_error)}"}
+            results["rag_collections"] = {"status": "error", "message": f"Collection test failed: {str(rag_error)}"}
 
         return jsonify({"status": "success", "results": results}), 200
 

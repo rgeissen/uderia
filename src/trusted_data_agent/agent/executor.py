@@ -1014,9 +1014,9 @@ Response:"""
 
                 try:
                     knowledge_collections = knowledge_config.get("collections", [])
-                    max_docs = knowledge_config.get("maxDocs", 3)
-                    min_relevance = knowledge_config.get("minRelevanceScore", 0.7)
-                    max_tokens = knowledge_config.get("maxTokens", 2000)
+                    max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+                    min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+                    max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
 
                     if knowledge_collections:
                         collection_ids = [c["id"] for c in knowledge_collections]
