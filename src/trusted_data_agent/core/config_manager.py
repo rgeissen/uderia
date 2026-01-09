@@ -392,40 +392,54 @@ class ConfigManager:
     def remove_mcp_server(self, server_id: str, user_uuid: Optional[str] = None) -> tuple[bool, Optional[str]]:
         """
         Remove an MCP server configuration.
-        Prevents deletion if any RAG collections are assigned to this server.
-        
+        Prevents deletion if any RAG collections or profiles are assigned to this server.
+
         Args:
             server_id: Unique ID of the server to remove
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
             If successful, error_message is None
             If failed, error_message contains the reason
         """
+        # Check if any profiles reference this server
+        profiles = self.get_profiles(user_uuid)
+        dependent_profiles = [
+            p for p in profiles
+            if p.get("profile_type") == "tool_enabled" and p.get("mcpServerId") == server_id
+        ]
+
+        if dependent_profiles:
+            profile_names = [p.get("profileName", "Unknown") for p in dependent_profiles]
+            names_list = ", ".join(profile_names)
+            error_msg = f"Cannot delete MCP server: {len(dependent_profiles)} profile(s) depend on it: {names_list}"
+            app_logger.warning(f"{error_msg} (Server ID: {server_id})")
+            return False, error_msg
+
         # Check if any collections are assigned to this server
         collections = self.get_rag_collections(user_uuid)
         assigned_collections = [
-            c for c in collections 
+            c for c in collections
             if c.get("mcp_server_id") == server_id
         ]
-        
+
         if assigned_collections:
             collection_names = [c.get("name", "Unknown") for c in assigned_collections]
             names_list = ", ".join(collection_names)
             error_msg = f"Cannot delete MCP server: {len(assigned_collections)} collection(s) assigned: {names_list}"
             app_logger.warning(f"{error_msg} (Server ID: {server_id})")
             return False, error_msg
-        
+
         servers = self.get_mcp_servers(user_uuid)
         original_count = len(servers)
         servers = [s for s in servers if s.get("id") != server_id]
-        
+
         if len(servers) == original_count:
             error_msg = "MCP server not found"
             app_logger.warning(f"MCP server with ID {server_id} not found for removal")
             return False, error_msg
-        
+
         success = self.save_mcp_servers(servers, user_uuid)
         return success, None if success else "Failed to save configuration"
     

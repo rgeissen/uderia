@@ -16,8 +16,12 @@ import { handleViewSwitch } from './ui.js';
 import { initializeVoiceRecognition } from './voice.js';
 import { subscribeToNotifications } from './notifications.js';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
+import * as capabilitiesModule from './handlers/capabilitiesManagement.js';
 // Import conversationInitializer early to ensure window.__conversationInitState is available
 import './conversationInitializer.js';
+
+// Expose capabilities module globally for resource panel updates
+window.capabilitiesModule = capabilitiesModule;
 
 // Session header profile display
 function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
@@ -205,22 +209,84 @@ async function initializeRAGAutoCompletion() {
         
         // Update session header to show override (keep default profile visible)
         const defaultProfileId = window.configState?.defaultProfileId;
-        const defaultProfile = defaultProfileId && window.configState?.profiles 
+        const defaultProfile = defaultProfileId && window.configState?.profiles
             ? window.configState.profiles.find(p => p.id === defaultProfileId)
             : null;
         updateSessionHeaderProfile(defaultProfile, profile);
+
+        // Update resource panel to show profile-specific tools/prompts
+        updateResourcePanelForProfile(profile.id);
     }
 
     function hideActiveTagBadge() {
         activeProfileTag.innerHTML = '';
         activeProfileTag.classList.add('hidden');
         userInput.classList.remove('has-tag');
-        
+
         // Clear session header override and restore default
         const defaultProfileId = window.configState?.defaultProfileId;
         if (defaultProfileId && window.configState?.profiles) {
             const defaultProfile = window.configState.profiles.find(p => p.id === defaultProfileId);
             updateSessionHeaderProfile(defaultProfile, null);
+        }
+
+        // Restore default profile resources in resource panel
+        updateResourcePanelForProfile(null);
+    }
+
+    async function updateResourcePanelForProfile(profileId) {
+        /**
+         * Update the resource panel to show tools/prompts for a specific profile.
+         * If profileId is null, restores default profile resources.
+         */
+        try {
+            const authToken = localStorage.getItem('tda_auth_token');
+            if (!authToken) return;
+
+            let tools, prompts;
+
+            if (profileId) {
+                // Fetch profile-specific resources
+                const response = await fetch(`/api/v1/profiles/${profileId}/resources`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                if (!response.ok) {
+                    console.error('Failed to fetch profile resources');
+                    return;
+                }
+
+                const data = await response.json();
+                tools = data.tools || {};
+                prompts = data.prompts || {};
+
+                // Show visual indicator that resources are filtered
+                console.log(`🔍 Resource panel updated for profile: @${data.profile_tag}`);
+            } else {
+                // Restore default resources
+                const [toolsResponse, promptsResponse] = await Promise.all([
+                    fetch('/tools', { headers: { 'Authorization': `Bearer ${authToken}` } }),
+                    fetch('/prompts', { headers: { 'Authorization': `Bearer ${authToken}` } })
+                ]);
+
+                tools = toolsResponse.ok ? await toolsResponse.json() : {};
+                prompts = promptsResponse.ok ? await promptsResponse.json() : {};
+
+                console.log('🔄 Resource panel restored to default profile');
+            }
+
+            // Update the resource panel with new data
+            state.resourceData.tools = tools;
+            state.resourceData.prompts = prompts;
+
+            // Trigger re-render of resource panels (using existing state data, not fetching)
+            if (window.capabilitiesModule) {
+                window.capabilitiesModule.renderResourcePanel('tools');
+                window.capabilitiesModule.renderResourcePanel('prompts');
+            }
+
+        } catch (error) {
+            console.error('Error updating resource panel:', error);
         }
     }
 
@@ -295,11 +361,14 @@ async function initializeRAGAutoCompletion() {
             
             // Update session header to show override (keep default profile visible)
             const defaultProfileId = window.configState?.defaultProfileId;
-            const defaultProfile = defaultProfileId && window.configState?.profiles 
+            const defaultProfile = defaultProfileId && window.configState?.profiles
                 ? window.configState.profiles.find(p => p.id === defaultProfileId)
                 : null;
             updateSessionHeaderProfile(defaultProfile, profile);
-            
+
+            // Update resource panel to show profile-specific tools/prompts
+            updateResourcePanelForProfile(profile.id);
+
             profileTagSelector.innerHTML = '';
             profileTagSelector.classList.add('hidden');
             currentProfiles = [];

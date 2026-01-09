@@ -94,6 +94,88 @@ export async function handleLoadResources(type) {
 }
 
 /**
+ * Renders the resource panel using data already in state (no API fetch).
+ * Used when switching profiles to avoid overwriting profile-specific data.
+ * @param {string} type - The type of resource to render (e.g., 'tools', 'prompts').
+ */
+export function renderResourcePanel(type) {
+    const tabButton = document.querySelector(`.resource-tab[data-type="${type}"]`);
+    const categoriesContainer = document.getElementById(`${type}-categories`);
+    const panelsContainer = document.getElementById(`${type}-panels-container`);
+    const typeCapitalized = type.charAt(0).toUpperCase() + type.slice(1);
+
+    try {
+        // Use data from state instead of fetching
+        const data = state.resourceData[type] || {};
+
+        if (!data || Object.keys(data).length === 0) {
+            if(tabButton) {
+                tabButton.style.display = 'none';
+            }
+            return;
+        }
+
+        tabButton.style.display = 'inline-block';
+
+        if (type === 'prompts') {
+            UI.updatePromptsTabCounter();
+        } else if (type === 'tools') {
+            UI.updateToolsTabCounter();
+        } else {
+            const totalCount = Object.values(data).reduce((acc, items) => acc + items.length, 0);
+            tabButton.textContent = `${typeCapitalized} (${totalCount})`;
+        }
+
+        categoriesContainer.innerHTML = '';
+        panelsContainer.innerHTML = '';
+
+        Object.keys(data).forEach(category => {
+            const categoryTab = document.createElement('button');
+            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.textContent = category;
+            categoryTab.dataset.category = category;
+            categoryTab.dataset.type = type;
+            categoriesContainer.appendChild(categoryTab);
+
+            const panel = document.createElement('div');
+            panel.id = `panel-${type}-${category}`;
+            panel.className = 'category-panel px-4 space-y-2';
+            panel.dataset.category = category;
+
+            data[category].forEach(resource => {
+                const itemEl = UI.createResourceItem(resource, type);
+                panel.appendChild(itemEl);
+            });
+            panelsContainer.appendChild(panel);
+        });
+
+        document.querySelectorAll(`#${type}-categories .category-tab`).forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll(`#${type}-categories .category-tab`).forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                document.querySelectorAll(`#${type}-panels-container .category-panel`).forEach(p => {
+                    p.classList.toggle('open', p.dataset.category === tab.dataset.category);
+                });
+            });
+        });
+
+        if (categoriesContainer.querySelector('.category-tab')) {
+            categoriesContainer.querySelector('.category-tab').click();
+        }
+
+    } catch (error) {
+        console.error(`Failed to render ${type}: ${error.message}`);
+        if(tabButton) {
+            tabButton.textContent = `${typeCapitalized} (Error)`;
+            tabButton.style.display = 'inline-block';
+        }
+        categoriesContainer.innerHTML = '';
+        panelsContainer.innerHTML = `<div class="p-4 text-center text-red-400">Failed to render ${type}.</div>`;
+    }
+}
+
+/**
  * Handles clicks on the main resource tabs (Tools, Prompts, etc.).
  * @param {Event} e - The click event.
  */

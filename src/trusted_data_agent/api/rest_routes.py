@@ -4277,18 +4277,32 @@ async def create_mcp_server():
         user_uuid = _get_user_uuid_from_request()
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
-        
+
         data = await request.get_json()
-        
-        # Validate required fields
-        required_fields = ["id", "name", "host", "port"]
+
+        # Validate required fields (ID is now optional - server-side generation)
+        required_fields = ["name", "host", "port"]
         for field in required_fields:
             if field not in data:
                 return jsonify({"status": "error", "message": f"Field '{field}' is required"}), 400
-        
+
+        # Server-side UUID generation if ID not provided
+        if not data.get("id"):
+            import uuid
+            data["id"] = f"server-{uuid.uuid4()}"
+            app_logger.info(f"Generated server ID: {data['id']}")
+        else:
+            # Validate ID uniqueness if provided by client
+            existing_servers = config_manager.get_mcp_servers(user_uuid)
+            if any(s.get("id") == data["id"] for s in existing_servers):
+                return jsonify({
+                    "status": "error",
+                    "message": f"Server ID '{data['id']}' already exists"
+                }), 409
+
         # Add server
         success = config_manager.add_mcp_server(data, user_uuid)
-        
+
         if success:
             app_logger.info(f"Created MCP server: {data.get('name')} (ID: {data.get('id')})")
             return jsonify({
@@ -4298,7 +4312,7 @@ async def create_mcp_server():
             }), 201
         else:
             return jsonify({"status": "error", "message": "Failed to create MCP server"}), 500
-            
+
     except Exception as e:
         app_logger.error(f"Error creating MCP server: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -4796,8 +4810,125 @@ async def get_profiles():
     except Exception as e:
         app_logger.error(f"Error getting profiles: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
-        
-        
+
+
+@rest_api_bp.route("/v1/profiles/<profile_id>/resources", methods=["GET"])
+async def get_profile_resources(profile_id: str):
+    """
+    Get filtered tools and prompts for a specific profile.
+    Used for real-time resource panel updates when @TAG is typed.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        # Get the profile
+        profiles = config_manager.get_profiles(user_uuid)
+        profile = next((p for p in profiles if p.get("id") == profile_id), None)
+
+        if not profile:
+            return jsonify({"status": "error", "message": "Profile not found"}), 404
+
+        # Check if profile is tool-enabled
+        if profile.get("profile_type") != "tool_enabled":
+            # LLM-only profile has no tools/prompts
+            return jsonify({
+                "status": "success",
+                "tools": {},
+                "prompts": {},
+                "profile_type": "llm_only"
+            })
+
+        # Get enabled tools and prompts for THIS profile (not inherited from master)
+        # CRITICAL: Inheritance only applies to classification (categories), NOT to enabled states
+        # Each profile has its own tools/prompts list
+        enabled_tools_raw = profile.get('tools', [])
+        enabled_prompts_raw = profile.get('prompts', [])
+
+        # Handle wildcard expansion: "*" means all tools/prompts from classification
+        # This is necessary because the system stores ["*"] but never expands it
+        if enabled_tools_raw == ["*"]:
+            # Wildcard: all tools are enabled - we'll handle this by NOT marking any as disabled
+            wildcard_tools = True
+            enabled_tool_names = set()  # Not used when wildcard=True
+        else:
+            wildcard_tools = False
+            enabled_tool_names = set(enabled_tools_raw)
+
+        if enabled_prompts_raw == ["*"]:
+            # Wildcard: all prompts are enabled
+            wildcard_prompts = True
+            enabled_prompt_names = set()  # Not used when wildcard=True
+        else:
+            wildcard_prompts = False
+            enabled_prompt_names = set(enabled_prompts_raw)
+
+        # Determine which profile to get classification from
+        target_profile_id = profile_id
+        if profile.get('inherit_classification', False):
+            # This profile inherits classification - get it from master profile
+            master_profile_id = config_manager.get_master_classification_profile_id(user_uuid)
+            if master_profile_id and master_profile_id != profile_id:
+                app_logger.info(f"Profile {profile_id} inherits classification from master {master_profile_id}")
+                target_profile_id = master_profile_id
+
+        # Get classification results from the target profile (self or master)
+        classification_results = config_manager.get_profile_classification(target_profile_id, user_uuid)
+
+        # If no classification stored, fall back to APP_STATE
+        # (This happens on first load before classification runs)
+        if not classification_results or not classification_results.get('tools'):
+            structured_tools = APP_STATE.get("structured_tools", {})
+            structured_prompts = APP_STATE.get("structured_prompts", {})
+        else:
+            # Use the stored classification (from self or master profile)
+            structured_tools = classification_results.get('tools', {})
+            structured_prompts = classification_results.get('prompts', {})
+
+        # Rebuild with correct disabled flags for this profile
+        profile_tools = {}
+        for category, tools in structured_tools.items():
+            profile_tools[category] = []
+            for tool in tools:
+                tool_copy = dict(tool)
+                # Override disabled flag based on THIS profile's enabled tools
+                if wildcard_tools:
+                    # Wildcard: all tools enabled (except TDA_ tools which are always enabled anyway)
+                    tool_copy['disabled'] = False
+                else:
+                    # Specific list: check if tool is in enabled list
+                    tool_copy['disabled'] = tool['name'] not in enabled_tool_names
+                profile_tools[category].append(tool_copy)
+
+        profile_prompts = {}
+        for category, prompts in structured_prompts.items():
+            profile_prompts[category] = []
+            for prompt in prompts:
+                prompt_copy = dict(prompt)
+                # Override disabled flag based on THIS profile's enabled prompts
+                if wildcard_prompts:
+                    # Wildcard: all prompts enabled
+                    prompt_copy['disabled'] = False
+                else:
+                    # Specific list: check if prompt is in enabled list
+                    prompt_copy['disabled'] = prompt['name'] not in enabled_prompt_names
+                profile_prompts[category].append(prompt_copy)
+
+        return jsonify({
+            "status": "success",
+            "tools": profile_tools,
+            "prompts": profile_prompts,
+            "profile_type": "tool_enabled",
+            "profile_name": profile.get("name"),
+            "profile_tag": profile.get("tag")
+        })
+
+    except Exception as e:
+        app_logger.error(f"Error getting profile resources: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/profiles", methods=["POST"])
 async def create_profile():
     """Create a new profile configuration."""

@@ -71,6 +71,10 @@ function showDeleteConfirmation(message, onConfirm) {
     });
 }
 
+/**
+ * Generate a client-side ID for LLM configurations and profiles.
+ * NOTE: MCP servers now use server-side UUID generation.
+ */
 function generateId() {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
@@ -550,29 +554,33 @@ class ConfigurationState {
     }
 
     async addMCPServer(server) {
-        server.id = server.id || generateId();
-        
+        // Server-side UUID generation - remove client-side ID generation
+        // Backend will generate ID if not provided
+
         try {
             const headers = { 'Content-Type': 'application/json' };
             const authToken = localStorage.getItem('tda_auth_token');
             if (authToken) {
                 headers['Authorization'] = `Bearer ${authToken}`;
             }
-            
+
             const response = await fetch('/api/v1/mcp/servers', {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(server)
             });
-            
+
             if (response.ok) {
+                const result = await response.json();
+                const serverId = result.server_id; // Backend-generated ID
+
                 // Reload servers from backend to get the updated list
                 await this.loadMCPServers();
                 // Dispatch event to mark config as dirty
-                document.dispatchEvent(new CustomEvent('profile-modified', { 
-                    detail: { source: 'mcp-server-add' } 
+                document.dispatchEvent(new CustomEvent('profile-modified', {
+                    detail: { source: 'mcp-server-add' }
                 }));
-                return server.id;
+                return serverId;
             } else {
                 const errorData = await response.json();
                 console.error('Failed to add MCP server:', errorData);
