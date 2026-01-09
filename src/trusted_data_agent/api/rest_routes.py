@@ -202,13 +202,14 @@ async def execute_prompt(prompt_name: str):
                 "message": "MCP client not configured for profile"
             }), 503
 
-        server_name = APP_CONFIG.CURRENT_MCP_SERVER_NAME
-        if not server_name:
+        # Use server ID instead of name for session management
+        server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+        if not server_id:
             return jsonify({
                 "status": "error",
                 "message": "MCP server not configured for profile"
             }), 503
-            
+
         llm_instance = APP_STATE.get('llm')
         if not llm_instance:
             return jsonify({
@@ -219,11 +220,11 @@ async def execute_prompt(prompt_name: str):
         # Get arguments from request body
         data = await request.get_json() or {}
         user_arguments = data.get('arguments', {})
-        
+
         # Get prompt definition to know all expected arguments
         prompt_info = _get_prompt_info(prompt_name)
         prompt_arguments = {}
-        
+
         if prompt_info and prompt_info.get("arguments"):
             # Build complete argument set - MCP server may require all arguments
             for arg in prompt_info["arguments"]:
@@ -244,12 +245,12 @@ async def execute_prompt(prompt_name: str):
         else:
             # No argument definition found, use what user provided
             prompt_arguments = user_arguments
-        
+
         # Load the prompt with arguments
-        app_logger.info(f"Executing prompt '{prompt_name}' with server '{server_name}' and arguments: {prompt_arguments}")
-        
+        app_logger.info(f"Executing prompt '{prompt_name}' with server ID '{server_id}' and arguments: {prompt_arguments}")
+
         try:
-            async with mcp_client.session(server_name) as temp_session:
+            async with mcp_client.session(server_id) as temp_session:
                 if prompt_arguments:
                     prompt_obj = await load_mcp_prompt(
                         temp_session, name=prompt_name, arguments=prompt_arguments
@@ -394,7 +395,7 @@ async def execute_prompt_raw(prompt_name: str):
         
         # Try to get global MCP client (works if system is configured globally)
         mcp_client = APP_STATE.get("mcp_client")
-        server_name = APP_CONFIG.CURRENT_MCP_SERVER_NAME
+        server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
         llm_instance = APP_STATE.get('llm')
         
         # If MCP server specified in request, override with that
@@ -473,40 +474,37 @@ async def execute_prompt_raw(prompt_name: str):
             if not default_profile:
                 return jsonify({"status": "error", "message": "Default profile not found"}), 400
             
-            # Get MCP server from profile
+            # Get MCP server ID from profile (use ID, not name)
             mcp_server_id = default_profile.get("mcpServerId")
-            if mcp_server_id and not server_name:
-                mcp_servers = config_manager.get_mcp_servers()
-                mcp_server = next((s for s in mcp_servers if s.get("id") == mcp_server_id), None)
-                if mcp_server:
-                    server_name = mcp_server.get("name")
-            
+            if not server_id:
+                server_id = mcp_server_id
+
             # Get user's MCP client if not available globally
             if not mcp_client:
                 from trusted_data_agent.core.config import get_user_mcp_client
                 mcp_client = get_user_mcp_client(user_uuid)
-            
+
             # Get user's LLM if not available globally
             if not llm_instance:
                 from trusted_data_agent.core.config import get_user_llm_instance
                 llm_instance = get_user_llm_instance(user_uuid)
-        
+
         # Final validation
-        current_app.logger.info(f"Final validation - mcp_client: {mcp_client is not None}, server_name: {server_name}, llm_instance: {llm_instance is not None}")
+        current_app.logger.info(f"Final validation - mcp_client: {mcp_client is not None}, server_id: {server_id}, llm_instance: {llm_instance is not None}")
         if not mcp_client:
             return jsonify({"status": "error", "message": "MCP client not configured. Please activate a profile in the Configuration panel."}), 400
-        if not server_name:
+        if not server_id:
             return jsonify({"status": "error", "message": "MCP server not configured. Please activate a profile in the Configuration panel."}), 400
         if not llm_instance:
             return jsonify({"status": "error", "message": "LLM not configured. Please activate a profile in the Configuration panel."}), 400
 
         # Get arguments from request body (data already loaded above)
         user_arguments = data.get('arguments', {})
-        
+
         # Get prompt definition to know all expected arguments
         prompt_info = _get_prompt_info(prompt_name)
         prompt_arguments = {}
-        
+
         if prompt_info and prompt_info.get("arguments"):
             for arg in prompt_info["arguments"]:
                 arg_name = arg.get("name")
@@ -522,12 +520,12 @@ async def execute_prompt_raw(prompt_name: str):
                         prompt_arguments[arg_name] = ""
         else:
             prompt_arguments = user_arguments
-        
+
         # Load the prompt with arguments
-        app_logger.info(f"Executing prompt '{prompt_name}' (raw mode) with server '{server_name}'")
-        
+        app_logger.info(f"Executing prompt '{prompt_name}' (raw mode) with server ID: {server_id}")
+
         try:
-            async with mcp_client.session(server_name) as temp_session:
+            async with mcp_client.session(server_id) as temp_session:
                 if prompt_arguments:
                     prompt_obj = await load_mcp_prompt(
                         temp_session, name=prompt_name, arguments=prompt_arguments
@@ -4409,17 +4407,23 @@ async def get_mcp_resources_for_server():
     without requiring the application to be globally configured with it.
     """
     data = await request.get_json()
-    if not data or not all(k in data for k in ["name", "host", "port", "path"]):
+    if not data or not all(k in data for k in ["host", "port", "path"]):
         return jsonify({"status": "error", "message": "Missing required MCP server details"}), 400
 
-    server_name = data["name"]
-    
+    # Use server ID if provided, otherwise generate a temporary one for testing
+    import uuid
+    server_id = data.get("id") or f"temp-{uuid.uuid4()}"
+    server_name = data.get("name", "Test Server")  # For logging only
+
     try:
         mcp_server_url = f"http://{data['host']}:{data['port']}{data['path']}"
-        temp_server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
+        app_logger.info(f"Testing MCP server: {server_name} (ID: {server_id}) at {mcp_server_url}")
+
+        # CRITICAL: Use server ID as key, even for temporary testing
+        temp_server_configs = {server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
         temp_mcp_client = MultiServerMCPClient(temp_server_configs)
-        
-        async with temp_mcp_client.session(server_name) as temp_session:
+
+        async with temp_mcp_client.session(server_id) as temp_session:
             tools_result = await temp_session.list_tools()
             prompts_result = await temp_session.list_prompts()
         
@@ -5177,12 +5181,11 @@ async def reclassify_profile(profile_id: str):
         
         # Set provider and model in config so call_llm_api can use them
         from trusted_data_agent.core.config import (
-            set_user_mcp_server_name, set_user_mcp_server_id,
+            set_user_mcp_server_id,
             set_user_provider, set_user_model
         )
         set_user_provider(provider, user_uuid)
         set_user_model(model, user_uuid)
-        set_user_mcp_server_name(server_name, user_uuid)
         set_user_mcp_server_id(mcp_server_id, user_uuid)
         
         # Now run classification via switch_profile_context

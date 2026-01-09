@@ -1700,22 +1700,23 @@ The following domain knowledge may be relevant to this conversation:
                         override_mcp_server = next((srv for srv in mcp_servers if srv['id'] == override_mcp_server_id), None)
                         
                         if override_mcp_server:
-                            server_name = override_mcp_server.get('name')
+                            server_name = override_mcp_server.get('name')  # For logging only
                             host = override_mcp_server.get('host')
                             port = override_mcp_server.get('port')
                             path = override_mcp_server.get('path')
-                            
+
                             app_logger.info(f"🔧 Creating temporary MCP client")
-                            app_logger.info(f"   Server: {server_name}")
+                            app_logger.info(f"   Server: {server_name} (ID: {override_mcp_server_id})")
                             app_logger.info(f"   URL: http://{host}:{port}{path}")
-                            
+
                             mcp_server_url = f"http://{host}:{port}{path}"
-                            temp_server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
+                            # CRITICAL: Use server ID as key, not name
+                            temp_server_configs = {override_mcp_server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
                             temp_mcp_client = MultiServerMCPClient(temp_server_configs)
-                            
+
                             # Load and process tools using the same method as configuration_service
                             from langchain_mcp_adapters.tools import load_mcp_tools
-                            async with temp_mcp_client.session(server_name) as session:
+                            async with temp_mcp_client.session(override_mcp_server_id) as session:
                                 all_processed_tools = await load_mcp_tools(session)
                             
                             # Get enabled tool and prompt names for this profile

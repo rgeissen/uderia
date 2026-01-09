@@ -18,7 +18,7 @@ from trusted_data_agent.core.config import (
     APP_CONFIG, APP_STATE,
     set_user_provider, set_user_model, set_user_aws_region,
     set_user_azure_deployment_details, set_user_friendli_details,
-    set_user_model_provider_in_profile, set_user_mcp_server_name,
+    set_user_model_provider_in_profile,
     set_user_mcp_server_id, set_user_llm_instance, set_user_mcp_client,
     set_user_server_configs
 )
@@ -416,34 +416,36 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     "message": f"MCP server {mcp_server_id} not found in configuration"
                 }
 
-            server_name = mcp_server.get('name')
+            server_name = mcp_server.get('name')  # For logging only
             host = mcp_server.get('host')
             port = mcp_server.get('port')
             path = mcp_server.get('path')
 
-            if not all([server_name, host, port, path]):
+            if not all([host, port, path]):
                 return {
                     "status": "error",
                     "message": f"Incomplete MCP server configuration for {mcp_server_id}"
                 }
 
             mcp_server_url = f"http://{host}:{port}{path}"
-            app_logger.info(f"Initializing MCP client for profile {profile_id}: {mcp_server_url}")
+            app_logger.info(f"Initializing MCP client for profile {profile_id} (server: {server_name}): {mcp_server_url}")
 
             # Initialize and validate MCP client
             try:
                 import asyncio
-                server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
+                # CRITICAL: Use server ID as key, not name (enables name changes without breaking connections)
+                server_configs = {mcp_server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
                 temp_mcp_client = MultiServerMCPClient(server_configs)
 
                 # Test MCP connection with 10 second timeout
-                app_logger.info(f"Testing MCP connection to {server_name}...")
+                app_logger.info(f"Testing MCP connection to {server_name} (ID: {mcp_server_id})...")
                 async def test_mcp():
-                    async with temp_mcp_client.session(server_name) as temp_session:
+                    # Use server ID for session, not name
+                    async with temp_mcp_client.session(mcp_server_id) as temp_session:
                         await temp_session.list_tools()
 
                 await asyncio.wait_for(test_mcp(), timeout=10.0)
-                app_logger.info(f"MCP server connection validated successfully: {server_name}")
+                app_logger.info(f"MCP server connection validated successfully: {server_name} (ID: {mcp_server_id})")
 
             except asyncio.TimeoutError:
                 app_logger.error(f"MCP server connection timed out after 10 seconds: {mcp_server_url}")
@@ -461,7 +463,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             # Store MCP client in APP_STATE
             set_user_mcp_client(temp_mcp_client, user_uuid)
             set_user_server_configs(server_configs, user_uuid)
-            set_user_mcp_server_name(server_name, user_uuid)
+            # Server name no longer stored - only ID is needed for session management
             set_user_mcp_server_id(mcp_server_id, user_uuid)
 
             APP_CONFIG.MCP_SERVER_CONNECTED = True
@@ -691,13 +693,14 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                     raise ValueError(f"Incomplete MCP server configuration: host={host}, port={port}, path={path}")
 
                 mcp_server_url = f"http://{host}:{port}{path}"
-                app_logger.info(f"Connecting to MCP server at: {mcp_server_url}")
+                app_logger.info(f"Connecting to MCP server at: {mcp_server_url} (ID: {server_id})")
 
-                temp_server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
+                # CRITICAL: Use server ID as key, not name
+                temp_server_configs = {server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
                 temp_mcp_client = MultiServerMCPClient(temp_server_configs)
-                async with temp_mcp_client.session(server_name) as temp_session:
+                async with temp_mcp_client.session(server_id) as temp_session:
                     await temp_session.list_tools()
-                app_logger.info("MCP server connection validated successfully.")
+                app_logger.info(f"MCP server connection validated successfully (ID: {server_id})")
             else:
                 app_logger.info("No MCP server configuration provided. Skipping MCP validation (llm_only or rag_focused profile).")
 
@@ -742,13 +745,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
 
             # Only set MCP-related state if MCP configuration was provided
             if has_mcp_config:
-                set_user_mcp_server_name(server_name, user_uuid)
+                # Server name no longer stored - only ID is needed for session management
                 set_user_mcp_server_id(server_id, user_uuid)
                 set_user_mcp_client(temp_mcp_client, user_uuid)
                 set_user_server_configs(temp_server_configs, user_uuid)
             else:
                 # Clear MCP state for llm_only and rag_focused profiles
-                set_user_mcp_server_name(None, user_uuid)
                 set_user_mcp_server_id(None, user_uuid)
                 set_user_mcp_client(None, user_uuid)
                 set_user_server_configs(None, user_uuid)
@@ -913,10 +915,8 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             APP_CONFIG.ACTIVE_MODEL = model
 
             if has_mcp_config:
-                APP_CONFIG.ACTIVE_MCP_SERVER_NAME = server_name
                 return {"status": "success", "message": f"MCP Server '{server_name}' and LLM configured successfully."}
             else:
-                APP_CONFIG.ACTIVE_MCP_SERVER_NAME = None
                 return {"status": "success", "message": f"LLM ({provider}/{model}) configured successfully for {profile_id or 'conversation'} profile."}
 
         except (APIError, OpenAI_APIError, google_exceptions.PermissionDenied, ClientError, RuntimeError, Exception) as e:
@@ -926,11 +926,10 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             APP_STATE['mcp_client'] = None
             APP_CONFIG.MCP_SERVER_CONNECTED = False
             APP_CONFIG.CHART_MCP_CONNECTED = False
-            
+
             APP_CONFIG.SERVICES_CONFIGURED = False
             APP_CONFIG.ACTIVE_PROVIDER = None
             APP_CONFIG.ACTIVE_MODEL = None
-            APP_CONFIG.ACTIVE_MCP_SERVER_NAME = None
             
             root_exception = unwrap_exception(e)
             error_message = ""

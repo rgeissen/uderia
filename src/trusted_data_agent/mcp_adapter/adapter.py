@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from langchain_mcp_adapters.tools import load_mcp_tools
 from trusted_data_agent.llm import handler as llm_handler
 from trusted_data_agent.core.config import APP_CONFIG, AppConfig
-from trusted_data_agent.core.config import get_user_mcp_server_name
+from trusted_data_agent.core.config import get_user_mcp_server_id
 from trusted_data_agent.agent.response_models import CanonicalResponse, PromptReportResponse
 
 app_logger = logging.getLogger("quart.app")
@@ -228,10 +228,11 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     if not mcp_client or not llm_instance:
         raise Exception("MCP or LLM client not initialized.")
 
-    server_name = get_user_mcp_server_name(user_uuid)
-    if not server_name:
-        raise Exception("MCP server name not found in configuration.")
-    
+    # Use server ID instead of name for session management
+    server_id = get_user_mcp_server_id(user_uuid)
+    if not server_id:
+        raise Exception("MCP server ID not found in configuration.")
+
     # Get classification mode from profile if provided
     classification_mode = 'light'  # default
     if profile_id:
@@ -246,7 +247,7 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     else:
         app_logger.warning("No profile_id provided to load_and_categorize_mcp_resources, using default mode 'full'")
 
-    async with mcp_client.session(server_name) as temp_session:
+    async with mcp_client.session(server_id) as temp_session:
         app_logger.info("--- Loading and classifying MCP tools and prompts... ---")
 
         list_tools_result = await temp_session.list_tools()
@@ -1360,12 +1361,13 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
 
     app_logger.info(f"🔧 [MCP CALL START] Tool: '{tool_name}' | Args: {aligned_args}")
     try:
-        server_name = get_user_mcp_server_name(user_uuid)
-        if not server_name:
-            raise Exception("MCP server name not found in configuration.")
+        # Use server ID instead of name for session management
+        server_id = get_user_mcp_server_id(user_uuid)
+        if not server_id:
+            raise Exception("MCP server ID not found in configuration.")
 
-        app_logger.info(f"🔧 [MCP CALL] Opening session to server: {server_name}")
-        async with mcp_client.session(server_name) as temp_session:
+        app_logger.info(f"🔧 [MCP CALL] Opening session to server ID: {server_id}")
+        async with mcp_client.session(server_id) as temp_session:
             app_logger.info(f"🔧 [MCP CALL] Calling tool '{tool_name}'...")
             call_tool_result = await temp_session.call_tool(tool_name, aligned_args)
             app_logger.info(f"🔧 [MCP CALL SUCCESS] Tool '{tool_name}' returned result (length: {len(str(call_tool_result))} chars)")

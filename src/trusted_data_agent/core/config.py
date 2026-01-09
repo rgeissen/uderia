@@ -30,12 +30,10 @@ class AppConfig:
     SERVICES_CONFIGURED = False # Master flag indicating if the core services (LLM, MCP) have been successfully configured.
     ACTIVE_PROVIDER = None
     ACTIVE_MODEL = None
-    ACTIVE_MCP_SERVER_NAME = None
     MCP_SERVER_CONNECTED = False # Runtime flag indicating if a connection to the MCP server is active.
     CHART_MCP_CONNECTED = False # Runtime flag indicating if a connection to the Charting server is active.
     CURRENT_PROVIDER = None # Stores the name of the currently configured LLM provider (e.g., "Google").
     CURRENT_MODEL = None # Stores the name of the currently configured LLM model (e.g., "gemini-1.5-flash").
-    CURRENT_MCP_SERVER_NAME = None # Stores the name of the active MCP server configuration.
     CURRENT_MCP_SERVER_ID = None # Stores the unique ID of the active MCP server (decoupled from name).
     CURRENT_AWS_REGION = None # Stores the AWS region, used specifically for the "Amazon" provider.
     CURRENT_AZURE_DEPLOYMENT_DETAILS = None # Stores Azure-specific details {endpoint, deployment_name, api_version}.
@@ -215,16 +213,6 @@ def set_user_model(model: str, user_uuid: str = None):
         user_uuid: Optional user UUID (for compatibility, always uses global config)
     """
     APP_CONFIG.CURRENT_MODEL = model
-
-
-def get_user_mcp_server_name(user_uuid: str = None) -> str:
-    """Get current MCP server name for user."""
-    return APP_CONFIG.CURRENT_MCP_SERVER_NAME
-
-
-def set_user_mcp_server_name(server_name: str, user_uuid: str = None):
-    """Set current MCP server name for user."""
-    APP_CONFIG.CURRENT_MCP_SERVER_NAME = server_name
 
 
 def get_user_mcp_server_id(user_uuid: str = None) -> str:

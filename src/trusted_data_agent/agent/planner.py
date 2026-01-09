@@ -1564,10 +1564,11 @@ Ranking:"""
             self.executor.prompt_arguments = enriched_args
 
             try:
-                server_name = APP_CONFIG.CURRENT_MCP_SERVER_NAME
-                if not server_name:
-                    raise RuntimeError("MCP server name is not configured.")
-                async with mcp_client.session(server_name) as temp_session:
+                # Use server ID instead of name for session management
+                server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+                if not server_id:
+                    raise RuntimeError("MCP server ID is not configured.")
+                async with mcp_client.session(server_id) as temp_session:
                     prompt_obj = await load_mcp_prompt(
                         temp_session, name=self.executor.active_prompt_name, arguments=self.executor.prompt_arguments
                     )

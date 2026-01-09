@@ -130,7 +130,7 @@ async def get_application_status(current_user):
             "isConfigured": True,
             "provider": APP_CONFIG.ACTIVE_PROVIDER,
             "model": APP_CONFIG.ACTIVE_MODEL,
-            "mcp_server": { "name": APP_CONFIG.ACTIVE_MCP_SERVER_NAME },
+            "mcp_server": { "id": APP_CONFIG.CURRENT_MCP_SERVER_ID },
             "rag_active": rag_active,
             "rag_enabled": APP_CONFIG.RAG_ENABLED
         }
@@ -751,9 +751,10 @@ async def get_prompt_content(prompt_name):
     if not mcp_client:
         return jsonify({"error": "MCP client not configured."}), 400
 
-    server_name = APP_CONFIG.CURRENT_MCP_SERVER_NAME
-    if not server_name:
-         return jsonify({"error": "MCP server name not configured."}), 400
+    # Use server ID instead of name for session management
+    server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+    if not server_id:
+         return jsonify({"error": "MCP server ID not configured."}), 400
 
     try:
         prompt_info = _get_prompt_info(prompt_name)
@@ -766,7 +767,7 @@ async def get_prompt_content(prompt_name):
                 if arg_name:
                     placeholder_args[arg_name] = f"<{arg_name}>"
 
-        async with mcp_client.session(server_name) as temp_session:
+        async with mcp_client.session(server_id) as temp_session:
             if placeholder_args:
                 prompt_obj = await load_mcp_prompt(
                     temp_session, name=prompt_name, arguments=placeholder_args
@@ -1703,28 +1704,35 @@ async def test_mcp_connection():
     if not data:
         return jsonify({"status": "error", "message": "Request body must be valid JSON."}), 400
 
-    server_name = data.get("name")
     host = data.get("host")
     port = data.get("port")
     path = data.get("path")
 
-    if not all([server_name, host, port, path]):
-        return jsonify({"status": "error", "message": "Missing required fields: name, host, port, path."}), 400
+    if not all([host, port, path]):
+        return jsonify({"status": "error", "message": "Missing required fields: host, port, path."}), 400
+
+    # Use server ID if provided, otherwise generate a temporary one for testing
+    import uuid
+    server_id = data.get("id") or f"temp-{uuid.uuid4()}"
+    server_name = data.get("name", "Test Server")  # For logging only
 
     try:
         # Construct temporary server config
         mcp_server_url = f"http://{host}:{port}{path}"
-        temp_server_configs = {server_name: {"url": mcp_server_url, "transport": "streamable_http"}}
-        
+        app_logger.info(f"Testing MCP connection for '{server_name}' (ID: {server_id}) at {mcp_server_url}")
+
+        # CRITICAL: Use server ID as key, even for temporary testing
+        temp_server_configs = {server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
+
         # Create temporary MCP client
         temp_mcp_client = MultiServerMCPClient(temp_server_configs)
-        
+
         # Test connection by listing tools
-        async with temp_mcp_client.session(server_name) as temp_session:
+        async with temp_mcp_client.session(server_id) as temp_session:
             tools_result = await temp_session.list_tools()
             tool_count = len(tools_result.tools) if hasattr(tools_result, 'tools') else 0
-        
-        app_logger.info(f"MCP connection test successful for '{server_name}' at {mcp_server_url}. Found {tool_count} tools.")
+
+        app_logger.info(f"MCP connection test successful for '{server_name}' (ID: {server_id}) at {mcp_server_url}. Found {tool_count} tools.")
         return jsonify({
             "status": "success",
             "message": f"Connection successful! Found {tool_count} tools.",
