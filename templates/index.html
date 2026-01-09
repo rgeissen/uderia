@@ -5666,10 +5666,38 @@
 
                     <!-- Tab Content: System Prompts -->
                     <div id="profile-content-system-prompts" class="p-6 hidden">
-                        <p class="text-xs text-gray-400 mb-4">Configure which prompt versions should be used for different functional areas. Defaults to system-wide prompt mappings.</p>
-                        
-                        <!-- Master System Prompts Section -->
-                        <div class="mb-6">
+                        <p id="system-prompts-description" class="text-xs text-gray-400 mb-4">Configure which prompt versions should be used for different functional areas. Defaults to system-wide prompt mappings.</p>
+
+                        <!-- Conversation Focused (LLM Only) Section - shown only for llm_only profiles -->
+                        <div id="conversation-execution-section" class="mb-6 hidden">
+                            <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                                    </svg>
+                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Conversation Execution Prompt</h4>
+                                </div>
+                                <p class="text-xs text-gray-400 mb-3">Select the system prompt for LLM conversation mode</p>
+                                <div id="profile-modal-conversation-prompts" class="space-y-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- RAG Focused Execution Section - shown only for rag_focused profiles -->
+                        <div id="rag-execution-section" class="mb-6 hidden">
+                            <div class="bg-gradient-to-br from-emerald-900/20 to-teal-900/20 rounded-lg p-4 border-2 border-emerald-700/30">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">RAG Focused Execution Prompt</h4>
+                                </div>
+                                <p class="text-xs text-gray-400 mb-3">Select the system prompt for knowledge base synthesis and retrieval</p>
+                                <div id="profile-modal-rag-prompts" class="space-y-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- Master System Prompts Section - shown only for tool_enabled profiles -->
+                        <div id="master-system-section" class="mb-6">
                             <div class="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 rounded-lg p-4 border-2 border-purple-700/30">
                                 <div class="flex items-center gap-2 mb-3">
                                     <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5682,21 +5710,23 @@
                             </div>
                         </div>
 
-                        <!-- Workflow & Classification Section -->
-                        <div class="mb-6">
-                            <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Workflow & Classification</h4>
+                        <!-- Tool-Enabled Only Sections - shown only for tool_enabled profiles -->
+                        <div id="tool-enabled-prompts-section">
+                            <!-- Workflow & Classification Section -->
+                            <div class="mb-6">
+                                <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                                        </svg>
+                                        <h4 class="text-sm font-bold text-white uppercase tracking-wide">Workflow & Classification</h4>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mb-3">Prompts for task analysis and workflow planning</p>
+                                    <div id="profile-modal-workflow-prompts" class="space-y-2"></div>
                                 </div>
-                                <p class="text-xs text-gray-400 mb-3">Prompts for task analysis and workflow planning</p>
-                                <div id="profile-modal-workflow-prompts" class="space-y-2"></div>
                             </div>
-                        </div>
 
-                        <!-- Error Recovery Section -->
+                            <!-- Error Recovery Section -->
                         <div class="mb-6">
                             <div class="bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-lg p-4 border-2 border-red-700/30">
                                 <div class="flex items-center gap-2 mb-3">
@@ -5737,6 +5767,7 @@
                                 <div id="profile-modal-visualization-prompts" class="space-y-2"></div>
                             </div>
                         </div>
+                        </div><!-- End tool-enabled-prompts-section -->
                     </div>
                 </div>
 

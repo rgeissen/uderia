@@ -1640,7 +1640,9 @@ async def get_available_prompts(current_user):
             'workflow_classification': 'workflow',
             'error_recovery': 'recovery',
             'data_operations': 'data',
-            'visualization': 'visualization'
+            'visualization': 'visualization',
+            'conversation_execution': 'system',  # Conversation prompts are system-level
+            'rag_focused_execution': 'system'    # RAG focused prompts are system-level
         }
         
         # Build response structure based on categories

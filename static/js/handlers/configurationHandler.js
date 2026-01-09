@@ -3285,11 +3285,52 @@ function getCategoryColor(category) {
 }
 
 async function populateSystemPrompts(modal, profile) {
+    const profileType = profile ? (profile.profile_type || 'tool_enabled') : 'tool_enabled';
+
+    // Get all containers
     const masterPromptsContainer = modal.querySelector('#profile-modal-master-prompts');
     const workflowPromptsContainer = modal.querySelector('#profile-modal-workflow-prompts');
     const errorPromptsContainer = modal.querySelector('#profile-modal-error-prompts');
     const dataPromptsContainer = modal.querySelector('#profile-modal-data-prompts');
     const visualizationPromptsContainer = modal.querySelector('#profile-modal-visualization-prompts');
+    const conversationPromptsContainer = modal.querySelector('#profile-modal-conversation-prompts');
+    const ragPromptsContainer = modal.querySelector('#profile-modal-rag-prompts');
+
+    // Show/hide sections based on profile type
+    const conversationSection = modal.querySelector('#conversation-execution-section');
+    const ragSection = modal.querySelector('#rag-execution-section');
+    const masterSystemSection = modal.querySelector('#master-system-section');
+    const toolEnabledSection = modal.querySelector('#tool-enabled-prompts-section');
+    const systemPromptsDescription = modal.querySelector('#system-prompts-description');
+
+    if (profileType === 'llm_only') {
+        // Conversation focused: show only conversation execution section
+        if (conversationSection) conversationSection.classList.remove('hidden');
+        if (ragSection) ragSection.classList.add('hidden');
+        if (masterSystemSection) masterSystemSection.classList.add('hidden');
+        if (toolEnabledSection) toolEnabledSection.style.display = 'none';
+        if (systemPromptsDescription) {
+            systemPromptsDescription.textContent = 'Configure which conversation prompt version should be used for this profile.';
+        }
+    } else if (profileType === 'rag_focused') {
+        // RAG focused: show only RAG execution section
+        if (conversationSection) conversationSection.classList.add('hidden');
+        if (ragSection) ragSection.classList.remove('hidden');
+        if (masterSystemSection) masterSystemSection.classList.add('hidden');
+        if (toolEnabledSection) toolEnabledSection.style.display = 'none';
+        if (systemPromptsDescription) {
+            systemPromptsDescription.textContent = 'Configure which RAG synthesis prompt version should be used for this profile.';
+        }
+    } else {
+        // Tool enabled: show all sections
+        if (conversationSection) conversationSection.classList.add('hidden');
+        if (ragSection) ragSection.classList.add('hidden');
+        if (masterSystemSection) masterSystemSection.classList.remove('hidden');
+        if (toolEnabledSection) toolEnabledSection.style.display = '';
+        if (systemPromptsDescription) {
+            systemPromptsDescription.textContent = 'Configure which prompt versions should be used for different functional areas. Defaults to system-wide prompt mappings.';
+        }
+    }
 
     // Get the provider from the profile's LLM configuration
     let profileProvider = null;
@@ -3300,53 +3341,78 @@ async function populateSystemPrompts(modal, profile) {
         }
     }
 
-    // Define the categories and their subcategories with display names
-    const categories = {
-        master_system_prompts: {
-            container: masterPromptsContainer,
-            subcategories: profileProvider ? {
-                [profileProvider]: {
-                    'Google': 'Google Gemini',
-                    'Anthropic': 'Anthropic Claude',
-                    'OpenAI': 'OpenAI GPT',
-                    'Amazon': 'Amazon Bedrock',
-                    'Azure': 'Azure OpenAI',
-                    'Friendli': 'Friendli AI',
-                    'Ollama': 'Ollama (Local)'
-                }[profileProvider] || `${profileProvider} Master System Prompt`
-            } : {}
-        },
-        workflow_classification: {
-            container: workflowPromptsContainer,
-            subcategories: {
-                'task_classification': 'Task Classification',
-                'workflow_meta_planning': 'Workflow Meta Planning',
-                'workflow_tactical': 'Workflow Tactical'
+    // Define the categories and their subcategories with display names based on profile type
+    let categories = {};
+
+    if (profileType === 'llm_only') {
+        // Conversation focused: only conversation_execution category
+        categories = {
+            conversation_execution: {
+                container: conversationPromptsContainer,
+                subcategories: {
+                    'conversation_execution': 'Conversation Execution Prompt'
+                }
             }
-        },
-        error_recovery: {
-            container: errorPromptsContainer,
-            subcategories: {
-                'error_recovery': 'Error Recovery',
-                'tactical_self_correction': 'Tactical Self-Correction',
-                'self_correction_column_error': 'Column Error Correction',
-                'self_correction_table_error': 'Table Error Correction'
+        };
+    } else if (profileType === 'rag_focused') {
+        // RAG focused: only rag_focused_execution category
+        categories = {
+            rag_focused_execution: {
+                container: ragPromptsContainer,
+                subcategories: {
+                    'rag_focused_execution': 'RAG Focused Execution Prompt'
+                }
             }
-        },
-        data_operations: {
-            container: dataPromptsContainer,
-            subcategories: {
-                'sql_consolidation': 'SQL Consolidation'
+        };
+    } else {
+        // Tool enabled: all categories
+        categories = {
+            master_system_prompts: {
+                container: masterPromptsContainer,
+                subcategories: profileProvider ? {
+                    [profileProvider]: {
+                        'Google': 'Google Gemini',
+                        'Anthropic': 'Anthropic Claude',
+                        'OpenAI': 'OpenAI GPT',
+                        'Amazon': 'Amazon Bedrock',
+                        'Azure': 'Azure OpenAI',
+                        'Friendli': 'Friendli AI',
+                        'Ollama': 'Ollama (Local)'
+                    }[profileProvider] || `${profileProvider} Master System Prompt`
+                } : {}
+            },
+            workflow_classification: {
+                container: workflowPromptsContainer,
+                subcategories: {
+                    'task_classification': 'Task Classification',
+                    'workflow_meta_planning': 'Workflow Meta Planning',
+                    'workflow_tactical': 'Workflow Tactical'
+                }
+            },
+            error_recovery: {
+                container: errorPromptsContainer,
+                subcategories: {
+                    'error_recovery': 'Error Recovery',
+                    'tactical_self_correction': 'Tactical Self-Correction',
+                    'self_correction_column_error': 'Column Error Correction',
+                    'self_correction_table_error': 'Table Error Correction'
+                }
+            },
+            data_operations: {
+                container: dataPromptsContainer,
+                subcategories: {
+                    'sql_consolidation': 'SQL Consolidation'
+                }
+            },
+            visualization: {
+                container: visualizationPromptsContainer,
+                subcategories: {
+                    'charting_instructions': 'Charting Instructions',
+                    'g2plot_guidelines': 'G2Plot Guidelines'
+                }
             }
-        },
-        visualization: {
-            container: visualizationPromptsContainer,
-            subcategories: {
-                'charting_instructions': 'Charting Instructions',
-                'g2plot_guidelines': 'G2Plot Guidelines'
-            }
-        }
-    };
+        };
+    }
 
     try {
         // Fetch available prompts from the system
@@ -3523,6 +3589,10 @@ async function showProfileModal(profileId = null) {
         const intelligenceContent = modal.querySelector('#profile-content-intelligence');
         console.log('[Profile Modal] Tabs found - MCP:', !!mcpResourcesTab, 'Intelligence:', !!intelligenceTab);
 
+        // Get System Prompts tab (for enterprise users)
+        const systemPromptsTab = modal.querySelector('#profile-tab-system-prompts');
+        const systemPromptsContent = modal.querySelector('#profile-content-system-prompts');
+
         if (profileType === 'llm_only') {
             console.log('[Profile Modal] Hiding MCP-related sections for LLM-only profile');
             // Hide MCP-related sections only
@@ -3537,6 +3607,14 @@ async function showProfileModal(profileId = null) {
             if (intelligenceContent) intelligenceContent.style.display = '';
             if (intelligenceTab) {
                 intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
+            }
+
+            // KEEP System Prompts tab visible (for enterprise users to configure CONVERSATION_EXECUTION)
+            if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
+                systemPromptsTab.style.display = '';
+            }
+            if (systemPromptsContent) {
+                systemPromptsContent.style.display = '';
             }
         } else if (profileType === 'rag_focused') {
             console.log('[Profile Modal] Configuring sections for RAG-focused profile');
@@ -3553,6 +3631,14 @@ async function showProfileModal(profileId = null) {
             if (intelligenceTab) {
                 intelligenceTab.setAttribute('title', 'Configure knowledge repositories (REQUIRED for RAG focused profiles)');
             }
+
+            // KEEP System Prompts tab visible (for enterprise users to configure RAG_FOCUSED_EXECUTION)
+            if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
+                systemPromptsTab.style.display = '';
+            }
+            if (systemPromptsContent) {
+                systemPromptsContent.style.display = '';
+            }
         } else {
             console.log('[Profile Modal] Showing all sections for tool-enabled profile');
             // Show all sections for tool-enabled profiles
@@ -3565,6 +3651,14 @@ async function showProfileModal(profileId = null) {
             if (intelligenceContent) intelligenceContent.style.display = '';
             if (intelligenceTab) {
                 intelligenceTab.setAttribute('title', 'Configure planner repositories and knowledge collections');
+            }
+
+            // KEEP System Prompts tab visible (for enterprise users to configure all prompts)
+            if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
+                systemPromptsTab.style.display = '';
+            }
+            if (systemPromptsContent) {
+                systemPromptsContent.style.display = '';
             }
         }
 
@@ -3586,24 +3680,39 @@ async function showProfileModal(profileId = null) {
     const cleanRAGFocusedRadio = modal.querySelector('#profile-modal-type-rag-focused');
 
     // Add our event listeners to the clean radio buttons
-    cleanLLMOnlyRadio.addEventListener('change', () => {
+    cleanLLMOnlyRadio.addEventListener('change', async () => {
         if (cleanLLMOnlyRadio.checked) {
             console.log('[Profile Modal] Radio changed to llm_only');
             updateSectionVisibility('llm_only');
+            // Update System Prompts tab if user is privileged
+            if (Utils.isPrivilegedUser()) {
+                const tempProfile = { ...profile, profile_type: 'llm_only' };
+                await populateSystemPrompts(modal, tempProfile);
+            }
         }
     });
 
-    cleanToolEnabledRadio.addEventListener('change', () => {
+    cleanToolEnabledRadio.addEventListener('change', async () => {
         if (cleanToolEnabledRadio.checked) {
             console.log('[Profile Modal] Radio changed to tool_enabled');
             updateSectionVisibility('tool_enabled');
+            // Update System Prompts tab if user is privileged
+            if (Utils.isPrivilegedUser()) {
+                const tempProfile = { ...profile, profile_type: 'tool_enabled' };
+                await populateSystemPrompts(modal, tempProfile);
+            }
         }
     });
 
-    cleanRAGFocusedRadio.addEventListener('change', () => {
+    cleanRAGFocusedRadio.addEventListener('change', async () => {
         if (cleanRAGFocusedRadio.checked) {
             console.log('[Profile Modal] Radio changed to rag_focused');
             updateSectionVisibility('rag_focused');
+            // Update System Prompts tab if user is privileged
+            if (Utils.isPrivilegedUser()) {
+                const tempProfile = { ...profile, profile_type: 'rag_focused' };
+                await populateSystemPrompts(modal, tempProfile);
+            }
         }
     });
 

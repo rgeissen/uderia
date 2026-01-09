@@ -380,6 +380,12 @@
     "visualization": {
       "charting_instructions": "CHARTING_INSTRUCTIONS",
       "g2plot_guidelines": "G2PLOT_GUIDELINES"
+    },
+    "conversation_execution": {
+      "conversation_execution": "CONVERSATION_EXECUTION"
+    },
+    "rag_focused_execution": {
+      "rag_focused_execution": "RAG_FOCUSED_EXECUTION"
     }
   }
 }
