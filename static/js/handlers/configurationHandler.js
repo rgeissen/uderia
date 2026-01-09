@@ -2441,11 +2441,20 @@ function attachProfileEventListeners() {
                 
                 try {
                     const result = await API.testProfile(profileId);
-                    const allSuccessful = Object.values(result.results).every(r => r.status === 'success');
+                    const allSuccessful = Object.values(result.results).every(r => r.status === 'success' || r.status === 'info');
                     
                     let testResultsHTML = '';
                     for (const [key, value] of Object.entries(result.results)) {
-                        const statusClass = value.status === 'success' ? 'text-green-400' : 'text-red-400';
+                        let statusClass;
+                        if (value.status === 'success') {
+                            statusClass = 'text-green-400';
+                        } else if (value.status === 'info') {
+                            statusClass = 'text-blue-400';
+                        } else if (value.status === 'warning') {
+                            statusClass = 'text-yellow-400';
+                        } else {
+                            statusClass = 'text-red-400';
+                        }
                         testResultsHTML += `<p class="${statusClass}">${value.message}</p>`;
                     }
                     
@@ -2625,10 +2634,19 @@ function attachProfileEventListeners() {
             try {
                 const result = await API.testProfile(profileId);
                 let html = '';
-                const all_successful = Object.values(result.results).every(r => r.status === 'success');
-                
+                const all_successful = Object.values(result.results).every(r => r.status === 'success' || r.status === 'info');
+
                 for (const [key, value] of Object.entries(result.results)) {
-                    const statusClass = value.status === 'success' ? 'text-green-400' : 'text-red-400';
+                    let statusClass;
+                    if (value.status === 'success') {
+                        statusClass = 'text-green-400';
+                    } else if (value.status === 'info') {
+                        statusClass = 'text-blue-400';
+                    } else if (value.status === 'warning') {
+                        statusClass = 'text-yellow-400';
+                    } else {
+                        statusClass = 'text-red-400';
+                    }
                     html += `<p class="${statusClass}">${value.message}</p>`;
                 }
                 resultsContainer.innerHTML = html;
@@ -4339,10 +4357,19 @@ export async function initializeConfigurationUI() {
                     try {
                         const result = await API.testProfile(profileId);
                         let html = '';
-                        const all_successful = Object.values(result.results).every(r => r.status === 'success');
+                        const all_successful = Object.values(result.results).every(r => r.status === 'success' || r.status === 'info');
 
                         for (const [key, value] of Object.entries(result.results)) {
-                            const statusClass = value.status === 'success' ? 'text-green-400' : 'text-red-400';
+                            let statusClass;
+                            if (value.status === 'success') {
+                                statusClass = 'text-green-400';
+                            } else if (value.status === 'info') {
+                                statusClass = 'text-blue-400';
+                            } else if (value.status === 'warning') {
+                                statusClass = 'text-yellow-400';
+                            } else {
+                                statusClass = 'text-red-400';
+                            }
                             html += `<p class="${statusClass}">${value.message}</p>`;
                         }
                         resultsContainer.innerHTML = html;

@@ -2691,3 +2691,49 @@ input[type="checkbox"]:disabled:hover {
 }
 
 /* Dynamic provider colors will be applied via inline styles */
+
+/* ============================================================================
+   RAG FOCUSED PROFILE - SOURCE DOCUMENT BUTTONS
+   ============================================================================ */
+
+/* "Show Sources" / "Hide Sources" toggle button - with maximum specificity */
+.assistant-message .rag-sources-section > div > button,
+.response-card .rag-sources-section > div > button,
+.rag-sources-section > div > button,
+.rag-sources-section button.px-3,
+button.bg-gray-700.px-3 {
+    background-color: #374151 !important; /* gray-700 */
+    background-image: none !important;
+    color: white !important;
+    border: none !important;
+}
+
+.assistant-message .rag-sources-section > div > button:hover,
+.response-card .rag-sources-section > div > button:hover,
+.rag-sources-section > div > button:hover,
+.rag-sources-section button.px-3:hover,
+button.bg-gray-700.px-3:hover {
+    background-color: #4B5563 !important; /* gray-600 */
+    background-image: none !important;
+}
+
+/* Individual source card "Expand" / "Collapse" buttons - with maximum specificity */
+.assistant-message .rag-source-card button,
+.response-card .rag-source-card button,
+.rag-source-card button,
+.rag-source-card button.px-2,
+button.bg-gray-700.px-2 {
+    background-color: #374151 !important; /* gray-700 */
+    background-image: none !important;
+    color: white !important;
+    border: none !important;
+}
+
+.assistant-message .rag-source-card button:hover,
+.response-card .rag-source-card button:hover,
+.rag-source-card button:hover,
+.rag-source-card button.px-2:hover,
+button.bg-gray-700.px-2:hover {
+    background-color: #4B5563 !important; /* gray-600 */
+    background-image: none !important;
+}

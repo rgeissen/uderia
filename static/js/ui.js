@@ -369,7 +369,7 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
                 userBadge.textContent = turnId;
                 userBadge.classList.add('user-badge');
                 lastUserBubble.appendChild(userBadge); // Append badge to wrapper, not icon
-                
+
                 if (isValid === false) {
                     userBadge.classList.add('context-invalid');
                 }

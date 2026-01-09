@@ -506,21 +506,63 @@ async function handleReloadPlanClick(element) {
         // Fetch the full turn details (plan + trace)
         const turnData = await API.fetchTurnDetails(sessionId, turnId);
 
-        // Check if this is an llm_only profile (conversation profile)
-        if (turnData && turnData.profile_type === 'llm_only') {
-            // Display message for conversation profiles
-            DOM.statusWindowContent.innerHTML = `
-                <div class="p-4 status-step info">
-                    <h4 class="font-bold text-sm text-white mb-2">💬 Conversation Profile</h4>
-                    <p class="text-xs text-gray-300 mb-2">${turnData.message || 'This turn used a conversation profile (LLM-only).'}</p>
-                    <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+        // Check if this is an llm_only or rag_focused profile (non-tool profiles)
+        if (turnData && (turnData.profile_type === 'llm_only' || turnData.profile_type === 'rag_focused')) {
+            const isRagFocused = turnData.profile_type === 'rag_focused';
+
+            // If there's detailed knowledge retrieval data, render it using the standard UI
+            if (turnData.knowledge_retrieval_event && turnData.knowledge_retrieval_event.chunks) {
+                // Use the standard renderHistoricalTrace function to show detailed knowledge retrieval
+                UI.renderHistoricalTrace(
+                    [], // No plan for non-tool profiles
+                    [], // No execution trace for non-tool profiles
+                    turnId,
+                    turnData.user_query || 'N/A',
+                    turnData.knowledge_retrieval_event // Pass the knowledge event with chunks
+                );
+
+                // Add profile info after knowledge details
+                const profileInfoEl = document.createElement('div');
+                profileInfoEl.className = 'p-4 status-step info mt-4';
+                const icon = isRagFocused ? '🔍' : '💬';
+                const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
+                profileInfoEl.innerHTML = `
+                    <h4 class="font-bold text-sm text-white mb-2">${icon} ${title}</h4>
+                    <div class="mt-2 p-3 bg-gray-800/30 rounded border border-white/10">
                         <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
                         <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
-                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> Conversation profiles bypass the planner and execute directly via LLM without tool calls.</p>
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${isRagFocused ? 'RAG focused profiles retrieve documents from knowledge repositories and synthesize answers from those sources only.' : 'Conversation profiles bypass the planner and execute directly via LLM without tool calls.'}</p>
                     </div>
-                </div>`;
+                `;
+                DOM.statusWindowContent.appendChild(profileInfoEl);
+            } else {
+                // Fallback: Show simple summary if no detailed knowledge data
+                const icon = isRagFocused ? '🔍' : '💬';
+                const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
+                const message = isRagFocused
+                    ? 'This turn used a RAG focused profile with mandatory knowledge retrieval.'
+                    : 'This turn used a conversation profile (LLM-only).';
+                const note = isRagFocused
+                    ? 'RAG focused profiles retrieve documents from knowledge repositories and synthesize answers from those sources only.'
+                    : 'Conversation profiles bypass the planner and execute directly via LLM without tool calls.';
 
-            // Hide replay buttons for conversation profiles (no plan to replay)
+                DOM.statusWindowContent.innerHTML = `
+                    <div class="p-4 status-step info">
+                        <h4 class="font-bold text-sm text-white mb-2">${icon} ${title}</h4>
+                        <p class="text-xs text-gray-300 mb-2">${turnData.message || message}</p>
+                        <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                            <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                            <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                            ${isRagFocused && turnData.knowledge_retrieval_event ? `
+                                <p class="text-xs text-gray-400"><strong>Documents Retrieved:</strong> ${turnData.knowledge_retrieval_event.document_count || 0}</p>
+                                <p class="text-xs text-gray-400"><strong>Collections:</strong> ${turnData.knowledge_retrieval_event.collections?.join(', ') || 'N/A'}</p>
+                            ` : ''}
+                            <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${note}</p>
+                        </div>
+                    </div>`;
+            }
+
+            // Hide replay buttons for non-tool profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
                 DOM.headerReplayPlannedButton.classList.add('hidden');
             }

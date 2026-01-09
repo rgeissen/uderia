@@ -5650,12 +5650,17 @@ async def test_profile(profile_id: str):
                         message = f"{message_prefix} ({', '.join(parts)})."
                         results["rag_collections"] = {"status": "success", "message": message}
                     elif profile_type == "llm_only":
-                        # LLM-only profile with no knowledge repositories
-                        results["rag_collections"] = {"status": "warning", "message": "No knowledge collections found (planner collections not applicable for conversation profiles)."}
+                        # LLM-only profile with no knowledge repositories - this is OK, knowledge is optional
+                        results["rag_collections"] = {"status": "info", "message": "Pure LLM mode (no knowledge collections). Knowledge collections are optional for conversation profiles."}
                     else:
                         results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
             else:
-                results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
+                # No collections at all in database
+                if profile_type == "llm_only":
+                    # LLM-only can work without any collections
+                    results["rag_collections"] = {"status": "info", "message": "Pure LLM mode (no knowledge collections). Knowledge collections are optional for conversation profiles."}
+                else:
+                    results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
         except Exception as rag_error:
             results["rag_collections"] = {"status": "error", "message": f"Collection test failed: {str(rag_error)}"}
 

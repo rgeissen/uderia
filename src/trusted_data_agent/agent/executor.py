@@ -1017,14 +1017,15 @@ Response:"""
         is_llm_only = (profile_type == "llm_only")
 
         # --- MODIFICATION START: Calculate turn number from workflow_history ---
-        # Both llm_only and tool_enabled profiles now use workflow_history for consistency
+        # All profile types (llm_only, rag_focused, tool_enabled) use workflow_history for consistency
         self.current_turn_number = 1
         session_data = await session_manager.get_session(self.user_uuid, self.session_id)
 
         if session_data and isinstance(session_data.get("last_turn_data", {}).get("workflow_history"), list):
             self.current_turn_number = len(session_data["last_turn_data"]["workflow_history"]) + 1
 
-        profile_label = "llm_only" if is_llm_only else "tool_enabled"
+        is_rag_focused = (profile_type == "rag_focused")
+        profile_label = "rag_focused" if is_rag_focused else ("llm_only" if is_llm_only else "tool_enabled")
         app_logger.info(f"PlanExecutor initialized for {profile_label} turn: {self.current_turn_number}")
         # --- MODIFICATION END ---
 
@@ -1492,6 +1493,7 @@ The following domain knowledge may be relevant to this conversation:
             yield self._format_sse({
                 "step": "Finished",
                 "final_answer": final_html,
+                "turn_id": self.current_turn_number,  # Include turn_id for frontend badge rendering
                 "knowledge_sources": [{"collection_id": r.get("collection_id"),
                                        "similarity_score": r.get("similarity_score")}
                                       for r in final_results]
@@ -1502,6 +1504,72 @@ The following domain knowledge may be relevant to this conversation:
                 self.user_uuid, self.session_id, 'assistant',
                 content=response_text, html_content=final_html
             )
+
+            # Create workflow_history entry for turn reload consistency
+            profile_tag = self._get_current_profile_tag()
+
+            # Update session-level profile_tags_used array (same as other profile types)
+            await session_manager.update_models_used(
+                self.user_uuid,
+                self.session_id,
+                self.current_provider,
+                self.current_model,
+                profile_tag
+            )
+            app_logger.info(f"✅ Updated session {self.session_id} with rag_focused profile_tag={profile_tag}")
+
+            # Send SSE notification to update UI sidebar in real-time
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            if session_data:
+                notification_payload = {
+                    "session_id": self.session_id,
+                    "models_used": session_data.get("models_used", []),
+                    "profile_tags_used": session_data.get("profile_tags_used", []),
+                    "last_updated": session_data.get("last_updated"),
+                    "provider": self.current_provider,
+                    "model": self.current_model,
+                    "name": session_data.get("name", "Unnamed Session"),
+                }
+                app_logger.info(f"🔔 [RAG Focused] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}")
+                yield self._format_sse({
+                    "type": "session_model_update",
+                    "payload": notification_payload
+                }, event="notification")
+
+            # Track which knowledge collections were accessed
+            knowledge_accessed = list(set([r.get("collection_id") for r in final_results if r.get("collection_id")]))
+
+            turn_summary = {
+                "turn": self.current_turn_number,
+                "user_query": self.original_user_input,
+                "final_summary_text": response_text,
+                "status": "success",
+                "execution_trace": [],  # No tool executions for rag_focused
+                "original_plan": None,  # No plan for rag_focused
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "provider": self.current_provider,
+                "model": self.current_model,
+                "profile_tag": profile_tag,
+                "profile_type": "rag_focused",  # Mark as rag_focused for turn reload
+                "task_id": self.task_id if hasattr(self, 'task_id') else None,
+                "turn_input_tokens": input_tokens,
+                "turn_output_tokens": output_tokens,
+                "session_id": self.session_id,
+                "rag_source_collection_id": knowledge_accessed[0] if knowledge_accessed else None,
+                "case_id": None,
+                "knowledge_accessed": knowledge_accessed,  # Track knowledge collections accessed
+                "knowledge_retrieval_event": {
+                    "enabled": True,  # Always true for rag_focused
+                    "retrieved": len(knowledge_accessed) > 0,
+                    "document_count": len(final_results),
+                    "collections": list(collection_names),  # Include collection names
+                    "chunks": knowledge_chunks,  # Include detailed chunks for turn reload
+                    "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)"
+                }
+            }
+
+            await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+            app_logger.debug(f"Saved rag_focused turn data to workflow_history for turn {self.current_turn_number}")
 
             app_logger.info("✅ RAG-focused execution completed successfully")
             return

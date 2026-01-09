@@ -991,10 +991,23 @@ class OutputFormatter:
     def _render_rag_sources(self, sources: list) -> str:
         """Render expandable source cards for RAG focused profiles."""
         html_parts = [
+            '<style>',
+            '/* RAG Source Buttons - Override any theme styles */',
+            '.rag-sources-section button { ',
+            '  background: #374151 !important; ',
+            '  background-image: none !important; ',
+            '  color: white !important; ',
+            '  border: none !important; ',
+            '  font-size: 10px !important; ',
+            '  padding: 3px 8px !important; ',
+            '  border-radius: 4px !important; ',
+            '}',
+            '.rag-sources-section button:hover { background: #4B5563 !important; }',
+            '</style>',
             '<div class="rag-sources-section mt-6">',
             '<div class="flex items-center justify-between mb-3">',
             '<h3 class="text-lg font-bold text-white">Source Documents</h3>',
-            '<button class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors" ',
+            '<button ',
             'onclick="const container = this.closest(\'.rag-sources-section\').querySelector(\'.rag-sources-container\'); ',
             'container.classList.toggle(\'hidden\'); ',
             'this.textContent = container.classList.contains(\'hidden\') ? \'Show Sources\' : \'Hide Sources\';">',
@@ -1028,7 +1041,6 @@ class OutputFormatter:
             <div class="text-xs text-gray-400">Collection: {collection_name}</div>
         </div>
         <button
-            class="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition-colors"
             onclick="this.closest('.rag-source-card').querySelector('.rag-source-preview').classList.toggle('hidden');
                      this.closest('.rag-source-card').querySelector('.rag-source-full').classList.toggle('hidden');
                      this.textContent = this.textContent === 'Expand' ? 'Collapse' : 'Expand';">
