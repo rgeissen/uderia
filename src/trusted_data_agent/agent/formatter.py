@@ -9,7 +9,7 @@ class OutputFormatter:
     Parses structured response data to generate professional,
     failure-safe HTML for the UI.
     """
-    def __init__(self, collected_data: list | dict, canonical_response: CanonicalResponse = None, prompt_report_response: PromptReportResponse = None, llm_response_text: str = None, original_user_input: str = None, active_prompt_name: str = None):
+    def __init__(self, collected_data: list | dict, canonical_response: CanonicalResponse = None, prompt_report_response: PromptReportResponse = None, llm_response_text: str = None, original_user_input: str = None, active_prompt_name: str = None, rag_focused_sources: list = None):
         self.collected_data = collected_data
         self.original_user_input = original_user_input
         self.active_prompt_name = active_prompt_name
@@ -18,6 +18,7 @@ class OutputFormatter:
         self.canonical_report = canonical_response
         self.prompt_report = prompt_report_response
         self.llm_response_text = llm_response_text
+        self.rag_focused_sources = rag_focused_sources
 
     def _render_key_metric(self, metric: KeyMetric) -> str:
         """Renders the KeyMetric object into an HTML card."""
@@ -987,6 +988,64 @@ class OutputFormatter:
         final_html = "".join(html_parts)
         return final_html, tts_payload
 
+    def _render_rag_sources(self, sources: list) -> str:
+        """Render expandable source cards for RAG focused profiles."""
+        html_parts = [
+            '<div class="rag-sources-section mt-6">',
+            '<div class="flex items-center justify-between mb-3">',
+            '<h3 class="text-lg font-bold text-white">Source Documents</h3>',
+            '<button class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors" ',
+            'onclick="const container = this.closest(\'.rag-sources-section\').querySelector(\'.rag-sources-container\'); ',
+            'container.classList.toggle(\'hidden\'); ',
+            'this.textContent = container.classList.contains(\'hidden\') ? \'Show Sources\' : \'Hide Sources\';">',
+            'Show Sources',
+            '</button>',
+            '</div>',
+            '<div class="rag-sources-container hidden space-y-3">'
+        ]
+
+        for idx, doc in enumerate(sources):
+            metadata = doc.get("metadata", {})
+            source_name = metadata.get("source", "Unknown Source")
+            collection_name = doc.get("collection_name", "Unknown")
+            similarity_score = doc.get("similarity_score", 0)
+            content = doc.get("content", "")
+
+            preview = content[:200] + "..." if len(content) > 200 else content
+            preview_html = self._process_inline_markdown(preview)
+            full_content_html = self._render_standard_markdown(content)
+
+            score_color = "bg-green-700" if similarity_score >= 0.8 else "bg-yellow-700"
+
+            html_parts.append(f"""
+<div class="rag-source-card bg-gray-900/50 rounded-lg p-4 border border-gray-800">
+    <div class="flex items-start justify-between mb-2">
+        <div class="flex-1">
+            <span class="text-sm font-semibold text-white">{source_name}</span>
+            <span class="text-xs px-2 py-0.5 rounded {score_color} text-white ml-2">
+                {similarity_score:.2f}
+            </span>
+            <div class="text-xs text-gray-400">Collection: {collection_name}</div>
+        </div>
+        <button
+            class="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition-colors"
+            onclick="this.closest('.rag-source-card').querySelector('.rag-source-preview').classList.toggle('hidden');
+                     this.closest('.rag-source-card').querySelector('.rag-source-full').classList.toggle('hidden');
+                     this.textContent = this.textContent === 'Expand' ? 'Collapse' : 'Expand';">
+            Expand
+        </button>
+    </div>
+
+    <div class="rag-source-preview text-sm text-gray-300 mt-2">{preview_html}</div>
+    <div class="rag-source-full hidden text-sm text-gray-300 mt-2 border-t border-gray-700 pt-3">
+        {full_content_html}
+    </div>
+</div>
+""")
+
+        html_parts.append('</div></div>')
+        return "".join(html_parts)
+
     def render(self) -> tuple[str, dict]:
         """
         Main rendering method. Routes to the appropriate formatting strategy.
@@ -997,6 +1056,30 @@ class OutputFormatter:
             - tts_payload (dict): The structured payload for the TTS engine.
         """
         self.processed_data_indices = set() # Reset for each render call
+
+        # NEW: RAG Focused Sources Rendering
+        if self.rag_focused_sources and len(self.rag_focused_sources) > 0:
+            html_parts = []
+            tts_text_parts = []
+
+            # 1. Render LLM synthesis summary
+            if self.llm_response_text:
+                summary_html = self._render_standard_markdown(self.llm_response_text)
+                html_parts.append(f"""
+<div class="rag-synthesis-section mb-6">
+    <h3 class="text-lg font-bold text-white mb-3">Summary</h3>
+    <div class="text-gray-300">{summary_html}</div>
+</div>
+""")
+                tts_text_parts.append(self.llm_response_text)
+
+            # 2. Render source documents (expandable)
+            sources_html = self._render_rag_sources(self.rag_focused_sources)
+            html_parts.append(sources_html)
+
+            tts_text_parts.append(f"Based on {len(self.rag_focused_sources)} source documents.")
+
+            return "".join(html_parts), {"text": " ".join(tts_text_parts)}
 
         if isinstance(self.prompt_report, PromptReportResponse):
             final_html, tts_payload = self._format_complex_prompt_report()

@@ -754,7 +754,7 @@ class PlanExecutor:
 
 
     def _detect_profile_type(self) -> str:
-        """Detect whether current profile is llm_only or tool_enabled."""
+        """Detect whether current profile is llm_only, rag_focused, or tool_enabled."""
         try:
             from trusted_data_agent.core.config_manager import get_config_manager
             config_manager = get_config_manager()
@@ -777,6 +777,10 @@ class PlanExecutor:
 
         return "tool_enabled"  # Default
 
+    def _is_rag_focused_profile(self) -> bool:
+        """Check if current profile is RAG focused type."""
+        profile_type = self._detect_profile_type()
+        return profile_type == "rag_focused"
 
     async def _build_user_message_for_conversation(self, knowledge_context: Optional[str] = None) -> str:
         """Build user message for LLM-only direct execution.
@@ -827,6 +831,43 @@ User: {self.original_user_input}""")
 
         return "\n".join(user_message_parts)
 
+    async def _build_user_message_for_rag_synthesis(self, knowledge_context: str) -> str:
+        """Build user message for RAG focused synthesis with knowledge + history.
+
+        Args:
+            knowledge_context: Formatted knowledge context from retrieval
+
+        Returns:
+            User message string with knowledge + optional history + current query
+        """
+        parts = []
+
+        # Knowledge context (most important)
+        if knowledge_context:
+            parts.append(knowledge_context)
+
+        # Conversation history (for follow-ups) - only if history not disabled
+        if not self.disabled_history:
+            try:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                session_history = session_data.get('chat_object', []) if session_data else []
+
+                if session_history:
+                    # Format last 10 messages for context
+                    history_text = "\n".join([
+                        f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
+                        for msg in session_history[-10:]
+                    ])
+                    if history_text:
+                        parts.append(f"\n--- CONVERSATION HISTORY ---\n{history_text}\n")
+            except Exception as e:
+                app_logger.error(f"Error retrieving conversation history for RAG synthesis: {e}", exc_info=True)
+                # Continue without history (graceful degradation)
+
+        # Current query
+        parts.append(f"\n--- CURRENT QUERY ---\n{self.original_user_input}\n")
+
+        return "\n".join(parts)
 
     def _get_profile_config(self) -> Dict[str, Any]:
         """Get current profile configuration (with override support)."""
@@ -1306,6 +1347,165 @@ The following domain knowledge may be relevant to this conversation:
             app_logger.info("✅ LLM-only execution completed successfully")
             return
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH END ---
+
+        # --- RAG FOCUSED EXECUTION PATH ---
+        is_rag_focused = self._is_rag_focused_profile()
+        if is_rag_focused:
+            app_logger.info("🔍 RAG-focused profile - mandatory knowledge retrieval")
+
+            # Emit status event
+            yield self._format_sse({
+                "step": "RAG Knowledge Retrieval",
+                "type": "rag_execution"
+            })
+
+            # --- MANDATORY Knowledge Retrieval ---
+            profile_config = self._get_profile_config()
+            knowledge_config = profile_config.get("knowledgeConfig", {})
+            knowledge_collections = knowledge_config.get("collections", [])
+
+            if not knowledge_collections:
+                error_msg = "RAG focused profile has no knowledge collections configured."
+                yield self._format_sse({"step": "Finished", "error": error_msg}, "error")
+                return
+
+            # Retrieve knowledge (REQUIRED)
+            max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+            min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+            max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+
+            from trusted_data_agent.agent.rag_access_context import RAGAccessContext
+            rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
+
+            all_results = self.rag_retriever.retrieve_examples(
+                query=self.original_user_input,
+                k=max_docs * len(knowledge_collections),
+                min_score=min_relevance,
+                allowed_collection_ids=set([c["id"] for c in knowledge_collections]),
+                rag_context=rag_context,
+                repository_type="knowledge"  # Only knowledge, not planner
+            )
+
+            if not all_results:
+                # NO KNOWLEDGE FOUND - This is an ERROR for rag_focused
+                error_msg = "No relevant knowledge found. Try rephrasing or check your knowledge repositories."
+                yield self._format_sse({
+                    "step": "Finished",
+                    "error": error_msg,
+                    "error_type": "no_knowledge_found"
+                }, "error")
+                return
+
+            # Apply reranking if configured (reuse existing code from llm_only)
+            reranked_results = all_results
+            for coll_config in knowledge_collections:
+                if coll_config.get("reranking", False):
+                    coll_results = [r for r in all_results
+                                  if r.get("metadata", {}).get("collection_id") == coll_config["id"]]
+                    if coll_results and self.llm_handler:
+                        reranked = await self._rerank_knowledge_with_llm(
+                            query=self.original_user_input,
+                            documents=coll_results,
+                            max_docs=max_docs
+                        )
+                        reranked_results = [r for r in reranked_results
+                                          if r.get("metadata", {}).get("collection_id") != coll_config["id"]]
+                        reranked_results.extend(reranked)
+
+            # Limit total documents
+            final_results = reranked_results[:max_docs]
+
+            # Enrich documents with collection_name
+            for doc in final_results:
+                if not doc.get("collection_name"):
+                    coll_id = doc.get("collection_id")
+                    if coll_id and self.rag_retriever:
+                        coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                        if coll_meta:
+                            doc["collection_name"] = coll_meta.get("name", "Unknown")
+
+            # Format knowledge context for LLM
+            knowledge_context = self._format_knowledge_for_prompt(final_results, max_tokens)
+
+            # Build detailed event for Live Status panel (matching llm_only format)
+            knowledge_chunks = []
+            collection_names = set()
+            for doc in final_results:
+                collection_name = doc.get("collection_name", "Unknown")
+                collection_names.add(collection_name)
+                doc_metadata = doc.get("metadata", {})
+
+                knowledge_chunks.append({
+                    "source": doc_metadata.get("source", "Unknown"),
+                    "content": doc.get("content", ""),
+                    "similarity_score": doc.get("similarity_score", 0),
+                    "document_id": doc.get("document_id"),
+                    "chunk_index": doc.get("chunk_index", 0)
+                })
+
+            # Emit detailed SSE event for Live Status panel
+            event_details = {
+                "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)",
+                "collections": list(collection_names),
+                "document_count": len(final_results),
+                "chunks": knowledge_chunks
+            }
+
+            event_data = {
+                "step": "Knowledge Retrieved",
+                "type": "knowledge_retrieval",
+                "details": event_details
+            }
+            self._log_system_event(event_data)
+            yield self._format_sse(event_data)
+
+            # --- LLM Synthesis ---
+            from trusted_data_agent.agent.prompt_loader import get_prompt_loader
+            prompt_loader = get_prompt_loader()
+            system_prompt = prompt_loader.get_prompt("RAG_FOCUSED_EXECUTION")
+
+            if not system_prompt:
+                system_prompt = "You are a knowledge base assistant. Answer using only the provided documents."
+                app_logger.warning("RAG_FOCUSED_EXECUTION prompt not found, using fallback")
+
+            user_message = await self._build_user_message_for_rag_synthesis(
+                knowledge_context=knowledge_context
+            )
+
+            # Call LLM for synthesis
+            response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
+                prompt=user_message,
+                reason="RAG Focused Synthesis",
+                system_prompt_override=system_prompt
+            )
+
+            # --- Format Response with Sources ---
+            from trusted_data_agent.agent.formatter import OutputFormatter
+            formatter = OutputFormatter(
+                llm_response_text=response_text,
+                collected_data=self.structured_collected_data,
+                rag_focused_sources=final_results  # NEW: Pass sources
+            )
+            final_html, tts_payload = formatter.render()
+
+            # Emit final answer
+            yield self._format_sse({
+                "step": "Finished",
+                "final_answer": final_html,
+                "knowledge_sources": [{"collection_id": r.get("collection_id"),
+                                       "similarity_score": r.get("similarity_score")}
+                                      for r in final_results]
+            }, "final_answer")
+
+            # Save to session
+            await session_manager.add_message_to_histories(
+                self.user_uuid, self.session_id, 'assistant',
+                content=response_text, html_content=final_html
+            )
+
+            app_logger.info("✅ RAG-focused execution completed successfully")
+            return
+        # --- RAG FOCUSED EXECUTION PATH END ---
 
         # --- MODIFICATION START: Setup temporary profile override if requested ---
         temp_llm_instance = None

@@ -181,6 +181,23 @@
       },
       "inherit_classification": true,
       "isDefault": false
+    },
+    {
+      "id": "profile-default-rag",
+      "name": "Knowledge Search",
+      "tag": "RAG",
+      "description": "Search knowledge base with LLM synthesis (requires knowledge collections)",
+      "profile_type": "rag_focused",
+      "llmConfigurationId": null,
+      "mcpServerId": null,
+      "knowledgeConfig": {
+        "enabled": true,
+        "collections": [],
+        "maxDocs": 10,
+        "minRelevanceScore": 0.7,
+        "maxTokens": 2000
+      },
+      "isDefault": false
     }
   ],
   "active_profile_id": null,

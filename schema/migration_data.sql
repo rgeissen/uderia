@@ -112,6 +112,18 @@ INSERT INTO prompts (name, display_name, content, description, class_id, role, p
     1,
     1,
     1
+),
+(
+    'RAG_FOCUSED_EXECUTION',
+    'RAG Focused Execution Prompt',
+    '[MIGRATE]',
+    'RAG-focused knowledge synthesis prompt for mandatory knowledge base retrieval',
+    2,
+    'system',
+    NULL,
+    1,
+    1,
+    1
 );
 
 -- Error Recovery & Self-Correction (class_id = 3)

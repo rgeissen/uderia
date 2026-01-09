@@ -5602,29 +5602,58 @@ async def test_profile(profile_id: str):
                 knowledge_count = sum(1 for c in user_collections if c.get('repository_type') == 'knowledge')
 
                 # Build descriptive message based on profile type
-                parts = []
+                if profile_type == "rag_focused":
+                    # RAG focused profiles: REQUIRE at least 1 knowledge collection
+                    knowledge_config = profile.get("knowledgeConfig", {})
+                    knowledge_collections = knowledge_config.get("collections", [])
 
-                if profile_type == "llm_only":
-                    # LLM-only profiles: Only knowledge repositories are relevant
-                    if knowledge_count > 0:
-                        parts.append(f"{knowledge_count} knowledge")
-                    message_prefix = "Knowledge collections available"
-                else:
-                    # Tool-enabled profiles: Both planner and knowledge repositories are relevant
-                    if planner_count > 0:
-                        parts.append(f"{planner_count} planner")
-                    if knowledge_count > 0:
-                        parts.append(f"{knowledge_count} knowledge")
-                    message_prefix = "Intelligence collections available"
+                    if not knowledge_collections or len(knowledge_collections) == 0:
+                        results["knowledge_collections"] = {
+                            "status": "error",
+                            "message": "RAG focused profiles REQUIRE at least 1 knowledge collection."
+                        }
+                    else:
+                        # Verify collections exist and are accessible
+                        knowledge_ids = [c["id"] for c in knowledge_collections]
+                        accessible = [c for c in user_collections
+                                     if c.get("id") in knowledge_ids
+                                     and c.get("repository_type") == "knowledge"]
 
-                if parts:
-                    message = f"{message_prefix} ({', '.join(parts)})."
-                    results["rag_collections"] = {"status": "success", "message": message}
-                elif profile_type == "llm_only":
-                    # LLM-only profile with no knowledge repositories
-                    results["rag_collections"] = {"status": "warning", "message": "No knowledge collections found (planner collections not applicable for conversation profiles)."}
+                        if len(accessible) == 0:
+                            results["knowledge_collections"] = {
+                                "status": "error",
+                                "message": f"None of the configured knowledge collections are accessible."
+                            }
+                        else:
+                            results["knowledge_collections"] = {
+                                "status": "success",
+                                "message": f"RAG focused profile with {len(accessible)} knowledge collection(s)."
+                            }
                 else:
-                    results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
+                    # For llm_only and tool_enabled profiles
+                    parts = []
+
+                    if profile_type == "llm_only":
+                        # LLM-only profiles: Only knowledge repositories are relevant
+                        if knowledge_count > 0:
+                            parts.append(f"{knowledge_count} knowledge")
+                        message_prefix = "Knowledge collections available"
+                    else:
+                        # Tool-enabled profiles: Both planner and knowledge repositories are relevant
+                        if planner_count > 0:
+                            parts.append(f"{planner_count} planner")
+                        if knowledge_count > 0:
+                            parts.append(f"{knowledge_count} knowledge")
+                        message_prefix = "Intelligence collections available"
+
+                    if parts:
+                        message = f"{message_prefix} ({', '.join(parts)})."
+                        results["rag_collections"] = {"status": "success", "message": message}
+                    elif profile_type == "llm_only":
+                        # LLM-only profile with no knowledge repositories
+                        results["rag_collections"] = {"status": "warning", "message": "No knowledge collections found (planner collections not applicable for conversation profiles)."}
+                    else:
+                        results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
             else:
                 results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
         except Exception as rag_error:

@@ -1916,6 +1916,7 @@ export function renderProfiles() {
 
     // Separate profiles by type
     const conversationProfiles = configState.profiles.filter(p => p.profile_type === 'llm_only');
+    const ragFocusedProfiles = configState.profiles.filter(p => p.profile_type === 'rag_focused');
     const toolProfiles = configState.profiles.filter(p => !p.profile_type || p.profile_type === 'tool_enabled');
 
     // Render conversation profiles
@@ -1927,6 +1928,20 @@ export function renderProfiles() {
         `;
     } else {
         conversationContainer.innerHTML = conversationProfiles.map(profile => renderProfileCard(profile)).join('');
+    }
+
+    // Render RAG focused profiles
+    const ragContainer = document.getElementById('rag-profiles-container');
+    if (ragContainer) {
+        if (ragFocusedProfiles.length === 0) {
+            ragContainer.innerHTML = `
+                <div class="text-center text-gray-400 py-8">
+                    <p>No RAG focused profiles configured.</p>
+                </div>
+            `;
+        } else {
+            ragContainer.innerHTML = ragFocusedProfiles.map(profile => renderProfileCard(profile)).join('');
+        }
     }
 
     // Render tool-enabled profiles
@@ -2017,6 +2032,22 @@ function renderProfileCard(profile) {
                             // Status badges section - non-interactive indicators
                             const badges = [];
 
+                            // Warning for RAG focused profiles without knowledge collections
+                            const profileType = profile.profile_type || 'tool_enabled';
+                            if (profileType === 'rag_focused') {
+                                const knowledgeCollections = profile.knowledgeConfig?.collections || [];
+                                if (knowledgeCollections.length === 0) {
+                                    badges.push(`
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-yellow-500/20 text-yellow-300 border border-yellow-400/30 rounded-full" title="RAG focused profiles require at least 1 knowledge collection">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                        </svg>
+                                        No Knowledge Collections
+                                    </span>
+                                    `);
+                                }
+                            }
+
                             // Master Classification status badge
                             if (isMasterClassification) {
                                 badges.push(`
@@ -2030,7 +2061,7 @@ function renderProfileCard(profile) {
                             }
 
                             // Inheritance status badge (only for tool-enabled profiles)
-                            if (profile.profile_type !== 'llm_only' && profile.inherit_classification && !isMasterClassification) {
+                            if (profile.profile_type === 'tool_enabled' && profile.inherit_classification && !isMasterClassification) {
                                 const masterProfile = configState.profiles.find(p => p.id === configState.masterClassificationProfileId);
                                 const masterName = masterProfile ? escapeHtml(masterProfile.name) : 'master profile';
                                 badges.push(`
@@ -2055,10 +2086,10 @@ function renderProfileCard(profile) {
                                 }
                                 return 'N/A';
                             })()}</p>
-                            ${profile.profile_type !== 'llm_only' ? `
+                            ${profile.profile_type === 'tool_enabled' ? `
                             <p><span class="font-medium">MCP:</span> ${escapeHtml(configState.mcpServers.find(s => s.id === profile.mcpServerId)?.name || 'Unknown')}</p>
                             ` : ''}
-                            ${profile.classification_mode && profile.profile_type !== 'llm_only' ? `
+                            ${profile.classification_mode && profile.profile_type === 'tool_enabled' ? `
                             <p><span class="font-medium">Classification:</span> ${(() => {
                                 const mode = profile.classification_mode;
                                 const badges = {
@@ -2068,7 +2099,7 @@ function renderProfileCard(profile) {
                                 return badges[mode] || badges['light'];
                             })()}</p>
                             ` : ''}
-                            ${profile.needs_reclassification && profile.profile_type !== 'llm_only' ? `
+                            ${profile.needs_reclassification && profile.profile_type === 'tool_enabled' ? `
                             <p><span class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
@@ -2103,7 +2134,7 @@ function renderProfileCard(profile) {
                     </button>
 
                     <!-- Classification Dropdown (only for tool-enabled profiles) -->
-                    ${profile.profile_type !== 'llm_only' ? `
+                    ${profile.profile_type === 'tool_enabled' ? `
                     <div class="relative inline-block">
                         <button type="button" data-action="toggle-classification-menu" data-profile-id="${profile.id}"
                             class="px-4 py-2 text-sm font-medium bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors text-white flex items-center gap-2"
@@ -3440,10 +3471,11 @@ async function showProfileModal(profileId = null) {
     const profileType = profile ? (profile.profile_type || 'tool_enabled') : 'tool_enabled';
     const profileTypeRadioLLMOnly = modal.querySelector('#profile-modal-type-llm-only');
     const profileTypeRadioToolEnabled = modal.querySelector('#profile-modal-type-tool-enabled');
+    const profileTypeRadioRAGFocused = modal.querySelector('#profile-modal-type-rag-focused');
 
     // Function to show/hide tool-related sections based on profile type
-    const updateSectionVisibility = (isLLMOnly) => {
-        console.log('[Profile Modal] updateSectionVisibility called with isLLMOnly:', isLLMOnly);
+    const updateSectionVisibility = (profileType) => {
+        console.log('[Profile Modal] updateSectionVisibility called with profileType:', profileType);
 
         // Find MCP Server container - it's the column div containing label and select
         const mcpServerSelect = modal.querySelector('#profile-modal-mcp-server');
@@ -3473,64 +3505,46 @@ async function showProfileModal(profileId = null) {
         const intelligenceContent = modal.querySelector('#profile-content-intelligence');
         console.log('[Profile Modal] Tabs found - MCP:', !!mcpResourcesTab, 'Intelligence:', !!intelligenceTab);
 
-        if (isLLMOnly) {
+        if (profileType === 'llm_only') {
             console.log('[Profile Modal] Hiding MCP-related sections for LLM-only profile');
             // Hide MCP-related sections only
-            if (mcpServerContainer) {
-                mcpServerContainer.style.display = 'none';
-                console.log('[Profile Modal] Set mcpServerContainer display to none');
-            }
-            if (classificationSection) {
-                classificationSection.style.display = 'none';
-                console.log('[Profile Modal] Set classificationSection display to none');
-            }
-            if (mcpResourcesTab) {
-                mcpResourcesTab.style.display = 'none';
-                console.log('[Profile Modal] Set mcpResourcesTab display to none');
-            }
+            if (mcpServerContainer) mcpServerContainer.style.display = 'none';
+            if (classificationSection) classificationSection.style.display = 'none';
+            if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
             if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
-
-            // Hide Planner Repositories section (llm_only profiles don't use planner)
-            if (plannerSection) {
-                plannerSection.style.display = 'none';
-                console.log('[Profile Modal] Set plannerSection display to none');
-            }
+            if (plannerSection) plannerSection.style.display = 'none';
 
             // KEEP Intelligence tab visible for knowledge configuration
             if (intelligenceTab) intelligenceTab.style.display = '';
             if (intelligenceContent) intelligenceContent.style.display = '';
-
-            // Update Intelligence tab tooltip
             if (intelligenceTab) {
-                intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection (no tools required)');
+                intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
+            }
+        } else if (profileType === 'rag_focused') {
+            console.log('[Profile Modal] Configuring sections for RAG-focused profile');
+            // Hide MCP and planner sections (RAG focused doesn't use tools/planner)
+            if (mcpServerContainer) mcpServerContainer.style.display = 'none';
+            if (classificationSection) classificationSection.style.display = 'none';
+            if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
+            if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+            if (plannerSection) plannerSection.style.display = 'none';
+
+            // KEEP Intelligence tab visible - REQUIRED for RAG focused
+            if (intelligenceTab) intelligenceTab.style.display = '';
+            if (intelligenceContent) intelligenceContent.style.display = '';
+            if (intelligenceTab) {
+                intelligenceTab.setAttribute('title', 'Configure knowledge repositories (REQUIRED for RAG focused profiles)');
             }
         } else {
             console.log('[Profile Modal] Showing all sections for tool-enabled profile');
             // Show all sections for tool-enabled profiles
-            if (mcpServerContainer) {
-                mcpServerContainer.style.display = '';
-                console.log('[Profile Modal] Set mcpServerContainer display to default');
-            }
-            if (classificationSection) {
-                classificationSection.style.display = '';
-                console.log('[Profile Modal] Set classificationSection display to default');
-            }
-            if (mcpResourcesTab) {
-                mcpResourcesTab.style.display = '';
-                console.log('[Profile Modal] Set mcpResourcesTab display to default');
-            }
+            if (mcpServerContainer) mcpServerContainer.style.display = '';
+            if (classificationSection) classificationSection.style.display = '';
+            if (mcpResourcesTab) mcpResourcesTab.style.display = '';
             if (mcpResourcesContent) mcpResourcesContent.style.display = '';
-
-            // Show Planner Repositories section for tool-enabled profiles
-            if (plannerSection) {
-                plannerSection.style.display = '';
-                console.log('[Profile Modal] Set plannerSection display to default');
-            }
-
+            if (plannerSection) plannerSection.style.display = '';
             if (intelligenceTab) intelligenceTab.style.display = '';
             if (intelligenceContent) intelligenceContent.style.display = '';
-
-            // Update Intelligence tab tooltip for tool-enabled
             if (intelligenceTab) {
                 intelligenceTab.setAttribute('title', 'Configure planner repositories and knowledge collections');
             }
@@ -3543,46 +3557,45 @@ async function showProfileModal(profileId = null) {
     // Clone the radio buttons to remove any existing event listeners
     const llmOnlyClone = profileTypeRadioLLMOnly.cloneNode(true);
     const toolEnabledClone = profileTypeRadioToolEnabled.cloneNode(true);
+    const ragFocusedClone = profileTypeRadioRAGFocused.cloneNode(true);
     profileTypeRadioLLMOnly.parentNode.replaceChild(llmOnlyClone, profileTypeRadioLLMOnly);
     profileTypeRadioToolEnabled.parentNode.replaceChild(toolEnabledClone, profileTypeRadioToolEnabled);
+    profileTypeRadioRAGFocused.parentNode.replaceChild(ragFocusedClone, profileTypeRadioRAGFocused);
 
     // Update references to the cloned elements
     const cleanLLMOnlyRadio = modal.querySelector('#profile-modal-type-llm-only');
     const cleanToolEnabledRadio = modal.querySelector('#profile-modal-type-tool-enabled');
+    const cleanRAGFocusedRadio = modal.querySelector('#profile-modal-type-rag-focused');
 
     // Add our event listeners to the clean radio buttons
     cleanLLMOnlyRadio.addEventListener('change', () => {
         if (cleanLLMOnlyRadio.checked) {
-            console.log('[Profile Modal] Radio changed to LLM-only');
-            updateSectionVisibility(true);
+            console.log('[Profile Modal] Radio changed to llm_only');
+            updateSectionVisibility('llm_only');
         }
     });
 
     cleanToolEnabledRadio.addEventListener('change', () => {
         if (cleanToolEnabledRadio.checked) {
-            console.log('[Profile Modal] Radio changed to tool-enabled');
-            updateSectionVisibility(false);
+            console.log('[Profile Modal] Radio changed to tool_enabled');
+            updateSectionVisibility('tool_enabled');
+        }
+    });
+
+    cleanRAGFocusedRadio.addEventListener('change', () => {
+        if (cleanRAGFocusedRadio.checked) {
+            console.log('[Profile Modal] Radio changed to rag_focused');
+            updateSectionVisibility('rag_focused');
         }
     });
 
     // NOW set the checked state (won't trigger old listeners since we cloned)
     if (profileType === 'llm_only') {
         cleanLLMOnlyRadio.checked = true;
-        // CRITICAL: Disable Tool-Enabled radio when editing llm_only profiles
-        // LLM-only profiles are fundamentally different and should not switch types
-        if (profile && profile.profile_type === 'llm_only') {
-            cleanToolEnabledRadio.disabled = true;
-            cleanToolEnabledRadio.parentElement.classList.add('opacity-50', 'cursor-not-allowed');
-            cleanToolEnabledRadio.parentElement.setAttribute('title', 'Cannot change LLM-only profiles to tool-enabled. Create a new profile instead.');
-        }
+    } else if (profileType === 'rag_focused') {
+        cleanRAGFocusedRadio.checked = true;
     } else {
         cleanToolEnabledRadio.checked = true;
-        // Disable LLM-only radio when editing tool-enabled profiles
-        if (profile && profile.profile_type === 'tool_enabled') {
-            cleanLLMOnlyRadio.disabled = true;
-            cleanLLMOnlyRadio.parentElement.classList.add('opacity-50', 'cursor-not-allowed');
-            cleanLLMOnlyRadio.parentElement.setAttribute('title', 'Cannot change tool-enabled profiles to LLM-only. Create a new profile instead.');
-        }
     }
 
     // Initial visibility update will happen at the END after all async initialization
@@ -4172,6 +4185,15 @@ async function showProfileModal(profileId = null) {
         }
         console.log('[Save Profile] Total mappings to process:', systemPromptMappings.length, systemPromptMappings);
 
+        // Validate RAG focused profiles REQUIRE at least 1 knowledge collection
+        if (selectedProfileType === 'rag_focused') {
+            const knowledgeCollections = knowledgeConfig.collections || [];
+            if (knowledgeCollections.length === 0) {
+                showNotification('error', 'RAG focused profiles require at least 1 knowledge collection.');
+                return;  // Prevent save
+            }
+        }
+
         try {
             if (isEdit) {
                 // Get the current state before update
@@ -4266,7 +4288,7 @@ async function showProfileModal(profileId = null) {
     setTimeout(() => {
         const finalProfileType = profile?.profile_type || 'tool_enabled';
         console.log('[Profile Modal] Final visibility update with profileType:', finalProfileType);
-        updateSectionVisibility(finalProfileType === 'llm_only');
+        updateSectionVisibility(finalProfileType);
     }, 100); // Small delay to ensure all DOM updates are complete
 }
 

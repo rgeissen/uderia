@@ -10,7 +10,9 @@
       "Bash(python update_prompt.py:*)",
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python encrypt_default_prompts.py:*)",
+      "Bash(PYTHONPATH=/Users/livin2rave/my_private_code/uderia/src:$PYTHONPATH python:*)"
     ]
   }
 }

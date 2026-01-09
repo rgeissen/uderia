@@ -1834,7 +1834,21 @@ async def ask_stream():
                 "error": "The agent is not fully configured. Please ensure the LLM and MCP server details are set correctly in the 'Config' tab before starting a chat."
             }, "error")
         return Response(error_gen(), mimetype="text/event-stream")
-    
+
+    # Validate knowledge collections for RAG focused profiles
+    if active_profile_type == "rag_focused":
+        knowledge_config = active_profile.get("knowledgeConfig", {}) if active_profile else {}
+        knowledge_collections = knowledge_config.get("collections", [])
+
+        if not knowledge_collections or len(knowledge_collections) == 0:
+            app_logger.warning(f"RAG focused profile has no knowledge collections configured for user {user_uuid}")
+            async def error_gen():
+                yield PlanExecutor._format_sse({
+                    "error": "RAG focused profiles require at least 1 knowledge collection. Please configure knowledge collections in the profile settings.",
+                    "error_type": "missing_knowledge_collections"
+                }, "error")
+            return Response(error_gen(), mimetype="text/event-stream")
+
     # Always use default profile here - executor will update if override succeeds
     default_profile_id = config_manager.get_default_profile_id(user_uuid)
     if default_profile_id:
@@ -1988,6 +2002,28 @@ async def invoke_prompt_stream():
         app_logger.error(f"invoke_prompt_stream denied: Session {session_id} not found for user {user_uuid}.")
         async def error_gen():
             yield PlanExecutor._format_sse({"error": "Session not found or invalid."}, "error")
+        return Response(error_gen(), mimetype="text/event-stream")
+
+    # Get active profile to check profile type
+    from trusted_data_agent.core.config_manager import get_config_manager
+    config_manager = get_config_manager()
+    default_profile_id = config_manager.get_default_profile_id(user_uuid)
+    active_profile = None
+    if default_profile_id:
+        profiles = config_manager.get_profiles(user_uuid)
+        active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+
+    # Get profile type (default to tool_enabled for backward compatibility)
+    active_profile_type = active_profile.get("profile_type", "tool_enabled") if active_profile else "tool_enabled"
+
+    # MCP prompt invocation is only for tool-enabled profiles
+    if active_profile_type != "tool_enabled":
+        app_logger.warning(f"MCP prompt invocation attempted with {active_profile_type} profile for user {user_uuid}")
+        async def error_gen():
+            yield PlanExecutor._format_sse({
+                "error": "MCP prompts are only available for tool-enabled profiles. Please switch to a tool-enabled profile or use the chat interface.",
+                "error_type": "invalid_profile_type"
+            }, "error")
         return Response(error_gen(), mimetype="text/event-stream")
 
     # --- MODIFICATION START: Generate task_id for prompt invocations ---

@@ -1950,6 +1950,12 @@
                                                 Conversation Profiles
                                             </div>
                                         </button>
+                                        <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="rag-profiles">
+                                            <div class="flex items-center gap-2">
+                                                <span>🔍</span>
+                                                RAG Focused Profiles
+                                            </div>
+                                        </button>
                                     </div>
 
                                     <!-- Tool-Enabled Profiles Container -->
@@ -1960,6 +1966,11 @@
                                     <!-- Conversation Profiles Container -->
                                     <div id="conversation-profiles-container" class="profile-type-content space-y-4 hidden">
                                         <!-- Conversation profile cards will be dynamically added here -->
+                                    </div>
+
+                                    <!-- RAG Focused Profiles Container -->
+                                    <div id="rag-profiles-container" class="profile-type-content space-y-4 hidden">
+                                        <!-- RAG focused profile cards will be dynamically added here -->
                                     </div>
                                 </div>
                             </div>
@@ -5306,16 +5317,16 @@
                         Profile Type
                     </h4>
                     <p class="text-xs text-gray-400 mb-4">Choose the capabilities for this profile</p>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-3 gap-4">
                         <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-green-500/30 transition-all group">
                             <input type="radio" name="profile-type" value="llm_only" id="profile-modal-type-llm-only"
                                    class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Conversation (LLM Only)</span>
+                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Conversation</span>
                                     <span class="px-2 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">Simple</span>
                                 </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Direct conversation with the LLM without external tools or databases</p>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Direct conversation without tools</p>
                             </div>
                         </label>
 
@@ -5327,7 +5338,19 @@
                                     <span class="text-base font-bold text-gray-100 group-hover:text-white">Tool-Enabled</span>
                                     <span class="px-2 py-0.5 text-xs font-bold bg-orange-500/30 text-orange-300 rounded-full border border-orange-400/30">Advanced</span>
                                 </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Full MCP integration with database access, tools, and intelligent planning</p>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">MCP integration with tools and planning</p>
+                            </div>
+                        </label>
+
+                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                            <input type="radio" name="profile-type" value="rag_focused" id="profile-modal-type-rag-focused"
+                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">RAG Focused</span>
+                                    <span class="px-2 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Knowledge</span>
+                                </div>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Knowledge base search with synthesis</p>
                             </div>
                         </label>
                     </div>

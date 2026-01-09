@@ -757,6 +757,30 @@ class ConfigManager:
         
         return self.save_profiles(profiles, user_uuid)
 
+    def validate_profile(self, profile: Dict[str, Any]) -> tuple[bool, str]:
+        """
+        Validate a profile's configuration.
+
+        Args:
+            profile: Profile configuration dictionary
+
+        Returns:
+            Tuple of (is_valid: bool, error_message: str)
+            If valid, returns (True, "")
+            If invalid, returns (False, "error message")
+        """
+        profile_type = profile.get("profile_type", "tool_enabled")
+
+        if profile_type == "rag_focused":
+            # RAG focused REQUIRES knowledge collections
+            knowledge_config = profile.get("knowledgeConfig", {})
+            knowledge_collections = knowledge_config.get("collections", [])
+
+            if not knowledge_collections or len(knowledge_collections) == 0:
+                return False, "RAG focused profiles require at least 1 knowledge collection"
+
+        return True, ""
+
     def get_default_profile_id(self, user_uuid: Optional[str] = None) -> Optional[str]:
         """
         Get the ID of the currently default profile.
@@ -871,11 +895,17 @@ class ConfigManager:
         if not profile:
             return {"status": "error", "message": f"Profile {profile_id} not found"}
 
-        # Validate profile is tool_enabled (not llm_only)
-        if profile.get('profile_type') == 'llm_only':
+        # Validate profile is tool_enabled (not llm_only or rag_focused)
+        profile_type = profile.get('profile_type')
+        if profile_type == 'llm_only':
             return {
                 "status": "error",
                 "message": "Master classification profile must be tool-enabled (llm_only profiles have no tools/prompts to inherit)"
+            }
+        if profile_type == 'rag_focused':
+            return {
+                "status": "error",
+                "message": "Master classification profile must be tool-enabled (rag_focused profiles don't use planner/tools)"
             }
 
         # Validate profile has MCP server
