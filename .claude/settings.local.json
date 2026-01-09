@@ -7,7 +7,9 @@
       "Bash(cat:*)",
       "Bash(find:*)",
       "Bash(xargs:*)",
-      "Bash(python update_prompt.py:*)"
+      "Bash(python update_prompt.py:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)"
     ]
   }
 }
