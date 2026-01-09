@@ -197,7 +197,51 @@ class PromptLoader:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Access columns by name
         return conn
-    
+
+    def _decrypt_content(self, encrypted_content: str, silent_fail: bool = False) -> str:
+        """
+        Decrypt prompt content, handling both simple strings and JSON with encrypted values.
+
+        For JSON content (e.g., CHARTING_INSTRUCTIONS with variants), each string value
+        is decrypted individually. For simple strings, the entire content is decrypted.
+
+        Args:
+            encrypted_content: The encrypted content (string or JSON string)
+            silent_fail: If True, suppress error logging on decryption failure
+
+        Returns:
+            str: Decrypted content (JSON string if input was JSON, plain string otherwise)
+
+        Raises:
+            InvalidToken: If decryption fails and silent_fail is False
+            Exception: For other decryption errors
+        """
+        if not encrypted_content:
+            return ""
+
+        # Try to parse as JSON first
+        try:
+            json_content = json.loads(encrypted_content)
+            if isinstance(json_content, dict):
+                # JSON with potentially encrypted values - decrypt each string value
+                decrypted_dict = {}
+                for key, value in json_content.items():
+                    if isinstance(value, str) and value:
+                        try:
+                            decrypted_dict[key] = decrypt_prompt(value, self._decryption_key, silent_fail=True)
+                        except Exception:
+                            # If decryption fails, value might be plain text
+                            decrypted_dict[key] = value
+                    else:
+                        decrypted_dict[key] = value
+                return json.dumps(decrypted_dict)
+        except json.JSONDecodeError:
+            # Not JSON, treat as simple encrypted string
+            pass
+
+        # Simple encrypted string
+        return decrypt_prompt(encrypted_content, self._decryption_key, silent_fail=silent_fail)
+
     def get_prompt(self, name: str, user_uuid: Optional[str] = None, 
                    profile_id: Optional[str] = None, 
                    parameters: Optional[Dict[str, Any]] = None) -> str:
@@ -284,7 +328,7 @@ class PromptLoader:
                     # Decrypt override (overrides stored encrypted too)
                     if self._can_decrypt and self._decryption_key:
                         try:
-                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key, silent_fail=True)
+                            decrypted_content = self._decrypt_content(encrypted_content, silent_fail=True)
                             return decrypted_content
                         except Exception as e:
                             # Try as plain text (for old data)
@@ -317,7 +361,7 @@ class PromptLoader:
                     # Decrypt profile override
                     if self._can_decrypt and self._decryption_key:
                         try:
-                            decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key, silent_fail=True)
+                            decrypted_content = self._decrypt_content(encrypted_content, silent_fail=True)
                             return decrypted_content
                         except Exception as e:
                             # Try as plain text
@@ -337,11 +381,11 @@ class PromptLoader:
             row = cursor.fetchone()
             if row:
                 encrypted_content = row['content']
-                
+
                 # Decrypt if authorized, otherwise return placeholder
                 if self._can_decrypt and self._decryption_key:
                     try:
-                        decrypted_content = decrypt_prompt(encrypted_content, self._decryption_key)
+                        decrypted_content = self._decrypt_content(encrypted_content)
                         logger.debug(f"Loaded and decrypted base prompt: {name}")
                         return decrypted_content
                     except InvalidToken:
