@@ -37,6 +37,77 @@ ENCRYPTION_AVAILABLE = True
 app_logger = logging.getLogger("quart.app")
 
 
+def build_mcp_server_config(server_id: str, server_data: dict) -> dict:
+    """
+    Build MCP server configuration for MultiServerMCPClient based on transport type.
+
+    Args:
+        server_id: Server ID (used as key in connections dict)
+        server_data: Server configuration from database
+
+    Returns:
+        dict: Configuration dict compatible with MultiServerMCPClient
+
+    Raises:
+        ValueError: If transport type is unsupported or configuration is invalid
+    """
+    transport_info = server_data.get('transport', {})
+    transport_type = transport_info.get('type', 'sse')  # Default to SSE for backwards compatibility
+
+    # Handle stdio transport
+    if transport_type == 'stdio':
+        command = transport_info.get('command', '')
+        args = transport_info.get('args', [])
+        env = transport_info.get('env')
+        cwd = transport_info.get('cwd')
+
+        if not command:
+            raise ValueError(f"stdio transport requires 'command' field")
+
+        config = {
+            'transport': 'stdio',
+            'command': command,
+            'args': args,
+            'env': env,
+            'cwd': cwd,
+            'encoding': 'utf-8',
+            'encoding_error_handler': 'strict'
+        }
+
+        app_logger.info(f"Building stdio config for {server_id}: {command} {' '.join(args)}")
+        return {server_id: config}
+
+    # Handle SSE/HTTP transports (existing behavior)
+    elif transport_type in ('sse', 'http', 'streamable_http'):
+        host = server_data.get('host')
+        port = server_data.get('port')
+        path = server_data.get('path')
+
+        if not all([host, port, path]):
+            raise ValueError(f"SSE/HTTP transport requires host, port, and path")
+
+        # Detect stdio server being passed without transport info
+        if host == 'stdio' or str(port) == '0':
+            raise ValueError(
+                f"Server appears to be stdio-based (host={host}, port={port}) but transport info is missing. "
+                "Ensure 'transport' field is included with type='stdio', command, and args."
+            )
+
+        # Build URL
+        mcp_server_url = f"http://{host}:{port}{path}"
+
+        config = {
+            'transport': 'streamable_http',
+            'url': mcp_server_url
+        }
+
+        app_logger.info(f"Building HTTP config for {server_id}: {mcp_server_url}")
+        return {server_id: config}
+
+    else:
+        raise ValueError(f"Unsupported transport type: {transport_type}")
+
+
 def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> bool:
     """
     Load cached classification results from a profile into APP_STATE.
@@ -417,24 +488,14 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                 }
 
             server_name = mcp_server.get('name')  # For logging only
-            host = mcp_server.get('host')
-            port = mcp_server.get('port')
-            path = mcp_server.get('path')
-
-            if not all([host, port, path]):
-                return {
-                    "status": "error",
-                    "message": f"Incomplete MCP server configuration for {mcp_server_id}"
-                }
-
-            mcp_server_url = f"http://{host}:{port}{path}"
-            app_logger.info(f"Initializing MCP client for profile {profile_id} (server: {server_name}): {mcp_server_url}")
+            app_logger.info(f"Initializing MCP client for profile {profile_id} (server: {server_name}, ID: {mcp_server_id})")
 
             # Initialize and validate MCP client
             try:
                 import asyncio
-                # CRITICAL: Use server ID as key, not name (enables name changes without breaking connections)
-                server_configs = {mcp_server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
+
+                # Build server config based on transport type
+                server_configs = build_mcp_server_config(mcp_server_id, mcp_server)
                 temp_mcp_client = MultiServerMCPClient(server_configs)
 
                 # Test MCP connection with 10 second timeout
@@ -448,10 +509,10 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                 app_logger.info(f"MCP server connection validated successfully: {server_name} (ID: {mcp_server_id})")
 
             except asyncio.TimeoutError:
-                app_logger.error(f"MCP server connection timed out after 10 seconds: {mcp_server_url}")
+                app_logger.error(f"MCP server connection timed out after 10 seconds: {server_name} (ID: {mcp_server_id})")
                 return {
                     "status": "error",
-                    "message": f"MCP server connection timed out. Server may be down or unreachable: {mcp_server_url}"
+                    "message": f"MCP server connection timed out. Server may be down or unreachable: {server_name}"
                 }
             except Exception as e:
                 app_logger.error(f"Failed to initialize MCP client: {e}", exc_info=True)
@@ -684,19 +745,10 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             temp_server_configs = None
             if has_mcp_config:
                 mcp_server_config = config_data.get("mcp_server", {})
-                host = mcp_server_config.get('host')
-                port = mcp_server_config.get('port')
-                path = mcp_server_config.get('path')
+                app_logger.info(f"Connecting to MCP server: {server_name} (ID: {server_id})")
 
-                # Validate MCP server configuration
-                if not host or not port or not path:
-                    raise ValueError(f"Incomplete MCP server configuration: host={host}, port={port}, path={path}")
-
-                mcp_server_url = f"http://{host}:{port}{path}"
-                app_logger.info(f"Connecting to MCP server at: {mcp_server_url} (ID: {server_id})")
-
-                # CRITICAL: Use server ID as key, not name
-                temp_server_configs = {server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
+                # Build server config based on transport type
+                temp_server_configs = build_mcp_server_config(server_id, mcp_server_config)
                 temp_mcp_client = MultiServerMCPClient(temp_server_configs)
                 async with temp_mcp_client.session(server_id) as temp_session:
                     await temp_session.list_tools()

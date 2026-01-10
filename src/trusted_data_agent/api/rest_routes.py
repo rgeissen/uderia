@@ -4381,6 +4381,322 @@ async def delete_mcp_server(server_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _convert_registry_server_to_internal(registry_server: dict) -> dict:
+    """
+    Convert MCP registry server.json format to internal MCP server format.
+
+    Supports:
+    - SSE transport (Server-Sent Events) - native support
+    - stdio transport - requires local execution
+    - streamable-http transport - HTTP streaming
+
+    Args:
+        registry_server: Server definition in MCP registry format
+
+    Returns:
+        dict: Server configuration in internal format
+
+    Raises:
+        ValueError: If required fields are missing or format is invalid
+    """
+    import uuid
+    from urllib.parse import urlparse
+
+    # Validate required fields
+    if not registry_server.get('name'):
+        raise ValueError("Server 'name' is required")
+    if not registry_server.get('version'):
+        raise ValueError("Server 'version' is required")
+
+    # Extract basic info
+    name = registry_server.get('title') or registry_server.get('name')
+    description = registry_server.get('description', '')
+    version = registry_server.get('version')
+
+    # Determine transport configuration
+    transport_config = None
+    transport_type = None
+
+    # Check packages array for transport info
+    packages = registry_server.get('packages', [])
+    if packages:
+        for package in packages:
+            transport = package.get('transport', {})
+            transport_type = transport.get('type')
+
+            if transport_type == 'sse':
+                # SSE transport - extract URL
+                url = transport.get('url', '')
+                if url:
+                    # Handle URL templating by removing template variables
+                    # e.g., "https://{host}:{port}/sse" -> "https://localhost:8000/sse"
+                    url = url.replace('{host}', 'localhost')
+                    url = url.replace('{port}', '8000')
+
+                    parsed = urlparse(url)
+                    transport_config = {
+                        'type': 'sse',
+                        'host': parsed.hostname or 'localhost',
+                        'port': str(parsed.port) if parsed.port else '8000',
+                        'path': parsed.path or '/sse',
+                        'protocol': parsed.scheme or 'http'
+                    }
+                    break
+
+            elif transport_type == 'stdio':
+                # stdio transport - requires command execution
+                transport_config = {
+                    'type': 'stdio',
+                    'command': package.get('identifier', ''),
+                    'args': package.get('args', {}).get('positional', []),
+                    'env': {var['name']: var.get('default', '') for var in package.get('env', [])}
+                }
+                break
+
+            elif transport_type == 'streamable-http':
+                # streamable-http transport
+                url = transport.get('url', '')
+                if url:
+                    url = url.replace('{host}', 'localhost')
+                    url = url.replace('{port}', '8080')
+
+                    parsed = urlparse(url)
+                    transport_config = {
+                        'type': 'http',
+                        'host': parsed.hostname or 'localhost',
+                        'port': str(parsed.port) if parsed.port else '8080',
+                        'path': parsed.path or '/',
+                        'protocol': parsed.scheme or 'http'
+                    }
+                    break
+
+    # Check remotes array for transport info
+    if not transport_config:
+        remotes = registry_server.get('remotes', [])
+        for remote in remotes:
+            transport = remote.get('transport', {})
+            transport_type = transport.get('type')
+
+            if transport_type == 'sse':
+                url = transport.get('url', '')
+                if url:
+                    parsed = urlparse(url)
+                    transport_config = {
+                        'type': 'sse',
+                        'host': parsed.hostname or 'localhost',
+                        'port': str(parsed.port) if parsed.port else '8000',
+                        'path': parsed.path or '/sse',
+                        'protocol': parsed.scheme or 'http'
+                    }
+                    break
+
+    # If no transport found, return error
+    if not transport_config:
+        raise ValueError("No supported transport configuration found. Supported: sse, stdio, streamable-http")
+
+    # Build internal server configuration
+    server_id = f"server-{uuid.uuid4()}"
+
+    internal_server = {
+        'id': server_id,
+        'name': f"{name} (v{version})",
+        'description': description,
+        'version': version,
+        'registry_name': registry_server.get('name'),
+        'website_url': registry_server.get('websiteUrl', ''),
+        'repository': registry_server.get('repository', {}),
+        'transport': transport_config
+    }
+
+    # For current system compatibility (SSE only), extract host/port/path
+    if transport_config.get('type') == 'sse':
+        internal_server['host'] = transport_config['host']
+        internal_server['port'] = transport_config['port']
+        internal_server['path'] = transport_config['path']
+    elif transport_config.get('type') == 'stdio':
+        # stdio doesn't have host/port, use placeholders
+        internal_server['host'] = 'stdio'
+        internal_server['port'] = '0'
+        internal_server['path'] = transport_config.get('command', '')
+    elif transport_config.get('type') == 'http':
+        internal_server['host'] = transport_config['host']
+        internal_server['port'] = transport_config['port']
+        internal_server['path'] = transport_config['path']
+
+    return internal_server
+
+
+def _convert_claude_desktop_to_internal(claude_config: dict) -> list:
+    """
+    Convert Claude Desktop mcpServers configuration to internal MCP server format.
+
+    Claude Desktop format:
+    {
+      "mcpServers": {
+        "server-name": {
+          "command": "npx",
+          "args": ["-y", "@package/name"],
+          "env": {"VAR": "value"}
+        }
+      }
+    }
+
+    Args:
+        claude_config: Claude Desktop configuration with mcpServers
+
+    Returns:
+        list: List of internal server configurations
+
+    Raises:
+        ValueError: If format is invalid
+    """
+    import uuid
+
+    mcp_servers_dict = claude_config.get('mcpServers', {})
+    if not isinstance(mcp_servers_dict, dict):
+        raise ValueError("mcpServers must be an object")
+
+    if not mcp_servers_dict:
+        raise ValueError("mcpServers is empty")
+
+    internal_servers = []
+
+    for server_name, server_config in mcp_servers_dict.items():
+        if not isinstance(server_config, dict):
+            continue
+
+        command = server_config.get('command', '')
+        args = server_config.get('args', [])
+        env = server_config.get('env', {})
+
+        # Build transport config for stdio
+        transport_config = {
+            'type': 'stdio',
+            'command': command,
+            'args': args,
+            'env': env
+        }
+
+        # Generate server ID
+        server_id = f"server-{uuid.uuid4()}"
+
+        # Build internal server configuration
+        internal_server = {
+            'id': server_id,
+            'name': server_name,
+            'description': f"Imported from Claude Desktop config",
+            'transport': transport_config,
+            'source_format': 'claude_desktop',
+            # For compatibility with current system (expects host/port/path)
+            'host': 'stdio',
+            'port': '0',
+            'path': f"{command} {' '.join(args)}"
+        }
+
+        internal_servers.append(internal_server)
+
+    return internal_servers
+
+
+@rest_api_bp.route("/v1/mcp/servers/import", methods=["POST"])
+async def import_mcp_server_from_registry():
+    """
+    Import MCP server(s) from various formats.
+
+    Supports:
+    1. MCP Registry server.json format (single server)
+    2. Claude Desktop mcpServers format (multiple servers)
+
+    Returns imported server(s) with internal IDs.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        data = await request.get_json()
+
+        # Detect format and convert
+        internal_servers = []
+
+        if 'mcpServers' in data:
+            # Claude Desktop format
+            try:
+                internal_servers = _convert_claude_desktop_to_internal(data)
+                format_name = "Claude Desktop"
+            except ValueError as e:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Invalid Claude Desktop format: {str(e)}"
+                }), 400
+
+        elif 'name' in data or '$schema' in data:
+            # MCP Registry format
+            try:
+                internal_server = _convert_registry_server_to_internal(data)
+                internal_servers = [internal_server]
+                format_name = "MCP Registry"
+            except ValueError as e:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Invalid MCP Registry format: {str(e)}"
+                }), 400
+
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Unknown format. Expected MCP Registry (with 'name' field) or Claude Desktop (with 'mcpServers' field)."
+            }), 400
+
+        # Check for duplicates and add servers
+        existing_servers = config_manager.get_mcp_servers(user_uuid)
+        added_servers = []
+        skipped_servers = []
+
+        for internal_server in internal_servers:
+            # Check for duplicate by name
+            server_name = internal_server.get('name')
+            duplicate = next((s for s in existing_servers if s.get('name') == server_name), None)
+
+            if duplicate:
+                skipped_servers.append({
+                    'name': server_name,
+                    'reason': 'already exists',
+                    'existing_id': duplicate.get('id')
+                })
+                continue
+
+            # Add server
+            success = config_manager.add_mcp_server(internal_server, user_uuid)
+            if success:
+                added_servers.append(internal_server)
+                app_logger.info(f"Imported MCP server ({format_name}): {server_name} (ID: {internal_server.get('id')})")
+            else:
+                skipped_servers.append({
+                    'name': server_name,
+                    'reason': 'failed to add'
+                })
+
+        # Build response
+        if added_servers:
+            return jsonify({
+                "status": "success",
+                "message": f"Imported {len(added_servers)} server(s) from {format_name} format",
+                "servers": added_servers,
+                "skipped": skipped_servers if skipped_servers else None
+            }), 201
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "No servers were imported",
+                "skipped": skipped_servers
+            }), 400
+
+    except Exception as e:
+        app_logger.error(f"Error importing MCP server: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/mcp/servers/<server_id>/activate", methods=["POST"])
 async def activate_mcp_server(server_id: str):
     """Set an MCP server as the active server."""
@@ -4388,19 +4704,19 @@ async def activate_mcp_server(server_id: str):
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
-        
+
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
-        
+
         # Verify server exists
         servers = config_manager.get_mcp_servers(user_uuid)
         server = next((s for s in servers if s.get("id") == server_id), None)
-        
+
         if not server:
             return jsonify({"status": "error", "message": "MCP server not found"}), 404
-        
+
         success = config_manager.set_active_mcp_server_id(server_id, user_uuid)
-        
+
         if success:
             app_logger.info(f"Activated MCP server: {server_id}")
             return jsonify({
@@ -4419,10 +4735,11 @@ async def get_mcp_resources_for_server():
     """
     Gets the tools and prompts for a specific MCP server configuration
     without requiring the application to be globally configured with it.
+    Supports both SSE/HTTP and stdio transports.
     """
     data = await request.get_json()
-    if not data or not all(k in data for k in ["host", "port", "path"]):
-        return jsonify({"status": "error", "message": "Missing required MCP server details"}), 400
+    if not data:
+        return jsonify({"status": "error", "message": "Missing MCP server details"}), 400
 
     # Use server ID if provided, otherwise generate a temporary one for testing
     import uuid
@@ -4430,17 +4747,26 @@ async def get_mcp_resources_for_server():
     server_name = data.get("name", "Test Server")  # For logging only
 
     try:
-        mcp_server_url = f"http://{data['host']}:{data['port']}{data['path']}"
-        app_logger.info(f"Testing MCP server: {server_name} (ID: {server_id}) at {mcp_server_url}")
+        from trusted_data_agent.core.configuration_service import build_mcp_server_config
 
-        # CRITICAL: Use server ID as key, even for temporary testing
-        temp_server_configs = {server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
+        # Build server config based on transport type (handles both stdio and HTTP)
+        temp_server_configs = build_mcp_server_config(server_id, data)
+
+        transport_type = data.get('transport', {}).get('type', 'sse')
+        app_logger.info(f"Fetching resources for MCP server: {server_name} (ID: {server_id}, transport: {transport_type})")
+
         temp_mcp_client = MultiServerMCPClient(temp_server_configs)
 
         async with temp_mcp_client.session(server_id) as temp_session:
             tools_result = await temp_session.list_tools()
-            prompts_result = await temp_session.list_prompts()
-        
+
+            # Try to list prompts, but some MCP servers may not support this method
+            prompts_result = None
+            try:
+                prompts_result = await temp_session.list_prompts()
+            except Exception as prompts_error:
+                app_logger.info(f"Server {server_name} does not support prompts: {prompts_error}")
+
         structured_tools = {}
         for tool in tools_result.tools:
             category = "General"  # Fallback category
@@ -4452,23 +4778,24 @@ async def get_mcp_resources_for_server():
             structured_tools[category].append({"name": tool.name, "description": tool.description, "disabled": False})
 
         structured_prompts = {}
-        for prompt in prompts_result.prompts:
-            category = "General"
-            description = ""
-            arguments = []
-            if hasattr(prompt, 'metadata') and prompt.metadata:
-                category = prompt.metadata.get("category", "General")
-                description = prompt.metadata.get("description", "")
-                arguments = prompt.metadata.get("arguments", [])
+        if prompts_result and hasattr(prompts_result, 'prompts'):
+            for prompt in prompts_result.prompts:
+                category = "General"
+                description = ""
+                arguments = []
+                if hasattr(prompt, 'metadata') and prompt.metadata:
+                    category = prompt.metadata.get("category", "General")
+                    description = prompt.metadata.get("description", "")
+                    arguments = prompt.metadata.get("arguments", [])
 
-            if category not in structured_prompts:
-                structured_prompts[category] = []
-            structured_prompts[category].append({
-                "name": prompt.name,
-                "description": description,
-                "arguments": arguments,
-                "disabled": False
-            })
+                if category not in structured_prompts:
+                    structured_prompts[category] = []
+                structured_prompts[category].append({
+                    "name": prompt.name,
+                    "description": description,
+                    "arguments": arguments,
+                    "disabled": False
+                })
 
         return jsonify({
             "status": "success",
@@ -4478,7 +4805,18 @@ async def get_mcp_resources_for_server():
 
     except Exception as e:
         app_logger.error(f"Error fetching resources for server {server_name}: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": str(e)}), 500
+
+        # Provide helpful error messages based on transport type
+        transport_type = data.get('transport', {}).get('type', 'sse')
+        root_exception = e
+        while hasattr(root_exception, '__cause__') and root_exception.__cause__:
+            root_exception = root_exception.__cause__
+
+        error_message = str(root_exception)
+        if transport_type == 'stdio':
+            error_message = f"Failed to connect to stdio server: {error_message}. Check if the command is installed and executable."
+
+        return jsonify({"status": "error", "message": error_message}), 500
 
 
 # ============================================================================

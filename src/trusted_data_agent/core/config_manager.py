@@ -411,7 +411,10 @@ class ConfigManager:
         ]
 
         if dependent_profiles:
-            profile_names = [p.get("profileName", "Unknown") for p in dependent_profiles]
+            profile_names = [
+                p.get("profileName") or p.get("name") or f"@{p.get('tag')}" or "Unknown"
+                for p in dependent_profiles
+            ]
             names_list = ", ".join(profile_names)
             error_msg = f"Cannot delete MCP server: {len(dependent_profiles)} profile(s) depend on it: {names_list}"
             app_logger.warning(f"{error_msg} (Server ID: {server_id})")
@@ -604,33 +607,40 @@ class ConfigManager:
         Dynamically calculate disabled tools for a profile.
         This is the set difference: all_tools - enabled_tools
         TDA_ tools are NEVER disabled (mandatory core capabilities).
-        
+
         Args:
             profile_id: Profile ID
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
             List of disabled tool names for this profile (excluding TDA_ tools)
         """
         profile = next((p for p in self.get_profiles(user_uuid) if p.get("id") == profile_id), None)
         if not profile:
             return []
-        
+
+        # Get enabled tools for this profile
+        enabled_tools_list = self.get_profile_enabled_tools(profile_id, user_uuid)
+
+        # Handle wildcard: if enabled_tools is ['*'], all tools are enabled (nothing disabled)
+        if enabled_tools_list == ['*']:
+            return []
+
         # Get all tools from APP_STATE (populated from live MCP server during classification)
         # Fallback to config file if APP_STATE not available
         from trusted_data_agent.core.config import APP_STATE
         all_tools = set(APP_STATE.get('mcp_tools', {}).keys()) if APP_STATE.get('mcp_tools') else set()
-        
+
         # If APP_STATE has no tools yet, fallback to config file (for backwards compatibility)
         if not all_tools:
             mcp_server_id = profile.get("mcpServerId")
             all_tools = set(self.get_all_mcp_tools(mcp_server_id, user_uuid))
-        
-        enabled_tools = set(self.get_profile_enabled_tools(profile_id, user_uuid))
-        
+
+        enabled_tools = set(enabled_tools_list)
+
         # Calculate disabled tools, but exclude TDA_ tools (they are ALWAYS enabled)
         disabled_tools = {tool for tool in all_tools if tool not in enabled_tools and not tool.startswith('TDA_')}
-        
+
         return list(disabled_tools)
     
     def get_profile_disabled_prompts(self, profile_id: str, user_uuid: Optional[str] = None) -> list:
@@ -638,33 +648,40 @@ class ConfigManager:
         Dynamically calculate disabled prompts for a profile.
         This is the set difference: all_prompts - enabled_prompts
         TDA_ prompts are NEVER disabled (mandatory core capabilities).
-        
+
         Args:
             profile_id: Profile ID
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
             List of disabled prompt names for this profile (excluding TDA_ prompts)
         """
         profile = next((p for p in self.get_profiles(user_uuid) if p.get("id") == profile_id), None)
         if not profile:
             return []
-        
+
+        # Get enabled prompts for this profile
+        enabled_prompts_list = self.get_profile_enabled_prompts(profile_id, user_uuid)
+
+        # Handle wildcard: if enabled_prompts is ['*'], all prompts are enabled (nothing disabled)
+        if enabled_prompts_list == ['*']:
+            return []
+
         # Get all prompts from APP_STATE (populated from live MCP server during classification)
         # Fallback to config file if APP_STATE not available
         from trusted_data_agent.core.config import APP_STATE
         all_prompts = set(APP_STATE.get('mcp_prompts', {}).keys()) if APP_STATE.get('mcp_prompts') else set()
-        
+
         # If APP_STATE has no prompts yet, fallback to config file (for backwards compatibility)
         if not all_prompts:
             mcp_server_id = profile.get("mcpServerId")
             all_prompts = set(self.get_all_mcp_prompts(mcp_server_id, user_uuid))
-        
-        enabled_prompts = set(self.get_profile_enabled_prompts(profile_id, user_uuid))
-        
+
+        enabled_prompts = set(enabled_prompts_list)
+
         # Calculate disabled prompts, but exclude TDA_ prompts (they are ALWAYS enabled)
         disabled_prompts = {prompt for prompt in all_prompts if prompt not in enabled_prompts and not prompt.startswith('TDA_')}
-        
+
         return list(disabled_prompts)
 
     # ========================================================================

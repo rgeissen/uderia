@@ -1886,9 +1886,14 @@
                                             <h3 class="text-xl font-bold text-white">Configure MCP Servers</h3>
                                             <p class="text-sm text-gray-400 mt-1">Model-Context-Protocol servers provide access to your data sources</p>
                                         </div>
-                                        <button type="button" id="add-mcp-server-btn" class="px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
-                                            + Add Server
-                                        </button>
+                                        <div class="flex gap-2">
+                                            <button type="button" id="import-mcp-server-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium text-sm">
+                                                📥 Import from server.json
+                                            </button>
+                                            <button type="button" id="add-mcp-server-btn" class="px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
+                                                + Add Server
+                                            </button>
+                                        </div>
                                     </div>
                                     <div id="mcp-servers-container" class="space-y-4">
                                         <!-- MCP server cards will be dynamically added here -->

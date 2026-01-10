@@ -594,32 +594,39 @@ class ConfigurationState {
 
     async removeMCPServer(serverId) {
         try {
+            const headers = {};
+            const authToken = localStorage.getItem('tda_auth_token');
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
             const response = await fetch(`/api/v1/mcp/servers/${serverId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: headers
             });
-            
+
             if (response.ok) {
                 this.mcpServers = this.mcpServers.filter(s => s.id !== serverId);
                 if (this.activeMCP === serverId) {
                     this.activeMCP = null;
                 }
                 // Dispatch event to mark config as dirty
-                document.dispatchEvent(new CustomEvent('profile-modified', { 
-                    detail: { source: 'mcp-server-remove' } 
+                document.dispatchEvent(new CustomEvent('profile-modified', {
+                    detail: { source: 'mcp-server-remove' }
                 }));
                 return { success: true };
             } else {
                 const errorData = await response.json();
-                return { 
-                    success: false, 
-                    error: errorData.message || 'Failed to remove MCP server' 
+                return {
+                    success: false,
+                    error: errorData.message || 'Failed to remove MCP server'
                 };
             }
         } catch (error) {
             console.error('Failed to remove MCP server:', error);
-            return { 
-                success: false, 
-                error: error.message || 'Failed to remove MCP server' 
+            return {
+                success: false,
+                error: error.message || 'Failed to remove MCP server'
             };
         }
     }
@@ -1562,6 +1569,256 @@ export function showMCPServerModal(serverId = null) {
     });
 }
 
+export function showImportMCPServerModal() {
+    const modalHTML = `
+        <div id="import-mcp-server-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div class="glass-panel rounded-xl p-6 max-w-2xl w-full mx-4">
+                <h3 class="text-xl font-bold text-white mb-4">Import MCP Server Configuration</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">
+                            Paste configuration or upload file
+                        </label>
+                        <div class="text-xs text-gray-400 mb-2">
+                            Supports: <span class="font-semibold text-blue-400">MCP Registry format</span> or <span class="font-semibold text-green-400">Claude Desktop format</span>
+                        </div>
+                        <textarea id="import-mcp-json-input"
+                            placeholder='MCP Registry format:
+{
+  "name": "io.example/server",
+  "version": "1.0.0",
+  "packages": [{"transport": {"type": "sse", "url": "http://localhost:8000/sse"}}]
+}
+
+Claude Desktop format:
+{
+  "mcpServers": {
+    "server-name": {
+      "command": "npx",
+      "args": ["-y", "@package/name"],
+      "env": {"API_KEY": "your-key"}
+    }
+  }
+}'
+                            rows="14"
+                            class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none font-mono text-sm text-gray-200"></textarea>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="flex-1 cursor-pointer">
+                            <input type="file" id="import-mcp-file-input" accept=".json,application/json" class="hidden">
+                            <span class="flex items-center justify-center px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-white text-sm">
+                                📁 Or Upload server.json File
+                            </span>
+                        </label>
+                        <span id="import-mcp-filename" class="text-sm text-gray-400 flex-1"></span>
+                    </div>
+                    <div id="import-mcp-preview" class="hidden">
+                        <h4 class="text-sm font-semibold text-white mb-2">Server Preview:</h4>
+                        <div id="import-mcp-preview-content" class="bg-gray-700/50 rounded-md p-3 text-sm text-gray-300"></div>
+                    </div>
+                    <div id="import-mcp-error" class="hidden">
+                        <div class="bg-red-500/20 border border-red-500/50 rounded-md p-3 text-sm text-red-400"></div>
+                    </div>
+                    <div class="flex gap-3 pt-4">
+                        <button id="import-mcp-modal-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white">
+                            Cancel
+                        </button>
+                        <button id="import-mcp-modal-import" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
+                            Import Server
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    const modal = document.getElementById('import-mcp-server-modal');
+    const jsonInput = modal.querySelector('#import-mcp-json-input');
+    const fileInput = modal.querySelector('#import-mcp-file-input');
+    const filenameDisplay = modal.querySelector('#import-mcp-filename');
+    const previewDiv = modal.querySelector('#import-mcp-preview');
+    const previewContent = modal.querySelector('#import-mcp-preview-content');
+    const errorDiv = modal.querySelector('#import-mcp-error');
+
+    // File upload handler
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            filenameDisplay.textContent = file.name;
+            try {
+                const text = await file.text();
+                jsonInput.value = text;
+                validateAndPreviewServer(text);
+            } catch (error) {
+                showError(`Failed to read file: ${error.message}`);
+            }
+        }
+    });
+
+    // JSON input validation
+    jsonInput.addEventListener('input', () => {
+        const value = jsonInput.value.trim();
+        if (value) {
+            validateAndPreviewServer(value);
+        } else {
+            previewDiv.classList.add('hidden');
+            errorDiv.classList.add('hidden');
+        }
+    });
+
+    function validateAndPreviewServer(jsonText) {
+        try {
+            const serverData = JSON.parse(jsonText);
+
+            // Detect format
+            let formatName = '';
+            let previewHTML = '';
+
+            if (serverData.mcpServers) {
+                // Claude Desktop format
+                formatName = 'Claude Desktop';
+                const servers = serverData.mcpServers;
+                const serverCount = Object.keys(servers).length;
+
+                if (serverCount === 0) {
+                    showError("mcpServers object is empty");
+                    return;
+                }
+
+                previewHTML = `
+                    <div class="space-y-2">
+                        <div><span class="font-semibold text-green-400">Format:</span> Claude Desktop</div>
+                        <div><span class="font-semibold">Servers:</span> ${serverCount}</div>
+                        <div class="mt-2 text-xs">
+                            ${Object.keys(servers).map(name => `<div class="py-1">• ${escapeHtml(name)}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+
+            } else if (serverData.name || serverData.$schema) {
+                // MCP Registry format
+                formatName = 'MCP Registry';
+
+                if (!serverData.name) {
+                    showError("Missing required field: 'name'");
+                    return;
+                }
+                if (!serverData.version) {
+                    showError("Missing required field: 'version'");
+                    return;
+                }
+
+                const transportInfo = extractTransportInfo(serverData);
+                previewHTML = `
+                    <div class="space-y-1">
+                        <div><span class="font-semibold text-blue-400">Format:</span> MCP Registry</div>
+                        <div><span class="font-semibold">Name:</span> ${escapeHtml(serverData.title || serverData.name)}</div>
+                        <div><span class="font-semibold">Version:</span> ${escapeHtml(serverData.version)}</div>
+                        ${serverData.description ? `<div><span class="font-semibold">Description:</span> ${escapeHtml(serverData.description)}</div>` : ''}
+                        <div><span class="font-semibold">Transport:</span> ${escapeHtml(transportInfo)}</div>
+                    </div>
+                `;
+
+            } else {
+                showError("Unknown format. Expected MCP Registry or Claude Desktop format.");
+                return;
+            }
+
+            // Show preview
+            errorDiv.classList.add('hidden');
+            previewDiv.classList.remove('hidden');
+            previewContent.innerHTML = previewHTML;
+
+        } catch (error) {
+            showError(`Invalid JSON: ${error.message}`);
+        }
+    }
+
+    function extractTransportInfo(serverData) {
+        const packages = serverData.packages || [];
+        const remotes = serverData.remotes || [];
+
+        for (const pkg of packages) {
+            const transport = pkg.transport;
+            if (transport) {
+                return `${transport.type} (${transport.url || 'local command'})`;
+            }
+        }
+
+        for (const remote of remotes) {
+            const transport = remote.transport;
+            if (transport) {
+                return `${transport.type} (${transport.url || 'remote'})`;
+            }
+        }
+
+        return 'Unknown';
+    }
+
+    function showError(message) {
+        errorDiv.classList.remove('hidden');
+        errorDiv.querySelector('div').textContent = message;
+        previewDiv.classList.add('hidden');
+    }
+
+    // Cancel button
+    modal.querySelector('#import-mcp-modal-cancel').addEventListener('click', () => modal.remove());
+
+    // Import button
+    modal.querySelector('#import-mcp-modal-import').addEventListener('click', async () => {
+        const jsonText = jsonInput.value.trim();
+
+        if (!jsonText) {
+            showNotification('error', 'Please paste or upload a server.json file');
+            return;
+        }
+
+        try {
+            const serverData = JSON.parse(jsonText);
+
+            // Call import API
+            const authToken = localStorage.getItem('tda_auth_token');
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
+            const response = await fetch('/api/v1/mcp/servers/import', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(serverData)
+            });
+
+            const result = await response.json();
+            console.log('[Import] Backend response:', result);
+
+            if (result.status === 'success') {
+                const serverCount = result.servers?.length || 1;
+                showNotification('success', `Successfully imported ${serverCount} server(s)`);
+                await configState.loadMCPServers(); // Reload MCP servers list
+                renderMCPServers();
+                modal.remove();
+            } else {
+                // Show detailed error with skipped servers info
+                let errorMsg = result.message || 'Failed to import server';
+                if (result.skipped && result.skipped.length > 0) {
+                    errorMsg += '\n\nSkipped servers:';
+                    result.skipped.forEach(skip => {
+                        errorMsg += `\n• ${skip.name}: ${skip.reason}`;
+                    });
+                }
+                showError(errorMsg);
+            }
+        } catch (error) {
+            showError(`Import failed: ${error.message}`);
+        }
+    });
+}
+
 async function testMCPConnection(serverId) {
     const server = configState.mcpServers.find(s => s.id === serverId);
     if (!server) return;
@@ -1573,15 +1830,24 @@ async function testMCPConnection(serverId) {
     }
 
     try {
+        // Build test payload - include transport info for stdio servers
+        const testPayload = {
+            id: server.id,
+            name: server.name,
+            host: server.host,
+            port: server.port,
+            path: server.path
+        };
+
+        // Include transport configuration if available (for stdio servers)
+        if (server.transport) {
+            testPayload.transport = server.transport;
+        }
+
         const response = await fetch('/test-mcp-connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: server.name,
-                host: server.host,
-                port: server.port,
-                path: server.path
-            })
+            body: JSON.stringify(testPayload)
         });
 
         const result = await response.json();
@@ -4483,6 +4749,12 @@ export async function initializeConfigurationUI() {
     const addMCPBtn = document.getElementById('add-mcp-server-btn');
     if (addMCPBtn) {
         addMCPBtn.addEventListener('click', () => showMCPServerModal());
+    }
+
+    // Import MCP server button
+    const importMCPBtn = document.getElementById('import-mcp-server-btn');
+    if (importMCPBtn) {
+        importMCPBtn.addEventListener('click', () => showImportMCPServerModal());
     }
 
     // Add LLM configuration button

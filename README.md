@@ -104,6 +104,17 @@ Eliminate the friction between conversational exploration and production automat
   - Active for consumption toggle for available alternatives
   - Classification modes: Light (tool/prompt filtering) vs. Full (LLM-assisted categorization)
 
+* **MCP Server Import with Dual Format Support**: Seamless integration of community MCP servers:
+  - Import from official MCP Registry format (io.example/server-name specifications)
+  - Import from Claude Desktop configuration files (direct migration)
+  - Automatic format detection with validation
+  - Bulk import multiple servers at once
+  - Support for both HTTP/SSE and stdio transports
+  - stdio servers: automatic subprocess lifecycle management (npx, uvx, python)
+  - Server-side ID generation ensures uniqueness
+  - Duplicate detection prevents configuration conflicts
+  - One-click access to [MCP community servers](https://github.com/modelcontextprotocol/servers)
+
 * **Long-Lived Access Tokens**: Secure automation without session management:
   - Configurable expiration (90 days default, or never)
   - SHA256 hashed storage with audit trail
@@ -1032,8 +1043,12 @@ The Uderia Platform is built on a modern, asynchronous client-server architectur
 
 #### MCP Integration Layer
 - **Protocol:** Model Context Protocol - standardized tool/prompt/resource exposure
-- **Connection:** HTTP/WebSocket to MCP Server
+- **Connection Types:**
+  - **HTTP/SSE** - Remote MCP servers via streamable HTTP
+  - **stdio** - Local MCP servers via subprocess (npx, uvx, python, etc.)
+- **Import Formats:** MCP Registry specification and Claude Desktop configuration
 - **Security:** Credential passthrough, no credential storage in agent
+- **Lifecycle Management:** Automatic process spawning and cleanup for stdio servers
 
 ### Data Flow & Session Management
 
@@ -1504,6 +1519,102 @@ The Uderia Platform uses a modern, modular configuration system that separates i
    - **Path:** The endpoint path (e.g., /mcp)
 
 4. **Save:** Click "Add MCP Server" to save. You can configure multiple servers for different environments.
+
+##### MCP Server Import Capability
+
+Instead of manually configuring servers, you can import MCP server definitions from standardized configuration files. Uderia supports **two formats** with automatic detection:
+
+**Supported Formats:**
+
+1. **MCP Registry Format** - Official MCP server specification
+2. **Claude Desktop Format** - Import servers from your Claude Desktop configuration
+
+**How to Import:**
+
+1. Navigate to **Setup → MCP Servers**
+2. Click the **"📥 Import from server.json"** button
+3. Paste your server configuration JSON
+4. Click **"Import Server(s)"**
+
+The system automatically detects the format and imports all server configurations.
+
+**Format 1: MCP Registry Specification**
+
+The [official MCP registry format](https://github.com/modelcontextprotocol/registry) supports both HTTP/SSE and stdio transports:
+
+```json
+{
+  "name": "io.example/my-server",
+  "version": "1.0.0",
+  "description": "Example MCP server",
+  "packages": [
+    {
+      "transport": {
+        "type": "sse",
+        "url": "http://localhost:8000/sse"
+      }
+    }
+  ]
+}
+```
+
+**stdio Transport Example:**
+
+```json
+{
+  "name": "time-server",
+  "version": "1.0.0",
+  "packages": [
+    {
+      "transport": {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-time", "--local-timezone=America/New_York"],
+        "env": {}
+      }
+    }
+  ]
+}
+```
+
+**Format 2: Claude Desktop Configuration**
+
+Import servers directly from your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "time": {
+      "command": "uvx",
+      "args": ["mcp-server-time", "--local-timezone=America/New_York"],
+      "env": {}
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/username/Documents"],
+      "env": {}
+    }
+  }
+}
+```
+
+**Transport Types Supported:**
+
+- **`sse` / `streamable_http`** - HTTP-based servers (host, port, path)
+- **`stdio`** - Process-based servers (command, args, env)
+  - Automatically spawns and manages subprocess lifecycle
+  - Ideal for local MCP servers (npx, uvx, python, node)
+  - Examples: `mcp-server-time`, `@modelcontextprotocol/server-*`
+
+**Import Benefits:**
+
+- **Bulk import** multiple servers at once (Claude Desktop format)
+- **Format auto-detection** - no need to specify which format you're using
+- **Duplicate detection** - warns if server already exists
+- **Validation** - checks for required fields before import
+- **Server-side ID generation** - ensures unique server identifiers
+
+**Tip:** You can find community MCP servers at the [MCP Registry](https://github.com/modelcontextprotocol/servers) and import them directly.
 
 ##### Step 2: Configure LLM Providers
 

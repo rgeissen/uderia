@@ -1699,17 +1699,11 @@ async def test_mcp_connection():
     """
     Tests MCP server connectivity without performing full configuration.
     This allows users to validate individual MCP server settings before activation.
+    Supports both SSE/HTTP and stdio transports.
     """
     data = await request.get_json()
     if not data:
         return jsonify({"status": "error", "message": "Request body must be valid JSON."}), 400
-
-    host = data.get("host")
-    port = data.get("port")
-    path = data.get("path")
-
-    if not all([host, port, path]):
-        return jsonify({"status": "error", "message": "Missing required fields: host, port, path."}), 400
 
     # Use server ID if provided, otherwise generate a temporary one for testing
     import uuid
@@ -1717,12 +1711,11 @@ async def test_mcp_connection():
     server_name = data.get("name", "Test Server")  # For logging only
 
     try:
-        # Construct temporary server config
-        mcp_server_url = f"http://{host}:{port}{path}"
-        app_logger.info(f"Testing MCP connection for '{server_name}' (ID: {server_id}) at {mcp_server_url}")
+        from trusted_data_agent.core.configuration_service import build_mcp_server_config
 
-        # CRITICAL: Use server ID as key, even for temporary testing
-        temp_server_configs = {server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
+        # Build server config based on transport type
+        app_logger.info(f"Testing MCP connection for '{server_name}' (ID: {server_id})")
+        temp_server_configs = build_mcp_server_config(server_id, data)
 
         # Create temporary MCP client
         temp_mcp_client = MultiServerMCPClient(temp_server_configs)
@@ -1732,7 +1725,7 @@ async def test_mcp_connection():
             tools_result = await temp_session.list_tools()
             tool_count = len(tools_result.tools) if hasattr(tools_result, 'tools') else 0
 
-        app_logger.info(f"MCP connection test successful for '{server_name}' (ID: {server_id}) at {mcp_server_url}. Found {tool_count} tools.")
+        app_logger.info(f"MCP connection test successful for '{server_name}' (ID: {server_id}). Found {tool_count} tools.")
         return jsonify({
             "status": "success",
             "message": f"Connection successful! Found {tool_count} tools.",
@@ -1742,12 +1735,19 @@ async def test_mcp_connection():
     except Exception as e:
         root_exception = unwrap_exception(e)
         error_message = ""
-        
+
+        transport_info = data.get('transport', {})
+        transport_type = transport_info.get('type', 'sse')
+
         if isinstance(root_exception, (httpx.ConnectTimeout, httpx.ConnectError)):
+            host = data.get("host")
+            port = data.get("port")
             error_message = f"Connection failed: Cannot reach server at {host}:{port}. Please verify host and port."
+        elif transport_type == 'stdio':
+            error_message = f"Connection test failed: {str(root_exception)}. Check if command is installed and executable."
         else:
             error_message = f"Connection test failed: {str(root_exception)}"
-        
+
         app_logger.error(f"MCP connection test failed for '{server_name}': {error_message}", exc_info=True)
         return jsonify({"status": "error", "message": error_message}), 500
 
