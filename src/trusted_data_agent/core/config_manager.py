@@ -68,7 +68,8 @@ class ConfigManager:
             "active_llm_configuration_id": None,  # ID of currently active LLM configuration
             "profiles": [],  # Profile configurations
             "default_profile_id": None,  # ID of the default profile (for consumption)
-            "master_classification_profile_id": None,  # ID of the master classification profile (for inheritance)
+            "master_classification_profile_id": None,  # DEPRECATED: Legacy single master (backward compatibility only)
+            "master_classification_profile_ids": {},  # NEW: Per-server masters {mcp_server_id: profile_id}
             "active_for_consumption_profile_ids": []  # IDs of profiles active for consumption
         }
     
@@ -554,13 +555,60 @@ class ConfigManager:
 
         # Check if profile inherits classification from master classification profile
         if target_profile.get("inherit_classification", False):
-            master_profile_id = self.get_master_classification_profile_id(user_uuid)
-            if master_profile_id and master_profile_id != profile_id:
-                app_logger.info(f"Profile {profile_id} inherits classification from master classification profile {master_profile_id}")
-                # Recursively get master profile's tools (without infinite loop since master can't inherit)
-                for profile in profiles:
-                    if profile.get("id") == master_profile_id:
-                        return profile.get("tools", profile.get("enabled_tools", []))
+            # === STRICT ENFORCEMENT: Profile MUST inherit from per-server master ===
+            current_mcp_server_id = target_profile.get('mcpServerId')
+
+            # Use strict=True to ONLY get explicitly set per-server master (no fallbacks)
+            master_profile_id = self.get_master_classification_profile_id(
+                user_uuid,
+                current_mcp_server_id,
+                strict=True
+            )
+
+            if not master_profile_id:
+                app_logger.error(
+                    f"Profile {profile_id} has inherit_classification enabled but "
+                    f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
+                    f"Returning empty tools list."
+                )
+                return []
+
+            if master_profile_id == profile_id:
+                app_logger.error(
+                    f"Profile {profile_id} cannot inherit classification from itself. "
+                    f"Returning profile's own tools."
+                )
+                return target_profile.get("tools", target_profile.get("enabled_tools", []))
+
+            # Find master profile
+            master_profile = None
+            for profile in profiles:
+                if profile.get("id") == master_profile_id:
+                    master_profile = profile
+                    break
+
+            if not master_profile:
+                app_logger.error(
+                    f"Master classification profile {master_profile_id} not found for profile {profile_id}. "
+                    f"Returning empty tools list."
+                )
+                return []
+
+            # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
+            master_mcp_server_id = master_profile.get('mcpServerId')
+            if current_mcp_server_id != master_mcp_server_id:
+                app_logger.error(
+                    f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                    f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
+                    f"This should not happen with strict mode. Returning empty tools list."
+                )
+                return []
+
+            app_logger.info(
+                f"✓ Profile {profile_id} inherits tools from per-server master {master_profile_id} "
+                f"(MCP server: {current_mcp_server_id})"
+            )
+            return master_profile.get("tools", master_profile.get("enabled_tools", []))
 
         # Frontend stores as 'tools', legacy field was 'enabled_tools'
         return target_profile.get("tools", target_profile.get("enabled_tools", []))
@@ -591,13 +639,60 @@ class ConfigManager:
 
         # Check if profile inherits classification from master classification profile
         if target_profile.get("inherit_classification", False):
-            master_profile_id = self.get_master_classification_profile_id(user_uuid)
-            if master_profile_id and master_profile_id != profile_id:
-                app_logger.info(f"Profile {profile_id} inherits classification from master classification profile {master_profile_id}")
-                # Recursively get master profile's prompts (without infinite loop since master can't inherit)
-                for profile in profiles:
-                    if profile.get("id") == master_profile_id:
-                        return profile.get("prompts", profile.get("enabled_prompts", []))
+            # === STRICT ENFORCEMENT: Profile MUST inherit from per-server master ===
+            current_mcp_server_id = target_profile.get('mcpServerId')
+
+            # Use strict=True to ONLY get explicitly set per-server master (no fallbacks)
+            master_profile_id = self.get_master_classification_profile_id(
+                user_uuid,
+                current_mcp_server_id,
+                strict=True
+            )
+
+            if not master_profile_id:
+                app_logger.error(
+                    f"Profile {profile_id} has inherit_classification enabled but "
+                    f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
+                    f"Returning empty prompts list."
+                )
+                return []
+
+            if master_profile_id == profile_id:
+                app_logger.error(
+                    f"Profile {profile_id} cannot inherit classification from itself. "
+                    f"Returning profile's own prompts."
+                )
+                return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
+
+            # Find master profile
+            master_profile = None
+            for profile in profiles:
+                if profile.get("id") == master_profile_id:
+                    master_profile = profile
+                    break
+
+            if not master_profile:
+                app_logger.error(
+                    f"Master classification profile {master_profile_id} not found for profile {profile_id}. "
+                    f"Returning empty prompts list."
+                )
+                return []
+
+            # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
+            master_mcp_server_id = master_profile.get('mcpServerId')
+            if current_mcp_server_id != master_mcp_server_id:
+                app_logger.error(
+                    f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                    f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
+                    f"This should not happen with strict mode. Returning empty prompts list."
+                )
+                return []
+
+            app_logger.info(
+                f"✓ Profile {profile_id} inherits prompts from per-server master {master_profile_id} "
+                f"(MCP server: {current_mcp_server_id})"
+            )
+            return master_profile.get("prompts", master_profile.get("enabled_prompts", []))
 
         # Frontend stores as 'prompts', legacy field was 'enabled_prompts'
         return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
@@ -868,33 +963,76 @@ class ConfigManager:
         config["active_for_consumption_profile_ids"] = profile_ids
         return self.save_config(config, user_uuid)
 
-    def get_master_classification_profile_id(self, user_uuid: Optional[str] = None) -> Optional[str]:
+    def get_master_classification_profile_id(
+        self,
+        user_uuid: Optional[str] = None,
+        mcp_server_id: Optional[str] = None,
+        strict: bool = False
+    ) -> Optional[str]:
         """
-        Get master classification profile ID for user.
+        Get master classification profile ID for a specific MCP server.
 
         The master profile is the reference for classification inheritance.
         Always returns a tool_enabled profile ID (not llm_only).
 
-        If no master is explicitly set, falls back to the first tool_enabled profile.
+        IMPORTANT: With per-server masters, you should pass mcp_server_id.
+        If mcp_server_id is not provided, falls back to legacy single-master behavior.
 
         Args:
             user_uuid: Optional user UUID for per-user configuration isolation
+            mcp_server_id: MCP server ID to get master for (NEW - supports multiple masters)
+            strict: If True, ONLY return explicitly set per-server master (no fallbacks).
+                   Use strict=True for inheritance validation to ensure data integrity.
 
         Returns:
-            Master classification profile ID or None if no tool_enabled profiles exist
+            Master classification profile ID or None if:
+            - (strict=True) No per-server master explicitly set for this MCP server
+            - (strict=False) No tool_enabled profiles exist for this server
         """
         config = self.load_config(user_uuid)
-        master_id = config.get('master_classification_profile_id')
 
-        # If master is explicitly set, return it
-        if master_id:
-            return master_id
+        # === STRICT MODE: Only return explicitly set per-server master ===
+        if strict and mcp_server_id:
+            master_ids = config.get('master_classification_profile_ids', {})
+            if isinstance(master_ids, dict) and mcp_server_id in master_ids:
+                master_id = master_ids[mcp_server_id]
+                app_logger.debug(f"[STRICT] Found master classification profile for MCP server {mcp_server_id}: {master_id}")
+                return master_id
+            else:
+                app_logger.debug(f"[STRICT] No master classification profile set for MCP server {mcp_server_id}")
+                return None
 
-        # Fallback: Find first tool_enabled profile if no master set
+        # === NON-STRICT MODE: Check per-server master with fallbacks ===
+        if mcp_server_id:
+            master_ids = config.get('master_classification_profile_ids', {})
+            if isinstance(master_ids, dict) and mcp_server_id in master_ids:
+                master_id = master_ids[mcp_server_id]
+                app_logger.debug(f"Found master classification profile for MCP server {mcp_server_id}: {master_id}")
+                return master_id
+
+        # === BACKWARD COMPATIBILITY: Legacy single master ===
+        legacy_master_id = config.get('master_classification_profile_id')
+        if legacy_master_id:
+            app_logger.debug(f"Using legacy single master classification profile: {legacy_master_id}")
+            return legacy_master_id
+
+        # === FALLBACK: Find first tool_enabled profile for this server ===
+        if mcp_server_id:
+            profiles = self.get_profiles(user_uuid)
+            for profile in profiles:
+                if (profile.get('profile_type') != 'llm_only' and
+                    profile.get('mcpServerId') == mcp_server_id):
+                    app_logger.debug(
+                        f"No master classification profile set for MCP server {mcp_server_id}, "
+                        f"using first tool_enabled profile: {profile['id']}"
+                    )
+                    return profile['id']
+
+        # === LEGACY FALLBACK: Any tool_enabled profile ===
         profiles = self.get_profiles(user_uuid)
         for profile in profiles:
             if profile.get('profile_type') != 'llm_only':
-                app_logger.debug(f"No master classification profile set for user {user_uuid}, using first tool_enabled profile: {profile['id']}")
+                app_logger.debug(f"No master classification profile set, using first tool_enabled profile: {profile['id']}")
                 return profile['id']
 
         app_logger.warning(f"No tool_enabled profiles found for user {user_uuid} - cannot determine master classification profile")
@@ -951,16 +1089,27 @@ class ConfigManager:
             app_logger.info(f"Disabling inherit_classification for profile {profile_id} as it's being set as master")
             self.update_profile(profile_id, {'inherit_classification': False}, user_uuid)
 
-        # Update config
+        # === NEW: Store master per MCP server ===
+        mcp_server_id = profile.get('mcpServerId')
         config = self.load_config(user_uuid)
+
+        # Initialize master_classification_profile_ids if it doesn't exist
+        if 'master_classification_profile_ids' not in config or not isinstance(config['master_classification_profile_ids'], dict):
+            config['master_classification_profile_ids'] = {}
+
+        # Set master for this MCP server
+        config['master_classification_profile_ids'][mcp_server_id] = profile_id
+
+        # === BACKWARD COMPATIBILITY: Also update legacy single master (deprecated) ===
         config['master_classification_profile_id'] = profile_id
+
         success = self.save_config(config, user_uuid)
 
         if not success:
             return {"status": "error", "message": "Failed to save configuration"}
 
-        app_logger.info(f"Set master classification profile to {profile_id} for user {user_uuid}")
-        return {"status": "success"}
+        app_logger.info(f"Set master classification profile for MCP server {mcp_server_id} to {profile_id} (user: {user_uuid})")
+        return {"status": "success", "mcp_server_id": mcp_server_id}
 
     # ========================================================================
     # PROFILE CLASSIFICATION METHODS

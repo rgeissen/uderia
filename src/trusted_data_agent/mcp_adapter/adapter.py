@@ -247,74 +247,107 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     else:
         app_logger.warning("No profile_id provided to load_and_categorize_mcp_resources, using default mode 'full'")
 
-    async with mcp_client.session(server_id) as temp_session:
-        app_logger.info("--- Loading and classifying MCP tools and prompts... ---")
+    # === CACHING LAYER: Check schema cache ===
+    import time
+    cache_key = server_id
+    schema_cache = STATE.setdefault('mcp_tool_schema_cache', {})
+    cached_schemas = schema_cache.get(cache_key)
 
-        list_tools_result = await temp_session.list_tools()
-        raw_tools = list_tools_result.tools if hasattr(list_tools_result, 'tools') else []
+    cache_valid = False
+    loaded_tools = []
+    loaded_prompts = []
+    loaded_resources = []
 
-        processed_tools = []
-        class SimpleTool:
-            def __init__(self, **kwargs):
-                self.__dict__.update(kwargs)
+    if cached_schemas:
+        age = time.time() - cached_schemas.get('timestamp', 0)
+        if age < 300:  # 5 minute TTL
+            cache_valid = True
+            app_logger.info(f"✓ CACHE HIT: Tool schemas for server {server_id} (age: {age:.1f}s, {cached_schemas.get('tool_count', 0)} tools, saved ~7s)")
+            loaded_tools = cached_schemas['tools']
+            loaded_prompts = cached_schemas['prompts']
+            loaded_resources = cached_schemas['resources']
+        else:
+            app_logger.info(f"Cache expired for server {server_id} (age: {age:.1f}s > 300s TTL)")
 
-        for raw_tool in raw_tools:
-            tool_name = raw_tool.name
-            tool_desc = raw_tool.description or ""
-            processed_args = []
-            cleaned_description = tool_desc
+    # === Load from MCP if cache miss/expired ===
+    if not cache_valid:
+        async with mcp_client.session(server_id) as temp_session:
+            app_logger.info("--- Loading and classifying MCP tools and prompts... ---")
 
-            if hasattr(raw_tool, 'inputSchema') and raw_tool.inputSchema and 'properties' in raw_tool.inputSchema:
-                cleaned_description, arg_desc_map = _get_arg_descriptions_from_string(tool_desc)
-                schema = raw_tool.inputSchema
-                required_args = schema.get('required', []) or []
+            list_tools_result = await temp_session.list_tools()
+            raw_tools = list_tools_result.tools if hasattr(list_tools_result, 'tools') else []
 
-                for arg_name, arg_schema in schema['properties'].items():
-                    processed_args.append({
-                        "name": arg_name,
-                        "type": _get_type_from_schema(arg_schema),
-                        "required": arg_name in required_args,
-                        "description": arg_desc_map.get(arg_name, arg_schema.get('title', 'No description.'))
-                    })
+            processed_tools = []
+            class SimpleTool:
+                def __init__(self, **kwargs):
+                    self.__dict__.update(kwargs)
 
-            processed_tools.append(SimpleTool(
-                name=tool_name,
-                description=cleaned_description,
-                args={arg['name']: arg for arg in processed_args}
-            ))
+            for raw_tool in raw_tools:
+                tool_name = raw_tool.name
+                tool_desc = raw_tool.description or ""
+                processed_args = []
+                cleaned_description = tool_desc
 
-        loaded_tools = processed_tools
-        app_logger.info(f"Loaded {len(loaded_tools)} tools from MCP server")
+                if hasattr(raw_tool, 'inputSchema') and raw_tool.inputSchema and 'properties' in raw_tool.inputSchema:
+                    cleaned_description, arg_desc_map = _get_arg_descriptions_from_string(tool_desc)
+                    schema = raw_tool.inputSchema
+                    required_args = schema.get('required', []) or []
 
-        loaded_prompts = []
-        try:
-            list_prompts_result = await temp_session.list_prompts()
-            if hasattr(list_prompts_result, 'prompts'):
-                loaded_prompts = list_prompts_result.prompts
-                app_logger.info(f"Loaded {len(loaded_prompts)} prompts from MCP server")
-        except Exception as e:
-            app_logger.error(f"CRITICAL ERROR while loading prompts: {e}", exc_info=True)
+                    for arg_name, arg_schema in schema['properties'].items():
+                        processed_args.append({
+                            "name": arg_name,
+                            "type": _get_type_from_schema(arg_schema),
+                            "required": arg_name in required_args,
+                            "description": arg_desc_map.get(arg_name, arg_schema.get('title', 'No description.'))
+                        })
 
-        # --- MODIFICATION START: Gracefully handle resource loading ---
-        loaded_resources = []
-        try:
-            # Attempt to list resources, which might not be supported by all MCP servers.
-            list_resources_result = await temp_session.list_resources()
-            if hasattr(list_resources_result, 'resources'):
-                loaded_resources = list_resources_result.resources
-                app_logger.info(f"Successfully loaded {len(loaded_resources)} resources from MCP server.")
-        except Exception as e:
-            # If the call fails (e.g., method not found), log a warning and continue.
-            app_logger.warning(f"Could not load resources from MCP server (this may be expected for older servers): {e}")
-            # Ensure loaded_resources remains an empty list.
+                processed_tools.append(SimpleTool(
+                    name=tool_name,
+                    description=cleaned_description,
+                    args={arg['name']: arg for arg in processed_args}
+                ))
+
+            loaded_tools = processed_tools
+            app_logger.info(f"Loaded {len(loaded_tools)} tools from MCP server")
+
+            loaded_prompts = []
+            try:
+                list_prompts_result = await temp_session.list_prompts()
+                if hasattr(list_prompts_result, 'prompts'):
+                    loaded_prompts = list_prompts_result.prompts
+                    app_logger.info(f"Loaded {len(loaded_prompts)} prompts from MCP server")
+            except Exception as e:
+                app_logger.error(f"CRITICAL ERROR while loading prompts: {e}", exc_info=True)
+
+            # --- MODIFICATION START: Gracefully handle resource loading ---
             loaded_resources = []
-        # --- MODIFICATION END ---
-
+            try:
+                # Attempt to list resources, which might not be supported by all MCP servers.
+                list_resources_result = await temp_session.list_resources()
+                if hasattr(list_resources_result, 'resources'):
+                    loaded_resources = list_resources_result.resources
+                    app_logger.info(f"Successfully loaded {len(loaded_resources)} resources from MCP server.")
+            except Exception as e:
+                # If the call fails (e.g., method not found), log a warning and continue.
+                app_logger.warning(f"Could not load resources from MCP server (this may be expected for older servers): {e}")
+                # Ensure loaded_resources remains an empty list.
+                loaded_resources = []
+            # --- MODIFICATION END ---
 
         # --- MODIFICATION START: Iterate over the consolidated list ---
         for tool_def in CLIENT_SIDE_TOOLS:
             loaded_tools.append(SimpleTool(**tool_def))
         # --- MODIFICATION END ---
+
+        # === Cache the loaded schemas ===
+        schema_cache[cache_key] = {
+            'tools': loaded_tools,
+            'prompts': loaded_prompts,
+            'resources': loaded_resources,
+            'timestamp': time.time(),
+            'tool_count': len(loaded_tools)
+        }
+        app_logger.info(f"✓ Cached tool schemas for server {server_id} ({len(loaded_tools)} tools, {len(loaded_prompts)} prompts, {len(loaded_resources)} resources)")
 
 
         STATE['mcp_tools'] = {tool.name: tool for tool in loaded_tools}

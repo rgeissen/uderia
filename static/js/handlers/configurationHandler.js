@@ -217,7 +217,8 @@ class ConfigurationState {
         this.activeLLM = null;
         this.profiles = [];
         this.activeProfileId = null;
-        this.masterClassificationProfileId = null; // Master profile for classification inheritance
+        this.masterClassificationProfileId = null; // DEPRECATED: Legacy single master (for backwards compatibility)
+        this.masterClassificationProfileIds = {}; // NEW: Per-server masters {mcpServerId: profileId}
         this.initialized = false;
         this.profileTestStatus = {}; // Track test status: profileId -> { tested: boolean, passed: boolean, timestamp: number }
     }
@@ -312,11 +313,15 @@ class ConfigurationState {
 
             // Load master classification profile ID
             try {
-                const { master_classification_profile_id } = await API.getMasterClassificationProfile();
-                this.masterClassificationProfileId = master_classification_profile_id;
-                console.log('[ConfigState] Loaded master classification profile:', master_classification_profile_id);
+                const response = await API.getMasterClassificationProfile();
+                // NEW: Per-server masters dict
+                this.masterClassificationProfileIds = response.master_classification_profile_ids || {};
+                // DEPRECATED: Legacy single master (for backwards compatibility)
+                this.masterClassificationProfileId = response.master_classification_profile_id;
+                console.log('[ConfigState] Loaded master classification profiles:', this.masterClassificationProfileIds);
             } catch (error) {
                 console.error('Failed to load master classification profile:', error);
+                this.masterClassificationProfileIds = {};
                 this.masterClassificationProfileId = null;
             }
 
@@ -2267,7 +2272,11 @@ export function renderProfiles() {
 
 function renderProfileCard(profile) {
         const isDefault = profile.id === configState.defaultProfileId;
-        const isMasterClassification = profile.id === configState.masterClassificationProfileId;
+
+        // Check if this profile is the master for its specific MCP server
+        const mcpServerId = profile.mcpServerId;
+        const isMasterClassification = mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profile.id;
+
         const isActiveForConsumption = configState.activeForConsumptionProfileIds.includes(profile.id);
         const testStatus = configState.profileTestStatus[profile.id];
         const testsPassedForDefault = testStatus?.passed === true;
@@ -2365,7 +2374,10 @@ function renderProfileCard(profile) {
 
                             // Inheritance status badge (only for tool-enabled profiles)
                             if (profile.profile_type === 'tool_enabled' && profile.inherit_classification && !isMasterClassification) {
-                                const masterProfile = configState.profiles.find(p => p.id === configState.masterClassificationProfileId);
+                                // Get the per-server master for this profile's MCP server
+                                const profileMcpServerId = profile.mcpServerId;
+                                const masterProfileId = profileMcpServerId ? configState.masterClassificationProfileIds[profileMcpServerId] : null;
+                                const masterProfile = masterProfileId ? configState.profiles.find(p => p.id === masterProfileId) : null;
                                 const masterName = masterProfile ? escapeHtml(masterProfile.name) : 'master profile';
                                 badges.push(`
                                 <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-400/30 rounded-full" title="Inheriting classification from ${masterName}">
@@ -2615,9 +2627,10 @@ function attachProfileEventListeners() {
                 const originalHTML = button.innerHTML;
                 button.innerHTML = '<svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
                 
-                // Step 1: If profile is also the master classification profile AND has inherit_classification enabled, disable it
+                // Step 1: If profile is also the master classification profile for its MCP server AND has inherit_classification enabled, disable it
                 // (Master classification profile cannot inherit - circular dependency)
-                const isMasterClassification = configState.masterClassificationProfileId === profileId;
+                const mcpServerId = profile.mcpServerId;
+                const isMasterClassification = mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profileId;
                 if (isMasterClassification && profile.inherit_classification) {
                     showNotification('info', 'Disabling classification inheritance (master classification profile cannot inherit from itself)...');
                     await configState.updateProfile(profileId, {
@@ -2787,14 +2800,20 @@ function attachProfileEventListeners() {
                     const profile = configState.profiles.find(p => p.id === profileId);
                     const isToolEnabled = profile && profile.profile_type === 'tool_enabled';
 
-                    // If tool-enabled and no master classification profile exists, set as master
+                    // If tool-enabled and no master classification profile exists for this MCP server, set as master
                     let wasSetAsMaster = false;
-                    if (isToolEnabled && !configState.masterClassificationProfileId) {
+                    const profileMcpServerId = profile.mcpServerId;
+                    const hasServerMaster = profileMcpServerId && configState.masterClassificationProfileIds[profileMcpServerId];
+
+                    if (isToolEnabled && profileMcpServerId && !hasServerMaster) {
                         try {
                             await API.setMasterClassificationProfile(profileId);
+                            // Update per-server master
+                            configState.masterClassificationProfileIds[profileMcpServerId] = profileId;
+                            // Also update legacy single master for backwards compatibility
                             configState.masterClassificationProfileId = profileId;
                             wasSetAsMaster = true;
-                            showNotification('info', `Profile "${profile.name}" set as master classification profile.`);
+                            showNotification('info', `Profile "${profile.name}" set as master classification profile for this MCP server.`);
                         } catch (masterError) {
                             console.error('Failed to set master classification profile:', masterError);
                         }
@@ -3067,7 +3086,10 @@ function attachProfileEventListeners() {
             }
 
             // Prevent master classification profile from inheriting
-            if (configState.masterClassificationProfileId === profileId) {
+            const mcpServerId = profile.mcpServerId;
+            const isMasterForThisServer = mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profileId;
+
+            if (isMasterForThisServer) {
                 showNotification('error', 'Master classification profile cannot inherit classification (it is the source for other profiles)');
                 return;
             }
@@ -3085,7 +3107,9 @@ function attachProfileEventListeners() {
                 await configState.loadProfiles();
                 renderProfiles();
 
-                const masterProfile = configState.profiles.find(p => p.id === configState.masterClassificationProfileId);
+                // Get the per-server master profile name
+                const masterProfileId = mcpServerId ? configState.masterClassificationProfileIds[mcpServerId] : null;
+                const masterProfile = masterProfileId ? configState.profiles.find(p => p.id === masterProfileId) : null;
                 const masterProfileName = masterProfile ? masterProfile.name : 'master classification profile';
 
                 const message = newInheritState
@@ -3110,9 +3134,10 @@ function attachProfileEventListeners() {
                 return;
             }
 
-            // Check if this profile is already the master
-            if (configState.masterClassificationProfileId === profileId) {
-                showNotification('info', `Profile "${profile.name}" is already the master classification profile`);
+            // Check if this profile is already the master for its MCP server
+            const mcpServerId = profile.mcpServerId;
+            if (mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profileId) {
+                showNotification('info', `Profile "${profile.name}" is already the master classification profile for this MCP server`);
                 return;
             }
 
@@ -3136,9 +3161,15 @@ function attachProfileEventListeners() {
 
                 // Call API to set master classification profile
                 await API.setMasterClassificationProfile(profileId);
+
+                // Update per-server master in configState
+                if (mcpServerId) {
+                    configState.masterClassificationProfileIds[mcpServerId] = profileId;
+                }
+                // Also update legacy single master for backwards compatibility
                 configState.masterClassificationProfileId = profileId;
 
-                showNotification('success', `Profile "${profile.name}" is now the master classification profile`);
+                showNotification('success', `Profile "${profile.name}" is now the master classification profile for this MCP server`);
 
                 // Trigger auto-classification for the new master profile
                 showNotification('info', `Running auto-classification for master profile "${profile.name}"...`);
@@ -4110,8 +4141,9 @@ async function showProfileModal(profileId = null) {
     
     mcpSelect.onchange = () => populateResources(mcpSelect.value);
 
-    // Initial population
-    const initialMcpId = profile ? profile.mcpServerId : (configState.mcpServers[0]?.id || null);
+    // Initial population - use the ACTUAL selected value from the dropdown
+    // (not the first server in the array, which may differ from activeMCP)
+    const initialMcpId = mcpSelect.value;
     if (initialMcpId) {
         populateResources(initialMcpId);
     } else {

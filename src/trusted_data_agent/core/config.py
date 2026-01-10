@@ -149,6 +149,16 @@ APP_STATE = {
 
     # Concurrency lock for the configuration process
     "configuration_lock": asyncio.Lock(),
+
+    # === CACHING LAYER (Performance Optimization) ===
+    # Cache MCP tool/prompt/resource schemas by server_id (5 minute TTL)
+    "mcp_tool_schema_cache": {},  # {server_id: {tools, prompts, resources, timestamp, tool_count}}
+
+    # Connection pooling for MCP clients (keyed by server_id)
+    "mcp_client_pool": {},  # {server_id: MultiServerMCPClient instance}
+
+    # LLM instance pooling by (provider, model, credentials_hash, user_uuid)
+    "llm_instance_pool": {},  # {pool_key: llm_instance}
 }
 
 # Whitelists for models that are officially supported.
@@ -549,3 +559,55 @@ def set_user_server_configs(server_configs: dict, user_uuid: str):
 
 
 # cleanup_inactive_user_contexts removed - no longer needed with database persistence
+
+
+def get_llm_pool_key(provider: str, model: str, credentials: dict, user_uuid: str) -> str:
+    """
+    Generate cache key for LLM instance pooling.
+
+    Args:
+        provider: LLM provider name (e.g., 'google', 'anthropic')
+        model: Model identifier (e.g., 'gemini-2.0-flash')
+        credentials: Credentials dictionary
+        user_uuid: User UUID for isolation
+
+    Returns:
+        Cache key string in format: provider:model:cred_hash:user_uuid
+    """
+    import hashlib
+    import json
+
+    # Hash credentials to avoid storing sensitive data in keys
+    cred_str = json.dumps({k: v for k, v in credentials.items() if v}, sort_keys=True)
+    cred_hash = hashlib.sha256(cred_str.encode()).hexdigest()[:16]
+
+    # Include user_uuid for per-user isolation
+    return f"{provider}:{model}:{cred_hash}:{user_uuid}"
+
+
+def clear_mcp_server_cache(server_id: str):
+    """
+    Clear all cached data for a specific MCP server.
+    Call this when MCP server configuration changes.
+
+    This clears:
+    - Tool schema cache (tools, prompts, resources)
+    - Connection pool (MCP client instances)
+
+    Args:
+        server_id: MCP server ID to clear caches for
+    """
+    import logging
+    logger = logging.getLogger("quart.app")
+
+    # Clear tool schema cache
+    schema_cache = APP_STATE.get('mcp_tool_schema_cache', {})
+    if server_id in schema_cache:
+        del schema_cache[server_id]
+        logger.info(f"Cleared tool schema cache for MCP server {server_id}")
+
+    # Clear connection pool
+    client_pool = APP_STATE.get('mcp_client_pool', {})
+    if server_id in client_pool:
+        del client_pool[server_id]
+        logger.info(f"Cleared pooled MCP client for server {server_id}")

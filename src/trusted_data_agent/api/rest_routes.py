@@ -5205,11 +5205,55 @@ async def get_profile_resources(profile_id: str):
         # Determine which profile to get classification from
         target_profile_id = profile_id
         if profile.get('inherit_classification', False):
-            # This profile inherits classification - get it from master profile
-            master_profile_id = config_manager.get_master_classification_profile_id(user_uuid)
-            if master_profile_id and master_profile_id != profile_id:
-                app_logger.info(f"Profile {profile_id} inherits classification from master {master_profile_id}")
-                target_profile_id = master_profile_id
+            # === STRICT ENFORCEMENT: Profile MUST inherit from per-server master ===
+            current_mcp_server_id = profile.get('mcpServerId')
+
+            # Use strict=True to ONLY get explicitly set per-server master (no fallbacks)
+            master_profile_id = config_manager.get_master_classification_profile_id(
+                user_uuid,
+                current_mcp_server_id,
+                strict=True
+            )
+
+            if not master_profile_id:
+                error_msg = (
+                    f"Profile {profile_id} has inherit_classification enabled but "
+                    f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
+                    f"Please set a master classification profile for this MCP server first."
+                )
+                app_logger.error(error_msg)
+                return jsonify({"status": "error", "message": error_msg}), 400
+
+            if master_profile_id == profile_id:
+                error_msg = (
+                    f"Profile {profile_id} cannot inherit classification from itself. "
+                    f"Please disable inherit_classification for master profiles."
+                )
+                app_logger.error(error_msg)
+                return jsonify({"status": "error", "message": error_msg}), 400
+
+            master_profile = config_manager.get_profile(master_profile_id, user_uuid)
+            if not master_profile:
+                error_msg = f"Master classification profile {master_profile_id} not found"
+                app_logger.error(error_msg)
+                return jsonify({"status": "error", "message": error_msg}), 404
+
+            # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
+            master_mcp_server_id = master_profile.get('mcpServerId')
+            if current_mcp_server_id != master_mcp_server_id:
+                error_msg = (
+                    f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                    f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
+                    f"This should not happen with strict mode. Classification cache may be corrupted."
+                )
+                app_logger.error(error_msg)
+                return jsonify({"status": "error", "message": error_msg}), 500
+
+            app_logger.info(
+                f"✓ Profile {profile_id} inherits classification from per-server master {master_profile_id} "
+                f"(MCP server: {current_mcp_server_id})"
+            )
+            target_profile_id = master_profile_id
 
         # Get classification results from the target profile (self or master)
         classification_results = config_manager.get_profile_classification(target_profile_id, user_uuid)
@@ -5311,10 +5355,30 @@ async def create_profile():
         # The flag will be set automatically when provider configuration changes after first classification
         
         success = config_manager.add_profile(data, user_uuid)
-        
+
         if success:
             app_logger.info(f"Created profile with tag: {data.get('tag')} (ID: {data.get('id')})")
-            
+
+            # === AUTO-SET AS MASTER: If this is the first profile for this MCP server, set as master ===
+            profile_type = data.get("profile_type", "tool_enabled")
+            mcp_server_id = data.get("mcpServerId")
+
+            if profile_type == "tool_enabled" and mcp_server_id:
+                # Check if a master already exists for this MCP server
+                existing_master_id = config_manager.get_master_classification_profile_id(user_uuid, mcp_server_id, strict=True)
+
+                if not existing_master_id:
+                    # No master exists for this MCP server - set this profile as master
+                    try:
+                        profile_id = data.get("id")
+                        result = config_manager.set_master_classification_profile_id(profile_id, user_uuid)
+                        app_logger.info(
+                            f"Auto-set profile {profile_id} as master classification profile "
+                            f"for MCP server {mcp_server_id} (first profile for this server)"
+                        )
+                    except Exception as master_error:
+                        app_logger.error(f"Failed to auto-set master classification profile: {master_error}")
+
             return jsonify({
                 "status": "success",
                 "message": "Profile created successfully",
@@ -5829,10 +5893,32 @@ async def update_profile(profile_id: str):
         is_active = profile_id in active_profile_ids
         
         success = config_manager.update_profile(profile_id, data, user_uuid)
-        
+
         if success:
             app_logger.info(f"Updated profile: {profile_id}")
-            
+
+            # === AUTO-SET AS MASTER: If MCP server changed and no master exists for new server, set as master ===
+            if "mcpServerId" in data:
+                new_mcp_server_id = data["mcpServerId"]
+                old_mcp_server_id = current_profile.get("mcpServerId")
+                profile_type = data.get("profile_type", current_profile.get("profile_type", "tool_enabled"))
+
+                # If MCP server changed and this is a tool-enabled profile
+                if new_mcp_server_id != old_mcp_server_id and profile_type == "tool_enabled" and new_mcp_server_id:
+                    # Check if a master already exists for the NEW MCP server
+                    existing_master_id = config_manager.get_master_classification_profile_id(user_uuid, new_mcp_server_id, strict=True)
+
+                    if not existing_master_id:
+                        # No master exists for this MCP server - set this profile as master
+                        try:
+                            result = config_manager.set_master_classification_profile_id(profile_id, user_uuid)
+                            app_logger.info(
+                                f"Auto-set profile {profile_id} as master classification profile "
+                                f"for MCP server {new_mcp_server_id} (first profile for this server after update)"
+                            )
+                        except Exception as master_error:
+                            app_logger.error(f"Failed to auto-set master classification profile: {master_error}")
+
             # If this profile is active for consumption, update APP_STATE
             if is_active and active_profile_ids:
                 primary_profile_id = active_profile_ids[0]
@@ -8184,14 +8270,15 @@ async def get_cost_analytics():
 @rest_api_bp.route('/v1/config/master-classification-profile', methods=['GET'])
 async def get_master_classification_profile():
     """
-    Get master classification profile ID.
+    Get master classification profile IDs (per-server).
 
-    The master profile is the reference for classification inheritance.
-    Returns the profile ID that other profiles inherit their tool/prompt
-    classification from when inherit_classification=true.
+    Returns a dictionary mapping MCP server IDs to their master classification profile IDs.
+    Each MCP server can have its own master profile for classification inheritance.
 
     Returns:
-        JSON response with master_classification_profile_id
+        JSON response with:
+        - master_classification_profile_ids: dict mapping server_id -> profile_id
+        - master_classification_profile_id: legacy single master (for backwards compatibility)
     """
     try:
         from trusted_data_agent.core.config_manager import get_config_manager
@@ -8201,11 +8288,16 @@ async def get_master_classification_profile():
             return jsonify({"status": "error", "message": "Authentication required"}), 401
 
         config_manager = get_config_manager()
-        master_id = config_manager.get_master_classification_profile_id(user_uuid)
+
+        # Load config to get per-server masters dict
+        config = config_manager.load_config(user_uuid)
+        master_ids_dict = config.get('master_classification_profile_ids', {})
+        legacy_master_id = config.get('master_classification_profile_id')
 
         return jsonify({
             "status": "success",
-            "master_classification_profile_id": master_id
+            "master_classification_profile_ids": master_ids_dict,  # NEW: Per-server dict
+            "master_classification_profile_id": legacy_master_id  # DEPRECATED: Legacy compatibility
         }), 200
 
     except Exception as e:

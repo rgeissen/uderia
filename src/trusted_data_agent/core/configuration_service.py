@@ -124,25 +124,54 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
     # Check if this profile inherits classification from master classification profile
     target_profile_id = profile_id
     if profile.get('inherit_classification', False):
-        # Use master classification profile instead of default profile for inheritance
-        master_profile_id = config_manager.get_master_classification_profile_id(user_uuid)
-        if master_profile_id and master_profile_id != profile_id:
-            app_logger.info(f"Profile {profile_id} inherits classification from master classification profile {master_profile_id}")
-            target_profile_id = master_profile_id
-            profile = config_manager.get_profile(master_profile_id, user_uuid)
-            if not profile:
-                app_logger.warning(f"Master classification profile {master_profile_id} not found")
-                return False
-        else:
-            # Fallback: Use default profile if no master set (backward compatibility)
-            default_profile_id = config_manager.get_default_profile_id(user_uuid)
-            if default_profile_id and default_profile_id != profile_id:
-                app_logger.warning(f"No master classification profile set, falling back to default profile {default_profile_id} for inheritance")
-                target_profile_id = default_profile_id
-                profile = config_manager.get_profile(default_profile_id, user_uuid)
-                if not profile:
-                    app_logger.warning(f"Default profile {default_profile_id} not found")
-                    return False
+        # === STRICT ENFORCEMENT: Profile MUST inherit from per-server master ===
+        current_mcp_server_id = profile.get('mcpServerId')
+
+        # Use strict=True to ONLY get explicitly set per-server master (no fallbacks)
+        master_profile_id = config_manager.get_master_classification_profile_id(
+            user_uuid,
+            current_mcp_server_id,
+            strict=True
+        )
+
+        if not master_profile_id:
+            app_logger.error(
+                f"Cannot activate profile {profile_id}: inherit_classification is enabled but "
+                f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
+                f"Please set a master classification profile for this MCP server first."
+            )
+            return False
+
+        if master_profile_id == profile_id:
+            app_logger.error(
+                f"Cannot activate profile {profile_id}: Profile cannot inherit classification from itself. "
+                f"Please disable inherit_classification for master profiles."
+            )
+            return False
+
+        master_profile = config_manager.get_profile(master_profile_id, user_uuid)
+        if not master_profile:
+            app_logger.error(
+                f"Cannot activate profile {profile_id}: Master classification profile {master_profile_id} not found"
+            )
+            return False
+
+        # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
+        master_mcp_server_id = master_profile.get('mcpServerId')
+        if current_mcp_server_id != master_mcp_server_id:
+            app_logger.error(
+                f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
+                f"This should not happen with strict mode. Classification cache may be corrupted."
+            )
+            return False
+
+        app_logger.info(
+            f"✓ Profile {profile_id} inherits classification from per-server master {master_profile_id} "
+            f"(MCP server: {current_mcp_server_id})"
+        )
+        target_profile_id = master_profile_id
+        profile = master_profile
     
     classification_results = config_manager.get_profile_classification(target_profile_id, user_uuid)
     
@@ -335,89 +364,104 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
         # Initialize and optionally validate LLM client
         temp_llm_instance = None
         if validate_llm or credentials:  # Create instance if validating OR if credentials are available
-            # Create LLM client (with optional validation test)
-            try:
-                if provider == "Google":
-                    genai.configure(api_key=credentials.get("apiKey"))
-                    temp_llm_instance = genai.GenerativeModel(model)
-                    if validate_llm:
-                        await temp_llm_instance.generate_content_async("test", generation_config={"max_output_tokens": 1})
-                
-                elif provider == "Anthropic":
-                    temp_llm_instance = AsyncAnthropic(api_key=credentials.get("apiKey"))
-                    if validate_llm:
-                        await temp_llm_instance.models.list()
-                
-                elif provider == "OpenAI":
-                    temp_llm_instance = AsyncOpenAI(api_key=credentials.get("apiKey"))
-                    if validate_llm:
-                        await temp_llm_instance.chat.completions.create(
-                            model=model,
-                            messages=[{"role": "user", "content": "test"}],
-                            max_tokens=1
+            # === LLM INSTANCE POOLING: Reuse if credentials match ===
+            from trusted_data_agent.core.config import get_llm_pool_key
+
+            pool_key = get_llm_pool_key(provider, model, credentials, user_uuid)
+            llm_pool = APP_STATE.setdefault('llm_instance_pool', {})
+
+            if pool_key in llm_pool and not validate_llm:
+                temp_llm_instance = llm_pool[pool_key]
+                app_logger.info(f"✓ POOL HIT: Reusing pooled LLM instance for {provider}/{model} (saved ~2s)")
+            else:
+                # Create LLM client (with optional validation test)
+                should_add_to_pool = True  # Track if we should pool this instance
+                try:
+                    if provider == "Google":
+                        genai.configure(api_key=credentials.get("apiKey"))
+                        temp_llm_instance = genai.GenerativeModel(model)
+                        if validate_llm:
+                            await temp_llm_instance.generate_content_async("test", generation_config={"max_output_tokens": 1})
+
+                    elif provider == "Anthropic":
+                        temp_llm_instance = AsyncAnthropic(api_key=credentials.get("apiKey"))
+                        if validate_llm:
+                            await temp_llm_instance.models.list()
+
+                    elif provider == "OpenAI":
+                        temp_llm_instance = AsyncOpenAI(api_key=credentials.get("apiKey"))
+                        if validate_llm:
+                            await temp_llm_instance.chat.completions.create(
+                                model=model,
+                                messages=[{"role": "user", "content": "test"}],
+                                max_tokens=1
+                            )
+
+                    elif provider == "Azure":
+                        temp_llm_instance = AsyncAzureOpenAI(
+                            api_key=credentials.get("apiKey"),
+                            azure_endpoint=credentials.get("azure_endpoint"),
+                            api_version=credentials.get("azure_api_version")
                         )
-                
-                elif provider == "Azure":
-                    temp_llm_instance = AsyncAzureOpenAI(
-                        api_key=credentials.get("apiKey"),
-                        azure_endpoint=credentials.get("azure_endpoint"),
-                        api_version=credentials.get("azure_api_version")
-                    )
-                    if validate_llm:
-                        await temp_llm_instance.chat.completions.create(
-                            model=credentials.get("azure_deployment_name"),
-                            messages=[{"role": "user", "content": "test"}],
-                            max_tokens=1
+                        if validate_llm:
+                            await temp_llm_instance.chat.completions.create(
+                                model=credentials.get("azure_deployment_name"),
+                                messages=[{"role": "user", "content": "test"}],
+                                max_tokens=1
+                            )
+
+                    elif provider == "Friendli":
+                        is_dedicated = bool(credentials.get("friendli_endpoint_url"))
+                        if is_dedicated:
+                            temp_llm_instance = AsyncOpenAI(
+                                api_key=credentials.get("friendli_token"),
+                                base_url=credentials.get("friendli_endpoint_url")
+                            )
+                        else:
+                            temp_llm_instance = AsyncOpenAI(
+                                api_key=credentials.get("friendli_token"),
+                                base_url="https://api.friendli.ai/serverless/v1"
+                            )
+                        if validate_llm:
+                            await temp_llm_instance.chat.completions.create(
+                                model=model,
+                                messages=[{"role": "user", "content": "test"}],
+                                max_tokens=1
+                            )
+
+                    elif provider == "Amazon":
+                        aws_region = credentials.get("aws_region")
+                        temp_llm_instance = boto3.client(
+                            service_name='bedrock-runtime',
+                            aws_access_key_id=credentials.get("aws_access_key_id"),
+                            aws_secret_access_key=credentials.get("aws_secret_access_key"),
+                            region_name=aws_region
                         )
-                
-                elif provider == "Friendli":
-                    is_dedicated = bool(credentials.get("friendli_endpoint_url"))
-                    if is_dedicated:
-                        temp_llm_instance = AsyncOpenAI(
-                            api_key=credentials.get("friendli_token"),
-                            base_url=credentials.get("friendli_endpoint_url")
-                        )
+                        if validate_llm:
+                            app_logger.info("Boto3 client for Bedrock validated")
+                        else:
+                            app_logger.info("Boto3 client for Bedrock created (validation skipped)")
+
+                    elif provider == "Ollama":
+                        host = credentials.get("ollama_host")
+                        if not host:
+                            raise ValueError("Ollama host is required")
+                        temp_llm_instance = llm_handler.OllamaClient(host=host)
+                        if validate_llm:
+                            await temp_llm_instance.list_models()
+
                     else:
-                        temp_llm_instance = AsyncOpenAI(
-                            api_key=credentials.get("friendli_token"),
-                            base_url="https://api.friendli.ai/serverless/v1"
-                        )
-                    if validate_llm:
-                        await temp_llm_instance.chat.completions.create(
-                            model=model,
-                            messages=[{"role": "user", "content": "test"}],
-                            max_tokens=1
-                        )
-                
-                elif provider == "Amazon":
-                    aws_region = credentials.get("aws_region")
-                    temp_llm_instance = boto3.client(
-                        service_name='bedrock-runtime',
-                        aws_access_key_id=credentials.get("aws_access_key_id"),
-                        aws_secret_access_key=credentials.get("aws_secret_access_key"),
-                        region_name=aws_region
-                    )
-                    if validate_llm:
-                        app_logger.info("Boto3 client for Bedrock validated")
-                    else:
-                        app_logger.info("Boto3 client for Bedrock created (validation skipped)")
-                
-                elif provider == "Ollama":
-                    host = credentials.get("ollama_host")
-                    if not host:
-                        raise ValueError("Ollama host is required")
-                    temp_llm_instance = llm_handler.OllamaClient(host=host)
-                    if validate_llm:
-                        await temp_llm_instance.list_models()
-                
-                else:
-                    raise ValueError(f"Unsupported provider: {provider}")
-                
-                app_logger.info(f"LLM client validated successfully: {provider}/{model}")
-                
-            except Exception as e:
-                app_logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
-                return {
+                        raise ValueError(f"Unsupported provider: {provider}")
+
+                    app_logger.info(f"LLM client validated successfully: {provider}/{model}")
+
+                    # === Add to pool after successful creation ===
+                    llm_pool[pool_key] = temp_llm_instance
+                    app_logger.info(f"✓ Created new LLM instance for {provider}/{model} (added to pool)")
+
+                except Exception as e:
+                    app_logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
+                    return {
                     "status": "error",
                     "message": f"Failed to initialize LLM client: {str(e)}"
                 }
@@ -494,19 +538,36 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             try:
                 import asyncio
 
-                # Build server config based on transport type
-                server_configs = build_mcp_server_config(mcp_server_id, mcp_server)
-                temp_mcp_client = MultiServerMCPClient(server_configs)
+                # === CONNECTION POOLING: Reuse existing client if available ===
+                client_pool = APP_STATE.setdefault('mcp_client_pool', {})
+                pool_key = mcp_server_id
 
-                # Test MCP connection with 10 second timeout
+                if pool_key in client_pool:
+                    temp_mcp_client = client_pool[pool_key]
+                    app_logger.info(f"✓ POOL HIT: Reusing pooled MCP client for server {server_name} (ID: {mcp_server_id}, saved ~3s)")
+                else:
+                    # Build server config based on transport type
+                    server_configs = build_mcp_server_config(mcp_server_id, mcp_server)
+                    temp_mcp_client = MultiServerMCPClient(server_configs)
+                    client_pool[pool_key] = temp_mcp_client
+                    app_logger.info(f"✓ Created new MCP client for server {server_name} (ID: {mcp_server_id}, added to pool)")
+
+                # Test MCP connection with 10 second timeout (even for pooled clients - health check)
                 app_logger.info(f"Testing MCP connection to {server_name} (ID: {mcp_server_id})...")
                 async def test_mcp():
                     # Use server ID for session, not name
                     async with temp_mcp_client.session(mcp_server_id) as temp_session:
                         await temp_session.list_tools()
 
-                await asyncio.wait_for(test_mcp(), timeout=10.0)
-                app_logger.info(f"MCP server connection validated successfully: {server_name} (ID: {mcp_server_id})")
+                try:
+                    await asyncio.wait_for(test_mcp(), timeout=10.0)
+                    app_logger.info(f"MCP server connection validated successfully: {server_name} (ID: {mcp_server_id})")
+                except asyncio.TimeoutError:
+                    # Health check failed - remove from pool and raise
+                    if pool_key in client_pool:
+                        del client_pool[pool_key]
+                        app_logger.warning(f"Pooled MCP client for {server_name} (ID: {mcp_server_id}) failed health check, removed from pool")
+                    raise
 
             except asyncio.TimeoutError:
                 app_logger.error(f"MCP server connection timed out after 10 seconds: {server_name} (ID: {mcp_server_id})")
