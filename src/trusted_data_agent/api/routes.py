@@ -1509,7 +1509,7 @@ async def new_session():
 
     # Get profile tag and LLM config from DEFAULT profile (not first active)
     from trusted_data_agent.core.config_manager import get_config_manager
-    from trusted_data_agent.core.config import set_user_mcp_server_id
+    from trusted_data_agent.core.config import set_user_mcp_server_id, set_user_mcp_client
     config_manager = get_config_manager()
     default_profile_id = config_manager.get_default_profile_id(user_uuid)
     profile_tag = None
@@ -1521,13 +1521,24 @@ async def new_session():
         if default_profile:
             profile_tag = default_profile.get("tag")
 
-            # CRITICAL: Initialize MCP server ID from profile for deterministic behavior
+            # CRITICAL: Initialize MCP server ID AND CLIENT from profile for deterministic behavior
             # This ensures new sessions always use the profile's configured MCP server,
             # not leftover state from profile overrides in previous sessions
             profile_mcp_server_id = default_profile.get('mcpServerId')
             if profile_mcp_server_id:
+                # Update server ID
                 set_user_mcp_server_id(profile_mcp_server_id, user_uuid)
-                app_logger.info(f"✅ Initialized MCP server ID from default profile: {profile_mcp_server_id}")
+
+                # CRITICAL: Also update the MCP client to point to the pooled client for this server
+                # Without this, APP_STATE['mcp_client'] still points to the previous server's client
+                client_pool = APP_STATE.get('mcp_client_pool', {})
+                pooled_client = client_pool.get(profile_mcp_server_id)
+
+                if pooled_client:
+                    set_user_mcp_client(pooled_client, user_uuid)
+                    app_logger.info(f"✅ Initialized MCP from default profile: server_id={profile_mcp_server_id}, client=POOLED")
+                else:
+                    app_logger.warning(f"⚠️ MCP server {profile_mcp_server_id} not in connection pool (will initialize on first use)")
             else:
                 app_logger.warning(f"⚠️ Default profile has no mcpServerId configured")
 
