@@ -934,12 +934,26 @@ function attachMCPEventListeners() {
             const serverId = e.target.dataset.serverId;
             const server = configState.mcpServers.find(s => s.id === serverId);
             const serverName = server ? server.name : 'this server';
-            
-            showDeleteConfirmation(`Are you sure you want to delete MCP server "${serverName}"?`, async () => {
+
+            // Count associated collections
+            const { collections: allCollections } = await API.getRagCollections();
+            const serverCollections = allCollections.filter(c => c.mcp_server_id === serverId);
+            const collectionCount = serverCollections.length;
+
+            // Build confirmation message with collection warning
+            let confirmMessage = `Are you sure you want to delete MCP server "${serverName}"?`;
+            if (collectionCount > 0) {
+                confirmMessage += `\n\n⚠️ This will also delete ${collectionCount} associated collection(s):`;
+                serverCollections.forEach(c => {
+                    confirmMessage += `\n• ${c.name}`;
+                });
+            }
+
+            showDeleteConfirmation(confirmMessage, async () => {
                 const result = await configState.removeMCPServer(serverId);
                 if (result.success) {
                     renderMCPServers();
-                    showNotification('success', 'MCP server deleted successfully');
+                    showNotification('success', 'MCP server and associated collections deleted successfully');
                 } else {
                     showNotification('error', result.error);
                 }
@@ -4139,7 +4153,7 @@ async function showProfileModal(profileId = null) {
         }
     }
     
-    mcpSelect.onchange = () => populateResources(mcpSelect.value);
+    // Note: MCP select onchange handler is set AFTER renderCollections is defined (see below)
 
     // Initial population - use the ACTUAL selected value from the dropdown
     // (not the first server in the array, which may differ from activeMCP)
@@ -4155,25 +4169,82 @@ async function showProfileModal(profileId = null) {
     // Populate Intelligence Collections (Planner and Knowledge Repositories)
     const plannerContainer = modal.querySelector('#profile-modal-planner-collections');
     const knowledgeContainer = modal.querySelector('#profile-modal-knowledge-collections');
-    
+
     const { collections: ragCollections } = await API.getRagCollections();
-    
+
     // Separate collections by repository type
     const plannerCollections = ragCollections.filter(coll => coll.repository_type === 'planner');
     const knowledgeCollections = ragCollections.filter(coll => coll.repository_type === 'knowledge');
-    
+
+    // Function to calculate default collection for a given MCP server
+    const calculateDefaultCollectionId = (mcpServerId) => {
+        if (!mcpServerId) return null;
+        const serverPlannerCollections = plannerCollections.filter(c => c.mcp_server_id === mcpServerId);
+        if (serverPlannerCollections.length === 0) return null;
+        // Sort by ID (ascending) and return the first (oldest)
+        const sorted = serverPlannerCollections.sort((a, b) => a.id - b.id);
+        return sorted[0].id;
+    };
+
+    // Determine the profile's MCP server ID (for new profiles, use active MCP)
+    let currentMcpServerId = profile ? profile.mcpServerId : (configState.activeMCP || configState.mcpServers[0]?.id);
+    let defaultCollectionId = calculateDefaultCollectionId(currentMcpServerId);
+
+    console.log('[Profile Modal] Profile MCP Server ID:', currentMcpServerId);
+    console.log('[Profile Modal] Default Collection ID:', defaultCollectionId);
+
+    // Note: Global Knowledge Repository Configuration has been moved to Administration panel
+    // Per-collection reranking toggles remain in the profile modal
+    const rerankingListContainer = modal.querySelector('#profile-modal-knowledge-reranking-list');
+
+    // Update reranking list when knowledge collections change (must be defined before renderCollections)
+    const updateRerankingList = () => {
+        const selectedKnowledgeCheckboxes = knowledgeContainer.querySelectorAll('input[data-collection-type="query"]:checked');
+        const selectedKnowledgeIds = Array.from(selectedKnowledgeCheckboxes).map(cb => parseInt(cb.dataset.collectionId));
+
+        if (selectedKnowledgeIds.length === 0) {
+            rerankingListContainer.innerHTML = '<span class="text-gray-400 text-sm">Select knowledge collections above to configure reranking</span>';
+            return;
+        }
+
+        const existingReranking = profile?.knowledgeConfig?.collections || [];
+
+        rerankingListContainer.innerHTML = selectedKnowledgeIds.map(collId => {
+            const collection = knowledgeCollections.find(c => c.id === collId);
+            const collectionConfig = existingReranking.find(c => c.id === collId);
+            const isRerankingEnabled = collectionConfig?.reranking === true;
+
+            return `
+                <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all">
+                    <span class="text-sm text-gray-200">${escapeHtml(collection?.name || `Collection ${collId}`)}</span>
+                    <div class="flex items-center gap-3">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" data-collection-id="${collId}" data-reranking="true" ${isRerankingEnabled ? 'checked' : ''} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
+                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                        </label>
+                        <span class="text-xs font-medium text-gray-400">Rerank</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+
     // Helper function to create collection entry with toggles
     const createCollectionEntry = (coll, isPlanner) => {
-        // Check if this is the default collection (by name)
-        const isDefaultCollection = coll.name === 'Default Collection';
+        // Check if this is the default collection for the profile's MCP server
+        const isDefaultCollection = isPlanner && coll.id === defaultCollectionId;
 
         // For new profiles (!isEdit), only default collection is enabled
         // For existing profiles being edited (isEdit=true), respect their saved selections
+        // DEFAULT COLLECTIONS: Always enabled and cannot be disabled
         let isQueryEnabled;
         if (isPlanner) {
-            if (!isEdit) {
+            if (isDefaultCollection) {
+                // Default collection is ALWAYS enabled (cannot be disabled)
+                isQueryEnabled = true;
+            } else if (!isEdit) {
                 // New profiles: only default collection is checked
-                isQueryEnabled = isDefaultCollection;
+                isQueryEnabled = false;
             } else {
                 // Existing profiles: check if collection is in ragCollections array or wildcard
                 isQueryEnabled = profile?.ragCollections?.includes(coll.id) || profile?.ragCollections?.includes('*');
@@ -4218,20 +4289,31 @@ async function showProfileModal(profileId = null) {
             </div>
         ` : '';
 
+        // Build the default badge if this is the default collection
+        const defaultBadgeHTML = isDefaultCollection ? `
+            <span class="inline-flex items-center px-2 py-0.5 ml-2 text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30 rounded-full" title="Default collection for new patterns">
+                DEFAULT
+            </span>
+        ` : '';
+
         return `
             <div class="flex items-center justify-between py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all group" style="padding-left: 16px; padding-right: 16px;">
-                <span class="text-sm text-gray-200 group-hover:text-white transition-colors truncate flex-1 min-w-0">${escapeHtml(coll.name)}</span>
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                    <span class="text-sm text-gray-200 group-hover:text-white transition-colors truncate">${escapeHtml(coll.name)}</span>
+                    ${defaultBadgeHTML}
+                </div>
                 <div class="flex items-center gap-8 flex-shrink-0">
                     <!-- Query Toggle -->
-                    <div class="flex items-center justify-center" style="width: 50px;">
-                        <label class="relative inline-flex items-center cursor-pointer">
+                    <div class="flex items-center justify-center" style="width: 50px;" ${isDefaultCollection ? 'title="Default collection cannot be disabled - it stores new discoveries"' : ''}>
+                        <label class="relative inline-flex items-center ${isDefaultCollection ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}">
                             <input type="checkbox"
                                    data-collection-id="${coll.id}"
                                    data-collection-type="query"
                                    ${isQueryEnabled ? 'checked' : ''}
+                                   ${isDefaultCollection ? 'disabled' : ''}
                                    class="sr-only peer"
                                    style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                            <div class="relative w-11 h-6 ${isDefaultCollection ? 'bg-gray-600' : 'bg-gray-700'} rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${isDefaultCollection ? 'peer-checked:bg-blue-500' : 'peer-checked:bg-[#F15F22]'}"></div>
                         </label>
                     </div>
                     ${autocompleteToggleHTML}
@@ -4239,68 +4321,52 @@ async function showProfileModal(profileId = null) {
             </div>
         `;
     };
-    
-    // Render Planner Collections
-    const plannerHTML = plannerCollections.length > 0 
-        ? plannerCollections.map(coll => createCollectionEntry(coll, true)).join('')
-        : '<span class="text-gray-400 text-sm px-3 py-2 block">No planner repositories found.</span>';
-    console.log('[Profile Modal] Planner HTML length:', plannerHTML.length);
-    console.log('[Profile Modal] Planner collections count:', plannerCollections.length);
-    plannerContainer.innerHTML = plannerHTML;
-    
-    // Render Knowledge Collections
-    const knowledgeHTML = knowledgeCollections.length > 0
-        ? knowledgeCollections.map(coll => createCollectionEntry(coll, false)).join('')
-        : '<span class="text-gray-400 text-sm px-3 py-2 block">No knowledge repositories found.</span>';
-    console.log('[Profile Modal] Knowledge HTML length:', knowledgeHTML.length);
-    console.log('[Profile Modal] Knowledge collections count:', knowledgeCollections.length);
-    knowledgeContainer.innerHTML = knowledgeHTML;
 
-    // Note: Global Knowledge Repository Configuration has been moved to Administration panel
-    // Per-collection reranking toggles remain in the profile modal
-    const rerankingListContainer = modal.querySelector('#profile-modal-knowledge-reranking-list');
-    
-    // Update reranking list when knowledge collections change
-    const updateRerankingList = () => {
-        const selectedKnowledgeCheckboxes = knowledgeContainer.querySelectorAll('input[data-collection-type="query"]:checked');
-        const selectedKnowledgeIds = Array.from(selectedKnowledgeCheckboxes).map(cb => parseInt(cb.dataset.collectionId));
-        
-        if (selectedKnowledgeIds.length === 0) {
-            rerankingListContainer.innerHTML = '<span class="text-gray-400 text-sm">Select knowledge collections above to configure reranking</span>';
-            return;
-        }
-        
-        const existingReranking = profile?.knowledgeConfig?.collections || [];
-        
-        rerankingListContainer.innerHTML = selectedKnowledgeIds.map(collId => {
-            const collection = knowledgeCollections.find(c => c.id === collId);
-            const collectionConfig = existingReranking.find(c => c.id === collId);
-            const isRerankingEnabled = collectionConfig?.reranking === true;
-            
-            return `
-                <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all">
-                    <span class="text-sm text-gray-200">${escapeHtml(collection?.name || `Collection ${collId}`)}</span>
-                    <div class="flex items-center gap-3">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" data-collection-id="${collId}" data-reranking="true" ${isRerankingEnabled ? 'checked' : ''} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
-                        </label>
-                        <span class="text-xs font-medium text-gray-400">Rerank</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
+    // Function to render collections (called on initial load and when MCP server changes)
+    const renderCollections = () => {
+        // Recalculate default collection based on current MCP server
+        currentMcpServerId = mcpSelect.value;
+        defaultCollectionId = calculateDefaultCollectionId(currentMcpServerId);
+
+        console.log('[Profile Modal] Rendering collections for MCP Server:', currentMcpServerId);
+        console.log('[Profile Modal] Default Collection ID:', defaultCollectionId);
+
+        // Render Planner Collections
+        const plannerHTML = plannerCollections.length > 0
+            ? plannerCollections.map(coll => createCollectionEntry(coll, true)).join('')
+            : '<span class="text-gray-400 text-sm px-3 py-2 block">No planner repositories found.</span>';
+        console.log('[Profile Modal] Planner HTML length:', plannerHTML.length);
+        console.log('[Profile Modal] Planner collections count:', plannerCollections.length);
+        plannerContainer.innerHTML = plannerHTML;
+
+        // Render Knowledge Collections
+        const knowledgeHTML = knowledgeCollections.length > 0
+            ? knowledgeCollections.map(coll => createCollectionEntry(coll, false)).join('')
+            : '<span class="text-gray-400 text-sm px-3 py-2 block">No knowledge repositories found.</span>';
+        console.log('[Profile Modal] Knowledge HTML length:', knowledgeHTML.length);
+        console.log('[Profile Modal] Knowledge collections count:', knowledgeCollections.length);
+        knowledgeContainer.innerHTML = knowledgeHTML;
+
+        // Update reranking list after collections change
+        updateRerankingList();
     };
-    
+
+    // Initial render
+    renderCollections();
+
+    // NOW set the MCP select onchange handler (after renderCollections is defined)
+    mcpSelect.onchange = () => {
+        populateResources(mcpSelect.value);
+        // Re-render collections to update default collection for new MCP server
+        renderCollections();
+    };
+
     // Update reranking list when knowledge collection checkboxes change
     knowledgeContainer.addEventListener('change', (e) => {
         if (e.target.dataset.collectionType === 'query') {
             updateRerankingList();
         }
     });
-    
-    // Initial population
-    updateRerankingList();
 
     // Set profile name, tag and description
     const profileNameInput = modal.querySelector('#profile-modal-name');
@@ -4538,6 +4604,13 @@ async function showProfileModal(profileId = null) {
             ...Array.from(plannerQueryCheckboxes).map(cb => parseInt(cb.dataset.collectionId)),
             ...Array.from(knowledgeQueryCheckboxes).map(cb => parseInt(cb.dataset.collectionId))
         ];
+
+        // CRITICAL: Ensure the default collection is always included (defensive check)
+        // The default collection checkbox should be disabled, but add this as a safety net
+        if (defaultCollectionId !== null && !selectedRag.includes(defaultCollectionId)) {
+            selectedRag.push(defaultCollectionId);
+            console.log('[Profile Modal] Added default collection', defaultCollectionId, 'to selectedRag (defensive check)');
+        }
         
         // Collect autocomplete-enabled collections from both Planner and Knowledge repositories
         const plannerAutocompleteCheckboxes = plannerContainer.querySelectorAll('input[data-collection-type="autocomplete"]:checked');

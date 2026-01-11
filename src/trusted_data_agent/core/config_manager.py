@@ -469,7 +469,12 @@ class ConfigManager:
     def remove_mcp_server(self, server_id: str, user_uuid: Optional[str] = None) -> tuple[bool, Optional[str]]:
         """
         Remove an MCP server configuration.
-        Prevents deletion if any RAG collections or profiles are assigned to this server.
+
+        CASCADE DELETE: Automatically deletes all collections associated with this MCP server.
+
+        Prevents deletion if:
+        - Any profiles reference this server (mcpServerId)
+        - Any profiles use the server's collections (in ragCollections or knowledgeConfig)
 
         Args:
             server_id: Unique ID of the server to remove
@@ -497,19 +502,88 @@ class ConfigManager:
             app_logger.warning(f"{error_msg} (Server ID: {server_id})")
             return False, error_msg
 
-        # Check if any collections are assigned to this server
+        # CASCADE DELETE: Automatically delete all collections assigned to this server
         collections = self.get_rag_collections(user_uuid)
         assigned_collections = [
             c for c in collections
             if c.get("mcp_server_id") == server_id
         ]
 
+        # Additional safety check: Ensure no profiles (other than those already checked)
+        # are using any of these collections in their ragCollections or knowledgeConfig
         if assigned_collections:
-            collection_names = [c.get("name", "Unknown") for c in assigned_collections]
-            names_list = ", ".join(collection_names)
-            error_msg = f"Cannot delete MCP server: {len(assigned_collections)} collection(s) assigned: {names_list}"
-            app_logger.warning(f"{error_msg} (Server ID: {server_id})")
-            return False, error_msg
+            collection_ids = {c.get("id") for c in assigned_collections}
+            profiles_using_collections = []
+
+            for p in profiles:
+                # Check ragCollections array
+                rag_collections = p.get("ragCollections", [])
+                if isinstance(rag_collections, list):
+                    if any(cid in collection_ids for cid in rag_collections if isinstance(cid, int)):
+                        profiles_using_collections.append(p)
+                        continue
+
+                # Check knowledgeConfig.collections
+                knowledge_config = p.get("knowledgeConfig", {})
+                knowledge_collections = knowledge_config.get("collections", [])
+                if isinstance(knowledge_collections, list):
+                    knowledge_ids = {kc.get("id") for kc in knowledge_collections if isinstance(kc, dict)}
+                    if any(cid in collection_ids for cid in knowledge_ids):
+                        profiles_using_collections.append(p)
+
+            if profiles_using_collections:
+                profile_names = [
+                    p.get("profileName") or p.get("name") or f"@{p.get('tag')}" or "Unknown"
+                    for p in profiles_using_collections
+                ]
+                names_list = ", ".join(profile_names)
+                error_msg = f"Cannot delete MCP server: {len(profiles_using_collections)} profile(s) use its collections: {names_list}"
+                app_logger.warning(f"{error_msg} (Server ID: {server_id})")
+                return False, error_msg
+
+        if assigned_collections:
+            app_logger.info(f"Cascade deleting {len(assigned_collections)} collection(s) for MCP server {server_id}")
+            try:
+                from trusted_data_agent.agent.rag_retriever import RAGRetriever
+                from trusted_data_agent.core.config import APP_STATE
+
+                rag_retriever = APP_STATE.get('rag_retriever_instance')
+                if rag_retriever:
+                    for coll in assigned_collections:
+                        coll_id = coll.get("id")
+                        coll_name = coll.get("name", "Unknown")
+                        app_logger.info(f"  Deleting collection {coll_id} ('{coll_name}')")
+
+                        # Note: remove_collection has default collection protection built-in
+                        # But we're deleting the MCP server, so all its collections must go
+                        # We'll bypass the default check by directly calling the deletion logic
+                        try:
+                            # Delete from ChromaDB
+                            collection_name = coll.get("collection_name", f"tda_rag_collection_{coll_id}")
+                            rag_retriever.client.delete_collection(name=collection_name)
+
+                            # Remove from runtime
+                            if coll_id in rag_retriever.collections:
+                                del rag_retriever.collections[coll_id]
+
+                            # Delete from database
+                            from trusted_data_agent.core.collection_db import get_collection_db
+                            collection_db = get_collection_db()
+                            collection_db.delete_collection(coll_id)
+
+                            app_logger.info(f"  ✓ Deleted collection {coll_id}")
+                        except Exception as coll_error:
+                            app_logger.error(f"  ✗ Failed to delete collection {coll_id}: {coll_error}")
+                            # Continue with other collections even if one fails
+
+                    # Reload APP_STATE after deletions
+                    APP_STATE["rag_collections"] = self.get_rag_collections(user_uuid)
+                else:
+                    app_logger.warning("RAG retriever not available - collections may not be fully deleted")
+            except Exception as e:
+                app_logger.error(f"Error during cascade delete of collections: {e}", exc_info=True)
+                error_msg = f"Failed to delete associated collections: {str(e)}"
+                return False, error_msg
 
         servers = self.get_mcp_servers(user_uuid)
         original_count = len(servers)
@@ -521,6 +595,10 @@ class ConfigManager:
             return False, error_msg
 
         success = self.save_mcp_servers(servers, user_uuid)
+
+        if success and assigned_collections:
+            app_logger.info(f"✅ Successfully deleted MCP server {server_id} and {len(assigned_collections)} associated collection(s)")
+
         return success, None if success else "Failed to save configuration"
     
     def get_active_mcp_server_id(self, user_uuid: Optional[str] = None) -> Optional[str]:

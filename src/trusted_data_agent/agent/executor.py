@@ -1645,6 +1645,23 @@ The following domain knowledge may be relevant to this conversation:
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved rag_focused turn data to workflow_history for turn {self.current_turn_number}")
 
+            # Generate session name for first turn
+            if self.current_turn_number == 1:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                if session_data and session_data.get("name") == "New Chat":
+                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
+                    new_name = await self._generate_session_name(self.original_user_input)
+                    if new_name != "New Chat":
+                        try:
+                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                            yield self._format_sse({
+                                "session_id": self.session_id,
+                                "newName": new_name
+                            }, "session_name_update")
+                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
+                        except Exception as name_e:
+                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+
             app_logger.info("✅ RAG-focused execution completed successfully")
             return
         # --- RAG FOCUSED EXECUTION PATH END ---
