@@ -538,6 +538,9 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             try:
                 import asyncio
 
+                # Build server config based on transport type (needed for both new and pooled clients)
+                server_configs = build_mcp_server_config(mcp_server_id, mcp_server)
+
                 # === CONNECTION POOLING: Reuse existing client if available ===
                 client_pool = APP_STATE.setdefault('mcp_client_pool', {})
                 pool_key = mcp_server_id
@@ -546,8 +549,6 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     temp_mcp_client = client_pool[pool_key]
                     app_logger.info(f"✓ POOL HIT: Reusing pooled MCP client for server {server_name} (ID: {mcp_server_id}, saved ~3s)")
                 else:
-                    # Build server config based on transport type
-                    server_configs = build_mcp_server_config(mcp_server_id, mcp_server)
                     temp_mcp_client = MultiServerMCPClient(server_configs)
                     client_pool[pool_key] = temp_mcp_client
                     app_logger.info(f"✓ Created new MCP client for server {server_name} (ID: {mcp_server_id}, added to pool)")
