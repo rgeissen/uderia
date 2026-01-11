@@ -258,6 +258,9 @@ def get_user_mcp_server_id(user_uuid: str) -> str:
     """
     Get current MCP server ID for user.
 
+    Validates that the server ID actually exists in the MCP client.
+    If invalid, automatically falls back to the first available server.
+
     Args:
         user_uuid: User UUID (required)
 
@@ -269,7 +272,40 @@ def get_user_mcp_server_id(user_uuid: str) -> str:
     """
     if not user_uuid:
         raise ValueError("user_uuid is required for get_user_mcp_server_id")
-    return APP_STATE.get("current_server_id_by_user", {}).get(user_uuid)
+
+    server_id = APP_STATE.get("current_server_id_by_user", {}).get(user_uuid)
+
+    # VALIDATION: Ensure the server ID actually exists in the MCP client
+    if server_id:
+        mcp_client = APP_STATE.get('mcp_client')
+        if mcp_client:
+            try:
+                # Check if server exists in MCP client's connections
+                if server_id not in mcp_client.connections:
+                    import logging
+                    logger = logging.getLogger("quart.app")
+                    available_servers = list(mcp_client.connections.keys())
+                    logger.error(
+                        f"⚠️ STALE MCP SERVER ID DETECTED: Profile references server '{server_id}' which no longer exists. "
+                        f"Available servers: {available_servers}"
+                    )
+
+                    # FALLBACK: Use first available server
+                    if available_servers:
+                        fallback_server = available_servers[0]
+                        logger.warning(f"🔄 Auto-correcting to available server: {fallback_server}")
+                        # Update the stored value to prevent repeated errors
+                        APP_STATE["current_server_id_by_user"][user_uuid] = fallback_server
+                        return fallback_server
+                    else:
+                        logger.error("❌ No MCP servers available!")
+                        return None
+            except Exception as e:
+                import logging
+                logger = logging.getLogger("quart.app")
+                logger.warning(f"Failed to validate MCP server ID: {e}")
+
+    return server_id
 
 
 def set_user_mcp_server_id(server_id: str, user_uuid: str):

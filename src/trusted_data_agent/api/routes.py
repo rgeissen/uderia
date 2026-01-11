@@ -1509,17 +1509,28 @@ async def new_session():
 
     # Get profile tag and LLM config from DEFAULT profile (not first active)
     from trusted_data_agent.core.config_manager import get_config_manager
+    from trusted_data_agent.core.config import set_user_mcp_server_id
     config_manager = get_config_manager()
     default_profile_id = config_manager.get_default_profile_id(user_uuid)
     profile_tag = None
     profile_provider = APP_CONFIG.CURRENT_PROVIDER  # Fallback to global config
-    
+
     if default_profile_id:
         profiles = config_manager.get_profiles(user_uuid)
         default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
         if default_profile:
             profile_tag = default_profile.get("tag")
-            
+
+            # CRITICAL: Initialize MCP server ID from profile for deterministic behavior
+            # This ensures new sessions always use the profile's configured MCP server,
+            # not leftover state from profile overrides in previous sessions
+            profile_mcp_server_id = default_profile.get('mcpServerId')
+            if profile_mcp_server_id:
+                set_user_mcp_server_id(profile_mcp_server_id, user_uuid)
+                app_logger.info(f"✅ Initialized MCP server ID from default profile: {profile_mcp_server_id}")
+            else:
+                app_logger.warning(f"⚠️ Default profile has no mcpServerId configured")
+
             # Get provider from the profile's LLM configuration
             llm_config_id = default_profile.get('llmConfigurationId')
             if llm_config_id:
