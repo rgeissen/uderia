@@ -65,6 +65,79 @@ def unwrap_exception(e: BaseException) -> BaseException:
     return e
 
 
+def rebuild_tools_and_prompts_context(tool_to_exclude: str = None) -> Tuple[str, str]:
+    """
+    Rebuild tools_context and prompts_context strings from APP_STATE.
+
+    This function should be called after profile override filtering to ensure
+    the LLM sees the correct filtered tools/prompts in planning context.
+
+    Args:
+        tool_to_exclude: Tool name to exclude from context (e.g., 'TDA_FinalReport')
+
+    Returns:
+        Tuple[str, str]: (tools_context, prompts_context)
+    """
+    structured_tools = APP_STATE.get('structured_tools', {})
+    mcp_tools = APP_STATE.get('mcp_tools', {})
+    structured_prompts = APP_STATE.get('structured_prompts', {})
+
+    # Build tools_context
+    tool_context_parts = ["--- Available Tools ---"]
+    for category, tools in sorted(structured_tools.items()):
+        enabled_tools_in_category = [
+            t for t in tools
+            if not t.get('disabled') and t['name'] != tool_to_exclude
+        ]
+        if enabled_tools_in_category:
+            tool_context_parts.append(f"--- Category: {category} ---")
+            for tool_info in enabled_tools_in_category:
+                tool_obj = mcp_tools.get(tool_info['name'])
+                if not tool_obj:
+                    continue
+
+                tool_str = f"- `{tool_obj.name}` (tool): {tool_obj.description}"
+                args_dict = tool_obj.args if isinstance(tool_obj.args, dict) else {}
+
+                if args_dict:
+                    tool_str += "\n  - Arguments:"
+                    for arg_name, arg_details in args_dict.items():
+                        arg_type = arg_details.get('type', 'any')
+                        is_required = arg_details.get('required', False)
+                        req_str = "required" if is_required else "optional"
+                        arg_desc = arg_details.get('description', 'No description.')
+                        tool_str += f"\n    - `{arg_name}` ({arg_type}, {req_str}): {arg_desc}"
+                tool_context_parts.append(tool_str)
+
+    tools_context = "\n".join(tool_context_parts) if len(tool_context_parts) > 1 else "--- No Tools Available ---"
+
+    # Build prompts_context
+    prompt_context_parts = ["--- Available Prompts ---"]
+    for category, prompts in sorted(structured_prompts.items()):
+        enabled_prompts_in_category = [p for p in prompts if not p.get('disabled')]
+        if enabled_prompts_in_category:
+            prompt_context_parts.append(f"--- Category: {category} ---")
+            for prompt_info in enabled_prompts_in_category:
+                prompt_description = prompt_info.get("description", "No description available.")
+                prompt_str = f"- `{prompt_info['name']}` (prompt): {prompt_description}"
+
+                processed_args = prompt_info.get('arguments', [])
+                if processed_args:
+                    prompt_str += "\n  - Arguments:"
+                    for arg_details in processed_args:
+                        arg_name = arg_details.get('name', 'unknown')
+                        arg_type = arg_details.get('type', 'any')
+                        is_required = arg_details.get('required', False)
+                        req_str = "required" if is_required else "optional"
+                        arg_desc = arg_details.get('description', 'No description.')
+                        prompt_str += f"\n    - `{arg_name}` ({arg_type}, {req_str}): {arg_desc}"
+                prompt_context_parts.append(prompt_str)
+
+    prompts_context = "\n".join(prompt_context_parts) if len(prompt_context_parts) > 1 else "--- No Prompts Available ---"
+
+    return tools_context, prompts_context
+
+
 class PlanExecutor:
     AgentState = AgentState
 
@@ -99,6 +172,8 @@ class PlanExecutor:
         self.original_structured_tools = None  # Will store original structured_tools if overridden
         self.original_structured_prompts = None  # Will store original structured_prompts if overridden
         self.original_provider_details = {}  # Will store provider-specific config (Friendli, Azure, AWS)
+        self.original_server_id = None  # Will store original current_server_id_by_user entry if overridden
+        self.effective_mcp_server_id = None  # Track the ACTUAL MCP server ID used during this turn (for RAG storage)
         
         # Snapshot model and provider for this turn from active profile (default or override)
         # Don't use global config as it may not match the profile being used
@@ -1583,7 +1658,9 @@ The following domain knowledge may be relevant to this conversation:
             app_logger.info(f"🔍 Profile override detected: {self.profile_override_id}")
         else:
             app_logger.info(f"ℹ️  No profile override - using default profile configuration")
-        
+            # Set effective MCP server ID to the default (for RAG storage)
+            self.effective_mcp_server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+
         if self.profile_override_id:
             try:
                 from trusted_data_agent.core.config_manager import get_config_manager
@@ -1692,59 +1769,138 @@ The following domain knowledge may be relevant to this conversation:
                     override_mcp_server_id = override_profile.get('mcpServerId')
                     override_profile_type = override_profile.get("profile_type", "tool_enabled")
 
+                    app_logger.info(f"🔍 Profile override MCP setup:")
+                    app_logger.info(f"   profile_type: {override_profile_type}")
+                    app_logger.info(f"   mcpServerId: {override_mcp_server_id}")
+
                     if override_profile_type == "llm_only":
                         # LLM-only profile: Skip MCP setup entirely
                         app_logger.info(f"🗨️ LLM-only profile - skipping MCP")
                     elif override_mcp_server_id:
-                        mcp_servers = config_manager.get_mcp_servers()
+                        # CRITICAL: Pass user_uuid to load user's config from database, not bootstrap template
+                        mcp_servers = config_manager.get_mcp_servers(self.user_uuid)
+                        app_logger.info(f"   Available MCP servers: {[srv.get('id') for srv in mcp_servers]}")
                         override_mcp_server = next((srv for srv in mcp_servers if srv['id'] == override_mcp_server_id), None)
-                        
+                        app_logger.info(f"   Found override server: {override_mcp_server is not None}")
+
                         if override_mcp_server:
                             server_name = override_mcp_server.get('name')  # For logging only
-                            host = override_mcp_server.get('host')
-                            port = override_mcp_server.get('port')
-                            path = override_mcp_server.get('path')
+
+                            # Check transport type
+                            transport_config = override_mcp_server.get('transport', {})
+                            transport_type = transport_config.get('type', 'http')  # Default to HTTP for backwards compat
 
                             app_logger.info(f"🔧 Creating temporary MCP client")
                             app_logger.info(f"   Server: {server_name} (ID: {override_mcp_server_id})")
-                            app_logger.info(f"   URL: http://{host}:{port}{path}")
+                            app_logger.info(f"   Transport: {transport_type}")
 
-                            mcp_server_url = f"http://{host}:{port}{path}"
-                            # CRITICAL: Use server ID as key, not name
-                            temp_server_configs = {override_mcp_server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
-                            temp_mcp_client = MultiServerMCPClient(temp_server_configs)
+                            if transport_type == 'stdio':
+                                # STDIO transport: use command/args from transport config
+                                command = transport_config.get('command')
+                                args = transport_config.get('args', [])
+                                env = transport_config.get('env', {})
+
+                                app_logger.info(f"   Command: {command} {' '.join(args)}")
+
+                                # CRITICAL: Use server ID as key, not name
+                                # CRITICAL: Must include "transport" key for langchain_mcp_adapters
+                                temp_server_configs = {
+                                    override_mcp_server_id: {
+                                        "transport": "stdio",
+                                        "command": command,
+                                        "args": args,
+                                        "env": env
+                                    }
+                                }
+                                temp_mcp_client = MultiServerMCPClient(temp_server_configs)
+                            else:
+                                # HTTP transport (original code path)
+                                host = override_mcp_server.get('host')
+                                port = override_mcp_server.get('port')
+                                path = override_mcp_server.get('path')
+
+                                app_logger.info(f"   URL: http://{host}:{port}{path}")
+
+                                mcp_server_url = f"http://{host}:{port}{path}"
+                                # CRITICAL: Use server ID as key, not name
+                                temp_server_configs = {override_mcp_server_id: {"url": mcp_server_url, "transport": "streamable_http"}}
+                                temp_mcp_client = MultiServerMCPClient(temp_server_configs)
+
+                            # CRITICAL: Track the override MCP server ID for RAG case storage
+                            self.effective_mcp_server_id = override_mcp_server_id
 
                             # Load and process tools using the same method as configuration_service
                             from langchain_mcp_adapters.tools import load_mcp_tools
                             async with temp_mcp_client.session(override_mcp_server_id) as session:
                                 all_processed_tools = await load_mcp_tools(session)
-                            
+
                             # Get enabled tool and prompt names for this profile
                             # CRITICAL: Must pass user_uuid to load user-specific profile config (not bootstrap template)
                             enabled_tool_names = set(config_manager.get_profile_enabled_tools(self.profile_override_id, self.user_uuid))
                             enabled_prompt_names = set(config_manager.get_profile_enabled_prompts(self.profile_override_id, self.user_uuid))
-                            
+
+                            # CRITICAL FIX: Handle wildcard "*" in enabled_tool_names
+                            # If profile has tools: ["*"], expand to include ALL tool names from MCP server
+                            # The wildcard means "all tools" - ignore disabled flags in classification_results
+                            if "*" in enabled_tool_names:
+                                # Expand wildcard to all available tool names (including TDA_ tools)
+                                enabled_tool_names = {tool.name for tool in all_processed_tools}
+                                app_logger.info(f"   Wildcard '*' expanded to {len(enabled_tool_names)} tools from MCP server")
+
+                            # Same for prompts
+                            if "*" in enabled_prompt_names:
+                                # Expand wildcard (prompts handled via original structure, so we keep "*" for now)
+                                pass  # Prompts filtering happens differently via structured_prompts
+
                             # Filter to only enabled tools (prompts handled separately via original structure)
                             filtered_tools = [tool for tool in all_processed_tools if tool.name in enabled_tool_names]
                             
                             # Convert to dictionary with tool names as keys (matching normal structure)
                             filtered_tools_dict = {tool.name: tool for tool in filtered_tools}
-                            
+
                             # For prompts, filter the original mcp_prompts dict
-                            filtered_prompts_dict = {name: prompt for name, prompt in self.original_mcp_prompts.items() 
+                            filtered_prompts_dict = {name: prompt for name, prompt in self.original_mcp_prompts.items()
                                                     if name in enabled_prompt_names}
-                            
-                            # Rebuild structured_tools to only include filtered tools
-                            # Keep the original structure but filter the tool lists
+
+                            # CRITICAL FIX: Build structured_tools from scratch for the override MCP server
+                            # We can't filter original_structured_tools because it's from a DIFFERENT MCP server!
+                            # The override profile uses "time" MCP server, not the default "Teradata MCP" server
                             filtered_structured_tools = {}
-                            
-                            for category, tools_list in (self.original_structured_tools or {}).items():
-                                filtered_category_tools = [
-                                    tool_info for tool_info in tools_list 
-                                    if tool_info['name'] in enabled_tool_names or tool_info['name'].startswith('TDA_')
-                                ]
-                                if filtered_category_tools:
-                                    filtered_structured_tools[category] = filtered_category_tools
+
+                            # Get classification results from override profile to determine categories
+                            classification_results = override_profile.get("classification_results", {})
+                            classified_tools = classification_results.get("tools", {})
+
+                            if classified_tools:
+                                # Use classification categories from profile
+                                for category, tools_list in classified_tools.items():
+                                    filtered_category_tools = []
+                                    for tool_info in tools_list:
+                                        tool_name = tool_info.get("name")
+                                        # Include if tool is in our enabled set AND was successfully loaded from MCP
+                                        if tool_name in enabled_tool_names and tool_name in filtered_tools_dict:
+                                            filtered_category_tools.append({
+                                                "name": tool_name,
+                                                "description": tool_info.get("description", ""),
+                                                "arguments": tool_info.get("arguments", []),
+                                                "disabled": False  # Always enable since it's in enabled_tool_names
+                                            })
+                                    if filtered_category_tools:
+                                        filtered_structured_tools[category] = filtered_category_tools
+                            else:
+                                # Fallback: create a single "All Tools" category
+                                all_tools_category = []
+                                for tool in filtered_tools:
+                                    all_tools_category.append({
+                                        "name": tool.name,
+                                        "description": tool.description or "",
+                                        "arguments": [],
+                                        "disabled": False
+                                    })
+                                if all_tools_category:
+                                    filtered_structured_tools["All Tools"] = all_tools_category
+
+                            app_logger.info(f"   Built structured_tools from override MCP server: {len(filtered_structured_tools)} categories")
                             
                             # Rebuild structured_prompts to only include filtered prompts
                             filtered_structured_prompts = {}
@@ -1757,21 +1913,41 @@ The following domain knowledge may be relevant to this conversation:
                                 if filtered_category_prompts:
                                     filtered_structured_prompts[category] = filtered_category_prompts
                             
+                            # CRITICAL FIX: Update current_server_id_by_user for tool execution
+                            # The mcp_adapter uses get_user_mcp_server_id() which reads this dict
+                            # Save original for restoration
+                            current_server_id_by_user = APP_STATE.setdefault("current_server_id_by_user", {})
+                            self.original_server_id = current_server_id_by_user.get(self.user_uuid)
+                            current_server_id_by_user[self.user_uuid] = override_mcp_server_id
+
                             APP_STATE['mcp_client'] = temp_mcp_client
                             APP_STATE['mcp_tools'] = filtered_tools_dict
                             APP_STATE['mcp_prompts'] = filtered_prompts_dict
                             APP_STATE['structured_tools'] = filtered_structured_tools
                             APP_STATE['structured_prompts'] = filtered_structured_prompts
-                            
+
+                            # CRITICAL FIX: Rebuild tools_context and prompts_context after filtering
+                            # The planner uses these context strings to show the LLM available tools/prompts
+                            # Without this rebuild, the LLM sees the OLD/DEFAULT tools, not the override profile's tools
+                            tools_context, prompts_context = rebuild_tools_and_prompts_context()
+                            APP_STATE['tools_context'] = tools_context
+                            APP_STATE['prompts_context'] = prompts_context
+
                             app_logger.info(f"✅ MCP client created successfully")
                             app_logger.info(f"   Tools enabled: {len(filtered_tools_dict)} (processed with load_mcp_tools)")
                             app_logger.info(f"   Prompts enabled: {len(filtered_prompts_dict)}")
                             app_logger.info(f"   Categories in structured_tools: {len(filtered_structured_tools)}")
                             app_logger.info(f"   Categories in structured_prompts: {len(filtered_structured_prompts)}")
+                            app_logger.info(f"   Context strings rebuilt: tools_context ({len(tools_context)} chars), prompts_context ({len(prompts_context)} chars)")
                             app_logger.info(f"\n{'='*80}")
                             app_logger.info(f"✨ Profile override applied successfully - executing with temporary context")
                             app_logger.info(f"{'='*80}\n")
-                    
+                        else:
+                            app_logger.warning(f"❌ MCP server {override_mcp_server_id} not found in config!")
+                            app_logger.warning(f"   Profile override will continue with LLM only (no tools)")
+                    elif not override_mcp_server_id:
+                        app_logger.info(f"ℹ️  Profile has no MCP server configured - LLM only mode")
+
             except Exception as e:
                 app_logger.error(f"Failed to apply profile override: {e}", exc_info=True)
                 
@@ -2121,7 +2297,22 @@ The following domain knowledge may be relevant to this conversation:
                     if self.original_structured_prompts is not None:
                         APP_STATE['structured_prompts'] = self.original_structured_prompts
                         app_logger.info(f"✅ Restored original structured_prompts ({len(self.original_structured_prompts)} categories)")
-                    
+
+                    # CRITICAL FIX: Restore original current_server_id_by_user
+                    # This ensures tool execution uses the correct MCP server after override
+                    if self.original_server_id is not None:
+                        current_server_id_by_user = APP_STATE.setdefault("current_server_id_by_user", {})
+                        current_server_id_by_user[self.user_uuid] = self.original_server_id
+                        app_logger.info(f"✅ Restored original MCP server ID for tool execution")
+
+                    # CRITICAL FIX: Rebuild tools_context and prompts_context after restoring original state
+                    # This ensures subsequent queries in the same session see the correct default profile tools
+                    if self.original_mcp_tools is not None or self.original_structured_tools is not None:
+                        tools_context, prompts_context = rebuild_tools_and_prompts_context()
+                        APP_STATE['tools_context'] = tools_context
+                        APP_STATE['prompts_context'] = prompts_context
+                        app_logger.info(f"✅ Context strings rebuilt after restoration")
+
                     # Close temporary MCP client if created
                     if temp_mcp_client:
                         try:
@@ -2164,7 +2355,7 @@ The following domain knowledge may be relevant to this conversation:
                     "turn_output_tokens": self.turn_output_tokens,
                     # --- MODIFICATION START: Add session_id and mcp_server_id for RAG worker ---
                     "session_id": self.session_id,
-                    "mcp_server_id": APP_CONFIG.CURRENT_MCP_SERVER_ID,  # Add MCP server ID for RAG collection routing
+                    "mcp_server_id": self.effective_mcp_server_id or APP_CONFIG.CURRENT_MCP_SERVER_ID,  # Use effective MCP ID (override aware)
                     "user_uuid": self.user_uuid,  # Add user UUID for RAG access control
                     # --- MODIFICATION END ---
                     # --- MODIFICATION START: Add RAG source collection ID and case ID ---

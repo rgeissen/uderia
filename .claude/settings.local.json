@@ -13,7 +13,9 @@
       "Bash(ls:*)",
       "Bash(python encrypt_default_prompts.py:*)",
       "Bash(PYTHONPATH=/Users/livin2rave/my_private_code/uderia/src:$PYTHONPATH python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(awk:*)"
     ]
   }
 }
