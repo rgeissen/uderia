@@ -19,6 +19,8 @@ import { initializeMarketplace, unsubscribeFromCollection } from './handlers/mar
 import * as capabilitiesModule from './handlers/capabilitiesManagement.js';
 // Import conversationInitializer early to ensure window.__conversationInitState is available
 import './conversationInitializer.js';
+// Import conversationTabs for tabbed conversation interface
+import { conversationTabs } from './components/conversationTabs.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -924,7 +926,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.marketplaceHandler = {
         unsubscribeFromCollection: unsubscribeFromCollection
     };
-    
+
+    // Initialize conversation tabs system
+    conversationTabs.init();
+    window.conversationTabs = conversationTabs;  // Expose globally
+    console.log('✅ Conversation tabs initialized');
+
     // Restore current session ID from localStorage if available
     const savedSessionId = localStorage.getItem('currentSessionId');
     if (savedSessionId) {

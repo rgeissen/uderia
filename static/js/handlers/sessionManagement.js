@@ -141,6 +141,14 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         } else {
              UI.addMessage('assistant', "I'm ready to help. How can I assist you with your Teradata system today?");
         }
+
+        // Emit event for tabs to rebuild from session data
+        window.dispatchEvent(new CustomEvent('sessionLoaded', {
+            detail: {
+                profile_tags_used: data.profile_tags_used || []
+            }
+        }));
+
         UI.updateTokenDisplay({ total_input: data.input_tokens, total_output: data.output_tokens });
         
         // --- MODIFICATION START: Refresh feedback button states after loading history ---

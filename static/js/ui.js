@@ -160,11 +160,17 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     // This logic is now handled by the badge.
 
     const messageContainer = document.createElement('div');
-    messageContainer.className = 'p-4 rounded-xl shadow-lg max-w-3xl glass-panel relative';
+    messageContainer.className = 'message-container flex-1 p-4 rounded-xl shadow-lg max-w-3xl glass-panel relative';
     // Use theme-aware gradients for message backgrounds
-    messageContainer.style.background = role === 'user' 
-        ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)' 
+    messageContainer.style.background = role === 'user'
+        ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)'
         : 'var(--message-assistant-bg, rgba(30, 41, 59, 0.9))';
+
+    // ADD: Store role and profile tag as data attributes for tab system
+    messageContainer.setAttribute('data-role', role);
+    if (profileTag) {
+        messageContainer.setAttribute('data-profile-tag', profileTag);
+    }
 
     // Add profile badge for user messages if profileTag is provided
     let profileBadge = null;
@@ -327,6 +333,11 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     // --- MODIFICATION END ---
 
     DOM.chatLog.appendChild(wrapper);
+
+    // ADD: Emit event for tab system to listen for new messages
+    window.dispatchEvent(new CustomEvent('messageAdded', {
+        detail: { role, profileTag }
+    }));
 
     // Logic for avatar click, header buttons, and turn badges
     if (role === 'assistant' && turnId) {

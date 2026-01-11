@@ -358,6 +358,15 @@
                     </div>
                 </header>
 
+                <!-- Profile Tabs Bar (positioned right below header) -->
+                <div id="profile-tabs-container" class="hidden w-full bg-[#0f172a]/95 border-b border-white/10 flex-shrink-0">
+                    <div class="max-w-5xl px-6">
+                        <div id="profile-tabs-bar" class="flex items-center gap-x-1 overflow-x-auto scrollbar-thin">
+                            <!-- Tabs will be dynamically inserted here by conversationTabs.js -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- NEW: Wrapper for the 3-panel layout -->
                 <div id="conversation-panels" class="flex flex-row flex-1 min-h-0">
                     <!-- Original 3-Panel Layout (History, Main, Status) -->
@@ -915,7 +924,7 @@
                                         <div id="welcome-disabled-capabilities" class="mt-8 hidden"></div>
                                     </div>
                                 </div>
-                                
+
                                 <div id="chat-log" class="max-w-5xl mx-auto space-y-8">
                                     <!-- Chat messages will be added here -->
                                 </div>

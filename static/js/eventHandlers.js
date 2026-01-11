@@ -362,37 +362,52 @@ export async function handleStreamRequest(endpoint, body) {
 
 export async function handleChatSubmit(e, source = 'text') {
     e.preventDefault();
-    
-    // Get the active tag prefix from main.js if badge is showing
-    const activeTagPrefix = window.activeTagPrefix || '';
+
     const rawMessage = DOM.userInput.value.trim();
-    
-    // Reconstruct full message with tag if badge was active
-    const message = activeTagPrefix ? activeTagPrefix + rawMessage : rawMessage;
-    
-    if (!message || !state.currentSessionId) return;
-    
-    // Check for @TAG profile override
+    if (!rawMessage || !state.currentSessionId) return;
+
+    // Check if we're on a profile tab
+    const conversationTabs = window.conversationTabs;
+    const activeTab = conversationTabs?.activeTab;
+
     let profileOverrideId = null;
-    let cleanedMessage = message;
-    const tagMatch = message.match(/^@(\w+)\s+(.+)/);
-    
-    if (tagMatch && window.configState?.profiles) {
-        const tag = tagMatch[1].toUpperCase();
-        console.log('🔍 Tag detected:', tag);
-        const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
-        if (overrideProfile) {
-            profileOverrideId = overrideProfile.id;
-            cleanedMessage = tagMatch[2]; // Strip @TAG from message
-            console.log(`✅ Profile override found: ${overrideProfile.name} (${profileOverrideId})`);
-            console.log(`📝 Cleaned message: "${cleanedMessage}"`);
-            // Store the active profile override for autocomplete to use
-            window.activeProfileOverrideId = profileOverrideId;
-        } else {
-            console.log(`❌ No profile found with tag: ${tag}`);
+    let cleanedMessage = rawMessage;
+    let profileTag = null;
+
+    if (activeTab !== null) {
+        // On a profile tab: automatically use that profile (no @TAG needed)
+        const tabData = conversationTabs.tabs.get(activeTab);
+        if (tabData) {
+            profileOverrideId = tabData.profileId;
+            profileTag = activeTab;
+            cleanedMessage = rawMessage;  // No @TAG to strip
+            console.log(`✅ Auto-profile from tab: ${activeTab} (${profileOverrideId})`);
+            console.log(`📝 Message: "${cleanedMessage}"`);
         }
     } else {
-        console.log('ℹ️  No @TAG detected or profiles not loaded');
+        // On Combined tab: check for @TAG syntax
+        const activeTagPrefix = window.activeTagPrefix || '';
+        const message = activeTagPrefix ? activeTagPrefix + rawMessage : rawMessage;
+        const tagMatch = message.match(/^@(\w+)\s+(.+)/);
+
+        if (tagMatch && window.configState?.profiles) {
+            const tag = tagMatch[1].toUpperCase();
+            console.log('🔍 Tag detected:', tag);
+            const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
+            if (overrideProfile) {
+                profileOverrideId = overrideProfile.id;
+                profileTag = tag;
+                cleanedMessage = tagMatch[2]; // Strip @TAG from message
+                console.log(`✅ Profile override found: ${overrideProfile.name} (${profileOverrideId})`);
+                console.log(`📝 Cleaned message: "${cleanedMessage}"`);
+                // Store the active profile override for autocomplete to use
+                window.activeProfileOverrideId = profileOverrideId;
+            } else {
+                console.log(`❌ No profile found with tag: ${tag}`);
+            }
+        } else {
+            console.log('ℹ️  No @TAG detected or profiles not loaded');
+        }
     }
     
     handleStreamRequest('/ask_stream', {

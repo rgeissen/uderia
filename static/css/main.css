@@ -2737,3 +2737,442 @@ button.bg-gray-700.px-2:hover {
     background-color: #4B5563 !important; /* gray-600 */
     background-image: none !important;
 }
+
+/* ============================================================
+   WORLD-CLASS PROFILE TABS STYLING
+   - Advanced animations with cubic-bezier easing
+   - Dynamic profile color integration
+   - Glassmorphism effects with backdrop blur
+   - Sophisticated hover states with micro-interactions
+   - Smooth transitions for all state changes
+   ============================================================ */
+
+/* Tab Container - Header-level positioning */
+#profile-tabs-container {
+    /* Positioned at header level below conversation header */
+    /* Background and border handled by Tailwind classes */
+}
+
+/* Tabs Bar - Horizontal Scroll */
+#profile-tabs-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 0;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(241, 95, 34, 0.3) transparent;
+}
+
+/* Custom Scrollbar Styling */
+#profile-tabs-bar::-webkit-scrollbar {
+    height: 3px;
+}
+
+#profile-tabs-bar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 2px;
+}
+
+#profile-tabs-bar::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+        90deg,
+        rgba(241, 95, 34, 0.4),
+        rgba(241, 95, 34, 0.6)
+    );
+    border-radius: 2px;
+    transition: background 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+#profile-tabs-bar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+        90deg,
+        rgba(241, 95, 34, 0.6),
+        rgba(241, 95, 34, 0.8)
+    );
+}
+
+/* Individual Tab Button - Base Styling */
+.profile-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-top: 2px solid transparent;
+    background: transparent;
+    color: #64748b; /* More subtle inactive color */
+    font-family: var(--font-primary, 'Inter', sans-serif);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    cursor: pointer;
+    border-radius: 0;
+    transition: all 0.25s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+    animation: slideInTab 0.4s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+    outline: none;
+    overflow: hidden;
+}
+
+/* Tab creation animation */
+@keyframes slideInTab {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Tab - Hover State */
+.profile-tab:hover {
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Tab - Focus State (Keyboard Navigation) */
+.profile-tab:focus-visible {
+    outline: 2px solid rgba(241, 95, 34, 0.6);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(241, 95, 34, 0.15);
+}
+
+/* Tab - Active State (Selected) */
+.profile-tab.active {
+    color: #ffffff;
+    background: #1e293b; /* Match conversation panel background */
+    border-bottom-color: var(--profile-color, #F15F22);
+    border-top-color: rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 -4px 12px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        -1px 0 0 rgba(0, 0, 0, 0.1),
+        1px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Active tab glow effect */
+.profile-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--profile-color, #F15F22);
+    box-shadow: 0 0 12px var(--profile-color, rgba(241, 95, 34, 0.6));
+    border-radius: 3px 3px 0 0;
+    animation: glowPulse 2s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+    0%, 100% {
+        opacity: 0.8;
+        box-shadow: 0 0 12px var(--profile-color, rgba(241, 95, 34, 0.6));
+    }
+    50% {
+        opacity: 1;
+        box-shadow: 0 0 20px var(--profile-color, rgba(241, 95, 34, 0.8));
+    }
+}
+
+/* Combined tab - Special styling (no profile color) */
+.profile-tab[data-profile-tag=""].active {
+    border-bottom-color: #F15F22;
+}
+
+.profile-tab[data-profile-tag=""].active::after {
+    background: linear-gradient(
+        90deg,
+        rgba(241, 95, 34, 0.6) 0%,
+        rgba(241, 95, 34, 0.9) 50%,
+        rgba(241, 95, 34, 0.6) 100%
+    );
+}
+
+/* Tab Label */
+.profile-tab .tab-label {
+    font-weight: 600;
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+    transition: all 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.profile-tab.active .tab-label {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-shadow: 0 0 20px rgba(241, 95, 34, 0.3);
+}
+
+/* Tab Count Badge - Base Styling */
+.profile-tab .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    background: linear-gradient(
+        135deg,
+        rgba(148, 163, 184, 0.25) 0%,
+        rgba(148, 163, 184, 0.15) 100%
+    );
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 11px;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #cbd5e1;
+    transition: all 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Badge hover state */
+.profile-tab:hover .tab-count {
+    transform: scale(1.05);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Badge active state - Orange gradient with profile color */
+.profile-tab.active .tab-count {
+    background: linear-gradient(
+        135deg,
+        var(--profile-color, rgba(241, 95, 34, 0.4)) 0%,
+        var(--profile-color, rgba(241, 95, 34, 0.25)) 100%
+    );
+    border: 1px solid var(--profile-color, rgba(241, 95, 34, 0.5));
+    color: #ffffff;
+    box-shadow:
+        0 2px 8px rgba(241, 95, 34, 0.25),
+        0 0 12px var(--profile-color, rgba(241, 95, 34, 0.3)),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    animation: badgePulse 0.5s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* Badge update animation */
+@keyframes badgeUpdate {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes badgePulse {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.6;
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Combined tab badge - Neutral styling */
+.profile-tab[data-profile-tag=""] .tab-count {
+    background: linear-gradient(
+        135deg,
+        rgba(100, 116, 139, 0.3) 0%,
+        rgba(71, 85, 105, 0.2) 100%
+    );
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+.profile-tab[data-profile-tag=""].active .tab-count {
+    background: linear-gradient(
+        135deg,
+        rgba(241, 95, 34, 0.35) 0%,
+        rgba(241, 95, 34, 0.2) 100%
+    );
+    border-color: rgba(241, 95, 34, 0.5);
+}
+
+/* Tab Close Button - Base Styling */
+.profile-tab .tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
+    padding: 0;
+    background: rgba(100, 116, 139, 0.2);
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: all 0.2s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* Show close button on tab hover */
+.profile-tab:hover .tab-close {
+    opacity: 1;
+}
+
+/* Close button hover state */
+.profile-tab .tab-close:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+    transform: scale(1.1);
+}
+
+/* Close button focus state */
+.profile-tab .tab-close:focus-visible {
+    outline: 2px solid rgba(239, 68, 68, 0.6);
+    outline-offset: 2px;
+    opacity: 1;
+}
+
+/* Tab removal animation */
+.profile-tab.removing {
+    animation: slideOutTab 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+@keyframes slideOutTab {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        max-width: 200px;
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.9);
+        max-width: 0;
+        padding: 0;
+        margin: 0;
+    }
+}
+
+/* Profile Color Dynamic Styling */
+/* Applied via JavaScript: button.style.setProperty('--profile-color', color) */
+.profile-tab:not([data-profile-tag=""]):hover {
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.08) 0%,
+        rgba(255, 255, 255, 0.04) 100%
+    );
+}
+
+.profile-tab:not([data-profile-tag=""]).active {
+    background: #1e293b; /* Match conversation panel background */
+}
+
+/* Message Filtering Transitions */
+.message-bubble {
+    transition:
+        opacity 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)),
+        transform 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)),
+        max-height 0.3s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.message-bubble[style*="display: none"] {
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+    overflow: hidden;
+}
+
+/* Ripple Effect Animation */
+@keyframes ripple {
+    from {
+        opacity: 1;
+        transform: scale(0);
+    }
+    to {
+        opacity: 0;
+        transform: scale(2);
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    .profile-tab,
+    .profile-tab .tab-count,
+    .profile-tab .tab-close,
+    .message-bubble,
+    #profile-tabs-bar {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    .profile-tab:hover,
+    .profile-tab.active {
+        transform: none !important;
+    }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+    .profile-tab {
+        border: 2px solid currentColor;
+    }
+
+    .profile-tab.active {
+        background: var(--profile-color, #F15F22);
+        color: #000000;
+    }
+
+    .profile-tab .tab-count {
+        border-width: 2px;
+    }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    #profile-tabs-bar {
+        padding: 6px 12px;
+        gap: 2px;
+    }
+
+    .profile-tab {
+        padding: 8px 14px;
+        font-size: 0.8125rem;
+        gap: 8px;
+    }
+
+    .profile-tab .tab-count {
+        min-width: 20px;
+        height: 20px;
+        font-size: 0.6875rem;
+    }
+
+    .profile-tab .tab-close {
+        width: 18px;
+        height: 18px;
+        font-size: 16px;
+    }
+}
+
+/* Touch Device Optimization */
+@media (hover: none) and (pointer: coarse) {
+    .profile-tab .tab-close {
+        opacity: 0.7;
+        transform: scale(1);
+    }
+
+    .profile-tab:active {
+        transform: scale(0.98);
+    }
+}
