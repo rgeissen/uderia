@@ -55,7 +55,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/v1/auth')
 
 def _ensure_user_default_collection(user_id: str, mcp_servers: list):
     """
-    Ensure a user has a Default Collection created in the database.
+    Ensure a user has a Default Collection for EACH MCP server.
     This is called during first login bootstrap.
     If created, reloads collections into APP_STATE and RAG retriever so it's immediately available.
     """
@@ -63,68 +63,94 @@ def _ensure_user_default_collection(user_id: str, mcp_servers: list):
     from trusted_data_agent.core.config_manager import get_config_manager
     from trusted_data_agent.core.config import APP_STATE
     from datetime import datetime, timezone
-    
-    logger.info(f"_ensure_user_default_collection called for user {user_id}")
-    
+    import uuid
+
+    logger.info(f"_ensure_user_default_collection called for user {user_id} with {len(mcp_servers)} MCP servers")
+
     try:
         collection_db = get_collection_db()
-        
-        # Check if user already has a Default Collection
+
+        # Get existing collections for this user
         user_collections = collection_db.get_user_owned_collections(user_id)
-        has_default = any('Default Collection' in c.get('name', '') for c in user_collections)
-        
-        if has_default:
-            logger.debug(f"User {user_id} already has a Default Collection")
-            return
-        
-        # Create Default Collection
-        mcp_server_id = mcp_servers[0].get('id') if mcp_servers else ''
-        
-        collection_data = {
-            'name': 'Default Collection',
-            'collection_name': f'default_collection_{user_id[:8]}',
-            'mcp_server_id': mcp_server_id,
-            'enabled': True,
-            'created_at': datetime.now(timezone.utc).isoformat(),
-            'description': 'Default collection for storing RAG cases',
-            'owner_user_id': user_id,
-            'visibility': 'private',
-            'is_marketplace_listed': False,
-            'subscriber_count': 0,
-            'marketplace_metadata': {},
-            'repository_type': 'planner'
-        }
-        
-        collection_id = collection_db.create_collection(collection_data)
-        if collection_id:
-            logger.info(f"Created Default Collection (ID: {collection_id}) for user {user_id}")
-            
-            # Reload collections into APP_STATE so it's immediately available
+
+        # Track which MCP servers already have default collections
+        existing_server_ids = set()
+        for collection in user_collections:
+            if 'Default Collection' in collection.get('name', '') and collection.get('repository_type') == 'planner':
+                existing_server_ids.add(collection.get('mcp_server_id'))
+
+        collections_created = []
+
+        # Create a default collection for EACH MCP server that doesn't have one
+        for mcp_server in mcp_servers:
+            mcp_server_id = mcp_server.get('id')
+            mcp_server_name = mcp_server.get('name', 'Unknown Server')
+
+            if not mcp_server_id:
+                logger.warning(f"Skipping MCP server without ID: {mcp_server}")
+                continue
+
+            # Skip if this server already has a default collection
+            if mcp_server_id in existing_server_ids:
+                logger.debug(f"MCP server '{mcp_server_name}' (ID: {mcp_server_id}) already has a default collection")
+                continue
+
+            # Create default collection for this MCP server
+            collection_name = f"Default Collection - {mcp_server_name}"
+            collection_data = {
+                'name': collection_name,
+                'collection_name': f'tda_rag_coll_default_{uuid.uuid4().hex[:6]}',
+                'mcp_server_id': mcp_server_id,
+                'enabled': True,
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'description': f'Default planner repository for MCP server: {mcp_server_name}',
+                'owner_user_id': user_id,
+                'visibility': 'private',
+                'is_marketplace_listed': False,
+                'subscriber_count': 0,
+                'marketplace_metadata': {},
+                'repository_type': 'planner',
+                'embedding_model': 'all-MiniLM-L6-v2'
+            }
+
+            collection_id = collection_db.create_collection(collection_data)
+            if collection_id:
+                logger.info(f"Created default collection '{collection_name}' (ID: {collection_id}) for MCP server '{mcp_server_name}' (ID: {mcp_server_id})")
+                collections_created.append(collection_id)
+            else:
+                logger.warning(f"Failed to create default collection for MCP server '{mcp_server_name}'")
+
+        # If any collections were created, reload APP_STATE and RAG retriever
+        if collections_created:
+            logger.info(f"Created {len(collections_created)} default collections for user {user_id}")
+
+            # Reload collections into APP_STATE so they're immediately available
             config_manager = get_config_manager()
             collections_list = config_manager.get_rag_collections()
             APP_STATE["rag_collections"] = collections_list
-            logger.info(f"Reloaded {len(collections_list)} collections into APP_STATE after creating default collection")
-            
-            # Reload the new collection into the RAG retriever's memory
+            logger.info(f"Reloaded {len(collections_list)} collections into APP_STATE after creating default collections")
+
+            # Reload the new collections into the RAG retriever's memory
             retriever = APP_STATE.get("rag_retriever_instance")
             if retriever:
-                try:
-                    # Get the newly created collection metadata
-                    new_collection = collection_db.get_collection_by_id(collection_id)
-                    if new_collection and new_collection.get('enabled', False):
-                        collection_name = new_collection['collection_name']
-                        # Load it into ChromaDB
-                        chroma_collection = retriever.client.get_or_create_collection(
-                            name=collection_name,
-                            embedding_function=retriever.embedding_function,
-                            metadata={"hnsw:space": "cosine"}
-                        )
-                        retriever.collections[collection_id] = chroma_collection
-                        logger.info(f"Loaded new default collection (ID: {collection_id}) into RAG retriever")
-                except Exception as load_err:
-                    logger.error(f"Failed to load new default collection into RAG retriever: {load_err}", exc_info=True)
+                for collection_id in collections_created:
+                    try:
+                        # Get the newly created collection metadata
+                        new_collection = collection_db.get_collection_by_id(collection_id)
+                        if new_collection and new_collection.get('enabled', False):
+                            collection_name = new_collection['collection_name']
+                            # Load it into ChromaDB
+                            chroma_collection = retriever.client.get_or_create_collection(
+                                name=collection_name,
+                                embedding_function=retriever.embedding_function,
+                                metadata={"hnsw:space": "cosine"}
+                            )
+                            retriever.collections[collection_id] = chroma_collection
+                            logger.info(f"Loaded new default collection (ID: {collection_id}) into RAG retriever")
+                    except Exception as load_err:
+                        logger.error(f"Failed to load default collection {collection_id} into RAG retriever: {load_err}", exc_info=True)
         else:
-            logger.error(f"Failed to create Default Collection for user {user_id}")
+            logger.debug(f"No new default collections needed for user {user_id} - all MCP servers already have collections")
             
     except Exception as e:
         logger.error(f"Error creating Default Collection for user {user_id}: {e}", exc_info=True)
@@ -183,62 +209,29 @@ def ensure_user_default_profile(user_id: str):
 
 def ensure_user_default_collection(user_id: str):
     """
-    Ensure a user has a default collection.
-    Creates one if it doesn't exist.
-    If created, reloads collections into APP_STATE and RAG retriever so it's immediately available.
+    Ensure a user has a default collection for each MCP server.
+    Creates missing collections if needed.
+    If created, reloads collections into APP_STATE and RAG retriever so they're immediately available.
     """
     from trusted_data_agent.core.collection_db import get_collection_db
     from trusted_data_agent.core.config_manager import get_config_manager
     from trusted_data_agent.core.config import APP_STATE
-    
-    collection_db = get_collection_db()
-    
-    # Check if user already has a default collection
-    user_collections = collection_db.get_user_owned_collections(user_id)
-    has_default = any(
-        c.get('name') == 'Default Collection' 
-        for c in user_collections
-    )
-    
-    if not has_default:
-        try:
-            # Get active MCP server ID from config (may be None for fresh installs)
-            config_manager = get_config_manager()
-            mcp_server_id = config_manager.get_active_mcp_server_id() or ""
-            
-            collection_id = collection_db.create_default_collection(user_id, mcp_server_id)
-            
-            if mcp_server_id:
-                logger.info(f"Created default collection (ID: {collection_id}) for user {user_id} with MCP server {mcp_server_id}")
-            else:
-                logger.info(f"Created default collection (ID: {collection_id}) for user {user_id} (no MCP server configured yet)")
-            
-            # Reload collections into APP_STATE so it's immediately available
-            collections_list = config_manager.get_rag_collections()
-            APP_STATE["rag_collections"] = collections_list
-            logger.info(f"Reloaded {len(collections_list)} collections into APP_STATE after creating default collection")
-            
-            # Reload the new collection into the RAG retriever's memory
-            retriever = APP_STATE.get("rag_retriever_instance")
-            if retriever and collection_id:
-                try:
-                    # Get the newly created collection metadata
-                    new_collection = collection_db.get_collection_by_id(collection_id)
-                    if new_collection and new_collection.get('enabled', False):
-                        collection_name = new_collection['collection_name']
-                        # Load it into ChromaDB
-                        chroma_collection = retriever.client.get_or_create_collection(
-                            name=collection_name,
-                            embedding_function=retriever.embedding_function,
-                            metadata={"hnsw:space": "cosine"}
-                        )
-                        retriever.collections[collection_id] = chroma_collection
-                        logger.info(f"Loaded new default collection (ID: {collection_id}) into RAG retriever")
-                except Exception as load_err:
-                    logger.error(f"Failed to load new default collection into RAG retriever: {load_err}", exc_info=True)
-            
-        except Exception as e:
-            logger.error(f"Failed to create default collection for user {user_id}: {e}", exc_info=True)
+
+    try:
+        config_manager = get_config_manager()
+
+        # Get user's MCP servers from config
+        mcp_servers = config_manager.get_mcp_servers(user_id)
+
+        if not mcp_servers:
+            logger.debug(f"No MCP servers configured for user {user_id}, skipping default collection check")
+            return
+
+        # Call the internal function that handles per-server collection creation
+        _ensure_user_default_collection(user_id, mcp_servers)
+
+    except Exception as e:
+        logger.error(f"Failed to ensure default collections for user {user_id}: {e}", exc_info=True)
 
 
 def log_audit_event(user_id: str, action: str, details: str, success: bool = True):

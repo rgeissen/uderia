@@ -1296,23 +1296,38 @@ class RAGRetriever:
                             {"user_feedback_score": {"$gt": 0}}
                         ]
                     }
-                    
+
+                    # Add MCP server ID filter for planner repositories (safety layer)
+                    # Collections are already segregated by MCP server, but this ensures double protection
+                    if coll_meta and coll_meta.get('mcp_server_id'):
+                        mcp_server_filter = {"mcp_server_id": {"$eq": coll_meta['mcp_server_id']}}
+                        # Combine efficiency filter and MCP server filter
+                        combined_extra_filter = {"$and": [efficiency_filter, mcp_server_filter]}
+                    else:
+                        combined_extra_filter = efficiency_filter
+
                     where_filter = rag_context.build_query_filter(
                         collection_id=collection_id,
-                        extra_filter=efficiency_filter,
+                        extra_filter=combined_extra_filter,
                         strategy_type={"$eq": "successful"},
                         user_feedback_score={"$gte": 0}
                     )
                 else:
                     # Fallback logic without context
-                    where_filter = {"$and": [
+                    base_filters = [
                         {"strategy_type": {"$eq": "successful"}},
                         {"user_feedback_score": {"$gte": 0}},
                         {"$or": [
                             {"is_most_efficient": {"$eq": True}},
                             {"user_feedback_score": {"$gt": 0}}
                         ]}
-                    ]}
+                    ]
+
+                    # Add MCP server ID filter for planner repositories (safety layer)
+                    if coll_meta and coll_meta.get('mcp_server_id'):
+                        base_filters.append({"mcp_server_id": {"$eq": coll_meta['mcp_server_id']}})
+
+                    where_filter = {"$and": base_filters}
                 
                 # Log collection state before query
                 try:
@@ -1729,6 +1744,7 @@ class RAGRetriever:
             "timestamp": case_study["metadata"]["timestamp"],
             "task_id": case_study["metadata"].get("task_id") or "",  # Convert None to empty string
             "collection_id": case_study["metadata"].get("collection_id", 0),
+            "mcp_server_id": case_study["metadata"].get("mcp_server_id") or "",  # --- MODIFICATION: Add MCP server ID for filtering ---
             "is_success": case_study["metadata"].get("is_success", False),  # --- MODIFICATION: Add success flag ---
             "is_most_efficient": case_study["metadata"].get("is_most_efficient", False),
             "had_plan_improvements": case_study["metadata"].get("had_plan_improvements", False),
@@ -1773,12 +1789,24 @@ class RAGRetriever:
             
             # 1. Determine which collection to use BEFORE validating access
             if collection_id is None:
-                # Get user's default collection instead of hardcoding 0
-                collection_id = self._get_user_default_collection_id(user_uuid)
-                if collection_id is None:
-                    logger.warning(f"No default collection found for user {user_uuid}. Skipping RAG processing.")
+                # Get the MCP server's default collection (one collection per MCP server)
+                from trusted_data_agent.core.config import APP_CONFIG
+                from trusted_data_agent.core.config_manager import get_config_manager
+
+                mcp_server_id = turn_summary.get('mcp_server_id') or APP_CONFIG.CURRENT_MCP_SERVER_ID
+
+                if not mcp_server_id:
+                    logger.warning("No MCP server ID found for RAG processing. Skipping.")
                     return
-                logger.info(f"Using user's default collection {collection_id} for RAG case storage")
+
+                config_manager = get_config_manager()
+                collection_id = config_manager.get_default_collection_for_mcp_server(mcp_server_id, user_uuid)
+
+                if collection_id is None:
+                    logger.warning(f"No default collection found for MCP server '{mcp_server_id}'. Skipping RAG processing.")
+                    return
+
+                logger.info(f"Using MCP server's default collection {collection_id} for RAG case storage (MCP server: {mcp_server_id})")
             
             # 2. NOW validate user has write access to the determined collection
             if rag_context:
@@ -1793,8 +1821,9 @@ class RAGRetriever:
                 logger.debug("Skipping RAG processing: Turn was not a successful strategy.")
                 return
             
-            # --- MODIFICATION: Store user_uuid in case metadata ---
+            # --- MODIFICATION: Store user_uuid and mcp_server_id in case metadata ---
             case_study["metadata"]["user_uuid"] = user_uuid
+            case_study["metadata"]["mcp_server_id"] = turn_summary.get('mcp_server_id') or APP_CONFIG.CURRENT_MCP_SERVER_ID or ""
             # --- MODIFICATION END ---
 
             # 4. Verify collection is active

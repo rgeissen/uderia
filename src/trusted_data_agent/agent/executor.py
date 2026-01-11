@@ -2162,8 +2162,10 @@ The following domain knowledge may be relevant to this conversation:
                     "task_id": self.task_id,            # Add the task_id
                     "turn_input_tokens": self.turn_input_tokens,
                     "turn_output_tokens": self.turn_output_tokens,
-                    # --- MODIFICATION START: Add session_id for RAG worker ---
+                    # --- MODIFICATION START: Add session_id and mcp_server_id for RAG worker ---
                     "session_id": self.session_id,
+                    "mcp_server_id": APP_CONFIG.CURRENT_MCP_SERVER_ID,  # Add MCP server ID for RAG collection routing
+                    "user_uuid": self.user_uuid,  # Add user UUID for RAG access control
                     # --- MODIFICATION END ---
                     # --- MODIFICATION START: Add RAG source collection ID and case ID ---
                     "rag_source_collection_id": self.rag_source_collection_id,

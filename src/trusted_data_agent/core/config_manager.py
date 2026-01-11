@@ -325,15 +325,54 @@ class ConfigManager:
     def get_mcp_servers(self, user_uuid: Optional[str] = None) -> list:
         """
         Get all MCP server configurations.
-        
+
         Args:
             user_uuid: Optional user UUID for per-user configuration isolation
-        
+
         Returns:
             List of MCP server configuration dictionaries
         """
         config = self.load_config(user_uuid)
         return config.get("mcp_servers", [])
+
+    def get_default_collection_for_mcp_server(self, mcp_server_id: str, user_uuid: Optional[str] = None) -> Optional[int]:
+        """
+        Get the default RAG collection ID for a specific MCP server.
+
+        Args:
+            mcp_server_id: The MCP server ID
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Collection ID of the default collection for this MCP server, or None if not found
+        """
+        try:
+            from trusted_data_agent.core.collection_db import get_collection_db
+            collection_db = get_collection_db()
+
+            # Get all collections for this MCP server
+            all_collections = collection_db.get_all_collections()
+
+            # Filter by MCP server and repository type (planner)
+            server_collections = [
+                c for c in all_collections
+                if c.get('mcp_server_id') == mcp_server_id
+                and c.get('repository_type') == 'planner'
+                and (user_uuid is None or c.get('owner_user_id') == user_uuid)
+            ]
+
+            if not server_collections:
+                app_logger.warning(f"No collections found for MCP server '{mcp_server_id}'")
+                return None
+
+            # Return the first (oldest) collection for this MCP server as the default
+            # Collections are typically sorted by ID (creation order)
+            default_collection = sorted(server_collections, key=lambda c: c.get('id', 0))[0]
+            return default_collection.get('id')
+
+        except Exception as e:
+            app_logger.error(f"Error getting default collection for MCP server '{mcp_server_id}': {e}", exc_info=True)
+            return None
     
     def save_mcp_servers(self, servers: list, user_uuid: Optional[str] = None) -> bool:
         """
@@ -353,17 +392,54 @@ class ConfigManager:
     def add_mcp_server(self, server: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
         """
         Add a new MCP server configuration.
-        
+        Also creates a default RAG collection for this MCP server.
+
         Args:
             server: MCP server configuration dictionary
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
             True if successful, False otherwise
         """
         servers = self.get_mcp_servers(user_uuid)
         servers.append(server)
-        return self.save_mcp_servers(servers, user_uuid)
+        success = self.save_mcp_servers(servers, user_uuid)
+
+        if success:
+            # Create a default RAG collection for this MCP server
+            try:
+                from trusted_data_agent.agent.rag_retriever import RAGRetriever
+                from trusted_data_agent.core.config import APP_STATE
+
+                rag_retriever = APP_STATE.get('rag_retriever_instance')
+                if rag_retriever:
+                    server_name = server.get('name', 'Unknown Server')
+                    server_id = server.get('id')
+
+                    # Create default collection for this MCP server
+                    collection_name = f"Default Collection - {server_name}"
+                    collection_description = f"Default planner repository for MCP server: {server_name}"
+
+                    collection_id = rag_retriever.add_collection(
+                        name=collection_name,
+                        description=collection_description,
+                        mcp_server_id=server_id,
+                        owner_user_id=user_uuid,
+                        repository_type="planner",
+                        embedding_model="all-MiniLM-L6-v2"
+                    )
+
+                    if collection_id:
+                        app_logger.info(f"Created default RAG collection {collection_id} for MCP server '{server_name}' (ID: {server_id})")
+                    else:
+                        app_logger.warning(f"Failed to create default RAG collection for MCP server '{server_name}'")
+                else:
+                    app_logger.warning("RAG retriever not available - skipping default collection creation")
+            except Exception as e:
+                app_logger.error(f"Error creating default RAG collection for MCP server: {e}", exc_info=True)
+                # Don't fail the MCP server addition if collection creation fails
+
+        return success
     
     def update_mcp_server(self, server_id: str, updates: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
         """
