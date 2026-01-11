@@ -191,6 +191,7 @@ class ConversationTabs {
         this.filterMessages();
         this.updateHeaderIndicator();
         this.updateProfileContext();
+        this.updateInputBox();
         this.saveTabState();
 
         // Emit event for other components
@@ -338,6 +339,77 @@ class ConversationTabs {
                 }
             }
         }
+    }
+
+    /**
+     * Update input box with @TAG prefix for non-default profile tabs
+     */
+    updateInputBox() {
+        const userInput = document.getElementById('user-input');
+        if (!userInput) return;
+
+        const currentValue = userInput.value;
+
+        // Remove any existing @TAG prefix (with or without space)
+        const cleanedValue = currentValue.replace(/^@\w+\s*/, '');
+
+        if (this.activeTab === null) {
+            // Combined tab: clear @TAG prefix and hide badge
+            userInput.value = cleanedValue;
+            window.activeTagPrefix = '';
+
+            // Hide any active tag badge
+            const activeProfileTag = document.getElementById('active-profile-tag');
+            if (activeProfileTag) {
+                activeProfileTag.innerHTML = '';
+                activeProfileTag.classList.add('hidden');
+                userInput.classList.remove('has-tag');
+            }
+        } else {
+            // Profile tab: check if it's the default profile
+            const tabData = this.tabs.get(this.activeTab);
+            const defaultProfileId = window.configState?.defaultProfileId;
+            const isDefaultProfile = tabData && tabData.profileId === defaultProfileId;
+
+            if (isDefaultProfile) {
+                // Default profile tab: clear @TAG prefix and hide badge
+                userInput.value = cleanedValue;
+                window.activeTagPrefix = '';
+
+                // Hide any active tag badge
+                const activeProfileTag = document.getElementById('active-profile-tag');
+                if (activeProfileTag) {
+                    activeProfileTag.innerHTML = '';
+                    activeProfileTag.classList.add('hidden');
+                    userInput.classList.remove('has-tag');
+                }
+            } else {
+                // Non-default profile tab: add @TAG prefix
+                const prefix = `@${this.activeTab} `;
+                if (cleanedValue.length > 0) {
+                    userInput.value = prefix + cleanedValue;
+                } else {
+                    userInput.value = prefix;
+                }
+
+                // Clear any existing activeTagPrefix to ensure badge updates
+                window.activeTagPrefix = '';
+
+                // Trigger input event to create autocomplete chip
+                const inputEvent = new Event('input', { bubbles: true });
+                userInput.dispatchEvent(inputEvent);
+
+                // Set cursor position after @TAG prefix
+                // Use setTimeout to ensure chip creation completes
+                setTimeout(() => {
+                    const cursorPosition = prefix.length;
+                    userInput.setSelectionRange(cursorPosition, cursorPosition);
+                }, 10);
+            }
+        }
+
+        // Focus the input box
+        userInput.focus();
     }
 
     /**

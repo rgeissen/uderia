@@ -375,12 +375,13 @@ export async function handleChatSubmit(e, source = 'text') {
     let profileTag = null;
 
     if (activeTab !== null) {
-        // On a profile tab: automatically use that profile (no @TAG needed)
+        // On a profile tab: automatically use that profile
         const tabData = conversationTabs.tabs.get(activeTab);
         if (tabData) {
             profileOverrideId = tabData.profileId;
             profileTag = activeTab;
-            cleanedMessage = rawMessage;  // No @TAG to strip
+            // Strip @TAG prefix if user manually typed it (profile applied via tab context)
+            cleanedMessage = rawMessage.replace(/^@\w+\s*/, '').trim();
             console.log(`✅ Auto-profile from tab: ${activeTab} (${profileOverrideId})`);
             console.log(`📝 Message: "${cleanedMessage}"`);
         }
