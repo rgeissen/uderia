@@ -966,6 +966,32 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
     user_question = command.get("arguments", {}).get("user_question", "No user question provided.")
     final_call_id = call_id or str(uuid.uuid4())
 
+    # --- OPTIMIZATION START: Pass-through mode when tactical planner pre-formatted the report ---
+    # If the tactical planner already generated a well-formatted "report" argument,
+    # skip the LLM call and use it directly. This saves ~3,000 tokens per query.
+    pre_formatted_report = command.get("arguments", {}).get("report")
+    if pre_formatted_report and isinstance(pre_formatted_report, str) and len(pre_formatted_report.strip()) > 0:
+        app_logger.info(f"TDA_FinalReport: Using pre-formatted report from tactical planner (pass-through mode)")
+
+        result = {
+            "status": "success",
+            "metadata": {
+                "call_id": final_call_id,
+                "tool_name": "TDA_FinalReport",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "optimization": "pass_through"
+            },
+            "results": [{
+                "direct_answer": pre_formatted_report.strip(),
+                "key_metric": None,
+                "key_observations": []
+            }],
+            "corrections": []
+        }
+        return result, 0, 0
+    # --- OPTIMIZATION END ---
+
     # --- MODIFICATION START: Extract and format knowledge context separately for clarity ---
     # Use .get() instead of .pop() to avoid modifying the original workflow_state
     knowledge_context = workflow_state.get('_knowledge_context')
