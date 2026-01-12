@@ -17,7 +17,7 @@ from langchain_mcp_adapters.prompts import load_mcp_prompt
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from trusted_data_agent.auth.middleware import require_auth, optional_auth
-from trusted_data_agent.core.config import APP_CONFIG, APP_STATE
+from trusted_data_agent.core.config import APP_CONFIG, APP_STATE, get_user_mcp_server_id
 from trusted_data_agent.core import session_manager
 from trusted_data_agent.agent.prompts import PROVIDER_SYSTEM_PROMPTS
 from trusted_data_agent.agent.executor import PlanExecutor
@@ -742,17 +742,23 @@ async def get_app_settings():
     })
 
 @api_bp.route("/prompt/<prompt_name>", methods=["GET"])
+@require_auth
 async def get_prompt_content(prompt_name):
     """
     Retrieves the content of a specific MCP prompt. For dynamic prompts
     with arguments, it renders them with placeholder values for preview.
     """
+    # Get user UUID for per-user MCP server ID
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required."}), 401
+
     mcp_client = APP_STATE.get("mcp_client")
     if not mcp_client:
         return jsonify({"error": "MCP client not configured."}), 400
 
-    # Use server ID instead of name for session management
-    server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+    # Use per-user server ID instead of global config
+    server_id = get_user_mcp_server_id(user_uuid)
     if not server_id:
          return jsonify({"error": "MCP server ID not configured."}), 400
 
