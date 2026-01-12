@@ -1642,7 +1642,8 @@ async def get_available_prompts(current_user):
             'data_operations': 'data',
             'visualization': 'visualization',
             'conversation_execution': 'system',  # Conversation prompts are system-level
-            'rag_focused_execution': 'system'    # RAG focused prompts are system-level
+            'rag_focused_execution': 'system',   # RAG focused prompts are system-level
+            'genie_coordination': 'system'       # Genie coordinator prompts are system-level
         }
         
         # Build response structure based on categories

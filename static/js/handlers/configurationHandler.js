@@ -3676,10 +3676,12 @@ async function populateSystemPrompts(modal, profile) {
     const visualizationPromptsContainer = modal.querySelector('#profile-modal-visualization-prompts');
     const conversationPromptsContainer = modal.querySelector('#profile-modal-conversation-prompts');
     const ragPromptsContainer = modal.querySelector('#profile-modal-rag-prompts');
+    const geniePromptsContainer = modal.querySelector('#profile-modal-genie-prompts');
 
     // Show/hide sections based on profile type
     const conversationSection = modal.querySelector('#conversation-execution-section');
     const ragSection = modal.querySelector('#rag-execution-section');
+    const genieSection = modal.querySelector('#genie-coordination-section');
     const masterSystemSection = modal.querySelector('#master-system-section');
     const toolEnabledSection = modal.querySelector('#tool-enabled-prompts-section');
     const systemPromptsDescription = modal.querySelector('#system-prompts-description');
@@ -3688,6 +3690,7 @@ async function populateSystemPrompts(modal, profile) {
         // Conversation focused: show only conversation execution section
         if (conversationSection) conversationSection.classList.remove('hidden');
         if (ragSection) ragSection.classList.add('hidden');
+        if (genieSection) genieSection.classList.add('hidden');
         if (masterSystemSection) masterSystemSection.classList.add('hidden');
         if (toolEnabledSection) toolEnabledSection.style.display = 'none';
         if (systemPromptsDescription) {
@@ -3697,15 +3700,27 @@ async function populateSystemPrompts(modal, profile) {
         // RAG focused: show only RAG execution section
         if (conversationSection) conversationSection.classList.add('hidden');
         if (ragSection) ragSection.classList.remove('hidden');
+        if (genieSection) genieSection.classList.add('hidden');
         if (masterSystemSection) masterSystemSection.classList.add('hidden');
         if (toolEnabledSection) toolEnabledSection.style.display = 'none';
         if (systemPromptsDescription) {
             systemPromptsDescription.textContent = 'Configure which RAG synthesis prompt version should be used for this profile.';
         }
+    } else if (profileType === 'genie') {
+        // Genie: show only genie coordination section
+        if (conversationSection) conversationSection.classList.add('hidden');
+        if (ragSection) ragSection.classList.add('hidden');
+        if (genieSection) genieSection.classList.remove('hidden');
+        if (masterSystemSection) masterSystemSection.classList.add('hidden');
+        if (toolEnabledSection) toolEnabledSection.style.display = 'none';
+        if (systemPromptsDescription) {
+            systemPromptsDescription.textContent = 'Configure the coordinator prompt that guides how this Genie orchestrates between slave profiles.';
+        }
     } else {
         // Tool enabled: show all sections
         if (conversationSection) conversationSection.classList.add('hidden');
         if (ragSection) ragSection.classList.add('hidden');
+        if (genieSection) genieSection.classList.add('hidden');
         if (masterSystemSection) masterSystemSection.classList.remove('hidden');
         if (toolEnabledSection) toolEnabledSection.style.display = '';
         if (systemPromptsDescription) {
@@ -3742,6 +3757,16 @@ async function populateSystemPrompts(modal, profile) {
                 container: ragPromptsContainer,
                 subcategories: {
                     'rag_focused_execution': 'RAG Focused Execution Prompt'
+                }
+            }
+        };
+    } else if (profileType === 'genie') {
+        // Genie: only genie_coordination category
+        categories = {
+            genie_coordination: {
+                container: geniePromptsContainer,
+                subcategories: {
+                    'coordinator_prompt': 'Coordinator System Prompt'
                 }
             }
         };

@@ -403,6 +403,9 @@
     },
     "rag_focused_execution": {
       "rag_focused_execution": "RAG_FOCUSED_EXECUTION"
+    },
+    "genie_coordination": {
+      "coordinator_prompt": "GENIE_COORDINATOR_PROMPT"
     }
   }
 }
