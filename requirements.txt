@@ -4,12 +4,13 @@ hypercorn==0.17.3
 python-dotenv==1.1.1
 aiofiles==24.1.0
 google-generativeai==0.8.5
+# LangChain ecosystem - pinned for compatibility
+# langchain-openai 1.1.7 requires langchain-core>=1.2.0 and openai>=1.109.1
 langchain-mcp-adapters>=0.2.0
-langchain>=1.2.0
-langchain-core>=1.2.0,<2.0  # LangChain v1 series
-langchain-openai>=0.1.0
-langchain-anthropic>=0.1.0
-langchain-google-genai>=4.0.0  # Compatible with langchain-core 1.x
+langchain-openai==1.1.7
+langchain-anthropic==1.3.1
+langchain-google-genai==4.1.3
+# Let langchain-openai determine the correct langchain and langchain-core versions
 anthropic==0.62.0
 boto3==1.40.5
 openai>=1.109.1,<3.0.0  # Must be >=1.109.1 for langchain-openai compatibility
