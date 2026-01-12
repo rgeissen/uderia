@@ -1292,7 +1292,9 @@ async def get_session_history(current_user, session_id):
             "profile_tags_used": session_data.get("profile_tags_used", []),
             "provider": session_data.get("provider"),
             "model": session_data.get("model"),
-            "feedback_by_turn": feedback_by_turn  # Add feedback data
+            "feedback_by_turn": feedback_by_turn,  # Add feedback data
+            "profile_tag": session_data.get("profile_tag"),  # Current profile tag
+            "workflow_history": workflow_history  # For genie card rendering
         }
         return jsonify(response_data)
     app_logger.warning(f"Session {session_id} not found for user {user_uuid}.")

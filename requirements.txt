@@ -4,7 +4,12 @@ hypercorn==0.17.3
 python-dotenv==1.1.1
 aiofiles==24.1.0
 google-generativeai==0.8.5
-langchain-mcp-adapters==0.1.9
+langchain-mcp-adapters>=0.2.0
+langchain>=1.2.0
+langchain-core>=1.2.0,<2.0  # LangChain v1 series
+langchain-openai>=0.1.0
+langchain-anthropic>=0.1.0
+langchain-google-genai>=4.0.0  # Compatible with langchain-core 1.x
 anthropic==0.62.0
 boto3==1.40.5
 openai==1.99.3

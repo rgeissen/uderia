@@ -2064,12 +2064,17 @@ async def reset_document_upload_config(provider: str):
 async def create_session():
     """
     Creates a new conversation session for the requesting user.
-    
+
     Requires:
     - User must be authenticated (JWT or Access Token)
     - User must have a configured profile (LLM + MCP server combination)
     - Profile must be set as default or active for consumption
-    
+
+    Optional request body parameters:
+    - profile_id: Use a specific profile instead of the default
+    - genie_parent_session_id: Parent session ID for Genie slave sessions
+    - genie_slave_profile_id: Profile ID being used as a slave
+
     Returns:
     - 201: Session created successfully with session_id
     - 400: No profile configured for the user
@@ -2085,89 +2090,126 @@ async def create_session():
     try:
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
-        
-        # Check if user has a default profile configured
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        if not default_profile_id:
+
+        # Get optional request body parameters
+        data = await request.get_json() or {}
+        profile_id_override = data.get("profile_id")
+        genie_parent_session_id = data.get("genie_parent_session_id")
+        genie_slave_profile_id = data.get("genie_slave_profile_id")
+
+        # Use specified profile or fall back to default
+        profile_id_to_use = profile_id_override or config_manager.get_default_profile_id(user_uuid)
+        if not profile_id_to_use:
             return jsonify({
                 "error": "No default profile configured for this user. Please configure a profile (LLM + MCP Server combination) in the Configuration panel first."
             }), 400
-        
-        # Verify the default profile exists and is properly configured
-        default_profile = config_manager.get_profile(default_profile_id, user_uuid)
-        if not default_profile:
+
+        # Verify the profile exists and is properly configured
+        target_profile = config_manager.get_profile(profile_id_to_use, user_uuid)
+        if not target_profile:
             return jsonify({
-                "error": "Default profile not found. Please configure a profile first."
+                "error": "Profile not found. Please configure a profile first."
             }), 400
         
         # Extract LLM and MCP configuration from profile
-        llm_config_id = default_profile.get("llmConfigurationId")
-        mcp_server_id = default_profile.get("mcpServerId")
-        profile_type = default_profile.get("profile_type", "tool_enabled")
+        llm_config_id = target_profile.get("llmConfigurationId")
+        mcp_server_id = target_profile.get("mcpServerId")
+        profile_type = target_profile.get("profile_type", "tool_enabled")
 
-        # LLM always required
-        if not llm_config_id:
-            return jsonify({
-                "error": "Profile is incomplete. LLM Provider is required."
-            }), 503
+        # Genie profiles don't need direct LLM/MCP - they coordinate via slave sessions
+        if profile_type != "genie":
+            # LLM always required for non-genie profiles
+            if not llm_config_id:
+                return jsonify({
+                    "error": "Profile is incomplete. LLM Provider is required."
+                }), 503
 
-        # MCP only required for tool-enabled profiles
-        if profile_type == "tool_enabled" and not mcp_server_id:
-            return jsonify({
-                "error": "Tool-enabled profiles require an MCP Server configuration."
-            }), 503
-        
+            # MCP only required for tool-enabled profiles
+            if profile_type == "tool_enabled" and not mcp_server_id:
+                return jsonify({
+                    "error": "Tool-enabled profiles require an MCP Server configuration."
+                }), 503
+
         # Get LLM configuration
         llm_configs = config_manager.get_llm_configurations(user_uuid)
         llm_config = next((c for c in llm_configs if c.get("id") == llm_config_id), None)
-        if not llm_config:
+        if not llm_config and profile_type != "genie":
             return jsonify({
                 "error": "LLM configuration for profile not found."
             }), 503
-        
-        # Get MCP server configuration
+
+        # Get MCP server configuration (optional for some profile types)
         mcp_configs = config_manager.get_mcp_servers(user_uuid)
         mcp_config = next((m for m in mcp_configs if m.get("id") == mcp_server_id), None)
-        if not mcp_config:
+        if not mcp_config and profile_type == "tool_enabled":
             return jsonify({
                 "error": "MCP Server configuration for profile not found."
             }), 503
-        
+
         # Extract provider from LLM config
-        provider = llm_config.get("provider", "Google")
-        
+        provider = llm_config.get("provider", "Google") if llm_config else "Coordinator"
+
         # Switch to this profile's context to get LLM instance
         from trusted_data_agent.core.configuration_service import switch_profile_context
-        profile_context = await switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
-        
+        profile_context = await switch_profile_context(profile_id_to_use, user_uuid, validate_llm=False)
+
         if "error" in profile_context:
             return jsonify({
                 "error": f"Failed to activate profile: {profile_context.get('error')}"
             }), 503
-        
+
         llm_instance = APP_STATE.get("llm")
-        
+
+        # Determine sequence number for genie slave sessions
+        genie_sequence_number = None
+        if genie_parent_session_id:
+            # Get current count of slave sessions for this parent
+            existing_slaves = await session_manager.get_genie_slave_sessions(genie_parent_session_id, user_uuid)
+            genie_sequence_number = len(existing_slaves) + 1
+
         # Create session with the profile's context
-        app_logger.info(f"REST API: Creating session with profile_id={default_profile_id}, profile_tag={default_profile.get('tag')}")  # DEBUG
+        is_genie_slave = genie_parent_session_id is not None
+        app_logger.info(f"REST API: Creating session with profile_id={profile_id_to_use}, profile_tag={target_profile.get('tag')}, is_genie_slave={is_genie_slave}")
         session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=provider,
             llm_instance=llm_instance,
             charting_intensity=APP_CONFIG.DEFAULT_CHARTING_INTENSITY,
-            profile_tag=default_profile.get("tag"),
-            profile_id=default_profile_id  # Store profile ID for badge/color info
+            profile_tag=target_profile.get("tag"),
+            profile_id=profile_id_to_use,
+            genie_parent_session_id=genie_parent_session_id,
+            genie_slave_profile_id=genie_slave_profile_id,
+            genie_sequence_number=genie_sequence_number
         )
-        app_logger.info(f"REST API: Created new session: {session_id} for user {user_uuid} using profile {default_profile_id}")
+        app_logger.info(f"REST API: Created new session: {session_id} for user {user_uuid} using profile {profile_id_to_use}")
+
+        # Record genie session link if this is a slave session
+        if genie_parent_session_id and genie_slave_profile_id:
+            await session_manager.record_genie_session_link(
+                parent_session_id=genie_parent_session_id,
+                slave_session_id=session_id,
+                slave_profile_id=genie_slave_profile_id,
+                slave_profile_tag=target_profile.get("tag"),
+                user_uuid=user_uuid,
+                execution_order=genie_sequence_number or 0
+            )
 
         # Retrieve the newly created session's full data
         new_session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
         if new_session_data:
-            # Prepare notification payload
+            # Prepare notification payload with full session metadata for UI display
             notification_payload = {
                 "id": new_session_data["id"],
                 "name": new_session_data.get("name", "New Chat"),
                 "models_used": new_session_data.get("models_used", []),
-                "last_updated": new_session_data.get("last_updated", datetime.now(timezone.utc).isoformat())
+                "last_updated": new_session_data.get("last_updated", datetime.now(timezone.utc).isoformat()),
+                # Include profile and genie metadata for proper UI rendering
+                "profile_id": new_session_data.get("profile_id"),
+                "profile_tag": new_session_data.get("profile_tag"),
+                "profile_type": target_profile.get("profile_type") if target_profile else None,
+                "genie_metadata": new_session_data.get("genie_metadata", {}),
+                "is_temporary": new_session_data.get("is_temporary", False),
+                "temporary_purpose": new_session_data.get("temporary_purpose")
             }
 
             # Broadcast to all active notification queues for this user
@@ -7116,6 +7158,10 @@ async def get_sessions_list():
                         "model": model,
                         "models_used": session_data.get("models_used", []),
                         "profile_tags_used": session_data.get("profile_tags_used", []),
+                        "profile_id": session_data.get("profile_id"),
+                        "profile_tag": session_data.get("profile_tag"),
+                        "profile_type": session_data.get("profile_type"),
+                        "genie_metadata": session_data.get("genie_metadata", {}),
                         "turn_count": turn_count,
                         "total_tokens": input_tokens + output_tokens,
                         "status": status,
@@ -8368,3 +8414,372 @@ async def set_master_classification_profile():
     except Exception as e:
         app_logger.error(f"Failed to set master classification profile: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# =============================================================================
+# Genie Profile Coordination Endpoints
+# =============================================================================
+
+@rest_api_bp.route("/v1/sessions/<session_id>/genie-query", methods=["POST"])
+async def execute_genie_query(session_id: str):
+    """
+    Execute a query using Genie coordination.
+
+    This endpoint handles queries for Genie profiles, which coordinate
+    multiple slave profiles to answer complex questions.
+
+    Request body:
+    {
+        "prompt": "Your question here"
+    }
+
+    Returns:
+    - 202: Query accepted, returns task_id for polling
+    - 400: Invalid request or not a genie profile
+    - 401: Authentication required
+    - 404: Session not found
+    """
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required"}), 401
+
+    data = await request.get_json() or {}
+    query = data.get("prompt")
+    if not query:
+        return jsonify({"error": "The 'prompt' field is required."}), 400
+
+    try:
+        # Validate session exists and belongs to user
+        session_data = await session_manager.get_session(user_uuid, session_id)
+        if not session_data:
+            return jsonify({"error": f"Session '{session_id}' not found."}), 404
+
+        # Get profile and validate it's a genie profile
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        profile_id = session_data.get("profile_id")
+        if not profile_id:
+            return jsonify({"error": "Session has no associated profile."}), 400
+
+        profile = config_manager.get_profile(profile_id, user_uuid)
+        if not profile:
+            return jsonify({"error": "Profile not found."}), 400
+
+        if profile.get("profile_type") != "genie":
+            return jsonify({
+                "error": "This endpoint is only for genie profiles. Use /v1/sessions/{session_id}/query for other profile types."
+            }), 400
+
+        # Validate genie configuration
+        genie_config = profile.get("genieConfig", {})
+        slave_profile_ids = genie_config.get("slaveProfiles", [])
+        if not slave_profile_ids:
+            return jsonify({"error": "Genie profile has no slave profiles configured."}), 400
+
+        # Get slave profile details
+        slave_profiles = []
+        for pid in slave_profile_ids:
+            slave_profile = config_manager.get_profile(pid, user_uuid)
+            if slave_profile:
+                slave_profiles.append(slave_profile)
+            else:
+                app_logger.warning(f"Genie profile {profile_id} references missing slave profile {pid}")
+
+        if not slave_profiles:
+            return jsonify({"error": "No valid slave profiles found for this genie."}), 400
+
+        # Get LLM configuration for coordinator
+        llm_config_id = profile.get("llmConfigurationId")
+        if not llm_config_id:
+            return jsonify({"error": "Genie profile requires an LLM configuration."}), 400
+
+        # Get auth token for slave session REST calls
+        auth_header = request.headers.get("Authorization", "")
+        auth_token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+
+        # Create task for background execution
+        task_id = generate_task_id()
+
+        # Initialize task state
+        APP_STATE.setdefault("background_tasks", {})[task_id] = {
+            "task_id": task_id,
+            "user_uuid": user_uuid,
+            "session_id": session_id,
+            "profile_id": profile_id,
+            "query_type": "genie_coordination",
+            "status": "pending",
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "events": [],
+            "intermediate_data": [],
+            "result": None
+        }
+
+        async def genie_background_task():
+            """Execute genie coordination in background."""
+            task_status = APP_STATE["background_tasks"].get(task_id)
+            try:
+                task_status["status"] = "processing"
+                task_status["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+                # Create LangChain LLM from Uderia config
+                from trusted_data_agent.llm.langchain_adapter import create_langchain_llm
+                llm_instance = create_langchain_llm(llm_config_id, user_uuid)
+
+                # Determine base URL from request
+                base_url = f"{request.scheme}://{request.host}"
+
+                # Create event handler that broadcasts to notification queues
+                def genie_event_handler(event_type: str, payload: dict):
+                    """Broadcast genie coordination events to all user's notification queues."""
+                    notification = {
+                        "type": event_type,
+                        "payload": {
+                            "session_id": session_id,
+                            "task_id": task_id,
+                            **payload
+                        }
+                    }
+                    notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
+                    for queue in notification_queues:
+                        asyncio.create_task(queue.put(notification))
+
+                    # Also store event in task status for polling clients
+                    task_status["events"].append({
+                        "event_type": event_type,
+                        "payload": payload,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                    task_status["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+                # Build and execute coordinator with event callback
+                from trusted_data_agent.agent.genie_coordinator import GenieCoordinator
+                coordinator = GenieCoordinator(
+                    genie_profile=profile,
+                    slave_profiles=slave_profiles,
+                    user_uuid=user_uuid,
+                    parent_session_id=session_id,
+                    auth_token=auth_token,
+                    llm_instance=llm_instance,
+                    base_url=base_url,
+                    event_callback=genie_event_handler
+                )
+
+                # Load existing slave sessions to preserve context across multiple queries
+                existing_slaves = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
+                if existing_slaves:
+                    coordinator.load_existing_slave_sessions(existing_slaves)
+                    app_logger.info(f"Loaded {len(existing_slaves)} existing slave sessions for Genie session {session_id}")
+
+                result = await coordinator.execute(query)
+
+                # --- SESSION LOGGING: Log the Genie conversation to session files ---
+                # This ensures the master session has a proper conversation history
+                try:
+                    profile_tag = profile.get('tag', 'GENIE')
+
+                    # Get LLM config details for logging
+                    llm_configurations = config_manager.get_llm_configurations(user_uuid)
+                    llm_config = next((c for c in llm_configurations if c.get("id") == llm_config_id), None)
+                    provider = llm_config.get('provider', 'Unknown') if llm_config else 'Unknown'
+                    model = llm_config.get('model', 'unknown') if llm_config else 'unknown'
+
+                    # 1. Add user query to session history (for UI display)
+                    await session_manager.add_message_to_histories(
+                        user_uuid=user_uuid,
+                        session_id=session_id,
+                        role='user',
+                        content=query,
+                        profile_tag=profile_tag
+                    )
+
+                    # 2. Add coordinator response to session history (for UI display)
+                    coordinator_response = result.get('coordinator_response', '')
+                    await session_manager.add_message_to_histories(
+                        user_uuid=user_uuid,
+                        session_id=session_id,
+                        role='assistant',
+                        content=coordinator_response,
+                        profile_tag=profile_tag
+                    )
+
+                    # 3. Add turn data to workflow_history (for planner context and consumption tracking)
+                    # Get current turn number from session
+                    current_session = await session_manager.get_session(user_uuid, session_id)
+                    workflow_history = current_session.get('last_turn_data', {}).get('workflow_history', [])
+                    turn_number = len(workflow_history) + 1
+
+                    turn_data = {
+                        'turn': turn_number,
+                        'user_query': query,
+                        'genie_coordination': True,
+                        'tools_used': result.get('tools_used', []),
+                        'slave_sessions': result.get('slave_sessions', {}),
+                        'success': result.get('success', False),
+                        'final_response': coordinator_response[:500] if coordinator_response else '',
+                        'status': 'success' if result.get('success', False) else 'failed',
+                        'provider': provider,
+                        'model': model,
+                        'profile_tag': profile.get('tag', 'GENIE'),
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+
+                    await session_manager.update_last_turn_data(
+                        user_uuid=user_uuid,
+                        session_id=session_id,
+                        turn_data=turn_data
+                    )
+
+                    # 4. Update session models used
+                    await session_manager.update_models_used(
+                        user_uuid=user_uuid,
+                        session_id=session_id,
+                        provider=provider,
+                        model=model,
+                        profile_tag=profile_tag
+                    )
+
+                    app_logger.info(f"Logged Genie coordination turn {turn_number} to session {session_id}")
+
+                except Exception as log_error:
+                    app_logger.warning(f"Failed to log Genie session data: {log_error}")
+                # --- END SESSION LOGGING ---
+
+                task_status["status"] = "completed" if result.get("success", False) else "failed"
+                task_status["result"] = _sanitize_for_json(result)
+                task_status["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+                # Note: Final completion notification is now emitted by GenieCoordinator
+                # but we still send rest_task_complete for backwards compatibility
+                # Include user_input and final_answer for frontend message display
+                notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
+                if notification_queues:
+                    notification = {
+                        "type": "rest_task_complete",
+                        "payload": {
+                            "task_id": task_id,
+                            "session_id": session_id,
+                            "turn_id": turn_number if 'turn_number' in dir() else 1,
+                            "user_input": query,
+                            "final_answer": result.get("coordinator_response", ""),
+                            "profile_tag": profile.get('tag', 'GENIE'),
+                            "success": result.get("success", False),
+                            "tools_used": result.get("tools_used", []),
+                            "slave_sessions": result.get("slave_sessions", {})
+                        }
+                    }
+                    for queue in notification_queues:
+                        asyncio.create_task(queue.put(notification))
+
+            except Exception as e:
+                app_logger.error(f"Genie coordination task {task_id} failed: {e}", exc_info=True)
+                task_status["status"] = "failed"
+                task_status["result"] = {"error": str(e), "success": False}
+                task_status["last_updated"] = datetime.now(timezone.utc).isoformat()
+            finally:
+                # Remove from active tasks
+                if task_id in APP_STATE.get("active_tasks", {}):
+                    del APP_STATE["active_tasks"][task_id]
+
+        # Start background task
+        task = asyncio.create_task(genie_background_task())
+        APP_STATE.setdefault("active_tasks", {})[task_id] = task
+
+        app_logger.info(f"Started genie coordination task {task_id} for session {session_id}")
+
+        status_url = f"/v1/tasks/{task_id}"
+        return jsonify({
+            "task_id": task_id,
+            "status_url": status_url,
+            "message": "Genie coordination started"
+        }), 202
+
+    except Exception as e:
+        app_logger.error(f"Failed to start genie coordination for session {session_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to start genie coordination."}), 500
+
+
+@rest_api_bp.route("/v1/sessions/<session_id>/slaves", methods=["GET"])
+async def get_genie_slave_sessions(session_id: str):
+    """
+    Get all slave sessions spawned by a Genie parent session.
+
+    Returns list of slave sessions with their profile info and status.
+
+    Returns:
+    - 200: List of slave sessions
+    - 401: Authentication required
+    - 404: Session not found
+    """
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required"}), 401
+
+    try:
+        # Validate parent session exists
+        session_data = await session_manager.get_session(user_uuid, session_id)
+        if not session_data:
+            return jsonify({"error": f"Session '{session_id}' not found."}), 404
+
+        # Get slave sessions
+        slaves = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
+
+        return jsonify({
+            "parent_session_id": session_id,
+            "slave_count": len(slaves),
+            "slaves": slaves
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get slave sessions for {session_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to retrieve slave sessions."}), 500
+
+
+@rest_api_bp.route("/v1/sessions/<session_id>/genie-parent", methods=["GET"])
+async def get_genie_parent_session(session_id: str):
+    """
+    Get the parent Genie session for a slave session.
+
+    Returns:
+    - 200: Parent session info (or null if not a slave)
+    - 401: Authentication required
+    - 404: Session not found
+    """
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required"}), 401
+
+    try:
+        # Validate session exists
+        session_data = await session_manager.get_session(user_uuid, session_id)
+        if not session_data:
+            return jsonify({"error": f"Session '{session_id}' not found."}), 404
+
+        # Check genie metadata
+        genie_metadata = session_data.get("genie_metadata", {})
+
+        if not genie_metadata.get("is_genie_slave"):
+            return jsonify({
+                "is_genie_slave": False,
+                "parent_session_id": None
+            }), 200
+
+        parent_session_id = genie_metadata.get("parent_session_id")
+        parent_session = None
+
+        if parent_session_id:
+            parent_session = await session_manager.get_session(user_uuid, parent_session_id)
+
+        return jsonify({
+            "is_genie_slave": True,
+            "parent_session_id": parent_session_id,
+            "parent_session": {
+                "id": parent_session.get("id") if parent_session else None,
+                "name": parent_session.get("name") if parent_session else None,
+                "profile_tag": parent_session.get("profile_tag") if parent_session else None
+            } if parent_session else None
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get parent session for {session_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to retrieve parent session."}), 500

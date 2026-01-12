@@ -197,3 +197,20 @@ class ProfilePromptResolver:
     def get_g2plot_guidelines(self) -> Optional[str]:
         """Get G2PLOT_GUIDELINES via profile mapping."""
         return self.get_visualization_prompt("g2plot_guidelines")
+
+    def get_genie_coordination_prompt(self, subcategory: str = "coordinator_prompt") -> Optional[str]:
+        """
+        Get genie coordination prompt.
+
+        Args:
+            subcategory: Coordination type (e.g., "coordinator_prompt")
+
+        Returns:
+            Prompt content as string
+        """
+        prompt_name = self._resolve_prompt_name("genie_coordination", subcategory)
+        return self._load_prompt_content(prompt_name)
+
+    def get_genie_coordinator_prompt(self) -> Optional[str]:
+        """Get GENIE_COORDINATOR_PROMPT via profile mapping."""
+        return self.get_genie_coordination_prompt("coordinator_prompt")

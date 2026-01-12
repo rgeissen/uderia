@@ -2,12 +2,24 @@
 import logging
 import json
 import re
+import asyncio
+from datetime import datetime, timezone
 
 from trusted_data_agent.agent.executor import PlanExecutor
 from trusted_data_agent.core.config import APP_STATE
 from trusted_data_agent.core import session_manager
 
 app_logger = logging.getLogger("quart.app")
+
+
+def _format_sse(data: dict, event_type: str = None) -> str:
+    """Format data as SSE event string."""
+    lines = []
+    if event_type:
+        lines.append(f"event: {event_type}")
+    lines.append(f"data: {json.dumps(data)}")
+    lines.append("")
+    return "\n".join(lines)
 
 def _parse_sse_event(event_str: str) -> tuple[dict, str]:
     """
@@ -25,6 +37,39 @@ def _parse_sse_event(event_str: str) -> tuple[dict, str]:
         elif line.startswith('event:'):
             event_type = line[6:].strip()
     return data, event_type
+
+
+async def _generate_genie_session_name(query: str, llm_instance) -> str:
+    """
+    Generate a session name for Genie coordination sessions using the LLM.
+
+    Args:
+        query: The user's initial query
+        llm_instance: The LangChain LLM instance to use
+
+    Returns:
+        A short descriptive name for the session
+    """
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        system_msg = SystemMessage(content="You generate short, descriptive titles (3-5 words). Only respond with the title text, no punctuation or quotes.")
+        human_msg = HumanMessage(content=f"Generate a concise session name for this query: \"{query[:200]}\"")
+
+        response = await llm_instance.ainvoke([system_msg, human_msg])
+
+        # Extract text from response
+        name_text = response.content if hasattr(response, 'content') else str(response)
+        cleaned_name = name_text.strip().strip('"\'')
+
+        if cleaned_name and len(cleaned_name) < 100:
+            app_logger.info(f"Generated genie session name: '{cleaned_name}'")
+            return cleaned_name
+        else:
+            return "New Chat"
+    except Exception as e:
+        app_logger.warning(f"Failed to generate genie session name: {e}")
+        return "New Chat"
 
 # --- MODIFICATION START: Add plan_to_execute and is_replay parameters ---
 async def run_agent_execution(
@@ -100,6 +145,45 @@ async def run_agent_execution(
 
         previous_turn_data = session_data.get("last_turn_data", {})
 
+        # --- GENIE PROFILE DETECTION: Route to Genie coordinator for genie profiles ---
+        # Determine active profile type
+        active_profile = None
+        active_profile_type = "tool_enabled"  # Default
+
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        # Check profile override first, then session's profile, then default
+        profile_id_to_use = profile_override_id or session_data.get("profile_id")
+        if profile_id_to_use:
+            profiles = config_manager.get_profiles(user_uuid)
+            active_profile = next((p for p in profiles if p.get("id") == profile_id_to_use), None)
+            if active_profile:
+                active_profile_type = active_profile.get("profile_type", "tool_enabled")
+
+        if not active_profile:
+            # Fall back to default profile
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profiles = config_manager.get_profiles(user_uuid)
+                active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+                if active_profile:
+                    active_profile_type = active_profile.get("profile_type", "tool_enabled")
+
+        # Route Genie profiles to Genie coordinator
+        if active_profile_type == "genie" and active_profile:
+            app_logger.info(f"🔮 Detected Genie profile '{active_profile.get('tag')}' - routing to Genie coordinator")
+            final_result_payload = await _run_genie_execution(
+                user_uuid=user_uuid,
+                session_id=session_id,
+                user_input=user_input,
+                event_handler=event_handler,
+                genie_profile=active_profile,
+                task_id=task_id
+            )
+            return final_result_payload
+        # --- END GENIE PROFILE DETECTION ---
+
         # --- MODIFICATION START: Pass new parameters to PlanExecutor ---
         executor = PlanExecutor(
             user_uuid=user_uuid,
@@ -132,3 +216,208 @@ async def run_agent_execution(
         raise
 
     return final_result_payload
+
+
+async def _run_genie_execution(
+    user_uuid: str,
+    session_id: str,
+    user_input: str,
+    event_handler,
+    genie_profile: dict,
+    task_id: str = None
+):
+    """
+    Execute a query using Genie coordination for SSE streaming.
+
+    This function handles Genie profile queries by:
+    1. Building the GenieCoordinator with slave profiles
+    2. Executing the coordination
+    3. Streaming events back via SSE
+    """
+    from trusted_data_agent.core.config_manager import get_config_manager
+    from trusted_data_agent.llm.langchain_adapter import create_langchain_llm
+    from trusted_data_agent.agent.genie_coordinator import GenieCoordinator
+
+    config_manager = get_config_manager()
+    profile_id = genie_profile.get("id")
+    profile_tag = genie_profile.get("tag", "GENIE")
+
+    try:
+        # Send initial coordination start event
+        await event_handler({
+            "message": f"🔮 Genie Coordinator activated ({profile_tag})",
+            "profile_tag": profile_tag,
+            "profile_type": "genie",
+            "session_id": session_id
+        }, "genie_start")
+
+        # Validate genie configuration
+        genie_config = genie_profile.get("genieConfig", {})
+        slave_profile_ids = genie_config.get("slaveProfiles", [])
+
+        if not slave_profile_ids:
+            await event_handler({
+                "error": "Genie profile has no slave profiles configured."
+            }, "error")
+            return None
+
+        # Get slave profile details
+        slave_profiles = []
+        for pid in slave_profile_ids:
+            slave_profile = config_manager.get_profile(pid, user_uuid)
+            if slave_profile:
+                slave_profiles.append(slave_profile)
+            else:
+                app_logger.warning(f"Genie profile {profile_id} references missing slave profile {pid}")
+
+        if not slave_profiles:
+            await event_handler({
+                "error": "No valid slave profiles found for this genie."
+            }, "error")
+            return None
+
+        # Send routing info event
+        await event_handler({
+            "message": f"Consulting {len(slave_profiles)} expert profile(s)...",
+            "slave_profiles": [{"tag": p.get("tag"), "name": p.get("name"), "type": p.get("profile_type"), "id": p.get("id")} for p in slave_profiles],
+            "session_id": session_id
+        }, "genie_routing")
+
+        # Get LLM configuration for coordinator
+        llm_config_id = genie_profile.get("llmConfigurationId")
+        if not llm_config_id:
+            await event_handler({
+                "error": "Genie profile requires an LLM configuration."
+            }, "error")
+            return None
+
+        # Create LangChain LLM from Uderia config
+        llm_instance = create_langchain_llm(llm_config_id, user_uuid)
+
+        # Get LLM config details for logging
+        llm_configurations = config_manager.get_llm_configurations(user_uuid)
+        llm_config = next((c for c in llm_configurations if c.get("id") == llm_config_id), None)
+        provider = llm_config.get('provider', 'Unknown') if llm_config else 'Unknown'
+        model = llm_config.get('model', 'unknown') if llm_config else 'unknown'
+
+        # Determine base URL - use internal localhost for self-calls
+        base_url = "http://localhost:5050"
+
+        # Get auth token from APP_STATE or generate internal token
+        # For internal execution, we use a special internal auth mechanism
+        from trusted_data_agent.auth.security import create_internal_token
+        auth_token = create_internal_token(user_uuid)
+
+        # Create event handler that forwards Genie events to SSE
+        async def genie_sse_event_handler(event_type: str, payload: dict):
+            """Forward genie coordination events to SSE stream."""
+            await event_handler(payload, event_type)
+
+        # Build and execute coordinator
+        coordinator = GenieCoordinator(
+            genie_profile=genie_profile,
+            slave_profiles=slave_profiles,
+            user_uuid=user_uuid,
+            parent_session_id=session_id,
+            auth_token=auth_token,
+            llm_instance=llm_instance,
+            base_url=base_url,
+            event_callback=lambda t, p: asyncio.create_task(genie_sse_event_handler(t, p))
+        )
+
+        # Load existing slave sessions to preserve context across multiple queries
+        existing_slaves = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
+        if existing_slaves:
+            coordinator.load_existing_slave_sessions(existing_slaves)
+            app_logger.info(f"Loaded {len(existing_slaves)} existing slave sessions for Genie session {session_id}")
+
+        # Execute coordination
+        result = await coordinator.execute(user_input)
+
+        # Extract the final response
+        coordinator_response = result.get('coordinator_response', '')
+        success = result.get('success', False)
+
+        # Log the Genie conversation to session files
+        try:
+            # Add coordinator response to session history (user message was already saved by caller)
+            await session_manager.add_message_to_histories(
+                user_uuid=user_uuid,
+                session_id=session_id,
+                role='assistant',
+                content=coordinator_response,
+                profile_tag=profile_tag
+            )
+
+            # Add turn data to workflow_history
+            current_session = await session_manager.get_session(user_uuid, session_id)
+            workflow_history = current_session.get('last_turn_data', {}).get('workflow_history', [])
+            turn_number = len(workflow_history) + 1
+
+            turn_data = {
+                'turn': turn_number,
+                'user_query': user_input,
+                'genie_coordination': True,
+                'tools_used': result.get('tools_used', []),
+                'slave_sessions': result.get('slave_sessions', {}),
+                'genie_events': result.get('genie_events', []),  # For plan reload UI (excluded from LLM context)
+                'success': success,
+                'final_response': coordinator_response[:500] if coordinator_response else '',
+                'status': 'success' if success else 'failed',
+                'provider': provider,
+                'model': model,
+                'profile_tag': profile_tag
+            }
+
+            await session_manager.update_last_turn_data(
+                user_uuid=user_uuid,
+                session_id=session_id,
+                turn_data=turn_data
+            )
+
+            # Update models used
+            await session_manager.update_models_used(
+                user_uuid=user_uuid,
+                session_id=session_id,
+                provider=provider,
+                model=model,
+                profile_tag=profile_tag
+            )
+
+            # Generate session name if this is the first turn
+            if turn_number == 1:
+                try:
+                    new_name = await _generate_genie_session_name(user_input, llm_instance)
+                    if new_name and new_name != "New Chat":
+                        await session_manager.update_session_name(user_uuid, session_id, new_name)
+                        # Send name update event
+                        await event_handler({
+                            "session_id": session_id,
+                            "newName": new_name
+                        }, "session_name_update")
+                except Exception as name_error:
+                    app_logger.warning(f"Failed to generate genie session name: {name_error}")
+
+        except Exception as log_error:
+            app_logger.error(f"Failed to log Genie session data: {log_error}")
+
+        # Send final answer event with proper fields for frontend
+        final_payload = {
+            "final_answer": coordinator_response,  # Required by eventHandlers.js
+            "html_response": coordinator_response,
+            "raw_response": coordinator_response,
+            "turn_id": turn_number,  # Required for turn numbering in UI
+            "profile_tag": profile_tag,
+            "genie_coordination": True,
+            "slave_sessions_used": result.get('slave_sessions', {})
+        }
+        await event_handler(final_payload, "final_answer")
+
+        return final_payload
+
+    except Exception as e:
+        app_logger.error(f"Genie coordination error for user {user_uuid}, session {session_id}: {e}", exc_info=True)
+        await event_handler({
+            "error": f"Genie coordination failed: {str(e)}"
+        }, "error")
+        return None

@@ -198,6 +198,23 @@
         "maxTokens": 2000
       },
       "isDefault": false
+    },
+    {
+      "id": "profile-default-genie",
+      "name": "Multi-Expert Coordinator",
+      "tag": "GENIE",
+      "description": "Coordinates multiple profiles to answer complex questions",
+      "profile_type": "genie",
+      "llmConfigurationId": null,
+      "mcpServerId": null,
+      "genieConfig": {
+        "slaveProfiles": [
+          "profile-default-chat",
+          "profile-default-rag"
+        ],
+        "maxConcurrentSlaves": 3
+      },
+      "isDefault": false
     }
   ],
   "active_profile_id": null,

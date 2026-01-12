@@ -96,6 +96,14 @@ class Planner:
         scrubbed_workflow_history = []
         for idx, turn in enumerate(valid_workflow_history):
             new_turn = copy.deepcopy(turn)
+
+            # Remove UI-only fields from context to keep it lean
+            # These are stored for plan reload UI but not needed for LLM planning
+            ui_only_fields = ["genie_events", "slave_sessions", "provider", "model", "status"]
+            for field in ui_only_fields:
+                if field in new_turn:
+                    del new_turn[field]
+
             if "execution_trace" in new_turn and isinstance(new_turn["execution_trace"], list):
                 scrubbed_trace = []
                 for entry in new_turn["execution_trace"]:

@@ -8,14 +8,164 @@ import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedModelId } from './utils.js';
 // We need access to the functions that will handle save/cancel from the input
-import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js';
-import { handleReplayQueryClick } from './eventHandlers.js';
+import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.2';
+import { handleReplayQueryClick } from './eventHandlers.js?v=3.2';
 import { checkServerStatus, loadAllSessions } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
 
 
 // NOTE: This module no longer imports from eventHandlers.js, breaking a circular dependency.
 // Instead, eventHandlers.js will import these UI functions.
+
+// ============================================================================
+// Genie Slave Session Collapse State Management
+// ============================================================================
+
+const GENIE_COLLAPSE_STATE_KEY = 'genie_slave_collapse_state';
+
+/**
+ * Get the collapse state for genie slave sessions from localStorage.
+ * Returns an object mapping parent session IDs to boolean (true = collapsed).
+ */
+export function getGenieCollapseState() {
+    try {
+        const stored = localStorage.getItem(GENIE_COLLAPSE_STATE_KEY);
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        console.warn('[UI] Failed to read genie collapse state:', e);
+        return {};
+    }
+}
+
+/**
+ * Save the collapse state for genie slave sessions to localStorage.
+ */
+function saveGenieCollapseState(state) {
+    try {
+        localStorage.setItem(GENIE_COLLAPSE_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn('[UI] Failed to save genie collapse state:', e);
+    }
+}
+
+/**
+ * Toggle visibility of slave sessions for a genie master session.
+ * @param {string} parentSessionId - The session ID of the genie master
+ */
+export function toggleGenieSlaveVisibility(parentSessionId) {
+    const collapseState = getGenieCollapseState();
+    const isCurrentlyCollapsed = collapseState[parentSessionId] || false;
+    const newState = !isCurrentlyCollapsed;
+
+    // Update state
+    collapseState[parentSessionId] = newState;
+    saveGenieCollapseState(collapseState);
+
+    // Find all slave sessions for this parent and toggle visibility
+    const slaveItems = document.querySelectorAll(`[data-genie-parent-id="${parentSessionId}"]`);
+    slaveItems.forEach(item => {
+        if (newState) {
+            item.classList.add('genie-slave-hidden');
+        } else {
+            item.classList.remove('genie-slave-hidden');
+        }
+    });
+
+    // Update the toggle icon in the parent
+    const parentItem = document.getElementById(`session-${parentSessionId}`);
+    if (parentItem) {
+        const toggleIcon = parentItem.querySelector('.genie-collapse-toggle');
+        if (toggleIcon) {
+            toggleIcon.textContent = newState ? '▶' : '▼';
+        }
+    }
+
+    console.log(`[UI] Toggled genie slave visibility for ${parentSessionId}: ${newState ? 'collapsed' : 'expanded'}`);
+}
+
+/**
+ * Mark sessions that are genie masters (have slave sessions).
+ * Call this after loading all sessions to identify which sessions have slaves.
+ * @param {Array} sessions - Array of session objects
+ * @returns {Array} - Sessions with _isGenieMaster flag added
+ */
+export function markGenieMasterSessions(sessions) {
+    // Build a set of parent session IDs that have slaves
+    const parentIds = new Set();
+    sessions.forEach(session => {
+        const genieMetadata = session.genie_metadata || {};
+        if (genieMetadata.is_genie_slave && genieMetadata.parent_session_id) {
+            parentIds.add(genieMetadata.parent_session_id);
+        }
+    });
+
+    // Mark sessions that have slaves as genie masters
+    sessions.forEach(session => {
+        session._isGenieMaster = parentIds.has(session.id);
+    });
+
+    console.log(`[UI] Marked ${parentIds.size} sessions as genie masters`);
+    return sessions;
+}
+
+/**
+ * Update the genie master badge visibility after sessions are rendered.
+ * Call this after the session list is populated to add master badges to sessions
+ * that weren't initially marked but have slave sessions in the DOM.
+ */
+export function updateGenieMasterBadges() {
+    // Find all slave sessions and their parent IDs
+    const slaveElements = document.querySelectorAll('.genie-slave-session');
+    const parentIds = new Set();
+
+    slaveElements.forEach(el => {
+        const parentId = el.dataset.genieParentId;
+        if (parentId) {
+            parentIds.add(parentId);
+        }
+    });
+
+    // For each parent that doesn't have a master badge, add one
+    parentIds.forEach(parentId => {
+        const parentItem = document.getElementById(`session-${parentId}`);
+        if (parentItem && !parentItem.querySelector('.genie-master-badge')) {
+            parentItem.classList.add('genie-master-session');
+            parentItem.dataset.isGenieMaster = 'true';
+
+            // Find the name container and add the badge
+            const nameContainer = parentItem.querySelector('.flex-1.min-w-0');
+            if (nameContainer) {
+                const collapseState = getGenieCollapseState();
+                const isCollapsed = collapseState[parentId] || false;
+
+                const genieMasterBadge = document.createElement('span');
+                genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1 mt-0.5 text-xs cursor-pointer';
+                genieMasterBadge.innerHTML = `
+                    <span class="genie-badge-icon">G</span>
+                    <span class="text-[#F15F22]">Genie Master</span>
+                    <span class="genie-collapse-toggle ml-1 text-[#F15F22] hover:text-[#FF8C00] transition-colors">${isCollapsed ? '▶' : '▼'}</span>
+                `;
+                genieMasterBadge.title = 'Click to collapse/expand slave sessions';
+
+                genieMasterBadge.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleGenieSlaveVisibility(parentId);
+                });
+
+                nameContainer.appendChild(genieMasterBadge);
+            }
+        }
+    });
+
+    // Apply collapse state to slave sessions
+    const collapseState = getGenieCollapseState();
+    slaveElements.forEach(el => {
+        const parentId = el.dataset.genieParentId;
+        if (parentId && collapseState[parentId]) {
+            el.classList.add('genie-slave-hidden');
+        }
+    });
+}
 
 /**
  * Renders the historical plan and execution trace in the status window.
@@ -654,6 +804,172 @@ function _renderToolIntentDetails(details) {
     `;
 }
 
+/**
+ * Render Genie coordination events in the status window.
+ * Uses purple-themed styling consistent with inline cards.
+ */
+function _renderGenieStep(eventData, parentContainer, isFinal = false) {
+    const { step, details, type } = eventData;
+
+    // Mark previous active step as completed
+    const lastStep = parentContainer.querySelector('.status-step.active');
+    if (lastStep) {
+        lastStep.classList.remove('active');
+        lastStep.classList.add('completed');
+    }
+
+    const stepEl = document.createElement('div');
+    stepEl.className = 'status-step p-3 rounded-md mb-2 genie-status-step';
+    if (isFinal) {
+        stepEl.classList.add('completed');
+    } else {
+        stepEl.classList.add('active');
+    }
+
+    // Color-code based on event type
+    if (type === 'genie_coordination_complete') {
+        stepEl.classList.add(details?.success ? 'genie-success' : 'genie-error');
+    } else if (type === 'genie_slave_completed') {
+        stepEl.classList.add(details?.success ? 'genie-slave-success' : 'genie-slave-error');
+    }
+
+    // Step header
+    const stepTitle = document.createElement('h4');
+    stepTitle.className = 'font-bold text-sm mb-2';
+    stepTitle.textContent = step || 'Genie Event';
+    stepEl.appendChild(stepTitle);
+
+    // Render details based on event type
+    if (details && typeof details === 'object') {
+        const detailsEl = document.createElement('div');
+        detailsEl.className = 'text-xs text-gray-300';
+
+        switch (type) {
+            case 'genie_coordination_start':
+                const profileCount = details.slave_profiles?.length || 0;
+                detailsEl.innerHTML = `
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Profiles:</span>
+                        <span class="genie-detail-value">${profileCount} available</span>
+                    </div>
+                    ${details.slave_profiles ? `
+                        <div class="genie-profile-tags mt-1">
+                            ${details.slave_profiles.map(p => `<span class="genie-tag">@${p.tag}</span>`).join(' ')}
+                        </div>
+                    ` : ''}
+                `;
+                break;
+
+            case 'genie_routing_decision':
+                detailsEl.innerHTML = `
+                    <div class="genie-decision-text">${details.decision_text || 'Routing decision made'}</div>
+                    ${details.selected_profiles ? `
+                        <div class="genie-profile-tags mt-1">
+                            ${details.selected_profiles.map(tag => `<span class="genie-tag selected">@${tag}</span>`).join(' ')}
+                        </div>
+                    ` : ''}
+                `;
+                break;
+
+            case 'genie_slave_invoked':
+            case 'genie_slave_progress':
+                detailsEl.innerHTML = `
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Profile:</span>
+                        <span class="genie-tag">@${details.profile_tag || 'UNKNOWN'}</span>
+                    </div>
+                    ${details.message ? `<div class="genie-status-message mt-1">${details.message}</div>` : ''}
+                    ${details.slave_session_id ? `<div class="genie-session-id mt-1 text-gray-500">Session: ${details.slave_session_id.slice(0, 8)}...</div>` : ''}
+                `;
+                break;
+
+            case 'genie_slave_completed':
+                const slaveStatus = details.success ? '✓ Completed' : '✗ Failed';
+                const slaveDuration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(1)}s` : '';
+                detailsEl.innerHTML = `
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Profile:</span>
+                        <span class="genie-tag">@${details.profile_tag || 'UNKNOWN'}</span>
+                    </div>
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Status:</span>
+                        <span class="genie-detail-value ${details.success ? 'text-green-400' : 'text-red-400'}">${slaveStatus}</span>
+                    </div>
+                    ${slaveDuration ? `
+                        <div class="genie-detail-row">
+                            <span class="genie-detail-label">Duration:</span>
+                            <span class="genie-detail-value">${slaveDuration}</span>
+                        </div>
+                    ` : ''}
+                    ${details.result_preview ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">Preview</summary>
+                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300">${details.result_preview}</div>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+
+            case 'genie_synthesis_start':
+                const consulted = details.profiles_consulted?.length || 0;
+                detailsEl.innerHTML = `
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Profiles consulted:</span>
+                        <span class="genie-detail-value">${consulted}</span>
+                    </div>
+                `;
+                break;
+
+            case 'genie_coordination_complete':
+                const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(1)}s` : '';
+                const usedCount = details.profiles_used?.length || 0;
+                detailsEl.innerHTML = `
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Status:</span>
+                        <span class="genie-detail-value ${details.success ? 'text-green-400' : 'text-red-400'}">${details.success ? 'Success' : 'Failed'}</span>
+                    </div>
+                    <div class="genie-detail-row">
+                        <span class="genie-detail-label">Profiles used:</span>
+                        <span class="genie-detail-value">${usedCount}</span>
+                    </div>
+                    ${totalDuration ? `
+                        <div class="genie-detail-row">
+                            <span class="genie-detail-label">Total time:</span>
+                            <span class="genie-detail-value">${totalDuration}</span>
+                        </div>
+                    ` : ''}
+                    ${details.error ? `<div class="genie-error-message mt-1 text-red-400">${details.error}</div>` : ''}
+                `;
+                break;
+
+            default:
+                // Fallback: show raw JSON
+                try {
+                    detailsEl.innerHTML = `<pre class="p-2 bg-gray-900/50 rounded overflow-auto">${JSON.stringify(details, null, 2)}</pre>`;
+                } catch (e) {
+                    detailsEl.textContent = '[Could not display details]';
+                }
+        }
+
+        stepEl.appendChild(detailsEl);
+    }
+
+    parentContainer.appendChild(stepEl);
+
+    // Reset genie coordination state on completion
+    if (type === 'genie_coordination_complete') {
+        state.isGenieCoordinationActive = false;
+    }
+}
+
+/**
+ * Exported wrapper for rendering genie events during plan reload.
+ * Uses the same rendering logic as live execution for consistent UX.
+ */
+export function renderGenieStepForReload(eventData, parentContainer, isFinal = false) {
+    _renderGenieStep(eventData, parentContainer, isFinal);
+}
+
 function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
@@ -863,9 +1179,24 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             updateTaskIdDisplay(taskId); // Display the task ID
         }
         statusTitle.textContent = 'Live Status - REST'; // Removed redundant Task ID from title
+    } else if (source === 'genie') {
+        // Genie coordination events
+        if (!state.isGenieCoordinationActive) {
+            resetStatusWindowForNewTask();
+            state.isGenieCoordinationActive = true;
+            state.isRestTaskActive = false;
+            updateTaskIdDisplay(null);
+        }
+        statusTitle.textContent = 'Live Status - Genie Coordination';
+        // Render genie events using custom renderer
+        _renderGenieStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
     } else if (source === 'interactive') {
         // If the last active view was a REST task, reset the view
-        if (state.isRestTaskActive) {
+        if (state.isRestTaskActive || state.isGenieCoordinationActive) {
             resetStatusWindowForNewTask();
             updateTaskIdDisplay(null); // Hide the task ID
         }
@@ -1370,6 +1701,36 @@ export function addSessionToList(session, isActive = false) {
         sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
     }
 
+    // Check for Genie slave session metadata
+    const genieMetadata = session.genie_metadata || {};
+    const isGenieSlave = genieMetadata.is_genie_slave || false;
+    const genieParentSessionId = genieMetadata.parent_session_id;
+
+    // Check if this session is a genie master (has slave sessions pointing to it)
+    // This is set by markGenieMasterSessions() after all sessions are loaded
+    const isGenieMaster = session._isGenieMaster || false;
+
+    // Add orange left border and indentation for Genie slave sessions
+    if (isGenieSlave) {
+        sessionItem.classList.add('genie-slave-session');
+        sessionItem.style.borderLeft = '3px solid #F15F22';
+        sessionItem.style.marginLeft = '1rem';
+        sessionItem.style.paddingLeft = '0.625rem';
+        sessionItem.dataset.genieParentId = genieParentSessionId || '';
+
+        // Check if slaves should be hidden (parent is collapsed)
+        const collapseState = getGenieCollapseState();
+        if (collapseState[genieParentSessionId]) {
+            sessionItem.classList.add('genie-slave-hidden');
+        }
+    }
+
+    // Mark genie master sessions for later identification
+    if (isGenieMaster) {
+        sessionItem.classList.add('genie-master-session');
+        sessionItem.dataset.isGenieMaster = 'true';
+    }
+
     if (isActive) {
         document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
         sessionItem.classList.add('active');
@@ -1403,7 +1764,61 @@ export function addSessionToList(session, isActive = false) {
         utilityBadge.title = session.temporary_purpose || 'Utility session';
         nameContainer.appendChild(utilityBadge);
     }
-    
+
+    // Add Genie slave indicator badge
+    if (isGenieSlave) {
+        const genieBadge = document.createElement('span');
+        genieBadge.className = 'genie-slave-badge inline-flex items-center gap-1 mt-0.5 text-xs';
+        genieBadge.innerHTML = `
+            <span class="genie-badge-icon">G</span>
+            <span class="text-[#F15F22]">Genie Slave</span>
+        `;
+        genieBadge.title = 'Spawned by Genie coordinator';
+
+        // Add click handler to navigate to parent session
+        if (genieParentSessionId) {
+            const parentLink = document.createElement('button');
+            parentLink.className = 'genie-parent-link ml-1 text-[#F15F22] hover:text-[#FF8C00] transition-colors';
+            parentLink.innerHTML = '↑';
+            parentLink.title = 'Go to parent Genie session';
+            parentLink.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const parentItem = document.getElementById(`session-${genieParentSessionId}`);
+                if (parentItem) {
+                    parentItem.click();
+                    parentItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+            genieBadge.appendChild(parentLink);
+        }
+        nameContainer.appendChild(genieBadge);
+    }
+
+    // Add Genie master indicator badge with collapse toggle
+    if (isGenieMaster) {
+        const genieMasterBadge = document.createElement('span');
+        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1 mt-0.5 text-xs cursor-pointer';
+
+        // Check current collapse state
+        const collapseState = getGenieCollapseState();
+        const isCollapsed = collapseState[session.id] || false;
+
+        genieMasterBadge.innerHTML = `
+            <span class="genie-badge-icon">G</span>
+            <span class="text-[#F15F22]">Genie Master</span>
+            <span class="genie-collapse-toggle ml-1 text-[#F15F22] hover:text-[#FF8C00] transition-colors">${isCollapsed ? '▶' : '▼'}</span>
+        `;
+        genieMasterBadge.title = 'Click to collapse/expand slave sessions';
+
+        // Add click handler to toggle slave sessions visibility
+        genieMasterBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleGenieSlaveVisibility(session.id);
+        });
+
+        nameContainer.appendChild(genieMasterBadge);
+    }
+
     topRow.appendChild(nameContainer);
 
     const actionsDiv = document.createElement('div');
@@ -2335,7 +2750,7 @@ function performViewSwitch(viewId) {
             console.log('[handleViewSwitch] Application configured and initialized, no session loaded, checking for session to load');
             
             // Dynamically import sessionManagement to load session
-            const { handleLoadSession } = await import('./handlers/sessionManagement.js');
+            const { handleLoadSession } = await import('./handlers/sessionManagement.js?v=3.2');
             try {
                 // If we have a session ID in state (restored from localStorage), load it
                 if (state.currentSessionId) {

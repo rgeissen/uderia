@@ -585,7 +585,7 @@ class ExecutionDashboard {
     async activateSession(sessionId) {
         try {
             // Import the session handler dynamically
-            const { handleLoadSession } = await import('./handlers/sessionManagement.js');
+            const { handleLoadSession } = await import('./handlers/sessionManagement.js?v=3.2');
             
             // Switch to conversation view
             const conversationViewBtn = document.getElementById('view-switch-conversation');

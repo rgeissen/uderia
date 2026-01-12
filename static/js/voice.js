@@ -8,7 +8,7 @@
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import * as UI from './ui.js';
-import { handleChatSubmit } from './eventHandlers.js';
+import { handleChatSubmit } from './eventHandlers.js?v=3.2';
 import { classifyConfirmation } from './utils.js';
 
 // --- Speech Recognition Setup ---

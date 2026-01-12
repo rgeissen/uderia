@@ -1961,6 +1961,13 @@
                                                 Knowledge Focused (RAG)
                                             </div>
                                         </button>
+                                        <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="genie-profiles">
+                                            <div class="flex items-center gap-2">
+                                                <span>🧞</span>
+                                                Genie (Multi-Profile)
+                                                <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Beta</span>
+                                            </div>
+                                        </button>
                                     </div>
 
                                     <!-- Tool-Enabled Profiles Container -->
@@ -1976,6 +1983,11 @@
                                     <!-- RAG Focused Profiles Container -->
                                     <div id="rag-profiles-container" class="profile-type-content space-y-4 hidden">
                                         <!-- RAG focused profile cards will be dynamically added here -->
+                                    </div>
+
+                                    <!-- Genie Profiles Container -->
+                                    <div id="genie-profiles-container" class="profile-type-content space-y-4 hidden">
+                                        <!-- Genie profile cards will be dynamically added here -->
                                     </div>
                                 </div>
                             </div>
@@ -5216,7 +5228,7 @@
         </div>
     </div>
 
-    <script type="module" src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/notifications.js') }}?v=3.1"></script>
     <!-- Centralized Banner System (Application & Conversation level) -->
     <script type="module" src="{{ url_for('static', filename='js/bannerSystem.js') }}"></script>
     <!-- Scroll Debugging Utility -->
@@ -5224,11 +5236,14 @@
     <script src="{{ url_for('static', filename='js/executionDashboard.js') }}?v=2.9"></script>
     <script src="{{ url_for('static', filename='js/templateManager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/adminManager.js') }}?v=3.0"></script>
-    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=2.9"></script>
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=3.1"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/ragCollectionManagement.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/accessTokenManager.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/documentUploadConfigManager.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/costManagement.js') }}"></script>
+    <!-- Genie Profile Coordination Handlers -->
+    <script type="module" src="{{ url_for('static', filename='js/handlers/genieHandler.js') }}?v=3.1"></script>
+    <script type="module" src="{{ url_for('static', filename='js/handlers/splitViewHandler.js') }}"></script>
     <!-- RAG Case Modal -->
     <div id="rag-case-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
         <div id="rag-case-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-4xl p-6 transform scale-95 opacity-0 flex flex-col" style="height: 90vh;">
@@ -5322,40 +5337,53 @@
                         Profile Type
                     </h4>
                     <p class="text-xs text-gray-400 mb-4">Choose the capabilities for this profile</p>
-                    <div class="grid grid-cols-3 gap-4">
-                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-green-500/30 transition-all group">
+                    <div class="grid grid-cols-4 gap-3">
+                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-green-500/30 transition-all group">
                             <input type="radio" name="profile-type" value="llm_only" id="profile-modal-type-llm-only"
                                    class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Conversation</span>
-                                    <span class="px-2 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">Simple</span>
+                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Conversation</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">Simple</span>
                                 </div>
                                 <p class="text-xs text-gray-400 group-hover:text-gray-300">Direct conversation without tools</p>
                             </div>
                         </label>
 
-                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-orange-500/30 transition-all group">
+                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-orange-500/30 transition-all group">
                             <input type="radio" name="profile-type" value="tool_enabled" id="profile-modal-type-tool-enabled" checked
                                    class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Tool-Enabled</span>
-                                    <span class="px-2 py-0.5 text-xs font-bold bg-orange-500/30 text-orange-300 rounded-full border border-orange-400/30">Advanced</span>
+                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Tool-Enabled</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-orange-500/30 text-orange-300 rounded-full border border-orange-400/30">Advanced</span>
                                 </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">MCP integration with tools and planning</p>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">MCP integration with tools</p>
                             </div>
                         </label>
 
-                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
                             <input type="radio" name="profile-type" value="rag_focused" id="profile-modal-type-rag-focused"
                                    class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">RAG Focused</span>
-                                    <span class="px-2 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Knowledge</span>
+                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">RAG Focused</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Knowledge</span>
                                 </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Knowledge base search with synthesis</p>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Knowledge base search</p>
+                            </div>
+                        </label>
+
+                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-amber-500/30 transition-all group">
+                            <input type="radio" name="profile-type" value="genie" id="profile-modal-type-genie"
+                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Genie</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-amber-500/30 text-amber-300 rounded-full border border-amber-400/30">Multi-Profile</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Beta</span>
+                                </div>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Orchestrates other profiles</p>
                             </div>
                         </label>
                     </div>
@@ -5424,11 +5452,27 @@
                     </div>
                 </div>
 
+                <!-- Genie Slave Profiles Section (only shown for genie profile type) -->
+                <div id="genie-slave-profiles-section" class="bg-gradient-to-br from-amber-900/10 to-orange-900/10 rounded-xl p-6 border border-amber-700/20" style="display: none;">
+                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        Available Slave Profiles
+                    </h4>
+                    <p class="text-xs text-gray-400 mb-4">Select profiles this Genie can coordinate. The coordinator will route questions to these profiles as needed.</p>
+                    <div id="genie-slave-profiles-list" class="space-y-2 max-h-48 overflow-y-auto bg-gray-800/40 rounded-lg p-3 custom-scrollbar">
+                        <!-- Populated dynamically with checkboxes for each non-genie profile -->
+                        <p class="text-gray-500 text-sm italic">Loading available profiles...</p>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Tip: Select at least two profiles with different capabilities for best coordination results.</p>
+                </div>
+
                 <!-- Row 4: Tabbed Interface for MCP Resources and Intelligence Collections -->
                 <div class="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl overflow-hidden border border-gray-700/30">
                     <!-- Tab Headers -->
                     <div class="flex border-b border-gray-700/50 bg-gray-900/60">
-                        <button id="profile-tab-mcp-resources" 
+                        <button id="profile-tab-mcp-resources"
                                 class="flex-1 px-6 py-4 text-sm font-bold uppercase tracking-wide transition-all duration-300 flex items-center justify-center gap-2 border-b-3 border-[#F15F22] text-white bg-gradient-to-b from-gray-800/70 to-gray-900/50 shadow-lg relative">
                             <div class="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-[#F15F22] to-[#D9501A] shadow-lg shadow-orange-500/50"></div>
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

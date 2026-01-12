@@ -1,7 +1,8 @@
 import { state } from './state.js';
 import * as UI from './ui.js';
 import * as DOM from './domElements.js';
-import { handleLoadSession } from './handlers/sessionManagement.js';
+import { handleLoadSession } from './handlers/sessionManagement.js?v=3.2';
+import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 
 function showRestQueryNotification(message) {
     const notificationContainer = document.createElement('div');
@@ -106,6 +107,41 @@ function showProfileOverrideWarning(overrideProfileName, overrideProfileTag, def
     }
 }
 
+/**
+ * Get human-readable step title for genie coordination events.
+ */
+function _getGenieStepTitle(eventType, payload) {
+    switch (eventType) {
+        case 'genie_start':
+            return '🔮 Genie Coordinator Activated';
+        case 'genie_routing': {
+            const slaveCount = payload.slave_profiles?.length || 0;
+            return `Consulting ${slaveCount} expert${slaveCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_coordination_start':
+            return 'Coordinating Response';
+        case 'genie_routing_decision': {
+            const profileCount = payload.selected_profiles?.length || 0;
+            return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_slave_invoked':
+            return `Invoking @${payload.profile_tag || 'PROFILE'}`;
+        case 'genie_slave_progress':
+            return `@${payload.profile_tag || 'PROFILE'}: ${payload.message || 'Processing'}`;
+        case 'genie_slave_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `@${payload.profile_tag || 'PROFILE'}: ${status}${duration}`;
+        }
+        case 'genie_synthesis_start':
+            return 'Synthesizing Response';
+        case 'genie_coordination_complete':
+            return payload.success ? 'Coordination Complete' : 'Coordination Failed';
+        default:
+            return eventType;
+    }
+}
+
 export function subscribeToNotifications() {
     if (!state.userUUID) {
         // Set status to disconnected if we can't even start.
@@ -140,7 +176,29 @@ export function subscribeToNotifications() {
                 const newSession = data.payload;
                 // Add the new session to the UI list, but do not make it active
                 const sessionItem = UI.addSessionToList(newSession, false);
-                DOM.sessionList.prepend(sessionItem);
+
+                // Check if this is a genie slave session - insert after parent instead of prepending
+                const genieMetadata = newSession.genie_metadata || {};
+                const parentSessionId = genieMetadata.parent_session_id;
+
+                if (genieMetadata.is_genie_slave && parentSessionId) {
+                    // Find the parent session element
+                    const parentElement = document.getElementById(`session-${parentSessionId}`);
+                    if (parentElement) {
+                        // Insert after the parent session
+                        parentElement.insertAdjacentElement('afterend', sessionItem);
+
+                        // Update genie master badges to add collapse toggle to parent if needed
+                        UI.updateGenieMasterBadges();
+                    } else {
+                        // Fallback to prepend if parent not found
+                        DOM.sessionList.prepend(sessionItem);
+                    }
+                } else {
+                    // Non-slave sessions go to the top
+                    DOM.sessionList.prepend(sessionItem);
+                }
+
                 // Update utility sessions filter visibility
                 if (window.updateUtilitySessionsFilter) {
                     window.updateUtilitySessionsFilter();
@@ -270,6 +328,33 @@ export function subscribeToNotifications() {
             case 'rag_retrieval':
                 UI.blinkRagDot();
                 break;
+            // --- Genie Coordination Events ---
+            case 'genie_start':  // From execution_service.py
+            case 'genie_routing':  // From execution_service.py
+            case 'genie_coordination_start':
+            case 'genie_routing_decision':
+            case 'genie_slave_invoked':
+            case 'genie_slave_progress':
+            case 'genie_slave_completed':
+            case 'genie_synthesis_start':
+            case 'genie_coordination_complete': {
+                const payload = data.payload || {};
+                // Only handle events for current session
+                if (payload.session_id && payload.session_id !== state.currentSessionId) {
+                    console.log('[Genie] Ignoring event for different session:', payload.session_id);
+                    break;
+                }
+                // Delegate to genie handler for inline card updates
+                handleGenieEvent(data.type, payload);
+                // Also update status window if open (respects user preference)
+                const genieStepTitle = _getGenieStepTitle(data.type, payload);
+                UI.updateStatusWindow({
+                    step: genieStepTitle,
+                    details: payload,
+                    type: data.type
+                }, data.type === 'genie_coordination_complete', 'genie');
+                break;
+            }
             default:
                 // console.warn("Unknown notification type:", data.type);
         }

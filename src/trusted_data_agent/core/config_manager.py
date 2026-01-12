@@ -125,7 +125,18 @@ class ConfigManager:
                 if prefs and prefs.preferences_json:
                     # Load existing per-user configuration from database
                     user_config = json.loads(prefs.preferences_json)
+
+                    # Sync any new default profiles from bootstrap template
+                    original_profile_count = len(user_config.get("profiles", []))
+                    user_config = self._sync_new_default_profiles(user_config)
+                    new_profile_count = len(user_config.get("profiles", []))
+
                     self._user_configs[user_uuid] = user_config
+
+                    # If new profiles were added, save the updated config
+                    if new_profile_count > original_profile_count:
+                        self.save_config(user_config, user_uuid)
+
                     app_logger.info(f"Loaded configuration from database for user {user_uuid}")
                     return user_config
         except Exception as e:
@@ -183,15 +194,67 @@ class ConfigManager:
                 )
             
             return config
-            
+
         except json.JSONDecodeError as e:
             app_logger.error(f"Invalid JSON in config file: {e}. Using default config.")
             return self._get_default_config()
-            
+
         except Exception as e:
             app_logger.error(f"Error loading config file: {e}. Using default config.", exc_info=True)
             return self._get_default_config()
-    
+
+    def _sync_new_default_profiles(self, user_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sync any new default profiles from bootstrap template to user config.
+
+        This handles the case where new default profiles (like Genie) are added
+        to tda_config.json after a user has already bootstrapped. Without this,
+        existing users would never see new default profiles.
+
+        Only profiles with IDs starting with 'profile-default-' are synced.
+        User-created profiles and modifications to existing profiles are preserved.
+
+        Args:
+            user_config: User's current configuration
+
+        Returns:
+            Updated user configuration with any new default profiles added
+        """
+        try:
+            bootstrap_config = self._load_bootstrap_template()
+            bootstrap_profiles = bootstrap_config.get("profiles", [])
+            user_profiles = user_config.get("profiles", [])
+
+            # Get set of existing profile IDs in user config
+            existing_profile_ids = {p.get("id") for p in user_profiles}
+
+            # Find default profiles in bootstrap that are missing from user config
+            new_profiles_added = []
+            for bootstrap_profile in bootstrap_profiles:
+                profile_id = bootstrap_profile.get("id", "")
+
+                # Only sync profiles with default prefix
+                if not profile_id.startswith("profile-default-"):
+                    continue
+
+                # Skip if user already has this profile
+                if profile_id in existing_profile_ids:
+                    continue
+
+                # Add the missing default profile
+                user_profiles.append(copy.deepcopy(bootstrap_profile))
+                new_profiles_added.append(profile_id)
+
+            if new_profiles_added:
+                user_config["profiles"] = user_profiles
+                app_logger.info(f"Synced {len(new_profiles_added)} new default profile(s) to user config: {new_profiles_added}")
+
+            return user_config
+
+        except Exception as e:
+            app_logger.warning(f"Error syncing default profiles: {e}")
+            return user_config
+
     def save_config(self, config: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
         """
         Save per-user configuration to database (user_preferences).
@@ -1037,12 +1100,13 @@ class ConfigManager:
         
         return self.save_profiles(profiles, user_uuid)
 
-    def validate_profile(self, profile: Dict[str, Any]) -> tuple[bool, str]:
+    def validate_profile(self, profile: Dict[str, Any], user_uuid: Optional[str] = None) -> tuple[bool, str]:
         """
         Validate a profile's configuration.
 
         Args:
             profile: Profile configuration dictionary
+            user_uuid: Optional user UUID for validating references to other profiles
 
         Returns:
             Tuple of (is_valid: bool, error_message: str)
@@ -1058,6 +1122,33 @@ class ConfigManager:
 
             if not knowledge_collections or len(knowledge_collections) == 0:
                 return False, "RAG focused profiles require at least 1 knowledge collection"
+
+        elif profile_type == "genie":
+            # Genie profiles REQUIRE genieConfig with slaveProfiles
+            genie_config = profile.get("genieConfig", {})
+            if not genie_config:
+                return False, "Genie profiles require genieConfig"
+
+            slave_profiles = genie_config.get("slaveProfiles", [])
+            if not slave_profiles or len(slave_profiles) == 0:
+                return False, "Genie profiles require at least one slave profile"
+
+            # Validate all slave profiles exist and are not genie profiles (prevent nesting)
+            if user_uuid:
+                all_profiles = self.get_profiles(user_uuid)
+                profile_map = {p.get("id"): p for p in all_profiles}
+                current_profile_id = profile.get("id")
+
+                for slave_pid in slave_profiles:
+                    # Check if referencing self
+                    if slave_pid == current_profile_id:
+                        return False, "Genie profiles cannot reference themselves as slaves"
+
+                    slave = profile_map.get(slave_pid)
+                    if not slave:
+                        return False, f"Slave profile {slave_pid} not found"
+                    if slave.get("profile_type") == "genie":
+                        return False, "Genie profiles cannot have other genie profiles as slaves"
 
         return True, ""
 

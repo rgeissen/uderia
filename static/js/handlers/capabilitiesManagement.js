@@ -10,7 +10,7 @@ import * as API from '../api.js';
 import * as UI from '../ui.js';
 // We need to import from eventHandlers for functions not yet moved
 // This creates a temporary, manageable circular dependency
-import { handleStreamRequest } from '../eventHandlers.js';
+import { handleStreamRequest } from '../eventHandlers.js?v=3.2';
 
 /**
  * Loads resources (tools, prompts, etc.) for a given type and populates the UI.

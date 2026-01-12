@@ -12,11 +12,11 @@ import * as UI from '../ui.js';
 import { state } from '../state.js';
 import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import * as Utils from '../utils.js';
-import { handleLoadSession, handleStartNewSession } from './sessionManagement.js';
+import { handleLoadSession, handleStartNewSession } from './sessionManagement.js?v=3.2';
 // We need to import from eventHandlers for functions not yet moved
-import { handleLoadResources } from '../eventHandlers.js';
+import { handleLoadResources } from '../eventHandlers.js?v=3.2';
 // Note: openSystemPromptPopup is deprecated - welcome screen is now the unified interface
-import { handleViewSwitch } from '../ui.js';
+import { handleViewSwitch, updateGenieMasterBadges } from '../ui.js';
 
 /**
  * Helper to safely set config status message (old form element may not exist)
@@ -137,12 +137,15 @@ export async function finalizeConfiguration(config, switchToConversationView = t
                 const sessionItem = UI.addSessionToList(session, isActive);
                 DOM.sessionList.appendChild(sessionItem);
             });
-            
+
             // Update utility sessions filter visibility
             if (window.updateUtilitySessionsFilter) {
                 window.updateUtilitySessionsFilter();
             }
-            
+
+            // Update genie master badges (adds collapse toggles to sessions with slaves)
+            updateGenieMasterBadges();
+
             // If the previously active session still exists and is not archived, ensure it is loaded.
             // Otherwise, load the most recent active session.
             const sessionToLoad = activeSessions.find(s => s.id === currentSessionId) ? currentSessionId : activeSessions[0].id;

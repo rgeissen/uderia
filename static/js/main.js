@@ -4,7 +4,7 @@
  * It initializes the application by setting up event listeners and loading initial data.
  */
 
-import { initializeEventListeners } from './eventHandlers.js';
+import { initializeEventListeners } from './eventHandlers.js?v=3.2';
 import { finalizeConfiguration } from './handlers/configManagement.js';
 import { initializeConfigurationUI } from './handlers/configurationHandler.js';
 import * as API from './api.js';
@@ -14,11 +14,13 @@ import { setupPanelToggle } from './utils.js';
 import * as UI from './ui.js';
 import { handleViewSwitch } from './ui.js';
 import { initializeVoiceRecognition } from './voice.js';
-import { subscribeToNotifications } from './notifications.js';
+import { subscribeToNotifications } from './notifications.js?v=3.4';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
 import * as capabilitiesModule from './handlers/capabilitiesManagement.js';
 // Import conversationInitializer early to ensure window.__conversationInitState is available
 import './conversationInitializer.js';
+// Import splitViewHandler for Genie slave session split view (auto-initializes on import)
+import './handlers/splitViewHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -943,11 +945,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeVoiceRecognition();
     
     // Import and wire repository tabs
-    const { wireRepositoryTabs } = await import('./eventHandlers.js');
+    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.2');
     wireRepositoryTabs();
     
     // Initialize utility sessions filter for sidebar
-    const { initializeUtilitySessionsFilter } = await import('./handlers/sessionManagement.js');
+    const { initializeUtilitySessionsFilter } = await import('./handlers/sessionManagement.js?v=3.2');
     initializeUtilitySessionsFilter();
     
     // Initialize Execution Dashboard

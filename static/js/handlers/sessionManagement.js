@@ -10,6 +10,7 @@ import * as API from '../api.js';
 import * as UI from '../ui.js';
 import { renameSession, deleteSession } from '../api.js';
 import { updateActiveSessionTitle } from '../ui.js';
+import { createHistoricalGenieCard } from './genieHandler.js?v=3.4';
 
 /**
  * Creates a new session, adds it to the list, and loads it.
@@ -119,6 +120,15 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         DOM.chatLog.innerHTML = '';
         if (data.history && data.history.length > 0) {
             // --- MODIFICATION START: Pass turn_id and isValid during history load ---
+            // Build a map of genie turns from workflow_history
+            const genieTurns = {};
+            const workflowHistory = data.workflow_history || [];
+            for (const turn of workflowHistory) {
+                if (turn.genie_coordination) {
+                    genieTurns[turn.turn] = turn;
+                }
+            }
+
             // Simulate turn IDs based on message pairs for existing sessions
             let currentTurnId = 1;
             for (let i = 0; i < data.history.length; i++) {
@@ -129,6 +139,19 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
                 const profileTag = msg.profile_tag || null;
 
                 if (msg.role === 'assistant') {
+                    // Check if this turn has genie coordination data - render card BEFORE assistant message
+                    const genieTurn = genieTurns[currentTurnId];
+                    if (genieTurn) {
+                        try {
+                            const genieCard = createHistoricalGenieCard(genieTurn, currentTurnId);
+                            // Mark card as excluded from context (data attribute for reference)
+                            genieCard.dataset.excludeFromContext = 'true';
+                            DOM.chatLog.appendChild(genieCard);
+                        } catch (e) {
+                            console.warn('[SessionLoad] Failed to create historical genie card:', e);
+                        }
+                    }
+
                     // Pass the calculated turn ID and validity for assistant messages
                     UI.addMessage(msg.role, msg.content, currentTurnId, isValid, msg.source, null);
                     currentTurnId++; // Increment turn ID after an assistant message

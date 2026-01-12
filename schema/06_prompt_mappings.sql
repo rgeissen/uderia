@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS profile_prompt_mappings (
 -- visualization:
 --   - subcategory = charting_instructions, g2plot_guidelines
 --   - Default from tda_config.json: default_prompt_mappings.visualization
+--
+-- genie_coordination:
+--   - subcategory = coordinator_prompt
+--   - Default: GENIE_COORDINATOR_PROMPT
+--   - Used by Genie profiles for LangChain coordination logic
 -- ============================================================================
 
 -- Create index for fast lookups

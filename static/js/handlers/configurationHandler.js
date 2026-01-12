@@ -1,9 +1,9 @@
 // static/js/handlers/configurationHandler.js
 // Manages the new modular configuration system with MCP servers, LLM providers, and localStorage
 
-import { handleViewSwitch } from '../ui.js';
-import { handleStartNewSession, handleLoadSession } from './sessionManagement.js';
-import { handleLoadResources } from '../eventHandlers.js';
+import { handleViewSwitch, updateGenieMasterBadges } from '../ui.js';
+import { handleStartNewSession, handleLoadSession } from './sessionManagement.js?v=3.2';
+import { handleLoadResources } from '../eventHandlers.js?v=3.2';
 import * as API from '../api.js';
 import * as UI from '../ui.js';
 import * as DOM from '../domElements.js';
@@ -2114,12 +2114,15 @@ export async function reconnectAndLoad() {
                             const sessionItem = UI.addSessionToList(session, isActive);
                             DOM.sessionList.appendChild(sessionItem);
                         });
-                        
+
                         // Update utility sessions filter visibility
                         if (window.updateUtilitySessionsFilter) {
                             window.updateUtilitySessionsFilter();
                         }
-                        
+
+                        // Update genie master badges (adds collapse toggles to sessions with slaves)
+                        updateGenieMasterBadges();
+
                         // Load the selected session
                         await handleLoadSession(sessionToLoad);
                     } else {
@@ -2239,6 +2242,7 @@ export function renderProfiles() {
     // Separate profiles by type
     const conversationProfiles = configState.profiles.filter(p => p.profile_type === 'llm_only');
     const ragFocusedProfiles = configState.profiles.filter(p => p.profile_type === 'rag_focused');
+    const genieProfiles = configState.profiles.filter(p => p.profile_type === 'genie');
     const toolProfiles = configState.profiles.filter(p => !p.profile_type || p.profile_type === 'tool_enabled');
 
     // Render conversation profiles
@@ -2263,6 +2267,21 @@ export function renderProfiles() {
             `;
         } else {
             ragContainer.innerHTML = ragFocusedProfiles.map(profile => renderProfileCard(profile)).join('');
+        }
+    }
+
+    // Render Genie profiles
+    const genieContainer = document.getElementById('genie-profiles-container');
+    if (genieContainer) {
+        if (genieProfiles.length === 0) {
+            genieContainer.innerHTML = `
+                <div class="text-center text-gray-400 py-8">
+                    <p>No Genie profiles configured.</p>
+                    <p class="text-xs mt-2">Genie profiles coordinate multiple other profiles to answer complex questions.</p>
+                </div>
+            `;
+        } else {
+            genieContainer.innerHTML = genieProfiles.map(profile => renderProfileCard(profile)).join('');
         }
     }
 
@@ -2435,6 +2454,19 @@ function renderProfileCard(profile) {
                                 </svg>
                                 Reclassification Recommended
                             </span></p>
+                            ` : ''}
+                            ${profile.profile_type === 'genie' ? `
+                            <p><span class="font-medium">Slave Profiles:</span> ${(() => {
+                                const slaveProfiles = profile.genieConfig?.slaveProfiles || [];
+                                if (slaveProfiles.length === 0) {
+                                    return '<span class="text-yellow-400">None configured</span>';
+                                }
+                                const slaveNames = slaveProfiles.map(slaveId => {
+                                    const slaveProfile = configState.profiles.find(p => p.id === slaveId);
+                                    return slaveProfile ? `@${escapeHtml(slaveProfile.tag)}` : 'Unknown';
+                                });
+                                return `<span class="text-amber-300">${slaveNames.join(', ')}</span>`;
+                            })()}</p>
                             ` : ''}
                         </div>
                         <div class="mt-2 text-xs" id="test-results-${profile.id}">${(() => {
@@ -2748,13 +2780,14 @@ function attachProfileEventListeners() {
                 }
                 // Get profile to check type
                 const profile = configState.profiles.find(p => p.id === profileId);
-                const isLLMOnly = profile && profile.profile_type === 'llm_only';
+                // Check if profile doesn't need MCP classification (llm_only, rag_focused, genie)
+                const skipMcpClassification = profile && ['llm_only', 'rag_focused', 'genie'].includes(profile.profile_type);
 
                 // Test the profile first before any other checks
                 const resultsContainer = document.getElementById(`test-results-${profileId}`);
                 if (resultsContainer) {
                     // Show different message based on profile type
-                    const testingMessage = isLLMOnly
+                    const testingMessage = skipMcpClassification
                         ? 'Testing profile...'
                         : 'Testing and classifying profile...';
 
@@ -3904,6 +3937,7 @@ async function showProfileModal(profileId = null) {
     const profileTypeRadioLLMOnly = modal.querySelector('#profile-modal-type-llm-only');
     const profileTypeRadioToolEnabled = modal.querySelector('#profile-modal-type-tool-enabled');
     const profileTypeRadioRAGFocused = modal.querySelector('#profile-modal-type-rag-focused');
+    const profileTypeRadioGenie = modal.querySelector('#profile-modal-type-genie');
 
     // Function to show/hide tool-related sections based on profile type
     const updateSectionVisibility = (profileType) => {
@@ -3957,8 +3991,14 @@ async function showProfileModal(profileId = null) {
         const systemPromptsTab = modal.querySelector('#profile-tab-system-prompts');
         const systemPromptsContent = modal.querySelector('#profile-content-system-prompts');
 
+        // Get Genie slave profiles section reference (used in all profile types)
+        const genieSlaveProfilesSection = modal.querySelector('#genie-slave-profiles-section');
+
         if (profileType === 'llm_only') {
             console.log('[Profile Modal] Hiding MCP-related sections for LLM-only profile');
+            // Hide Genie section
+            if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+
             // Hide MCP-related sections only
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
@@ -3987,6 +4027,9 @@ async function showProfileModal(profileId = null) {
             }
         } else if (profileType === 'rag_focused') {
             console.log('[Profile Modal] Configuring sections for RAG-focused profile');
+            // Hide Genie section
+            if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+
             // Hide MCP and planner sections (RAG focused doesn't use tools/planner)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
@@ -4013,8 +4056,44 @@ async function showProfileModal(profileId = null) {
             if (systemPromptsContent) {
                 systemPromptsContent.style.display = '';
             }
+        } else if (profileType === 'genie') {
+            console.log('[Profile Modal] Configuring sections for genie profile');
+
+            // Hide MCP-related sections (genie doesn't use MCP directly)
+            if (mcpServerContainer) mcpServerContainer.style.display = 'none';
+            if (classificationSection) classificationSection.style.display = 'none';
+            if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
+            if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+            if (plannerSection) plannerSection.style.display = 'none';
+
+            // Hide knowledge sections (slaves handle their own knowledge)
+            if (knowledgeSection) knowledgeSection.style.display = 'none';
+            if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
+            if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
+
+            // Hide Intelligence tab entirely for genie
+            if (intelligenceTab) intelligenceTab.style.display = 'none';
+            if (intelligenceContent) intelligenceContent.style.display = 'none';
+
+            // SHOW Genie slave profiles section
+            if (genieSlaveProfilesSection) {
+                genieSlaveProfilesSection.style.display = '';
+                // Populate slave profiles list
+                populateGenieSlaveProfilesList(modal, profile);
+            }
+
+            // KEEP System Prompts tab visible (for genie_coordination prompt)
+            if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
+                systemPromptsTab.style.display = '';
+            }
+            if (systemPromptsContent) {
+                systemPromptsContent.style.display = '';
+            }
         } else {
             console.log('[Profile Modal] Configuring sections for tool-enabled profile');
+            // Hide Genie section
+            if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+
             // Show MCP sections and planner repos for tool-enabled profiles
             if (mcpServerContainer) mcpServerContainer.style.display = '';
             if (classificationSection) classificationSection.style.display = '';
@@ -4046,19 +4125,77 @@ async function showProfileModal(profileId = null) {
         console.log('[Profile Modal] updateSectionVisibility completed');
     };
 
+    // Helper function to populate Genie slave profiles list
+    function populateGenieSlaveProfilesList(modal, currentGenieProfile) {
+        const container = modal.querySelector('#genie-slave-profiles-list');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        // Get all non-genie profiles
+        const availableProfiles = configState.profiles.filter(p =>
+            p.profile_type !== 'genie' &&
+            p.id !== currentGenieProfile?.id
+        );
+
+        // Get currently selected slaves (if editing)
+        const selectedSlaves = currentGenieProfile?.genieConfig?.slaveProfiles || [];
+
+        if (availableProfiles.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-sm italic">No profiles available. Create other profile types first.</p>';
+            return;
+        }
+
+        availableProfiles.forEach(profile => {
+            const isSelected = selectedSlaves.includes(profile.id);
+            const profileTypeLabel = {
+                'llm_only': 'Conversation',
+                'tool_enabled': 'Tool-Enabled',
+                'rag_focused': 'RAG Focused'
+            }[profile.profile_type] || profile.profile_type;
+
+            const profileTypeColor = {
+                'llm_only': 'text-green-400',
+                'tool_enabled': 'text-orange-400',
+                'rag_focused': 'text-purple-400'
+            }[profile.profile_type] || 'text-gray-400';
+
+            const div = document.createElement('div');
+            div.className = 'flex items-center space-x-3 py-2 px-2 rounded hover:bg-gray-700/30 transition-colors';
+            div.innerHTML = `
+                <input type="checkbox"
+                       id="slave-${profile.id}"
+                       value="${profile.id}"
+                       ${isSelected ? 'checked' : ''}
+                       class="genie-slave-checkbox form-checkbox text-amber-500 rounded border-gray-600 bg-gray-700 focus:ring-amber-500 focus:ring-offset-gray-900">
+                <label for="slave-${profile.id}" class="flex-1 cursor-pointer">
+                    <span class="font-semibold text-sm text-white">@${profile.tag || 'UNKNOWN'}</span>
+                    <span class="text-gray-400 text-sm ml-2">${profile.name || ''}</span>
+                    <span class="text-xs ${profileTypeColor} ml-2">(${profileTypeLabel})</span>
+                </label>
+            `;
+            container.appendChild(div);
+        });
+    }
+
     // Add event listeners to profile type radio buttons FIRST (before setting checked state)
     // Clone the radio buttons to remove any existing event listeners
     const llmOnlyClone = profileTypeRadioLLMOnly.cloneNode(true);
     const toolEnabledClone = profileTypeRadioToolEnabled.cloneNode(true);
     const ragFocusedClone = profileTypeRadioRAGFocused.cloneNode(true);
+    const genieClone = profileTypeRadioGenie ? profileTypeRadioGenie.cloneNode(true) : null;
     profileTypeRadioLLMOnly.parentNode.replaceChild(llmOnlyClone, profileTypeRadioLLMOnly);
     profileTypeRadioToolEnabled.parentNode.replaceChild(toolEnabledClone, profileTypeRadioToolEnabled);
     profileTypeRadioRAGFocused.parentNode.replaceChild(ragFocusedClone, profileTypeRadioRAGFocused);
+    if (profileTypeRadioGenie && genieClone) {
+        profileTypeRadioGenie.parentNode.replaceChild(genieClone, profileTypeRadioGenie);
+    }
 
     // Update references to the cloned elements
     const cleanLLMOnlyRadio = modal.querySelector('#profile-modal-type-llm-only');
     const cleanToolEnabledRadio = modal.querySelector('#profile-modal-type-tool-enabled');
     const cleanRAGFocusedRadio = modal.querySelector('#profile-modal-type-rag-focused');
+    const cleanGenieRadio = modal.querySelector('#profile-modal-type-genie');
 
     // Add our event listeners to the clean radio buttons
     cleanLLMOnlyRadio.addEventListener('change', async () => {
@@ -4097,11 +4234,28 @@ async function showProfileModal(profileId = null) {
         }
     });
 
+    // Add Genie radio button event listener
+    if (cleanGenieRadio) {
+        cleanGenieRadio.addEventListener('change', async () => {
+            if (cleanGenieRadio.checked) {
+                console.log('[Profile Modal] Radio changed to genie');
+                updateSectionVisibility('genie');
+                // Update System Prompts tab if user is privileged
+                if (Utils.isPrivilegedUser()) {
+                    const tempProfile = { ...profile, profile_type: 'genie' };
+                    await populateSystemPrompts(modal, tempProfile);
+                }
+            }
+        });
+    }
+
     // NOW set the checked state (won't trigger old listeners since we cloned)
     if (profileType === 'llm_only') {
         cleanLLMOnlyRadio.checked = true;
     } else if (profileType === 'rag_focused') {
         cleanRAGFocusedRadio.checked = true;
+    } else if (profileType === 'genie' && cleanGenieRadio) {
+        cleanGenieRadio.checked = true;
     } else {
         cleanToolEnabledRadio.checked = true;
     }
@@ -4709,6 +4863,23 @@ async function showProfileModal(profileId = null) {
             }
         }
 
+        // Collect Genie slave profiles if this is a genie profile
+        let genieConfig = null;
+        if (selectedProfileType === 'genie') {
+            const slaveCheckboxes = modal.querySelectorAll('.genie-slave-checkbox:checked');
+            const selectedSlaveProfiles = Array.from(slaveCheckboxes).map(cb => cb.value);
+
+            if (selectedSlaveProfiles.length === 0) {
+                showNotification('error', 'Genie profiles require at least 1 slave profile.');
+                return;  // Prevent save
+            }
+
+            genieConfig = {
+                slaveProfiles: selectedSlaveProfiles,
+                maxConcurrentSlaves: 3  // Default value
+            };
+        }
+
         const profileData = {
             id: profile ? profile.id : `profile-${generateId()}`,
             name,
@@ -4716,13 +4887,14 @@ async function showProfileModal(profileId = null) {
             description,
             profile_type: selectedProfileType,
             llmConfigurationId: llmSelect.value,
-            mcpServerId: mcpSelect.value,
+            mcpServerId: selectedProfileType === 'genie' ? null : mcpSelect.value,  // Genie doesn't use MCP directly
             classification_mode: classificationMode,
             tools: selectedTools.length === allTools.length ? ['*'] : selectedTools,
             prompts: selectedPrompts.length === allPrompts.length ? ['*'] : selectedPrompts,
             ragCollections: selectedRag.length === ragCollections.length ? ['*'] : selectedRag,
             autocompleteCollections: selectedAutocomplete.length === ragCollections.length ? ['*'] : selectedAutocomplete,
-            knowledgeConfig: knowledgeConfig
+            knowledgeConfig: knowledgeConfig,
+            genieConfig: genieConfig  // Will be null for non-genie profiles
         };
         
         // For new profiles: if a default profile exists, enable inherit_classification by default

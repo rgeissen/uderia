@@ -18,7 +18,11 @@
       "Bash(awk:*)",
       "Read(//Users/rainer.geissendoerfer/my_private_code/trusted-data-agent-license/default_prompts/**)",
       "Bash(node --check:*)",
-      "Bash(PYTHONPATH=/Users/rainer.geissendoerfer/my_private_code/uderia/src python:*)"
+      "Bash(PYTHONPATH=/Users/rainer.geissendoerfer/my_private_code/uderia/src python:*)",
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNmQ0YjE5ZjMtMmYwZC00NDMwLWI4NjktMjdmNTIyNDMwYzA1IiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc2ODMxNzExMiwiaWF0IjoxNzY4MjMwNzEyLCJqdGkiOiI4RlBkN1B4ZmpLYVdSaDJHUURyQS1WWmprMVo2YXV2SEJjakk5cWh6cnpRIn0.rz8qsmab3BdbpCpWkX1eCLuKQHh-xsPvIjQz7vfsk3w\")"
     ]
   }
 }

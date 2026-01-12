@@ -18,7 +18,8 @@ import {
     handleLoadSession,
     handleDeleteSessionClick,
     renameActiveSession
-} from './handlers/sessionManagement.js';
+} from './handlers/sessionManagement.js?v=3.2';
+import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -37,6 +38,41 @@ import {
 
 
 // --- Stream Processing ---
+
+/**
+ * Get human-readable step title for genie coordination events.
+ */
+function _getGenieStepTitle(eventType, payload) {
+    switch (eventType) {
+        case 'genie_start':
+            return '🔮 Genie Coordinator Activated';
+        case 'genie_routing': {
+            const slaveCount = payload.slave_profiles?.length || 0;
+            return `Consulting ${slaveCount} expert${slaveCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_coordination_start':
+            return 'Coordinating Response';
+        case 'genie_routing_decision': {
+            const profileCount = payload.selected_profiles?.length || 0;
+            return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_slave_invoked':
+            return `Invoking @${payload.profile_tag || 'PROFILE'}`;
+        case 'genie_slave_progress':
+            return `@${payload.profile_tag || 'PROFILE'}: ${payload.message || 'Processing'}`;
+        case 'genie_slave_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `@${payload.profile_tag || 'PROFILE'}: ${status}${duration}`;
+        }
+        case 'genie_synthesis_start':
+            return 'Synthesizing Response';
+        case 'genie_coordination_complete':
+            return payload.success ? 'Coordination Complete' : 'Coordination Failed';
+        default:
+            return eventType;
+    }
+}
 
 async function processStream(responseBody) {
     const reader = responseBody.getReader();
@@ -177,6 +213,22 @@ async function processStream(responseBody) {
                             const toolType = eventData.tool_name.startsWith('generate_') ? 'charts' : 'tools';
                             UI.highlightResource(eventData.tool_name, toolType);
                         }
+                    // --- Genie Coordination Events ---
+                    } else if (eventName === 'genie_start' || eventName === 'genie_routing' ||
+                               eventName === 'genie_coordination_start' || eventName === 'genie_routing_decision' ||
+                               eventName === 'genie_slave_invoked' || eventName === 'genie_slave_progress' ||
+                               eventName === 'genie_slave_completed' || eventName === 'genie_synthesis_start' ||
+                               eventName === 'genie_coordination_complete') {
+                        // Handle genie coordination events - delegate to genieHandler
+                        console.log('[SSE] Genie event received:', eventName, eventData);
+                        handleGenieEvent(eventName, eventData);
+                        // Also update status window
+                        const genieStepTitle = _getGenieStepTitle(eventName, eventData);
+                        UI.updateStatusWindow({
+                            step: genieStepTitle,
+                            details: eventData,
+                            type: eventName
+                        }, eventName === 'genie_coordination_complete', 'genie');
                     } else if (eventName === 'cancelled') {
                         const lastStep = document.getElementById(`status-step-${state.currentStatusId}`);
                         if (lastStep) {
@@ -505,6 +557,65 @@ async function handleReloadPlanClick(element) {
     try {
         // Fetch the full turn details (plan + trace)
         const turnData = await API.fetchTurnDetails(sessionId, turnId);
+
+        // Check if this is a genie profile (coordination profile)
+        if (turnData && (turnData.genie_coordination || turnData.profile_type === 'genie')) {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // If we have detailed genie_events, replay them for full UI experience
+            const genieEvents = turnData.genie_events || [];
+            if (genieEvents.length > 0) {
+                // Update status title to indicate historical view
+                const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+                if (statusTitle) {
+                    statusTitle.textContent = `Genie Coordination - Turn ${turnId}`;
+                }
+
+                // Replay each event using the same renderer as live execution
+                genieEvents.forEach((event, index) => {
+                    const isFinal = index === genieEvents.length - 1;
+                    // Build eventData in the format expected by _renderGenieStep
+                    const eventData = {
+                        step: _getGenieStepTitle(event.type, event.payload),
+                        details: event.payload,
+                        type: event.type
+                    };
+                    UI.renderGenieStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                });
+            } else {
+                // Fallback: Show simple summary if no detailed events available
+                const genieInfoEl = document.createElement('div');
+                genieInfoEl.className = 'p-4 status-step info';
+
+                const toolsUsed = turnData.tools_used || [];
+                const profilesConsulted = toolsUsed.length;
+                const success = turnData.success !== false;
+                const profileTags = toolsUsed.map(t => t.replace('invoke_', '')).join(', ');
+
+                genieInfoEl.innerHTML = `
+                    <h4 class="font-bold text-sm text-white mb-2">🔮 Genie Coordination</h4>
+                    <p class="text-xs text-gray-300 mb-2">${success ? 'Coordination completed successfully.' : 'Coordination encountered errors.'}</p>
+                    <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Profiles Consulted:</strong> ${profilesConsulted}</p>
+                        ${profileTags ? `<p class="text-xs text-gray-400"><strong>Profiles:</strong> @${profileTags.replace(/, /g, ', @')}</p>` : ''}
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> Detailed event history not available for this turn.</p>
+                    </div>
+                `;
+                DOM.statusWindowContent.appendChild(genieInfoEl);
+            }
+
+            // Hide replay buttons for genie profiles (no plan to replay)
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.add('hidden');
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.add('hidden');
+            }
+
+            return; // Exit early
+        }
 
         // Check if this is an llm_only or rag_focused profile (non-tool profiles)
         if (turnData && (turnData.profile_type === 'llm_only' || turnData.profile_type === 'rag_focused')) {

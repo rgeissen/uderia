@@ -224,6 +224,43 @@ def verify_auth_token(token: str) -> Optional[dict]:
         return None
 
 
+def create_internal_token(user_uuid: str, username: str = "internal") -> str:
+    """
+    Create a short-lived internal JWT token for internal service-to-service calls.
+
+    This is used by the Genie coordinator to make authenticated REST API calls
+    to create slave sessions and execute queries. The token is short-lived (5 minutes)
+    and not stored in the database to avoid clutter.
+
+    Args:
+        user_uuid: User's unique identifier
+        username: Username (defaults to "internal")
+
+    Returns:
+        JWT token string
+    """
+    now = datetime.now(timezone.utc)
+    expiry = now + timedelta(minutes=30)  # Extended for Genie coordination (slave queries can take time)
+
+    # Generate unique token ID
+    jti = secrets.token_urlsafe(16)
+
+    # Create JWT payload
+    payload = {
+        'user_id': user_uuid,
+        'username': username,
+        'exp': expiry,
+        'iat': now,
+        'jti': jti,
+        'internal': True  # Mark as internal token
+    }
+
+    # Generate JWT token (not stored in database)
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+    return token
+
+
 def revoke_token(token: str) -> bool:
     """
     Revoke an authentication token.

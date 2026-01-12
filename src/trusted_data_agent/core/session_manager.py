@@ -166,7 +166,7 @@ async def _save_session(user_uuid: str, session_id: str, session_data: dict):
 
 # --- Public Session Management Functions ---
 
-async def create_session(user_uuid: str, provider: str, llm_instance: any, charting_intensity: str, system_prompt_template: str | None = None, profile_tag: str | None = None, profile_id: str | None = None, is_temporary: bool = False, temporary_purpose: str | None = None) -> str:
+async def create_session(user_uuid: str, provider: str, llm_instance: any, charting_intensity: str, system_prompt_template: str | None = None, profile_tag: str | None = None, profile_id: str | None = None, is_temporary: bool = False, temporary_purpose: str | None = None, genie_parent_session_id: str | None = None, genie_slave_profile_id: str | None = None, genie_sequence_number: int | None = None) -> str:
     session_id = generate_session_id()
     app_logger.info(f"Attempting to create session '{session_id}' for user '{user_uuid}' (temporary: {is_temporary}).")
 
@@ -206,7 +206,14 @@ async def create_session(user_uuid: str, provider: str, llm_instance: any, chart
         "full_context_sent": False,
         "license_info": APP_STATE.get("license_info"), # Store license info at creation time
         "is_temporary": is_temporary, # Mark if this is a temporary/utility session
-        "temporary_purpose": temporary_purpose # Optional description of the temporary session purpose
+        "temporary_purpose": temporary_purpose, # Optional description of the temporary session purpose
+        # --- GENIE PROFILE METADATA ---
+        "genie_metadata": {
+            "is_genie_slave": genie_parent_session_id is not None,
+            "parent_session_id": genie_parent_session_id,
+            "slave_profile_id": genie_slave_profile_id,
+            "slave_sequence_number": genie_sequence_number or 0
+        }
     }
 
     if await _save_session(user_uuid, session_id, session_data):
@@ -317,7 +324,13 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
                         "profile_tags_used": data.get("profile_tags_used", []),
                         "last_updated": data.get("last_updated", data.get("created_at", "Unknown")),
                         "archived": data.get("archived", False),
-                        "archived_at": data.get("archived_at")
+                        "archived_at": data.get("archived_at"),
+                        # Additional fields for UI display
+                        "profile_tag": data.get("profile_tag"),
+                        "profile_id": data.get("profile_id"),
+                        "is_temporary": data.get("is_temporary", False),
+                        "temporary_purpose": data.get("temporary_purpose"),
+                        "genie_metadata": data.get("genie_metadata", {})
                     }
                     app_logger.debug(f"Loaded summary for {session_file.name}: models_used={summary['models_used']}, profile_tags_used={summary['profile_tags_used']}")
                     session_summaries.append(summary)
@@ -334,18 +347,60 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
 
     # Filter out template generation sessions
     session_summaries = [
-        session for session in session_summaries 
+        session for session in session_summaries
         if session.get("id") != RAGTemplateGenerator.TEMPLATE_SESSION_ID
     ]
-    
-    def sort_key(session):
-        created_at = session.get("created_at", "")
-        if created_at == "Unknown" or not created_at:
-            return datetime.min.isoformat()
-        return created_at
 
-    session_summaries.sort(key=sort_key, reverse=True)
-    app_logger.debug(f"Returning {len(session_summaries)} session summaries for user '{user_uuid}' (template sessions filtered out).")
+    # Sort sessions with genie slave sessions appearing directly after their parent
+    # Build a lookup map for quick access
+    session_by_id = {s.get("id"): s for s in session_summaries}
+
+    # Separate parent sessions from slave sessions
+    parent_sessions = []
+    slave_sessions_by_parent = {}  # parent_id -> list of slaves
+
+    for session in session_summaries:
+        genie_metadata = session.get("genie_metadata", {})
+        parent_id = genie_metadata.get("parent_session_id")
+
+        if genie_metadata.get("is_genie_slave") and parent_id:
+            # This is a slave session
+            if parent_id not in slave_sessions_by_parent:
+                slave_sessions_by_parent[parent_id] = []
+            slave_sessions_by_parent[parent_id].append(session)
+        else:
+            # This is a parent/normal session
+            parent_sessions.append(session)
+
+    # Sort parent sessions by last_updated (most recent first)
+    def sort_key(session):
+        last_updated = session.get("last_updated") or session.get("created_at", "")
+        if last_updated == "Unknown" or not last_updated:
+            return datetime.min.isoformat()
+        return last_updated
+
+    parent_sessions.sort(key=sort_key, reverse=True)
+
+    # Sort slave sessions by sequence number (if available) or created_at
+    for parent_id, slaves in slave_sessions_by_parent.items():
+        slaves.sort(key=lambda s: s.get("genie_metadata", {}).get("slave_sequence_number", 0))
+
+    # Build final list with slaves inserted after their parents
+    final_sessions = []
+    for parent in parent_sessions:
+        final_sessions.append(parent)
+        # Add any slave sessions for this parent
+        parent_id = parent.get("id")
+        if parent_id in slave_sessions_by_parent:
+            final_sessions.extend(slave_sessions_by_parent[parent_id])
+
+    # Add any orphan slaves (parent not in list) at the end
+    for parent_id, slaves in slave_sessions_by_parent.items():
+        if parent_id not in session_by_id:
+            final_sessions.extend(slaves)
+
+    session_summaries = final_sessions
+    app_logger.debug(f"Returning {len(session_summaries)} session summaries for user '{user_uuid}' (template sessions filtered out, slaves grouped with parents).")
     return session_summaries
 
 async def delete_session(user_uuid: str, session_id: str) -> bool:
@@ -961,4 +1016,220 @@ async def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, cas
 
     except Exception as e:
         app_logger.error(f"Error adding case_id to turn {turn_id}: {e}", exc_info=True)
+        return False
+
+
+# --- GENIE SESSION MANAGEMENT FUNCTIONS ---
+
+async def record_genie_session_link(parent_session_id: str, slave_session_id: str, slave_profile_id: str, slave_profile_tag: str, user_uuid: str, execution_order: int = 0) -> bool:
+    """
+    Record a link between a Genie parent session and a slave session.
+
+    Args:
+        parent_session_id: The Genie coordinator session ID
+        slave_session_id: The spawned slave session ID
+        slave_profile_id: The profile ID used for the slave session
+        slave_profile_tag: The profile tag (e.g., @CHAT, @RAG)
+        user_uuid: The user who owns both sessions
+        execution_order: The order in which the slave was invoked
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        from trusted_data_agent.auth.database import get_db_session
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+
+        db_path = str(get_project_root() / "tda_auth.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT OR REPLACE INTO genie_session_links
+            (parent_session_id, slave_session_id, slave_profile_id, slave_profile_tag, user_uuid, execution_order)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (parent_session_id, slave_session_id, slave_profile_id, slave_profile_tag, user_uuid, execution_order))
+
+        conn.commit()
+        conn.close()
+
+        app_logger.info(f"Recorded genie session link: {parent_session_id} -> {slave_session_id} (@{slave_profile_tag})")
+        return True
+
+    except Exception as e:
+        app_logger.error(f"Failed to record genie session link: {e}", exc_info=True)
+        return False
+
+
+async def get_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> list:
+    """
+    Get all slave sessions for a Genie parent session.
+
+    Args:
+        parent_session_id: The Genie coordinator session ID
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        List of slave session info dicts
+    """
+    try:
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+
+        db_path = str(get_project_root() / "tda_auth.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT slave_session_id, slave_profile_id, slave_profile_tag, created_at, status, execution_order
+            FROM genie_session_links
+            WHERE parent_session_id = ? AND user_uuid = ?
+            ORDER BY execution_order
+        """, (parent_session_id, user_uuid))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [dict(row) for row in rows]
+
+    except Exception as e:
+        app_logger.error(f"Failed to get genie slave sessions: {e}", exc_info=True)
+        return []
+
+
+async def get_genie_parent_session(slave_session_id: str, user_uuid: str) -> dict | None:
+    """
+    Get the parent Genie session for a slave session.
+
+    Args:
+        slave_session_id: The slave session ID
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        Parent session link info or None if not a slave session
+    """
+    try:
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+
+        db_path = str(get_project_root() / "tda_auth.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT parent_session_id, slave_profile_id, slave_profile_tag, created_at, status, execution_order
+            FROM genie_session_links
+            WHERE slave_session_id = ? AND user_uuid = ?
+        """, (slave_session_id, user_uuid))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
+    except Exception as e:
+        app_logger.error(f"Failed to get genie parent session: {e}", exc_info=True)
+        return None
+
+
+async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> bool:
+    """
+    Clean up (delete) all slave sessions when a Genie parent session is deleted.
+
+    Args:
+        parent_session_id: The Genie coordinator session ID
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+
+        # Get all slave sessions
+        slaves = await get_genie_slave_sessions(parent_session_id, user_uuid)
+
+        # Delete each slave session file
+        for slave in slaves:
+            slave_session_id = slave.get('slave_session_id')
+            if slave_session_id:
+                await delete_session(user_uuid, slave_session_id)
+                app_logger.info(f"Deleted genie slave session: {slave_session_id}")
+
+        # Remove links from database
+        db_path = str(get_project_root() / "tda_auth.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            DELETE FROM genie_session_links
+            WHERE parent_session_id = ? AND user_uuid = ?
+        """, (parent_session_id, user_uuid))
+
+        conn.commit()
+        conn.close()
+
+        # Also clear the in-memory cache in GenieCoordinator
+        try:
+            from trusted_data_agent.agent.genie_coordinator import SlaveSessionTool
+            # Remove all cache entries for this parent session
+            keys_to_remove = [
+                key for key in SlaveSessionTool._session_cache.keys()
+                if key.startswith(f"{parent_session_id}:")
+            ]
+            for key in keys_to_remove:
+                del SlaveSessionTool._session_cache[key]
+            if keys_to_remove:
+                app_logger.debug(f"Cleared {len(keys_to_remove)} in-memory cache entries for parent {parent_session_id}")
+        except ImportError:
+            pass  # GenieCoordinator not available, skip cache cleanup
+        except Exception as cache_err:
+            app_logger.warning(f"Failed to clear genie session cache: {cache_err}")
+
+        app_logger.info(f"Cleaned up {len(slaves)} genie slave sessions for parent {parent_session_id}")
+        return True
+
+    except Exception as e:
+        app_logger.error(f"Failed to cleanup genie slave sessions: {e}", exc_info=True)
+        return False
+
+
+async def update_genie_slave_status(slave_session_id: str, user_uuid: str, status: str) -> bool:
+    """
+    Update the status of a genie slave session link.
+
+    Args:
+        slave_session_id: The slave session ID
+        user_uuid: The user who owns the sessions
+        status: New status ('active', 'completed', 'failed')
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        import sqlite3
+        from trusted_data_agent.core.utils import get_project_root
+
+        db_path = str(get_project_root() / "tda_auth.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE genie_session_links
+            SET status = ?
+            WHERE slave_session_id = ? AND user_uuid = ?
+        """, (status, slave_session_id, user_uuid))
+
+        conn.commit()
+        conn.close()
+
+        app_logger.debug(f"Updated genie slave session {slave_session_id} status to {status}")
+        return True
+
+    except Exception as e:
+        app_logger.error(f"Failed to update genie slave status: {e}", exc_info=True)
         return False

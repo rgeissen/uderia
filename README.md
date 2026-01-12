@@ -23,7 +23,7 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 
 1. [Core Principles: A Superior Approach](#core-principles-a-superior-approach)
 2. [Key Features](#-key-features)
-3. [Profile Classes: Three Execution Modes](#-profile-classes-three-execution-modes)
+3. [Profile Classes: Four Execution Modes](#-profile-classes-four-execution-modes)
 4. [The Heart of the Application - The Engine & its Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
 5. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
 6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
@@ -498,13 +498,13 @@ The cost management system stores all pricing data locally in SQLite (`llm_model
 
 ---
 
-## 🎭 Profile Classes: Three Execution Modes
+## 🎭 Profile Classes: Four Execution Modes
 
-The Uderia Platform implements a sophisticated tri-mode architecture through **profile classes**, enabling seamless transitions between conversational intelligence, operational tool execution, and knowledge base synthesis. Understanding these profile classes is essential for maximizing the agent's capabilities and efficiency.
+The Uderia Platform implements a sophisticated multi-mode architecture through **profile classes**, enabling seamless transitions between conversational intelligence, operational tool execution, knowledge base synthesis, and multi-profile coordination. Understanding these profile classes is essential for maximizing the agent's capabilities and efficiency.
 
-### Overview: Three Fundamental Modes
+### Overview: Four Fundamental Modes
 
-Every profile in the system belongs to one of three classes that determine how the agent processes user requests:
+Every profile in the system belongs to one of four classes that determine how the agent processes user requests:
 
 #### 1. Conversation Focused (LLM) Profiles
 
@@ -593,6 +593,61 @@ Every profile in the system belongs to one of three classes that determine how t
   2. System prompt level: Explicitly states if documents don't contain answer
   3. UI level: Clear messaging about knowledge requirements
 
+#### 4. Genie Profiles (Multi-Profile Coordination) - Beta
+
+**Characteristics:**
+- Orchestrates multiple other profiles to answer complex queries
+- Automatically routes questions to the most appropriate expert profiles
+- Synthesizes responses from multiple sources into coherent answers
+- Creates child "slave" sessions that preserve individual profile context
+- Uses LangChain for intelligent coordination and tool selection
+
+**When to Use:**
+- Complex questions requiring expertise from multiple domains
+- "Analyze my database schema and check our documentation for best practices"
+- Queries that benefit from both tool execution AND knowledge retrieval
+- Workloads that span different data sources or capabilities
+
+**Example Profiles:**
+- `@GENIE` - Default multi-expert coordinator
+- `@EXPERT` - Custom coordinator with selected slave profiles
+- `@ORCHESTRATOR` - Enterprise-wide query router
+
+**Technical Behavior:**
+- `profile_type: "genie"` in session metadata
+- Creates real slave sessions visible in session history (marked with "Genie Slave" badge)
+- Slave sessions maintain conversation context across multiple genie turns
+- Coordinator LLM decides which profiles to invoke per query
+- Inline progress cards show real-time coordination status
+- Session history groups slave sessions under their parent genie session
+
+**Genie Profile Configuration:**
+```json
+{
+  "id": "profile-genie-xxx",
+  "name": "Multi-Expert Coordinator",
+  "tag": "GENIE",
+  "profile_type": "genie",
+  "llmConfigurationId": "llm-config-id",
+  "genieConfig": {
+    "slaveProfiles": ["profile-id-1", "profile-id-2"],
+    "maxConcurrentSlaves": 3
+  }
+}
+```
+
+**Key Features:**
+- **Dynamic Routing:** Coordinator decides at runtime which profile(s) are best suited for each query
+- **Context Preservation:** Slave sessions retain conversation history for follow-up questions
+- **Transparent Execution:** Real-time progress cards show which experts are being consulted
+- **Collapsible Session Groups:** Click genie master badge to collapse/expand slave sessions in history
+- **Split View Access:** Click slave cards to view slave session details alongside main conversation
+
+**Restrictions:**
+- Genie profiles cannot include other genie profiles as slaves (no nested coordination)
+- Each genie profile requires an LLM configuration for the coordinator
+- Slave profiles must exist and be accessible to the user
+
 ### The Value of Profile Classes
 
 #### 1. **Cost Optimization**
@@ -612,7 +667,13 @@ Every profile in the system belongs to one of three classes that determine how t
 - Cost proportional to number of retrieved documents
 - Efficient for document-based Q&A vs full web search
 
-**Best Practice:** Use `@CHAT` for learning SQL syntax, `@RAG` for policy lookups, then switch to `@GOGET` to execute queries.
+**Genie (Multi-Profile) Mode:**
+- Variable cost based on slave profiles invoked
+- Coordinator LLM adds overhead for routing decisions
+- Optimal for complex queries requiring multiple data sources
+- Slave session context reuse reduces redundant operations
+
+**Best Practice:** Use `@CHAT` for learning SQL syntax, `@RAG` for policy lookups, `@GOGET` for execution, or `@GENIE` when you need multiple experts working together.
 
 #### 2. **Workflow Flexibility**
 
@@ -652,7 +713,13 @@ This pattern separates **knowledge retrieval** (cheap), **document synthesis** (
 - Complete source traceability with document citations
 - Knowledge repository access can be controlled by user tier
 
-#### 4. **Strategic Planner Intelligence**
+**Genie (Multi-Profile) Profiles:**
+- Inherits safety constraints from slave profiles
+- Coordinator cannot bypass individual profile restrictions
+- Complete audit trail across all invoked slave sessions
+- Slave session isolation ensures data governance compliance
+
+#### 5. **Strategic Planner Intelligence**
 
 The strategic planner understands profile class context and adapts behavior:
 
@@ -688,11 +755,12 @@ Every turn in a session records:
 ```
 
 **Key Fields:**
-- `profile_type` - "llm_only", "tool_enabled", or "rag_focused"
+- `profile_type` - "llm_only", "tool_enabled", "rag_focused", or "genie"
 - `profile_tag` - Short identifier for quick switching
 - `sql_mentioned_in_conversation` - Extracted SQL from llm_only responses
 - `execution_trace` - Structured tool calls (only in tool_enabled)
 - `knowledge_retrieval_event` - Document retrieval details (only in rag_focused)
+- `genie_metadata` - Coordination details and slave sessions (only in genie)
 
 #### Profile Classification Modes
 
@@ -2295,8 +2363,10 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **12-Jan-2026:** Genie Profile Type (Beta) - Multi-profile coordination with LangChain orchestration
+*   **12-Jan-2026:** Genie UI Features - Inline progress cards, collapsible slave sessions, split view access
 *   **09-Jan-2026:** Knowledge Focused (RAG) Profile Type - Mandatory knowledge retrieval with anti-hallucination safeguards
-*   **08-Jan-2026:** Profile Classes - Three Execution Modes (Conversation, Tool, Knowledge)
+*   **08-Jan-2026:** Profile Classes - Four Execution Modes (Conversation, Tool, Knowledge, Genie)
 *   **06-Jan-2026:** Export/Import Knowledge Repositories
 *   **05-Jan-2026:** Export/Import Planner Repositories
 *   **02-Jan-2026:** OAuth Implementation - Google, Github
