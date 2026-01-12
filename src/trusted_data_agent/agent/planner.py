@@ -1093,24 +1093,30 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
     
     def _is_knowledge_enabled(self, profile_config: Optional[dict] = None) -> bool:
         """
-        Check if knowledge retrieval is enabled globally and in the profile.
-        
+        Check if knowledge retrieval is enabled globally and EXPLICITLY in the profile.
+
+        Knowledge retrieval now requires explicit opt-in via profile.knowledgeConfig.enabled = true.
+        This separates MCP tool-focused profiles (no knowledge) from RAG-focused profiles (with knowledge).
+
         Args:
             profile_config: Optional profile configuration dictionary
-            
+
         Returns:
             True if knowledge retrieval should be performed
         """
         # Global kill switch
         if not APP_CONFIG.KNOWLEDGE_RAG_ENABLED:
             return False
-        
-        # Check profile configuration if provided
-        if profile_config:
-            knowledge_config = profile_config.get("knowledgeConfig", {})
-            if not knowledge_config.get("enabled", True):  # Default to enabled if not specified
-                return False
-        
+
+        # CHANGED: Require explicit opt-in from profile
+        if not profile_config:
+            return False  # No profile = no knowledge retrieval
+
+        knowledge_config = profile_config.get("knowledgeConfig", {})
+        # CHANGED: Default to False (require explicit enablement)
+        if not knowledge_config.get("enabled", False):
+            return False
+
         return True
     
     def _get_knowledge_collections(self, profile_config: Optional[dict] = None) -> list:
@@ -1804,9 +1810,6 @@ Ranking:"""
         tools_context = APP_STATE.get('tools_context', '--- No Tools Available ---')
         prompts_context = APP_STATE.get('prompts_context', '--- No Prompts Available ---')
 
-        # Determine knowledge status for early LLM signal
-        knowledge_status = "HAS_KNOWLEDGE - See KNOWLEDGE CONTEXT section below" if knowledge_context_str else "NO_KNOWLEDGE"
-
         planning_prompt = WORKFLOW_META_PLANNING_PROMPT.format(
             workflow_goal=self.executor.workflow_goal_prompt,
             explicit_parameters_section=explicit_parameters_section,
@@ -1820,8 +1823,7 @@ Ranking:"""
             sql_consolidation_rule=sql_consolidation_rule_str,
             reporting_tool_name=reporting_tool_name_injection,
             rag_few_shot_examples=rag_few_shot_examples_str,  # Pass the populated examples
-            knowledge_context=knowledge_context_str,  # Pass the knowledge context
-            knowledge_status=knowledge_status,  # Early signal for knowledge availability
+            knowledge_context=knowledge_context_str,  # Empty string when knowledge disabled
             available_tools=tools_context,  # Pass tools context
             available_prompts=prompts_context  # Pass prompts context
         )

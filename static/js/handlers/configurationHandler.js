@@ -3931,6 +3931,22 @@ async function showProfileModal(profileId = null) {
         const plannerSection = plannerCollectionsList ? plannerCollectionsList.closest('.mb-6') : null;
         console.log('[Profile Modal] plannerSection found:', !!plannerSection);
 
+        // Find Knowledge Repositories section within Intelligence tab
+        const knowledgeCollectionsList = modal.querySelector('#profile-modal-knowledge-collections');
+        const knowledgeSection = knowledgeCollectionsList ? knowledgeCollectionsList.closest('.mb-6') : null;
+        console.log('[Profile Modal] knowledgeSection found:', !!knowledgeSection);
+
+        // Find LLM Reranking section (Per-Collection Override)
+        const rerankingList = modal.querySelector('#profile-modal-knowledge-reranking-list');
+        const knowledgeRerankingSection = rerankingList ? rerankingList.closest('.mb-6') : null;
+        console.log('[Profile Modal] knowledgeRerankingSection found:', !!knowledgeRerankingSection);
+
+        // Find Knowledge Advanced Settings section (Min Relevance, Max Docs, Max Tokens)
+        // Note: Advanced Settings section uses <div> not <div class="mb-6"> so we need to find its parent container
+        const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
+        const knowledgeAdvancedSection = minRelevanceInput ? minRelevanceInput.closest('.bg-gray-800\\/40')?.parentElement : null;
+        console.log('[Profile Modal] knowledgeAdvancedSection found:', !!knowledgeAdvancedSection);
+
         const mcpResourcesTab = modal.querySelector('#profile-tab-mcp-resources');
         const intelligenceTab = modal.querySelector('#profile-tab-intelligence');
         const mcpResourcesContent = modal.querySelector('#profile-content-mcp-resources');
@@ -3957,6 +3973,11 @@ async function showProfileModal(profileId = null) {
                 intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
             }
 
+            // SHOW Knowledge Repository sections for LLM-only profiles
+            if (knowledgeSection) knowledgeSection.style.display = '';
+            if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = '';
+            if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = '';
+
             // KEEP System Prompts tab visible (for enterprise users to configure CONVERSATION_EXECUTION)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
                 systemPromptsTab.style.display = '';
@@ -3980,6 +4001,11 @@ async function showProfileModal(profileId = null) {
                 intelligenceTab.setAttribute('title', 'Configure knowledge repositories (REQUIRED for RAG focused profiles)');
             }
 
+            // SHOW Knowledge Repository sections - REQUIRED for RAG focused profiles
+            if (knowledgeSection) knowledgeSection.style.display = '';
+            if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = '';
+            if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = '';
+
             // KEEP System Prompts tab visible (for enterprise users to configure RAG_FOCUSED_EXECUTION)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
                 systemPromptsTab.style.display = '';
@@ -3988,8 +4014,8 @@ async function showProfileModal(profileId = null) {
                 systemPromptsContent.style.display = '';
             }
         } else {
-            console.log('[Profile Modal] Showing all sections for tool-enabled profile');
-            // Show all sections for tool-enabled profiles
+            console.log('[Profile Modal] Configuring sections for tool-enabled profile');
+            // Show MCP sections and planner repos for tool-enabled profiles
             if (mcpServerContainer) mcpServerContainer.style.display = '';
             if (classificationSection) classificationSection.style.display = '';
             if (mcpResourcesTab) mcpResourcesTab.style.display = '';
@@ -3998,8 +4024,15 @@ async function showProfileModal(profileId = null) {
             if (intelligenceTab) intelligenceTab.style.display = '';
             if (intelligenceContent) intelligenceContent.style.display = '';
             if (intelligenceTab) {
-                intelligenceTab.setAttribute('title', 'Configure planner repositories and knowledge collections');
+                intelligenceTab.setAttribute('title', 'Configure planner repositories for execution patterns');
             }
+
+            // HIDE Knowledge Repository sections for tool-enabled profiles
+            // Knowledge retrieval is only available for RAG-focused and LLM-only profiles
+            if (knowledgeSection) knowledgeSection.style.display = 'none';
+            if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
+            if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
+            console.log('[Profile Modal] Hiding knowledge sections for tool-enabled profile');
 
             // KEEP System Prompts tab visible (for enterprise users to configure all prompts)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
@@ -4624,6 +4657,10 @@ async function showProfileModal(profileId = null) {
         const classificationModeRadio = modal.querySelector('input[name="classification-mode"]:checked');
         const classificationMode = classificationModeRadio ? classificationModeRadio.value : 'full';
 
+        // Get selected profile type FIRST (needed for knowledgeConfig decision)
+        const profileTypeRadio = modal.querySelector('input[name="profile-type"]:checked');
+        const selectedProfileType = profileTypeRadio ? profileTypeRadio.value : 'tool_enabled';
+
         // Build knowledgeConfig object with per-collection reranking settings
         // Note: Global knowledge settings (minRelevance, maxDocs, maxTokens) are now in Administration panel
         // We still include them in the profile for backward compatibility; backend will use these or fall back to admin defaults
@@ -4634,43 +4671,43 @@ async function showProfileModal(profileId = null) {
             id: parseInt(cb.dataset.collectionId),
             reranking: cb.checked
         }));
-        
+
         // Read advanced knowledge configuration fields
         const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
         const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
         const maxTokensInput = modal.querySelector('#profile-modal-max-tokens');
-        
-        // Build knowledge config - only include fields that have values
-        const knowledgeConfig = {
-            enabled: true, // Always enabled when collections are selected
-            collections: collectionsWithReranking
-        };
-        
-        // Add optional fields only if user specified them (non-empty)
-        if (minRelevanceInput.value !== '') {
-            const minRel = parseFloat(minRelevanceInput.value);
-            if (!isNaN(minRel) && minRel >= 0 && minRel <= 1) {
-                knowledgeConfig.minRelevanceScore = minRel;
-            }
-        }
-        
-        if (maxDocsInput.value !== '') {
-            const maxDocs = parseInt(maxDocsInput.value);
-            if (!isNaN(maxDocs) && maxDocs >= 1) {
-                knowledgeConfig.maxDocs = maxDocs;
-            }
-        }
-        
-        if (maxTokensInput.value !== '') {
-            const maxTokens = parseInt(maxTokensInput.value);
-            if (!isNaN(maxTokens) && maxTokens >= 500) {
-                knowledgeConfig.maxTokens = maxTokens;
-            }
-        }
 
-        // Get selected profile type
-        const profileTypeRadio = modal.querySelector('input[name="profile-type"]:checked');
-        const selectedProfileType = profileTypeRadio ? profileTypeRadio.value : 'tool_enabled';
+        // Build knowledge config - tool_enabled profiles have knowledge DISABLED
+        // Only rag_focused and llm_only profiles have knowledge enabled
+        const knowledgeEnabled = selectedProfileType !== 'tool_enabled';
+        const knowledgeConfig = {
+            enabled: knowledgeEnabled,
+            collections: knowledgeEnabled ? collectionsWithReranking : []
+        };
+
+        // Add optional fields only if knowledge is enabled and user specified them (non-empty)
+        if (knowledgeEnabled) {
+            if (minRelevanceInput.value !== '') {
+                const minRel = parseFloat(minRelevanceInput.value);
+                if (!isNaN(minRel) && minRel >= 0 && minRel <= 1) {
+                    knowledgeConfig.minRelevanceScore = minRel;
+                }
+            }
+
+            if (maxDocsInput.value !== '') {
+                const maxDocs = parseInt(maxDocsInput.value);
+                if (!isNaN(maxDocs) && maxDocs >= 1) {
+                    knowledgeConfig.maxDocs = maxDocs;
+                }
+            }
+
+            if (maxTokensInput.value !== '') {
+                const maxTokens = parseInt(maxTokensInput.value);
+                if (!isNaN(maxTokens) && maxTokens >= 500) {
+                    knowledgeConfig.maxTokens = maxTokens;
+                }
+            }
+        }
 
         const profileData = {
             id: profile ? profile.id : `profile-${generateId()}`,
