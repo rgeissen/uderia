@@ -7,6 +7,10 @@ WORKDIR /app
 # Copy the entire project context (respecting .dockerignore)
 COPY . .
 
+# Create tda_keys directory for persistent key storage
+# JWT secret will be auto-generated on first run if not provided via TDA_JWT_SECRET_KEY env var
+RUN mkdir -p /app/tda_keys && chmod 700 /app/tda_keys
+
 # Install the required packages from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
