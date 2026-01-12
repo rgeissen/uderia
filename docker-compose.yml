@@ -1,5 +1,3 @@
-version: '12.0'
-
 services:
   uderia:
     # This 'build' section tells Compose to use your Dockerfile
