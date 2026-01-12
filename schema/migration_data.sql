@@ -124,6 +124,18 @@ INSERT INTO prompts (name, display_name, content, description, class_id, role, p
     1,
     1,
     1
+),
+(
+    'GENIE_COORDINATOR_PROMPT',
+    'Genie Coordinator Prompt',
+    '[MIGRATE]',
+    'Orchestrates specialized AI profiles to answer complex queries by routing to appropriate profiles',
+    2,
+    'system',
+    NULL,
+    1,
+    1,
+    1
 );
 
 -- Error Recovery & Self-Correction (class_id = 3)
@@ -314,6 +326,10 @@ INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, paramete
 ((SELECT id FROM prompts WHERE name = 'SQL_CONSOLIDATION_PROMPT'), 'queries', 'Queries', 'json', '[]', 'List of SQL queries to consolidate', 1),
 ((SELECT id FROM prompts WHERE name = 'SQL_CONSOLIDATION_PROMPT'), 'schema_info', 'Schema Info', 'string', '', 'Database schema information', 0);
 
+-- GENIE_COORDINATOR_PROMPT parameters
+INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, parameter_type, default_value, description, is_required) VALUES
+((SELECT id FROM prompts WHERE name = 'GENIE_COORDINATOR_PROMPT'), 'available_profiles', 'Available Profiles', 'string', '', 'List of available profiles for routing (injected at runtime)', 0);
+
 -- ============================================================================
 -- STEP 5: Verification Queries
 -- ============================================================================
@@ -326,7 +342,7 @@ INSERT INTO prompt_parameters (prompt_id, parameter_name, display_name, paramete
 
 -- Count prompts
 -- SELECT COUNT(*) as prompt_count FROM prompts;
--- Expected: 12
+-- Expected: 13
 
 -- List all prompts with their classes
 -- SELECT 
