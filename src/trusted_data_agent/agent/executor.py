@@ -1535,37 +1535,15 @@ The following domain knowledge may be relevant to this conversation:
             self._log_system_event(event_data)
             yield self._format_sse(event_data)
 
-            # Emit tool execution result event for proper display in UI
-            # This makes knowledge retrieval appear as a tool step with token tracking
-            tool_result_data = {
-                "status": "success",
-                "metadata": {
-                    "tool_name": "Knowledge_Retrieval",
-                    "input_tokens": 0,  # No tokens for retrieval itself
-                    "output_tokens": 0,
-                    "collections": list(collection_names),
-                    "document_count": len(final_results)
-                },
-                "results": [{
-                    "summary": f"Retrieved {len(final_results)} document(s) from {len(collection_names)} knowledge collection(s)",
-                    "collections": list(collection_names),
-                    "chunks": knowledge_chunks
-                }]
-            }
-            yield self._format_sse({
-                "step": "Tool Execution Result",
-                "details": tool_result_data,
-                "tool_name": "Knowledge_Retrieval"
-            }, "tool_result")
-
             # --- LLM Synthesis ---
             from trusted_data_agent.agent.prompt_loader import get_prompt_loader
             prompt_loader = get_prompt_loader()
             system_prompt = prompt_loader.get_prompt("RAG_FOCUSED_EXECUTION")
 
-            if not system_prompt:
+            # Use fallback if prompt not found, empty, or is a placeholder (decryption failed)
+            if not system_prompt or "[ENCRYPTED CONTENT]" in system_prompt:
                 system_prompt = "You are a knowledge base assistant. Answer using only the provided documents."
-                app_logger.warning("RAG_FOCUSED_EXECUTION prompt not found, using fallback")
+                app_logger.warning("RAG_FOCUSED_EXECUTION prompt not available (decryption failed or not found), using fallback")
 
             user_message = await self._build_user_message_for_rag_synthesis(
                 knowledge_context=knowledge_context
@@ -1617,7 +1595,7 @@ The following domain knowledge may be relevant to this conversation:
                     "call_id": call_id,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
-                    "model": self.llm_handler.model if self.llm_handler else "Unknown"
+                    "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown"
                 },
                 "results": [{
                     "response": response_text[:500] + "..." if len(response_text) > 500 else response_text,
