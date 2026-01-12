@@ -1535,6 +1535,29 @@ The following domain knowledge may be relevant to this conversation:
             self._log_system_event(event_data)
             yield self._format_sse(event_data)
 
+            # Emit tool execution result event for proper display in UI
+            # This makes knowledge retrieval appear as a tool step with token tracking
+            tool_result_data = {
+                "status": "success",
+                "metadata": {
+                    "tool_name": "Knowledge_Retrieval",
+                    "input_tokens": 0,  # No tokens for retrieval itself
+                    "output_tokens": 0,
+                    "collections": list(collection_names),
+                    "document_count": len(final_results)
+                },
+                "results": [{
+                    "summary": f"Retrieved {len(final_results)} document(s) from {len(collection_names)} knowledge collection(s)",
+                    "collections": list(collection_names),
+                    "chunks": knowledge_chunks
+                }]
+            }
+            yield self._format_sse({
+                "step": "Tool Execution Result",
+                "details": tool_result_data,
+                "tool_name": "Knowledge_Retrieval"
+            }, "tool_result")
+
             # --- LLM Synthesis ---
             from trusted_data_agent.agent.prompt_loader import get_prompt_loader
             prompt_loader = get_prompt_loader()
@@ -1548,12 +1571,64 @@ The following domain knowledge may be relevant to this conversation:
                 knowledge_context=knowledge_context
             )
 
+            # Emit "Calling LLM" event with call_id for token tracking
+            call_id = str(uuid.uuid4())
+            yield self._format_sse({
+                "step": "Calling LLM for Knowledge Synthesis",
+                "type": "system_message",
+                "details": {
+                    "summary": "Synthesizing answer from retrieved knowledge",
+                    "call_id": call_id,
+                    "document_count": len(final_results),
+                    "collections": list(collection_names)
+                }
+            })
+
+            # Set LLM busy indicator
+            yield self._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+
             # Call LLM for synthesis
             response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
                 prompt=user_message,
                 reason="RAG Focused Synthesis",
                 system_prompt_override=system_prompt
             )
+
+            # Set LLM idle indicator
+            yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+
+            # Emit token update event
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            if session_data:
+                yield self._format_sse({
+                    "statement_input": input_tokens,
+                    "statement_output": output_tokens,
+                    "total_input": session_data.get("input_tokens", 0),
+                    "total_output": session_data.get("output_tokens", 0),
+                    "call_id": call_id
+                }, "token_update")
+
+            # Emit tool execution result event for LLM synthesis
+            # This shows the synthesis as a proper tool step with token tracking
+            synthesis_result_data = {
+                "status": "success",
+                "metadata": {
+                    "tool_name": "LLM_Synthesis",
+                    "call_id": call_id,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "model": self.llm_handler.model if self.llm_handler else "Unknown"
+                },
+                "results": [{
+                    "response": response_text[:500] + "..." if len(response_text) > 500 else response_text,
+                    "full_length": len(response_text)
+                }]
+            }
+            yield self._format_sse({
+                "step": "Tool Execution Result",
+                "details": synthesis_result_data,
+                "tool_name": "LLM_Synthesis"
+            }, "tool_result")
 
             # --- Format Response with Sources ---
             formatter = OutputFormatter(
