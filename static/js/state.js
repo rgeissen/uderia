@@ -15,6 +15,7 @@ export const state = {
     currentTaskId: null, // Add this line
     resourceData: { tools: {}, prompts: {}, resources: {}, charts: {} },
     currentlySelectedResource: null,
+    activeGenieProfile: null, // Store Genie profile info when @GENIE override is active
     eventSource: null,
     countdownValue: 5,
     mouseMoveHandler: null,

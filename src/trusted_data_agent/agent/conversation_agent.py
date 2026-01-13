@@ -145,7 +145,8 @@ class ConversationAgentExecutor:
                     "type": event_type,
                     "payload": payload
                 }
-                # Await directly to ensure event is sent before continuing
+                # CRITICAL: Await to ensure event gets into SSE queue
+                # The asyncio.sleep(0) calls after _emit_event in the caller allow SSE consumer to process
                 await self.async_event_handler(event_data, "notification")
             except Exception as e:
                 logger.warning(f"ConversationAgentExecutor async event handler error: {e}")
@@ -397,6 +398,12 @@ RESPONSE FORMAT:
                         "session_id": self.session_id
                     })
 
+                    logger.info(f"[ConvAgent] ✓ Emitted conversation_llm_step event #{self.llm_call_count} ({step_name})")
+
+                    # CRITICAL: Yield control to event loop to allow SSE consumer to process queue
+                    # Use small non-zero delay to ensure SSE actually gets scheduled
+                    await asyncio.sleep(0.001)
+
                     logger.info(f"[ConvAgent] LLM Step {self.llm_call_count} ({step_name}): {input_tokens} in / {output_tokens} out")
 
                 # Track tool invocations
@@ -413,6 +420,9 @@ RESPONSE FORMAT:
                         "arguments": self._safe_serialize(tool_input),
                         "session_id": self.session_id
                     })
+
+                    # CRITICAL: Yield control to event loop to allow SSE tasks to run
+                    await asyncio.sleep(0)
 
                     logger.info(f"Tool invoked: {tool_name}")
 
@@ -439,6 +449,9 @@ RESPONSE FORMAT:
                         "session_id": self.session_id
                     })
 
+                    # CRITICAL: Yield control to event loop to allow SSE tasks to run
+                    await asyncio.sleep(0)
+
                     logger.info(f"Tool completed: {tool_name} ({duration_ms}ms)")
 
                 # Track tool errors
@@ -463,6 +476,9 @@ RESPONSE FORMAT:
                         "error": error,
                         "session_id": self.session_id
                     })
+
+                    # CRITICAL: Yield control to event loop to allow SSE tasks to run
+                    await asyncio.sleep(0)
 
                     logger.warning(f"Tool error: {tool_name} - {error}")
 

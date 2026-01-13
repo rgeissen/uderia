@@ -108,6 +108,39 @@ export function renderResourcePanel(type) {
         // Use data from state instead of fetching
         const data = state.resourceData[type] || {};
 
+        // Special handling for Genie coordinator profiles
+        if (state.activeGenieProfile && type === 'tools') {
+            // Show Genie coordinator info instead of hiding the tab
+            if (tabButton) {
+                tabButton.style.display = 'inline-block';
+                tabButton.textContent = `Tools (Coordinator)`;
+            }
+
+            categoriesContainer.innerHTML = '';
+            panelsContainer.innerHTML = `
+                <div class="p-6 text-center space-y-3">
+                    <div class="text-2xl">🧞</div>
+                    <div class="text-lg font-semibold text-gray-200">Genie Coordinator Profile</div>
+                    <div class="text-sm text-gray-400 max-w-md mx-auto">
+                        This profile coordinates multiple specialized profiles to answer complex questions.
+                        It doesn't use tools directly - instead, it intelligently routes queries to slave profiles.
+                    </div>
+                    ${state.activeGenieProfile.slaveProfiles && state.activeGenieProfile.slaveProfiles.length > 0 ? `
+                        <div class="mt-4 text-sm text-gray-300">
+                            <div class="font-semibold mb-2">Coordinating Profiles:</div>
+                            <div class="flex flex-wrap gap-2 justify-center">
+                                ${state.activeGenieProfile.slaveProfiles.map(profileId => {
+                                    const profile = window.configState?.profiles?.find(p => p.id === profileId);
+                                    return profile ? `<span class="px-3 py-1 bg-gray-700 rounded-md">@${profile.tag}</span>` : '';
+                                }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            return;
+        }
+
         if (!data || Object.keys(data).length === 0) {
             if(tabButton) {
                 tabButton.style.display = 'none';

@@ -222,8 +222,18 @@ export function subscribeToNotifications() {
                     // Find the parent session element
                     const parentElement = document.getElementById(`session-${parentSessionId}`);
                     if (parentElement) {
-                        // Insert after the parent session
-                        parentElement.insertAdjacentElement('afterend', sessionItem);
+                        // Find all existing sibling slaves (same parent)
+                        const existingSlaves = Array.from(DOM.sessionList.querySelectorAll('.genie-slave-session'))
+                            .filter(el => el.dataset.genieParentId === parentSessionId);
+
+                        if (existingSlaves.length === 0) {
+                            // No existing slaves, insert directly after parent
+                            parentElement.insertAdjacentElement('afterend', sessionItem);
+                        } else {
+                            // Insert after the last existing slave to maintain order
+                            const lastSlave = existingSlaves[existingSlaves.length - 1];
+                            lastSlave.insertAdjacentElement('afterend', sessionItem);
+                        }
 
                         // Update genie master badges to add collapse toggle to parent if needed
                         UI.updateGenieMasterBadges();

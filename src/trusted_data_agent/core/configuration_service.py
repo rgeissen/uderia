@@ -270,9 +270,19 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
     try:
         # Update runtime state
         APP_CONFIG.CURRENT_PROFILE_ID = profile_id
-        classification_mode = profile.get('classification_mode', 'light')
+
+        # CRITICAL: Force 'light' mode for conversation profiles (llm_only with useMcpTools)
+        # Light mode is instant (filter-based) and doesn't require LLM calls
+        profile_type = profile.get('profile_type', 'tool_enabled')
+        use_mcp_tools = profile.get('useMcpTools', False)
+        if profile_type == 'llm_only' and use_mcp_tools:
+            classification_mode = 'light'
+            app_logger.info(f"Forcing light classification mode for conversation profile {profile_id}")
+        else:
+            classification_mode = profile.get('classification_mode', 'light')
+
         APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE = classification_mode
-        
+
         app_logger.info(f"Switching to profile {profile_id} (classification mode: {classification_mode}, validate_llm: {validate_llm})")
         
         # Load LLM configuration from profile
@@ -509,12 +519,18 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             else:
                 set_user_model_provider_in_profile(None, user_uuid)
         
-        # Load MCP server configuration from profile (skip for llm_only profiles)
+        # Load MCP server configuration from profile
+        # MCP initialization needed for:
+        # 1. tool_enabled profiles (always)
+        # 2. llm_only profiles with useMcpTools=true (conversation with tools)
         profile_type = profile.get('profile_type', 'tool_enabled')
+        use_mcp_tools = profile.get('useMcpTools', False)
+        needs_mcp = (profile_type == 'tool_enabled' or
+                     (profile_type == 'llm_only' and use_mcp_tools))
         cached_loaded = None  # Initialize for both paths
 
-        if profile_type == 'tool_enabled':
-            # Tool-enabled profiles require MCP server
+        if needs_mcp:
+            # Get MCP server configuration
             mcp_server_id = profile.get('mcpServerId')
             if not mcp_server_id:
                 return {
@@ -640,17 +656,18 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                             "prompts": all_prompts
                         }, user_uuid)
         else:
-            # LLM-only profile - skip MCP setup
-            app_logger.info(f"Profile {profile_id} is llm_only - skipping MCP server initialization")
+            # Pure LLM-only profile (without MCP tools) - skip MCP setup
+            app_logger.info(f"Profile {profile_id} is pure llm_only (useMcpTools=false) - skipping MCP server initialization")
             APP_CONFIG.MCP_SERVER_CONNECTED = False
             APP_CONFIG.SERVICES_CONFIGURED = True
 
-            # Clear disabled tools/prompts for llm_only profiles
+            # Clear disabled tools/prompts for pure llm_only profiles
             APP_STATE["disabled_tools"] = []
             APP_STATE["disabled_prompts"] = []
 
-        # Calculate disabled tools/prompts from profile's enabled lists (for tool-enabled profiles)
-        if profile_type == 'tool_enabled':
+        # Calculate disabled tools/prompts from profile's enabled lists
+        # (applies to both tool_enabled and conversation profiles with MCP tools)
+        if needs_mcp:
             APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
             APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
 

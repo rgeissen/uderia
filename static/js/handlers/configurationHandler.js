@@ -1,7 +1,7 @@
 // static/js/handlers/configurationHandler.js
 // Manages the new modular configuration system with MCP servers, LLM providers, and localStorage
 
-import { handleViewSwitch, updateGenieMasterBadges } from '../ui.js';
+import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js';
 import { handleStartNewSession, handleLoadSession } from './sessionManagement.js?v=3.2';
 import { handleLoadResources } from '../eventHandlers.js?v=3.2';
 import * as API from '../api.js';
@@ -2101,15 +2101,18 @@ export async function reconnectAndLoad() {
                     
                     // Filter out archived sessions from the conversation view selector
                     const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
-                    
+
+                    // Sort sessions hierarchically so slave sessions appear under their parents
+                    const sortedSessions = sortSessionsHierarchically(activeSessions);
+
                     // Populate session list UI
                     DOM.sessionList.innerHTML = '';
-                    
-                    if (activeSessions && Array.isArray(activeSessions) && activeSessions.length > 0) {
+
+                    if (sortedSessions && Array.isArray(sortedSessions) && sortedSessions.length > 0) {
                         // Populate session list dropdown/sidebar
-                        const sessionToLoad = activeSessions.find(s => s.id === currentSessionId) ? currentSessionId : activeSessions[0].id;
-                        
-                        activeSessions.forEach((session) => {
+                        const sessionToLoad = sortedSessions.find(s => s.id === currentSessionId) ? currentSessionId : sortedSessions[0].id;
+
+                        sortedSessions.forEach((session) => {
                             const isActive = session.id === sessionToLoad;
                             const sessionItem = UI.addSessionToList(session, isActive);
                             DOM.sessionList.appendChild(sessionItem);
@@ -4443,12 +4446,11 @@ async function showProfileModal(profileId = null) {
             allPrompts = Object.values(resources.prompts || {}).flat().map(p => p.name);
 
             // For new profiles (isEdit=false), default all to checked
-            // For existing profiles with tools=null/undefined (truly not yet configured), default all to checked
-            // For existing profiles with tools=[] (explicitly no tools selected), respect that and leave unchecked
-            // For existing profiles with populated arrays, respect their saved selections
-            // NOTE: Empty array [] means "explicitly deselected all" - don't treat as "not configured"
-            const toolsNotYetConfigured = profile && (profile.tools === null || profile.tools === undefined);
-            const promptsNotYetConfigured = profile && (profile.prompts === null || profile.prompts === undefined);
+            // For existing profiles with tools=null/undefined/[] (not yet configured), default all to checked
+            // For existing profiles with populated arrays (specific tools selected), respect their saved selections
+            // NOTE: Empty array [] is now treated as "not configured" (handles old bootstrap profiles)
+            const toolsNotYetConfigured = profile && (profile.tools === null || profile.tools === undefined || profile.tools.length === 0);
+            const promptsNotYetConfigured = profile && (profile.prompts === null || profile.prompts === undefined || profile.prompts.length === 0);
 
             toolsContainer.innerHTML = allTools.map(tool => `
                 <label class="flex items-center gap-2 text-sm text-gray-300">

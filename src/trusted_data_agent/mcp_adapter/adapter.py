@@ -235,13 +235,17 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
 
     # Get classification mode from profile if provided
     classification_mode = 'light'  # default
+    is_conversation_profile = False  # Track if this is a conversation profile
     if profile_id:
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
         profile = config_manager.get_profile(profile_id, user_uuid)
         if profile:
             classification_mode = profile.get('classification_mode', 'light')
-            app_logger.info(f"Using classification mode '{classification_mode}' from profile {profile_id}")
+            # Check if this is a conversation profile (llm_only with useMcpTools)
+            is_conversation_profile = (profile.get('profile_type') == 'llm_only' and
+                                      profile.get('useMcpTools', False))
+            app_logger.info(f"Using classification mode '{classification_mode}' from profile {profile_id} (conversation profile: {is_conversation_profile})")
         else:
             app_logger.warning(f"Profile {profile_id} not found, using default classification mode 'full'")
     else:
@@ -577,10 +581,12 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
         if profile_id:
             from trusted_data_agent.core.config_manager import get_config_manager
             config_manager = get_config_manager()
-            
+
+            # CRITICAL: Conversation profiles use LangChain which doesn't support MCP prompts
+            # Exclude prompts from classification results for conversation profiles
             classification_results = {
                 'tools': STATE.get('structured_tools', {}),
-                'prompts': STATE.get('structured_prompts', {}),
+                'prompts': {} if is_conversation_profile else STATE.get('structured_prompts', {}),
                 'resources': STATE.get('structured_resources', {}),
                 'classified_with_mode': classification_mode
             }

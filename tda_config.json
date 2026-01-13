@@ -114,12 +114,14 @@
       "llmConfigurationId": null,
       "mcpServerId": null,
       "classification_mode": null,
-      "tools": [],
-      "prompts": [],
+      "tools": ["*"],
+      "prompts": ["*"],
       "ragCollections": [
         "*"
       ],
       "autocompleteCollections": [],
+      "useMcpTools": false,
+      "useKnowledgeCollections": false,
       "classification_results": {
         "tools": {},
         "prompts": {},
@@ -138,8 +140,8 @@
       "llmConfigurationId": "1763819257473-ivpnukbbe",
       "mcpServerId": "1763483266562-a6kulj4xc",
       "classification_mode": "full",
-      "tools": [],
-      "prompts": [],
+      "tools": ["*"],
+      "prompts": ["*"],
       "ragCollections": [
         "*"
       ],
@@ -164,8 +166,8 @@
       "llmConfigurationId": "1763819257483-fluhef2vk",
       "mcpServerId": "1763483266562-a6kulj4xc",
       "classification_mode": "light",
-      "tools": [],
-      "prompts": [],
+      "tools": ["*"],
+      "prompts": ["*"],
       "ragCollections": [
         "*"
       ],

@@ -642,8 +642,27 @@ async def get_prompts():
         if result["status"] != "success":
             return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
 
-    # Return structured prompts (disabled flags already set by _regenerate_contexts)
-    return jsonify(APP_STATE.get("structured_prompts", {}))
+    # CRITICAL: Conversation profiles (llm_only with useMcpTools) use LangChain
+    # LangChain doesn't support MCP prompts - return empty for conversation profiles
+    from trusted_data_agent.core.config_manager import get_config_manager
+    config_manager = get_config_manager()
+    user_uuid = _get_user_uuid_from_request()
+
+    # Get the loaded profile from the state to check if it's a conversation profile
+    profile_id_loaded = APP_STATE.get('active_profile_id')
+    is_conversation_profile = False
+
+    if profile_id_loaded:
+        profile = config_manager.get_profile(profile_id_loaded, user_uuid)
+        if profile:
+            is_conversation_profile = (profile.get('profile_type') == 'llm_only' and
+                                      profile.get('useMcpTools', False))
+            if is_conversation_profile:
+                app_logger.info(f"Returning empty prompts for conversation profile {profile_id_loaded} (LangChain incompatible)")
+
+    # Return structured prompts (empty for conversation profiles, normal for tool_enabled)
+    structured_prompts = {} if is_conversation_profile else APP_STATE.get("structured_prompts", {})
+    return jsonify(structured_prompts)
 
 @api_bp.route("/resources")
 async def get_resources():

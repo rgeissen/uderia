@@ -5211,13 +5211,27 @@ async def get_profile_resources(profile_id: str):
             return jsonify({"status": "error", "message": "Profile not found"}), 404
 
         # Check if profile is tool-enabled
-        if profile.get("profile_type") != "tool_enabled":
-            # LLM-only profile has no tools/prompts
+        # Only return empty resources for pure llm_only profiles (without MCP tools)
+        # Conversation profiles with useMcpTools=true should have classified resources
+        if profile.get("profile_type") == "llm_only" and not profile.get("useMcpTools", False):
+            # Pure LLM-only profile: no tools/prompts
             return jsonify({
                 "status": "success",
                 "tools": {},
                 "prompts": {},
-                "profile_type": "llm_only"
+                "profile_type": "llm_only",
+                "profile_tag": profile.get("tag")
+            })
+
+        # Genie profiles coordinate slave profiles and don't have direct MCP tools
+        if profile.get("profile_type") == "genie":
+            return jsonify({
+                "status": "success",
+                "tools": {},
+                "prompts": {},
+                "profile_type": "genie",
+                "profile_tag": profile.get("tag"),
+                "slave_profiles": profile.get("genieConfig", {}).get("slaveProfiles", [])
             })
 
         # Get enabled tools and prompts for THIS profile (not inherited from master)
@@ -5325,19 +5339,28 @@ async def get_profile_resources(profile_id: str):
                     tool_copy['disabled'] = tool['name'] not in enabled_tool_names
                 profile_tools[category].append(tool_copy)
 
-        profile_prompts = {}
-        for category, prompts in structured_prompts.items():
-            profile_prompts[category] = []
-            for prompt in prompts:
-                prompt_copy = dict(prompt)
-                # Override disabled flag based on THIS profile's enabled prompts
-                if wildcard_prompts:
-                    # Wildcard: all prompts enabled
-                    prompt_copy['disabled'] = False
-                else:
-                    # Specific list: check if prompt is in enabled list
-                    prompt_copy['disabled'] = prompt['name'] not in enabled_prompt_names
-                profile_prompts[category].append(prompt_copy)
+        # CRITICAL: Conversation profiles (llm_only with useMcpTools) use LangChain
+        # LangChain doesn't support MCP prompts - only tools
+        # Return empty prompts dict for conversation profiles
+        is_conversation_profile = (profile.get("profile_type") == "llm_only" and
+                                   profile.get("useMcpTools", False))
+
+        if is_conversation_profile:
+            profile_prompts = {}
+        else:
+            profile_prompts = {}
+            for category, prompts in structured_prompts.items():
+                profile_prompts[category] = []
+                for prompt in prompts:
+                    prompt_copy = dict(prompt)
+                    # Override disabled flag based on THIS profile's enabled prompts
+                    if wildcard_prompts:
+                        # Wildcard: all prompts enabled
+                        prompt_copy['disabled'] = False
+                    else:
+                        # Specific list: check if prompt is in enabled list
+                        prompt_copy['disabled'] = prompt['name'] not in enabled_prompt_names
+                    profile_prompts[category].append(prompt_copy)
 
         return jsonify({
             "status": "success",
@@ -6081,18 +6104,24 @@ async def set_active_for_consumption_profiles():
                 total_prompts = sum(len(prompts) for prompts in prompts_dict.values()) if prompts_dict else 0
                 
                 # Profile needs classification if it has no tools/prompts OR needs_reclassification flag is set
-                # CRITICAL: Skip classification for llm_only profiles (they don't use MCP tools/prompts)
+                # CRITICAL: Skip classification only for pure llm_only profiles (without MCP tools)
+                # Conversation profiles with useMcpTools=true need classification
                 profile_type = profile.get('profile_type', 'tool_enabled')
+                use_mcp_tools = profile.get('useMcpTools', False)
                 needs_classification = (total_tools == 0 and total_prompts == 0) or profile.get('needs_reclassification', False)
 
-                if needs_classification and profile_type != 'llm_only':
+                # Determine if this profile needs MCP classification
+                needs_mcp_classification = (profile_type != 'llm_only' or
+                                           (profile_type == 'llm_only' and use_mcp_tools))
+
+                if needs_classification and needs_mcp_classification:
                     app_logger.info(f"Profile {primary_profile_id} needs classification, triggering context switch")
                     # Use switch_profile_context to trigger classification
                     result = await configuration_service.switch_profile_context(primary_profile_id, user_uuid)
                     if result["status"] != "success":
                         return jsonify(result), 400
-                elif needs_classification and profile_type == 'llm_only':
-                    app_logger.info(f"Skipping classification for llm_only profile {primary_profile_id}")
+                elif needs_classification and not needs_mcp_classification:
+                    app_logger.info(f"Skipping classification for pure llm_only profile {primary_profile_id} (useMcpTools=false)")
             
             APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(primary_profile_id, user_uuid)
             APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(primary_profile_id, user_uuid)

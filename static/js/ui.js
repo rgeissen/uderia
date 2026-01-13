@@ -109,6 +109,56 @@ export function markGenieMasterSessions(sessions) {
 }
 
 /**
+ * Sort sessions hierarchically so slave sessions always appear directly under their parent.
+ * This ensures proper visual ordering even during Genie execution when slaves are created/updated.
+ *
+ * @param {Array} sessions - Array of session objects
+ * @returns {Array} - Sessions sorted with slaves directly under their parents
+ */
+export function sortSessionsHierarchically(sessions) {
+    // Build maps for quick lookups
+    const parentToSlaves = new Map(); // parentId -> [slave sessions]
+    const slaveIds = new Set(); // All slave session IDs
+
+    sessions.forEach(session => {
+        const genieMetadata = session.genie_metadata || {};
+        if (genieMetadata.is_genie_slave && genieMetadata.parent_session_id) {
+            const parentId = genieMetadata.parent_session_id;
+            if (!parentToSlaves.has(parentId)) {
+                parentToSlaves.set(parentId, []);
+            }
+            parentToSlaves.get(parentId).push(session);
+            slaveIds.add(session.id);
+        }
+    });
+
+    // Separate parents (including non-genie sessions) from slaves
+    const parentSessions = sessions.filter(s => !slaveIds.has(s.id));
+
+    // Build the final sorted list
+    const sorted = [];
+    parentSessions.forEach(parent => {
+        // Add the parent session
+        sorted.push(parent);
+
+        // Add its slave sessions immediately after (if any)
+        const slaves = parentToSlaves.get(parent.id);
+        if (slaves && slaves.length > 0) {
+            // Sort slaves by created_at (oldest first) to maintain consistent order
+            slaves.sort((a, b) => {
+                const timeA = new Date(a.created_at || 0).getTime();
+                const timeB = new Date(b.created_at || 0).getTime();
+                return timeA - timeB;
+            });
+            sorted.push(...slaves);
+        }
+    });
+
+    console.log(`[UI] Sorted ${sorted.length} sessions hierarchically (${slaveIds.size} slaves under parents)`);
+    return sorted;
+}
+
+/**
  * Update the genie master badge visibility after sessions are rendered.
  * Call this after the session list is populated to add master badges to sessions
  * that weren't initially marked but have slave sessions in the DOM.
@@ -1944,14 +1994,46 @@ export function highlightSession(sessionId) {
 
 /**
  * Moves a session item to the top of the session list.
+ * For Genie slave sessions, maintains hierarchical order by moving after the last sibling slave.
  * @param {string} sessionId - The ID of the session to move.
  */
 export function moveSessionToTop(sessionId) {
     const sessionItem = document.getElementById(`session-${sessionId}`);
-    if (sessionItem && DOM.sessionList) {
-        // Remove the item from its current position
+    if (!sessionItem || !DOM.sessionList) return;
+
+    // Check if this is a Genie slave session
+    const isGenieSlave = sessionItem.dataset.genieParentId;
+    const parentSessionId = sessionItem.dataset.genieParentId;
+
+    if (isGenieSlave && parentSessionId) {
+        // For slave sessions, maintain hierarchical order
+        // Find the parent and all its existing slaves
+        const parentElement = document.getElementById(`session-${parentSessionId}`);
+        if (!parentElement) {
+            // Parent not found, fallback to top
+            sessionItem.remove();
+            DOM.sessionList.prepend(sessionItem);
+            return;
+        }
+
+        // Find all sibling slaves (same parent)
+        const allSlaves = Array.from(DOM.sessionList.querySelectorAll('.genie-slave-session'))
+            .filter(el => el.dataset.genieParentId === parentSessionId && el.id !== sessionItem.id);
+
+        // Remove the session from its current position
         sessionItem.remove();
-        // Prepend it to the session list
+
+        if (allSlaves.length === 0) {
+            // No other slaves, insert directly after parent
+            parentElement.insertAdjacentElement('afterend', sessionItem);
+        } else {
+            // Insert after the last sibling slave
+            const lastSlave = allSlaves[allSlaves.length - 1];
+            lastSlave.insertAdjacentElement('afterend', sessionItem);
+        }
+    } else {
+        // Regular session (not a slave) - move to top
+        sessionItem.remove();
         DOM.sessionList.prepend(sessionItem);
     }
 }

@@ -16,7 +16,7 @@ import { handleLoadSession, handleStartNewSession } from './sessionManagement.js
 // We need to import from eventHandlers for functions not yet moved
 import { handleLoadResources } from '../eventHandlers.js?v=3.2';
 // Note: openSystemPromptPopup is deprecated - welcome screen is now the unified interface
-import { handleViewSwitch, updateGenieMasterBadges } from '../ui.js';
+import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js';
 
 /**
  * Helper to safely set config status message (old form element may not exist)
@@ -129,10 +129,13 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         
         // Filter out archived sessions from the conversation view selector
         const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
-        
+
+        // Sort sessions hierarchically so slave sessions appear under their parents
+        const sortedSessions = sortSessionsHierarchically(activeSessions);
+
         DOM.sessionList.innerHTML = '';
-        if (activeSessions && Array.isArray(activeSessions) && activeSessions.length > 0) {
-            activeSessions.forEach((session) => {
+        if (sortedSessions && Array.isArray(sortedSessions) && sortedSessions.length > 0) {
+            sortedSessions.forEach((session) => {
                 const isActive = session.id === currentSessionId;
                 const sessionItem = UI.addSessionToList(session, isActive);
                 DOM.sessionList.appendChild(sessionItem);
@@ -148,7 +151,7 @@ export async function finalizeConfiguration(config, switchToConversationView = t
 
             // If the previously active session still exists and is not archived, ensure it is loaded.
             // Otherwise, load the most recent active session.
-            const sessionToLoad = activeSessions.find(s => s.id === currentSessionId) ? currentSessionId : activeSessions[0].id;
+            const sessionToLoad = sortedSessions.find(s => s.id === currentSessionId) ? currentSessionId : sortedSessions[0].id;
             await handleLoadSession(sessionToLoad);
         } else {
             // No active sessions exist, create a new one

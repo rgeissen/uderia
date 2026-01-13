@@ -219,6 +219,7 @@ async function processStream(responseBody) {
                                 console.log('[session_model_update] Not updating Live Status - wrong session');
                             }
                         } else if (eventData.type === 'conversation_agent_start' ||
+                                   eventData.type === 'conversation_llm_step' ||
                                    eventData.type === 'conversation_tool_invoked' ||
                                    eventData.type === 'conversation_tool_completed' ||
                                    eventData.type === 'conversation_agent_complete') {

@@ -267,8 +267,19 @@ async function initializeRAGAutoCompletion() {
                 tools = data.tools || {};
                 prompts = data.prompts || {};
 
-                // Show visual indicator that resources are filtered
-                console.log(`🔍 Resource panel updated for profile: @${data.profile_tag}`);
+                // Handle Genie profiles: show coordinator info in resource panel
+                if (data.profile_type === 'genie') {
+                    // Store Genie profile info in state for rendering
+                    state.activeGenieProfile = {
+                        tag: data.profile_tag,
+                        slaveProfiles: data.slave_profiles || []
+                    };
+                    console.log(`🧞 Genie coordinator profile active: @${data.profile_tag}`);
+                } else {
+                    // Clear Genie profile info if switching away
+                    state.activeGenieProfile = null;
+                    console.log(`🔍 Resource panel updated for profile: @${data.profile_tag}`);
+                }
             } else {
                 // Restore default resources
                 const [toolsResponse, promptsResponse] = await Promise.all([
@@ -278,6 +289,9 @@ async function initializeRAGAutoCompletion() {
 
                 tools = toolsResponse.ok ? await toolsResponse.json() : {};
                 prompts = promptsResponse.ok ? await promptsResponse.json() : {};
+
+                // Clear Genie profile info when restoring default
+                state.activeGenieProfile = null;
 
                 console.log('🔄 Resource panel restored to default profile');
             }
