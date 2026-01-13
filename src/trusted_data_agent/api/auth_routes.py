@@ -624,6 +624,190 @@ async def resend_verification_email():
         }), 500
 
 
+@auth_bp.route('/forgot-password', methods=['POST'])
+async def forgot_password():
+    """
+    Request a password reset email.
+
+    Request Body:
+        {
+            "email": "user@example.com",
+            "reset_base_url": "http://localhost:5050"  // optional
+        }
+
+    Response:
+        200: Reset email sent (always returns success to prevent email enumeration)
+        400: Missing email
+        429: Rate limit exceeded
+        500: Server error
+    """
+    from trusted_data_agent.auth.password_reset import PasswordResetService
+
+    try:
+        # Rate limit reset attempts (use register limit to prevent abuse)
+        allowed, retry_after = check_ip_register_limit()
+        if not allowed:
+            log_rate_limit_exceeded('ip:' + request.remote_addr, '/api/v1/auth/forgot-password')
+            return jsonify({
+                'status': 'error',
+                'message': 'Rate limit exceeded',
+                'retry_after': retry_after
+            }), 429
+
+        data = await request.get_json()
+
+        # Extract fields
+        email = data.get('email', '').strip().lower()
+        reset_base_url = data.get('reset_base_url', os.getenv('APP_BASE_URL', 'http://localhost:5050'))
+
+        if not email:
+            return jsonify({
+                'status': 'error',
+                'message': 'Email is required'
+            }), 400
+
+        # Always return success to prevent email enumeration attacks
+        # But only actually send email if user exists and is not OAuth-only
+        try:
+            with get_db_session() as session:
+                user = session.query(User).filter_by(email=email).first()
+
+                if user:
+                    # Check if this is an OAuth-only user (no usable password)
+                    # OAuth users have oauth_provider set and typically a placeholder password
+                    is_oauth_only = user.oauth_provider is not None and user.password_hash in ['', 'oauth_user', None]
+
+                    if is_oauth_only:
+                        logger.info(f"Password reset requested for OAuth-only user {email}, skipping")
+                        # Still return success to prevent enumeration
+                    else:
+                        # Generate reset token
+                        reset_token = PasswordResetService.generate_reset_token(
+                            user_id=user.id,
+                            email=email
+                        )
+
+                        if reset_token:
+                            # Build reset link
+                            reset_link = f"{reset_base_url}/reset-password?token={reset_token}&email={email}"
+
+                            # Send reset email
+                            user_display_name = user.display_name or user.username
+                            email_sent = await EmailService.send_password_reset_email(
+                                to_email=email,
+                                reset_link=reset_link,
+                                user_name=user_display_name
+                            )
+
+                            if email_sent:
+                                logger.info(f"Password reset email sent to {email}")
+                            else:
+                                logger.warning(f"Failed to send password reset email to {email}")
+                else:
+                    logger.info(f"Password reset requested for non-existent email {email}")
+
+        except Exception as e:
+            logger.error(f"Error processing password reset: {e}", exc_info=True)
+            # Still return success to prevent enumeration
+
+        # Always return success message
+        return jsonify({
+            'status': 'success',
+            'message': 'If an account exists with this email, you will receive a password reset link shortly.'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Forgot password error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Server error'
+        }), 500
+
+
+@auth_bp.route('/reset-password', methods=['POST'])
+async def reset_password():
+    """
+    Reset password using a valid reset token.
+
+    Request Body:
+        {
+            "token": "reset_token_from_email",
+            "email": "user@example.com",
+            "new_password": "NewSecurePass123!"
+        }
+
+    Response:
+        200: Password reset successful
+        400: Missing fields or validation error
+        401: Invalid or expired token
+        500: Server error
+    """
+    from trusted_data_agent.auth.password_reset import PasswordResetService
+
+    try:
+        data = await request.get_json()
+
+        # Extract fields
+        token = data.get('token', '').strip()
+        email = data.get('email', '').strip().lower()
+        new_password = data.get('new_password', '')
+
+        if not token or not email or not new_password:
+            return jsonify({
+                'status': 'error',
+                'message': 'Token, email, and new password are required'
+            }), 400
+
+        # Validate password strength
+        if len(new_password) < 8:
+            return jsonify({
+                'status': 'error',
+                'message': 'Password must be at least 8 characters long'
+            }), 400
+
+        # Validate the token first
+        is_valid, user_id, error_message = PasswordResetService.validate_reset_token(token, email)
+
+        if not is_valid:
+            return jsonify({
+                'status': 'error',
+                'message': error_message
+            }), 401
+
+        # Hash the new password
+        new_password_hash = hash_password(new_password)
+
+        # Reset the password
+        success, error_message = PasswordResetService.reset_password(token, email, new_password_hash)
+
+        if success:
+            # Log the password reset
+            log_audit_event_detailed(
+                user_id=user_id,
+                action='password_reset',
+                details='Password reset via forgot password flow',
+                success=True
+            )
+
+            logger.info(f"Password reset successful for user {user_id}")
+            return jsonify({
+                'status': 'success',
+                'message': 'Password reset successful. You can now log in with your new password.'
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': error_message or 'Failed to reset password'
+            }), 400
+
+    except Exception as e:
+        logger.error(f"Reset password error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Server error'
+        }), 500
+
+
 @auth_bp.route('/login', methods=['POST'])
 async def login():
     """

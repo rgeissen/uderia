@@ -285,7 +285,11 @@ class PasswordResetToken(Base):
     def is_valid(self):
         """Check if reset token is still valid."""
         now = datetime.now(timezone.utc)
-        return not self.used and self.expires_at > now
+        # Handle SQLite returning naive datetimes - assume UTC if no timezone
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return not self.used and expires_at > now
 
 
 class EmailVerificationToken(Base):

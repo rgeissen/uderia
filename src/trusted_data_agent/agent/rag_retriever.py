@@ -1132,14 +1132,14 @@ class RAGRetriever:
         collection_dir = self._get_collection_dir(collection_id)
 
         # Skip maintenance if collection directory doesn't exist or has no JSON files
-        # This handles imported collections that only exist in ChromaDB
+        # This is normal for newly created collections or marketplace-imported collections
         if not collection_dir.exists():
-            logger.info(f"Skipping maintenance for collection '{collection_id}': Directory does not exist (likely imported)")
+            logger.debug(f"Skipping maintenance for collection '{collection_id}': No case files directory (normal for new or imported collections)")
             return
 
         disk_case_files = list(collection_dir.glob("case_*.json"))
         if not disk_case_files:
-            logger.info(f"Skipping maintenance for collection '{collection_id}': No JSON files found (likely imported or empty)")
+            logger.debug(f"Skipping maintenance for collection '{collection_id}': No case files yet (normal for new or imported collections)")
             return
 
         # 1. Get current state from disk and DB

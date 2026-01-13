@@ -204,7 +204,7 @@ class AuthClient {
             if (response.ok && data.status === 'success') {
                 // Store session
                 this.setSession(data.token, data.user);
-                
+
                 return {
                     success: true,
                     message: data.message,
@@ -214,7 +214,8 @@ class AuthClient {
             } else {
                 return {
                     success: false,
-                    message: data.message || 'Login failed'
+                    message: data.message || 'Login failed',
+                    requires_email_verification: data.requires_email_verification || false
                 };
             }
         } catch (error) {

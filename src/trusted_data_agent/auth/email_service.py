@@ -275,3 +275,66 @@ class EmailService:
             return False
 
         return await provider.send(to_email, subject, html_body)
+
+    @staticmethod
+    async def send_password_reset_email(
+        to_email: str,
+        reset_link: str,
+        user_name: str
+    ) -> bool:
+        """
+        Send password reset email.
+
+        Args:
+            to_email: Recipient email address
+            reset_link: Full password reset link (with token)
+            user_name: User's name for personalization
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        provider = EmailService.get_provider()
+        if not provider:
+            logger.warning("Email provider not configured, password reset email not sent")
+            return False
+
+        subject = "Reset Your Password"
+
+        html_body = f"""
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background-color: #f0f0f0; padding: 20px; border-radius: 5px; }}
+                    .content {{ padding: 20px 0; }}
+                    .button {{ display: inline-block; background-color: #F15F22; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+                    .footer {{ font-size: 12px; color: #666; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }}
+                    .warning {{ background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 15px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2>Password Reset Request</h2>
+                    </div>
+                    <div class="content">
+                        <p>Hello {user_name},</p>
+                        <p>We received a request to reset your password. Click the button below to create a new password:</p>
+                        <a href="{reset_link}" class="button">Reset Password</a>
+                        <p>Or copy and paste this link in your browser:</p>
+                        <p><code>{reset_link}</code></p>
+                        <div class="warning">
+                            <strong>Important:</strong> This link expires in 1 hour for security reasons.
+                        </div>
+                    </div>
+                    <div class="footer">
+                        <p>If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.</p>
+                        <p>&copy; 2026 Uderia Platform. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+        </html>
+        """
+
+        return await provider.send(to_email, subject, html_body)

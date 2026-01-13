@@ -198,7 +198,7 @@
                         >
                         <span class="ml-2 text-sm text-slate-300 group-hover:text-white transition-colors">Remember me</span>
                     </label>
-                    <a href="#" class="text-sm text-[#F15F22] hover:text-[#D9501A] font-medium transition-colors">
+                    <a href="#" onclick="openForgotPasswordModal(); return false;" class="text-sm text-[#F15F22] hover:text-[#D9501A] font-medium transition-colors">
                         Forgot password?
                     </a>
                 </div>
@@ -296,6 +296,64 @@
                         </span>
                     </button>
                 </form>
+            </div>
+        </div>
+
+        <!-- Forgot Password Modal -->
+        <div id="forgot-password-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+            <div class="login-card rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-white">Forgot Password</h3>
+                    <button onclick="closeForgotPasswordModal()" class="text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="text-slate-400 text-sm mb-6">
+                    Enter the email address associated with your account. We'll send you a link to reset your password.
+                </p>
+
+                <div id="forgot-password-alert" class="mb-4 hidden">
+                    <div id="forgot-password-alert-message" class="p-4 rounded-lg text-sm"></div>
+                </div>
+
+                <form id="forgot-password-form" class="space-y-4">
+                    <div>
+                        <label for="forgot-email" class="block text-sm font-semibold text-slate-200 mb-2">
+                            Email Address
+                        </label>
+                        <input
+                            type="email"
+                            id="forgot-email"
+                            name="email"
+                            required
+                            class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-slate-500 focus:outline-none"
+                            placeholder="Enter your email address"
+                        >
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="forgot-password-button"
+                        class="btn-primary w-full text-white font-semibold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-2 focus:ring-offset-slate-900"
+                    >
+                        <span id="forgot-password-button-text">Send Reset Link</span>
+                        <span id="forgot-password-button-spinner" class="hidden">
+                            <svg class="animate-spin h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </form>
+
+                <div class="mt-4 text-center">
+                    <button onclick="closeForgotPasswordModal()" class="text-sm text-slate-400 hover:text-white transition-colors">
+                        Back to Login
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -636,6 +694,111 @@
             if (emailParam) {
                 document.getElementById('resend-email').value = decodeURIComponent(emailParam);
             }
+            // Clean up URL
+            window.history.replaceState({}, document.title, '/login');
+        }
+
+        // Forgot password modal functions
+        function openForgotPasswordModal() {
+            const modal = document.getElementById('forgot-password-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('forgot-email').focus();
+        }
+
+        function closeForgotPasswordModal() {
+            const modal = document.getElementById('forgot-password-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            // Reset form and alerts
+            document.getElementById('forgot-password-form').reset();
+            document.getElementById('forgot-password-alert').classList.add('hidden');
+            // Reset button state
+            const btn = document.getElementById('forgot-password-button');
+            btn.disabled = false;
+            document.getElementById('forgot-password-button-text').classList.remove('hidden');
+            document.getElementById('forgot-password-button-text').textContent = 'Send Reset Link';
+            document.getElementById('forgot-password-button-spinner').classList.add('hidden');
+        }
+
+        // Close forgot password modal on backdrop click
+        document.getElementById('forgot-password-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeForgotPasswordModal();
+            }
+        });
+
+        function showForgotPasswordAlert(message, type) {
+            const container = document.getElementById('forgot-password-alert');
+            const alertMessage = document.getElementById('forgot-password-alert-message');
+
+            container.classList.remove('hidden');
+            alertMessage.textContent = message;
+
+            if (type === 'success') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-green-500/10 border border-green-500/50 text-green-300 backdrop-blur-sm';
+            } else if (type === 'error') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-red-500/10 border border-red-500/50 text-red-300 backdrop-blur-sm';
+            }
+        }
+
+        // Forgot password form submission
+        document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('forgot-email').value.trim();
+            const forgotButton = document.getElementById('forgot-password-button');
+            const buttonText = document.getElementById('forgot-password-button-text');
+            const buttonSpinner = document.getElementById('forgot-password-button-spinner');
+
+            if (!email) {
+                showForgotPasswordAlert('Please enter your email address.', 'error');
+                return;
+            }
+
+            forgotButton.disabled = true;
+            buttonText.classList.add('hidden');
+            buttonSpinner.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/v1/auth/forgot-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showForgotPasswordAlert(result.message, 'success');
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                    buttonText.textContent = 'Email Sent!';
+                    // Keep button disabled to prevent spam
+                } else {
+                    if (response.status === 429) {
+                        showForgotPasswordAlert('Too many requests. Please wait a moment before trying again.', 'error');
+                    } else {
+                        showForgotPasswordAlert(result.message || 'Failed to send reset email.', 'error');
+                    }
+                    forgotButton.disabled = false;
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Forgot password error:', error);
+                showForgotPasswordAlert('An unexpected error occurred. Please try again.', 'error');
+                forgotButton.disabled = false;
+                buttonText.classList.remove('hidden');
+                buttonSpinner.classList.add('hidden');
+            }
+        });
+
+        // Check for password_reset parameter in URL (after successful password reset)
+        if (urlParams.get('password_reset') === 'true') {
+            showAlert('Password reset successful! You can now log in with your new password.', 'success');
             // Clean up URL
             window.history.replaceState({}, document.title, '/login');
         }
