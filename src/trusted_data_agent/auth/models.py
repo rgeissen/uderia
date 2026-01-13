@@ -44,6 +44,7 @@ class User(Base):
     email_verified = Column(Boolean, default=False, nullable=False)  # Email verification status
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime(timezone=True), nullable=True)
+    last_failed_login_at = Column(DateTime(timezone=True), nullable=True)  # For progressive delay calculation
     
     # Consumption profile
     consumption_profile_id = Column(Integer, ForeignKey('consumption_profiles.id'), nullable=True, index=True)
@@ -89,6 +90,7 @@ class User(Base):
         if include_sensitive:
             data['failed_login_attempts'] = self.failed_login_attempts
             data['locked_until'] = self.locked_until.isoformat() if self.locked_until else None
+            data['last_failed_login_at'] = self.last_failed_login_at.isoformat() if self.last_failed_login_at else None
         
         return data
 

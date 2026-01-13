@@ -83,12 +83,15 @@ def init_database():
             else:
                 raise
         
+        # Run schema migrations for existing installations (MUST run before any User queries)
+        _run_user_table_migrations()
+
         # Create collections table (for marketplace)
         _create_collections_table()
-        
+
         # Create template defaults table (for template configuration)
         _create_template_defaults_table()
-        
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -100,10 +103,10 @@ def init_database():
         
         # Bootstrap consumption profiles from tda_config.json
         _bootstrap_consumption_profiles()
-        
+
         # Bootstrap prompt management system
         _bootstrap_prompt_system()
-        
+
         return True
     except Exception as e:
         logger.error(f"Failed to initialize authentication database: {e}", exc_info=True)
@@ -276,6 +279,37 @@ def _create_template_defaults_table():
         
     except Exception as e:
         logger.error(f"Error creating template defaults table: {e}", exc_info=True)
+
+
+def _run_user_table_migrations():
+    """
+    Run schema migrations for the users table.
+    Adds new columns that were added after initial release.
+    Safe to call multiple times (checks if columns exist).
+    """
+    import sqlite3
+
+    try:
+        db_path = DEFAULT_DB_PATH
+        if not db_path.exists():
+            return  # Database doesn't exist yet
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Migration: Add last_failed_login_at column for progressive delay
+        try:
+            cursor.execute("SELECT last_failed_login_at FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            logger.info("Adding last_failed_login_at column to users table for progressive delay")
+            cursor.execute("ALTER TABLE users ADD COLUMN last_failed_login_at TIMESTAMP")
+            conn.commit()
+
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error running user table migrations: {e}", exc_info=True)
 
 
 def _create_default_admin_if_needed():

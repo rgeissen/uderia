@@ -21,8 +21,11 @@ from trusted_data_agent.auth.security import (
     generate_auth_token,
     revoke_token,
     check_user_lockout,
+    check_progressive_delay,
+    get_login_status,
     record_failed_login,
-    reset_failed_login_attempts
+    reset_failed_login_attempts,
+    MAX_LOGIN_ATTEMPTS
 )
 from trusted_data_agent.auth.validators import (
     validate_registration_data,
@@ -860,19 +863,42 @@ async def login():
                     'message': 'Invalid username or password'
                 }), 401
             
+            # Get comprehensive login status
+            login_status = get_login_status(user)
+
             # Check if account is locked
-            is_locked, lockout_minutes = check_user_lockout(user)
-            if is_locked:
+            if login_status['is_locked']:
+                minutes_remaining = login_status.get('lockout_minutes_remaining', 15)
                 log_audit_event(
                     user_id=user.id,
                     action='login_failed',
-                    details=f'Login attempt while account locked',
+                    details='Login attempt while account locked',
                     success=False
                 )
                 return jsonify({
                     'status': 'error',
-                    'message': f'Account temporarily locked. Try again in {lockout_minutes} minutes.'
+                    'message': f'Account temporarily locked due to too many failed attempts. Try again in {minutes_remaining} minutes.',
+                    'locked': True,
+                    'retry_after_minutes': minutes_remaining
                 }), 401
+
+            # Check progressive delay (must wait between attempts)
+            if login_status['must_wait']:
+                wait_seconds = login_status['wait_seconds']
+                log_audit_event(
+                    user_id=user.id,
+                    action='login_failed',
+                    details=f'Login attempt during progressive delay ({wait_seconds}s remaining)',
+                    success=False
+                )
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Please wait {wait_seconds} seconds before trying again.',
+                    'must_wait': True,
+                    'retry_after_seconds': wait_seconds,
+                    'failed_attempts': login_status['failed_attempts'],
+                    'remaining_attempts': login_status['remaining_attempts']
+                }), 429
             
             # Check if account is active
             if not user.is_active:
@@ -907,16 +933,46 @@ async def login():
             if not verify_password(password, user.password_hash):
                 logger.info(f"Failed login attempt for user: {username}")
                 record_failed_login(user)
+
+                # Re-fetch updated login status after recording failure
+                with get_db_session() as status_session:
+                    updated_user = status_session.query(User).filter_by(id=user.id).first()
+                    updated_status = get_login_status(updated_user) if updated_user else login_status
+
                 log_audit_event(
                     user_id=user.id,
                     action='login_failed',
-                    details='Invalid password',
+                    details=f'Invalid password (attempt {updated_status["failed_attempts"]} of {MAX_LOGIN_ATTEMPTS})',
                     success=False
                 )
-                return jsonify({
+
+                # Build response with helpful feedback
+                response = {
                     'status': 'error',
                     'message': 'Invalid username or password'
-                }), 401
+                }
+
+                # Add attempt info if there have been multiple failures
+                if updated_status['failed_attempts'] > 1:
+                    response['failed_attempts'] = updated_status['failed_attempts']
+                    response['remaining_attempts'] = updated_status['remaining_attempts']
+
+                    # Add wait time info for next attempt
+                    if updated_status['must_wait']:
+                        response['retry_after_seconds'] = updated_status['wait_seconds']
+                        response['message'] = f'Invalid password. Please wait {updated_status["wait_seconds"]} seconds before trying again. {updated_status["remaining_attempts"]} attempts remaining.'
+
+                    # Check if account just got locked
+                    elif updated_status['is_locked']:
+                        minutes = updated_status.get('lockout_minutes_remaining', 15)
+                        response['locked'] = True
+                        response['retry_after_minutes'] = minutes
+                        response['message'] = f'Account locked due to too many failed attempts. Try again in {minutes} minutes.'
+
+                    elif updated_status['remaining_attempts'] <= 2:
+                        response['message'] = f'Invalid password. {updated_status["remaining_attempts"]} attempts remaining before account lockout.'
+
+                return jsonify(response), 401
             
             # Password correct - reset failed login count
             reset_failed_login_attempts(user)

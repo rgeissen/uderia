@@ -80,6 +80,11 @@ PASSWORD_MIN_LENGTH = int(os.environ.get('TDA_PASSWORD_MIN_LENGTH', '8'))
 MAX_LOGIN_ATTEMPTS = int(os.environ.get('TDA_MAX_LOGIN_ATTEMPTS', '5'))
 LOCKOUT_DURATION_MINUTES = int(os.environ.get('TDA_LOCKOUT_DURATION_MINUTES', '15'))
 
+# Progressive delay configuration (exponential backoff)
+# Base delay in seconds, doubles with each failed attempt
+PROGRESSIVE_DELAY_BASE_SECONDS = int(os.environ.get('TDA_PROGRESSIVE_DELAY_BASE', '2'))
+PROGRESSIVE_DELAY_MAX_SECONDS = int(os.environ.get('TDA_PROGRESSIVE_DELAY_MAX', '30'))
+
 
 def hash_password(password: str) -> str:
     """
@@ -381,7 +386,7 @@ def check_user_lockout(user: User) -> tuple[bool, Optional[datetime]]:
 def record_failed_login(user: User) -> None:
     """
     Record a failed login attempt and potentially lock the account.
-    
+
     Args:
         user: User object
     """
@@ -391,14 +396,15 @@ def record_failed_login(user: User) -> None:
             db_user = session.query(User).filter_by(id=user.id).first()
             if not db_user:
                 return
-            
+
             db_user.failed_login_attempts += 1
-            
+            db_user.last_failed_login_at = datetime.now(timezone.utc)
+
             # Lock account if threshold exceeded
             if db_user.failed_login_attempts >= MAX_LOGIN_ATTEMPTS:
                 db_user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
                 logger.warning(f"User {db_user.username} locked due to {db_user.failed_login_attempts} failed login attempts")
-            
+
     except Exception as e:
         logger.error(f"Error recording failed login: {e}", exc_info=True)
 
@@ -406,7 +412,7 @@ def record_failed_login(user: User) -> None:
 def reset_failed_login_attempts(user: User) -> None:
     """
     Reset failed login attempts counter on successful login.
-    
+
     Args:
         user: User object
     """
@@ -415,13 +421,112 @@ def reset_failed_login_attempts(user: User) -> None:
             db_user = session.query(User).filter_by(id=user.id).first()
             if not db_user:
                 return
-            
+
             db_user.failed_login_attempts = 0
             db_user.locked_until = None
+            db_user.last_failed_login_at = None
             db_user.last_login_at = datetime.now(timezone.utc)
-    
+
     except Exception as e:
         logger.error(f"Error resetting failed login attempts: {e}", exc_info=True)
+
+
+def calculate_progressive_delay(failed_attempts: int) -> int:
+    """
+    Calculate the required wait time based on number of failed attempts.
+
+    Uses exponential backoff: base_delay * 2^(attempts-1)
+    Example with base=2s: 2s, 4s, 8s, 16s, 30s (capped)
+
+    Args:
+        failed_attempts: Number of consecutive failed login attempts
+
+    Returns:
+        Required wait time in seconds (0 if no wait required)
+    """
+    if failed_attempts <= 1:
+        return 0
+
+    # Calculate exponential delay: base * 2^(attempts-2)
+    # -2 because first failure has no delay, second failure starts the backoff
+    delay = PROGRESSIVE_DELAY_BASE_SECONDS * (2 ** (failed_attempts - 2))
+
+    # Cap at maximum delay
+    return min(delay, PROGRESSIVE_DELAY_MAX_SECONDS)
+
+
+def check_progressive_delay(user: User) -> tuple[bool, int]:
+    """
+    Check if user must wait before attempting login due to progressive delay.
+
+    Args:
+        user: User object to check
+
+    Returns:
+        Tuple of (must_wait: bool, seconds_remaining: int)
+    """
+    if user.failed_login_attempts <= 1:
+        return False, 0
+
+    if not user.last_failed_login_at:
+        return False, 0
+
+    required_delay = calculate_progressive_delay(user.failed_login_attempts)
+    if required_delay == 0:
+        return False, 0
+
+    now = datetime.now(timezone.utc)
+
+    # Handle timezone-naive datetime
+    last_failed = user.last_failed_login_at
+    if last_failed.tzinfo is None:
+        last_failed = last_failed.replace(tzinfo=timezone.utc)
+
+    # Calculate when user can try again
+    can_try_at = last_failed + timedelta(seconds=required_delay)
+
+    if now >= can_try_at:
+        return False, 0
+
+    seconds_remaining = int((can_try_at - now).total_seconds())
+    return True, seconds_remaining
+
+
+def get_login_status(user: User) -> dict:
+    """
+    Get comprehensive login status for a user including lockout and delay info.
+
+    Args:
+        user: User object to check
+
+    Returns:
+        Dictionary with login status information
+    """
+    is_locked, locked_until = check_user_lockout(user)
+    must_wait, wait_seconds = check_progressive_delay(user)
+
+    remaining_attempts = max(0, MAX_LOGIN_ATTEMPTS - user.failed_login_attempts)
+
+    status = {
+        'is_locked': is_locked,
+        'locked_until': locked_until.isoformat() if locked_until else None,
+        'must_wait': must_wait,
+        'wait_seconds': wait_seconds,
+        'failed_attempts': user.failed_login_attempts,
+        'remaining_attempts': remaining_attempts,
+        'max_attempts': MAX_LOGIN_ATTEMPTS
+    }
+
+    if is_locked and locked_until:
+        # Calculate minutes remaining for lockout
+        now = datetime.now(timezone.utc)
+        lock_time = locked_until
+        if lock_time.tzinfo is None:
+            lock_time = lock_time.replace(tzinfo=timezone.utc)
+        minutes_remaining = max(0, int((lock_time - now).total_seconds() / 60))
+        status['lockout_minutes_remaining'] = minutes_remaining
+
+    return status
 
 
 def validate_password_strength(password: str) -> tuple[bool, list[str]]:
