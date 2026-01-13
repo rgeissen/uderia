@@ -246,7 +246,59 @@
         </div>
             </div>
         </div>
-        
+
+        <!-- Resend Verification Email Modal -->
+        <div id="resend-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+            <div class="login-card rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-white">Resend Verification Email</h3>
+                    <button onclick="closeResendModal()" class="text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="text-slate-400 text-sm mb-6">
+                    Enter the email address you used to register. We'll send you a new verification link.
+                </p>
+
+                <div id="resend-alert" class="mb-4 hidden">
+                    <div id="resend-alert-message" class="p-4 rounded-lg text-sm"></div>
+                </div>
+
+                <form id="resend-form" class="space-y-4">
+                    <div>
+                        <label for="resend-email" class="block text-sm font-semibold text-slate-200 mb-2">
+                            Email Address
+                        </label>
+                        <input
+                            type="email"
+                            id="resend-email"
+                            name="email"
+                            required
+                            class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-slate-500 focus:outline-none"
+                            placeholder="Enter your email address"
+                        >
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="resend-button"
+                        class="btn-primary w-full text-white font-semibold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-2 focus:ring-offset-slate-900"
+                    >
+                        <span id="resend-button-text">Send Verification Email</span>
+                        <span id="resend-button-spinner" class="hidden">
+                            <svg class="animate-spin h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
         <!-- Footer -->
         <div class="mt-8 text-center">
             <p class="text-slate-500 text-xs">
@@ -421,7 +473,7 @@
                         showAlert(
                             `${result.message}<br><br>` +
                             `<strong>Don't see the email?</strong> Check your spam folder or ` +
-                            `<a href="/register" style="text-decoration: underline; color: #fbbf24;">resend verification email</a>`,
+                            `<a href="#" onclick="openResendModal(); return false;" style="text-decoration: underline; color: #fbbf24;">resend verification email</a>`,
                             'error',
                             true  // Allow HTML
                         );
@@ -475,6 +527,117 @@
                 'success',
                 true  // Allow HTML
             );
+        }
+
+        // Resend verification email modal functions
+        function openResendModal() {
+            const modal = document.getElementById('resend-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('resend-email').focus();
+        }
+
+        function closeResendModal() {
+            const modal = document.getElementById('resend-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            // Reset form and alerts
+            document.getElementById('resend-form').reset();
+            document.getElementById('resend-alert').classList.add('hidden');
+        }
+
+        // Close modal on backdrop click
+        document.getElementById('resend-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeResendModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeResendModal();
+            }
+        });
+
+        function showResendAlert(message, type) {
+            const container = document.getElementById('resend-alert');
+            const alertMessage = document.getElementById('resend-alert-message');
+
+            container.classList.remove('hidden');
+            alertMessage.textContent = message;
+
+            if (type === 'success') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-green-500/10 border border-green-500/50 text-green-300 backdrop-blur-sm';
+            } else if (type === 'error') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-red-500/10 border border-red-500/50 text-red-300 backdrop-blur-sm';
+            }
+        }
+
+        // Resend form submission
+        document.getElementById('resend-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('resend-email').value.trim();
+            const resendButton = document.getElementById('resend-button');
+            const buttonText = document.getElementById('resend-button-text');
+            const buttonSpinner = document.getElementById('resend-button-spinner');
+
+            if (!email) {
+                showResendAlert('Please enter your email address.', 'error');
+                return;
+            }
+
+            resendButton.disabled = true;
+            buttonText.classList.add('hidden');
+            buttonSpinner.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/v1/auth/resend-verification-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showResendAlert('Verification email sent! Please check your inbox.', 'success');
+                    // Disable form for a bit to prevent spam
+                    setTimeout(() => {
+                        closeResendModal();
+                        showAlert('Verification email sent to ' + email + '. Please check your inbox and spam folder.', 'success');
+                    }, 2000);
+                } else {
+                    if (response.status === 429) {
+                        showResendAlert('Too many requests. Please wait a moment before trying again.', 'error');
+                    } else {
+                        showResendAlert(result.message || 'Failed to send verification email.', 'error');
+                    }
+                    resendButton.disabled = false;
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Resend error:', error);
+                showResendAlert('An unexpected error occurred. Please try again.', 'error');
+                resendButton.disabled = false;
+                buttonText.classList.remove('hidden');
+                buttonSpinner.classList.add('hidden');
+            }
+        });
+
+        // Check for resend parameter in URL (from verify_email.html redirect)
+        if (urlParams.get('resend') === 'true') {
+            const emailParam = urlParams.get('email');
+            openResendModal();
+            if (emailParam) {
+                document.getElementById('resend-email').value = decodeURIComponent(emailParam);
+            }
+            // Clean up URL
+            window.history.replaceState({}, document.title, '/login');
         }
     </script>
 </body>
