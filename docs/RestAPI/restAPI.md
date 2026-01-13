@@ -17,8 +17,9 @@
    - [RAG Collection Management](#37-rag-collection-management)
    - [RAG Template System](#38-rag-template-system)
    - [MCP Server Management](#39-mcp-server-management)
-   - [Session Analytics](#310-session-analytics)
-   - [System Prompts Management](#311-system-prompts-management)
+   - [Profile Management](#310-profile-management)
+   - [Session Analytics](#311-session-analytics)
+   - [System Prompts Management](#312-system-prompts-management)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -925,7 +926,7 @@ Submit user feedback (upvote/downvote) for a RAG case.
 
 The RAG Template System enables automatic generation of RAG case studies through modular templates with LLM-assisted question generation.
 
-#### 3.8.1. List Available Templates
+#### 3.11.1. List Available Templates
 
 Get all registered Planner Repository Constructors.
 
@@ -1207,9 +1208,9 @@ Populate a RAG collection with generated or manual examples using a template.
     * **Code**: `404 Not Found` (collection not found)
     * **Code**: `500 Internal Server Error` (population failed)
 
-### 3.7. MCP Server Management
+### 3.9. MCP Server Management
 
-#### 3.7.1. Get All MCP Servers
+#### 3.9.1. Get All MCP Servers
 
 Get all configured MCP servers and the active server ID.
 
@@ -1234,7 +1235,7 @@ Get all configured MCP servers and the active server ID.
         }
         ```
 
-#### 3.7.2. Create MCP Server
+#### 3.9.2. Create MCP Server
 
 Create a new MCP server configuration.
 
@@ -1255,7 +1256,7 @@ Create a new MCP server configuration.
 * **Error Response**:
     * **Code**: `400 Bad Request` (missing required fields)
 
-#### 3.7.3. Update MCP Server
+#### 3.9.3. Update MCP Server
 
 Update an existing MCP server configuration.
 
@@ -1276,7 +1277,7 @@ Update an existing MCP server configuration.
 * **Error Response**:
     * **Code**: `404 Not Found`
 
-#### 3.7.4. Delete MCP Server
+#### 3.9.4. Delete MCP Server
 
 Delete an MCP server configuration. Fails if any RAG collections are assigned to it.
 
@@ -1289,7 +1290,7 @@ Delete an MCP server configuration. Fails if any RAG collections are assigned to
 * **Error Response**:
     * **Code**: `400 Bad Request` (if collections are assigned to this server)
 
-#### 3.7.5. Activate MCP Server
+#### 3.9.5. Activate MCP Server
 
 Set an MCP server as the active server for the application.
 
@@ -1302,9 +1303,582 @@ Set an MCP server as the active server for the application.
 * **Error Response**:
     * **Code**: `404 Not Found`
 
-### 3.8. Session Analytics and Management
+### 3.10. Profile Management
 
-#### 3.8.1. Get Session Analytics
+The Profile Management API provides endpoints for creating, managing, and configuring agent profiles. Profiles define the combination of LLM providers, MCP servers, and execution behaviors that the agent uses to process queries.
+
+**Key Concepts:**
+- **Profile Types**: Different execution strategies (tool_enabled, llm_only, rag_focused, genie, conversation_with_tools)
+- **Default Profile**: The profile automatically used for new sessions
+- **Active for Consumption**: Profiles enabled for multi-profile coordination
+- **Classification**: Automatic or manual categorization of MCP tools/prompts/resources
+- **Genie Coordination**: Advanced multi-profile orchestration using LangChain agents
+
+#### Profile Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `tool_enabled` | Standard profile with MCP tools + LLM | Data queries, tool execution, standard workflows |
+| `llm_only` | Pure conversational LLM without MCP | General chat, reasoning tasks without tool access |
+| `rag_focused` | LLM + RAG retrieval only (no MCP tools) | Knowledge base queries, document search |
+| `genie` | Multi-agent coordinator profile | Complex queries requiring multiple specialized profiles |
+| `conversation_with_tools` | LangChain-based conversation agent | Conversational workflows with tool use |
+
+#### 3.10.1. List All Profiles
+
+Retrieve all profile configurations for the authenticated user.
+
+**Endpoint:** `GET /api/v1/profiles`
+**Authentication:** Required (JWT or access token)
+**Parameters:** None
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "profiles": [
+    {
+      "id": "profile-550e8400-e29b",
+      "name": "Teradata SQL Agent",
+      "tag": "TDAT",
+      "description": "Teradata database query and analysis",
+      "profile_type": "tool_enabled",
+      "color": "#FF6B35",
+      "colorSecondary": "#F7931E",
+      "llmConfigurationId": "llm-config-123",
+      "mcpServerId": "mcp-teradata-456",
+      "providerName": "Google",
+      "classification_mode": "llm",
+      "is_default": true,
+      "active_for_consumption": true,
+      "created_at": "2026-01-13T10:00:00Z",
+      "updated_at": "2026-01-13T12:00:00Z"
+    },
+    {
+      "id": "profile-genie-001",
+      "name": "Genie Coordinator",
+      "tag": "GENIE",
+      "description": "Multi-agent coordination profile",
+      "profile_type": "genie",
+      "color": "#F59E0B",
+      "colorSecondary": "#FCD34D",
+      "llmConfigurationId": "llm-config-789",
+      "genieConfig": {
+        "slaveProfiles": ["profile-550e8400-e29b", "profile-rag-002"]
+      },
+      "is_default": false,
+      "active_for_consumption": false,
+      "created_at": "2026-01-13T11:00:00Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `401 Unauthorized` - Authentication required
+- `500 Internal Server Error` - Server error retrieving profiles
+
+---
+
+#### 3.10.2. Get Profile by ID
+
+Retrieve detailed information about a specific profile.
+
+**Endpoint:** `GET /api/v1/profiles/{profile_id}`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "profile": {
+    "id": "profile-550e8400-e29b",
+    "name": "Teradata SQL Agent",
+    "tag": "TDAT",
+    "description": "Teradata database query and analysis",
+    "profile_type": "tool_enabled",
+    "color": "#FF6B35",
+    "colorSecondary": "#F7931E",
+    "llmConfigurationId": "llm-config-123",
+    "mcpServerId": "mcp-teradata-456",
+    "providerName": "Google",
+    "classification_mode": "llm",
+    "classificationPromptId": "custom-classification-prompt",
+    "ragCollectionIds": ["collection-001", "collection-002"],
+    "is_default": true,
+    "active_for_consumption": true,
+    "useMcpTools": true,
+    "created_at": "2026-01-13T10:00:00Z",
+    "updated_at": "2026-01-13T12:00:00Z"
+  }
+}
+```
+
+---
+
+#### 3.10.3. Create Profile
+
+Create a new profile configuration.
+
+**Endpoint:** `POST /api/v1/profiles`
+**Authentication:** Required (JWT or access token)
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "name": "My SQL Agent",
+  "tag": "MYSQL",
+  "description": "MySQL database queries",
+  "profile_type": "tool_enabled",
+  "color": "#4285F4",
+  "colorSecondary": "#34A853",
+  "llmConfigurationId": "llm-config-123",
+  "mcpServerId": "mcp-mysql-456",
+  "providerName": "Anthropic",
+  "classification_mode": "filter",
+  "ragCollectionIds": [],
+  "useMcpTools": true
+}
+```
+
+**Required Fields:**
+- `name` (string) - Profile display name
+- `tag` (string) - Unique tag for @TAG syntax (3-20 uppercase alphanumeric characters)
+- `profile_type` (string) - One of: `tool_enabled`, `llm_only`, `rag_focused`, `genie`, `conversation_with_tools`
+- `llmConfigurationId` (string) - Reference to LLM configuration
+
+**Optional Fields:**
+- `description` (string) - Profile description
+- `color` (string) - Primary color (hex code)
+- `colorSecondary` (string) - Secondary color (hex code)
+- `mcpServerId` (string) - MCP server ID (required for tool_enabled profiles)
+- `providerName` (string) - LLM provider name override
+- `classification_mode` (string) - `filter` or `llm` (for tool_enabled profiles)
+- `classificationPromptId` (string) - Custom classification prompt
+- `ragCollectionIds` (array) - RAG collection IDs
+- `useMcpTools` (boolean) - Enable MCP tools (for llm_only profiles with conversation)
+- `genieConfig` (object) - Genie-specific configuration (for genie profiles)
+
+**Genie Profile Configuration:**
+```json
+{
+  "name": "Genie Coordinator",
+  "tag": "GENIE",
+  "profile_type": "genie",
+  "llmConfigurationId": "llm-config-789",
+  "genieConfig": {
+    "slaveProfiles": [
+      "profile-teradata-001",
+      "profile-postgres-002",
+      "profile-rag-003"
+    ]
+  }
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Profile created successfully",
+  "profile": {
+    "id": "profile-new-123",
+    "name": "My SQL Agent",
+    "tag": "MYSQL",
+    ...
+  }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Invalid request body or duplicate tag
+- `401 Unauthorized` - Authentication required
+- `500 Internal Server Error` - Server error creating profile
+
+---
+
+#### 3.10.4. Update Profile
+
+Update an existing profile configuration.
+
+**Endpoint:** `PUT /api/v1/profiles/{profile_id}`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Request Body:** Same structure as Create Profile (all fields optional except those being updated)
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Profile updated successfully",
+  "profile": {
+    "id": "profile-550e8400-e29b",
+    "name": "Updated Profile Name",
+    ...
+  }
+}
+```
+
+---
+
+#### 3.10.5. Delete Profile
+
+Delete a profile configuration. Cannot delete the default profile.
+
+**Endpoint:** `DELETE /api/v1/profiles/{profile_id}`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Profile deleted successfully"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Cannot delete default profile
+- `404 Not Found` - Profile not found
+- `401 Unauthorized` - Authentication required
+
+---
+
+#### 3.10.6. Set Default Profile
+
+Mark a profile as the default profile for the user account. New sessions will automatically use this profile.
+
+**Endpoint:** `POST /api/v1/profiles/{profile_id}/set_default`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Default profile set successfully",
+  "profile_id": "profile-550e8400-e29b"
+}
+```
+
+---
+
+#### 3.10.7. Activate Profile
+
+Activate a profile, switching the runtime context to use its configuration. This loads the profile's LLM settings, MCP servers, and classification results. Requires all profile tests to pass.
+
+**Endpoint:** `POST /api/v1/profiles/{profile_id}/activate`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Profile activated successfully",
+  "profile_id": "profile-550e8400-e29b",
+  "details": {
+    "llm_loaded": true,
+    "mcp_loaded": true,
+    "classification_loaded": true
+  }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Profile tests not passed
+- `503 Service Unavailable` - Profile activation failed
+
+---
+
+#### 3.10.8. Test Profile
+
+Test a profile's configuration (LLM connectivity, MCP connectivity).
+
+**Endpoint:** `POST /api/v1/profiles/{profile_id}/test`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "test_results": {
+    "llm_test": {
+      "passed": true,
+      "message": "LLM connection successful",
+      "latency_ms": 245
+    },
+    "mcp_test": {
+      "passed": true,
+      "message": "MCP server connected successfully",
+      "tools_count": 12,
+      "prompts_count": 3,
+      "resources_count": 5
+    }
+  }
+}
+```
+
+---
+
+#### 3.10.9. Get Profile Resources
+
+Get filtered tools, prompts, and resources for a specific profile. Used for real-time resource panel updates when @TAG is typed.
+
+**Endpoint:** `GET /api/v1/profiles/{profile_id}/resources`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response for tool_enabled profiles:**
+```json
+{
+  "status": "success",
+  "tools": {
+    "base_readQuery": {
+      "name": "base_readQuery",
+      "description": "Execute SELECT queries on the database",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "The SQL query to execute"
+          }
+        },
+        "required": ["sql"]
+      }
+    }
+  },
+  "prompts": {
+    "system_prompt": {
+      "name": "system_prompt",
+      "description": "System initialization prompt"
+    }
+  },
+  "profile_type": "tool_enabled",
+  "profile_tag": "TDAT"
+}
+```
+
+**Success Response for genie profiles:**
+```json
+{
+  "status": "success",
+  "tools": {},
+  "prompts": {},
+  "profile_type": "genie",
+  "profile_tag": "GENIE",
+  "slave_profiles": [
+    {
+      "id": "profile-teradata-001",
+      "name": "Teradata Agent",
+      "tag": "TDAT"
+    },
+    {
+      "id": "profile-rag-002",
+      "name": "RAG Knowledge Base",
+      "tag": "RAG"
+    }
+  ]
+}
+```
+
+**Note:** Genie profiles don't have direct tools/prompts - they coordinate slave profiles. The response includes information about coordinated profiles instead.
+
+---
+
+#### 3.10.10. Get Profile Classification
+
+Get the classification results for a specific profile. Returns the cached classification structure (tools, prompts, resources).
+
+**Endpoint:** `GET /api/v1/profiles/{profile_id}/classification`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "profile_id": "profile-550e8400-e29b",
+  "classification_mode": "llm",
+  "classification_results": {
+    "tools": {
+      "query_execution": ["base_readQuery", "base_writeQuery"],
+      "schema_inspection": ["base_listDatabases", "base_listTables"],
+      "data_operations": ["base_createTable", "base_dropTable"]
+    },
+    "prompts": {
+      "system": ["system_prompt"],
+      "examples": ["query_examples"]
+    },
+    "resources": {
+      "documentation": ["teradata_docs", "sql_reference"]
+    }
+  }
+}
+```
+
+---
+
+#### 3.10.11. Reclassify Profile
+
+Force reclassification of MCP resources for a specific profile. Clears cached results and re-runs classification using the profile's LLM and mode.
+
+**Endpoint:** `POST /api/v1/profiles/{profile_id}/reclassify`
+**Authentication:** Required (JWT or access token)
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Request Body (Optional):**
+```json
+{
+  "classification_mode": "llm"
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Profile reclassified successfully",
+  "profile_id": "profile-550e8400-e29b",
+  "classification_results": {
+    "tools": { ... },
+    "prompts": { ... },
+    "resources": { ... }
+  }
+}
+```
+
+---
+
+#### 3.10.12. Set Active Profiles for Consumption
+
+Set the list of profiles active for consumption (multi-profile coordination). Updates APP_STATE with enabled/disabled profile lists.
+
+**Endpoint:** `POST /api/v1/profiles/set_active_for_consumption`
+**Authentication:** Required (JWT or access token)
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "profile_ids": [
+    "profile-teradata-001",
+    "profile-postgres-002",
+    "profile-rag-003"
+  ]
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Active profiles updated successfully",
+  "active_profile_ids": [
+    "profile-teradata-001",
+    "profile-postgres-002",
+    "profile-rag-003"
+  ]
+}
+```
+
+---
+
+### Profile Override in Query Execution
+
+You can override the default profile for individual queries using the `profile_id` parameter in the query submission endpoint:
+
+```bash
+# Create session (uses default profile)
+SESSION_ID="your-session-id"
+
+# Submit query with profile override
+curl -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "What databases are available?",
+    "profile_id": "profile-teradata-001"
+  }'
+```
+
+**Profile Override Behavior:**
+- Temporary override for single query only
+- Subsequent queries return to default profile
+- Useful for multi-profile workflows
+- Genie profiles automatically coordinate multiple slave profiles
+
+---
+
+### Genie Profile Coordination
+
+Genie profiles provide multi-agent coordination capabilities using LangChain ReAct agents:
+
+**Key Features:**
+- **Intelligent Routing**: Automatically routes queries to appropriate slave profiles
+- **Multi-Profile Consultation**: Can invoke multiple profiles for comprehensive answers
+- **Synthesis**: Combines results from multiple profiles into coherent response
+- **Session Tracking**: Creates slave sessions linked to master session
+- **Visual Hierarchy**: Master/slave session relationships visible in UI
+
+**Genie Profile Structure:**
+```json
+{
+  "profile_type": "genie",
+  "genieConfig": {
+    "slaveProfiles": [
+      "profile-teradata-001",    // SQL queries
+      "profile-rag-002",          // Knowledge base
+      "profile-analytics-003"     // Analytics tools
+    ]
+  }
+}
+```
+
+**Genie Execution Flow:**
+1. User submits query to Genie profile
+2. Genie coordinator analyzes query intent
+3. Routes to appropriate slave profile(s)
+4. Collects responses from invoked profiles
+5. Synthesizes final response
+6. Returns comprehensive answer to user
+
+**Event Notifications:**
+During Genie execution, the following SSE events are emitted:
+- `genie_coordination_start` - Coordination begins
+- `genie_llm_step` - LLM processing step
+- `genie_routing_decision` - Profiles selected
+- `genie_slave_invoked` - Slave profile called
+- `genie_slave_completed` - Slave response received
+- `genie_synthesis_start` - Response synthesis begins
+- `genie_coordination_complete` - Coordination complete
+
+**Database Schema:**
+Genie coordination creates session links tracked in `genie_session_links` table:
+- `parent_session_id` - Master Genie session
+- `slave_session_id` - Slave profile session
+- `slave_profile_id` - Profile used for slave
+- `slave_profile_tag` - Profile tag (e.g., @TDAT)
+- `execution_order` - Order of invocation
+
+---
+### 3.11. Session Analytics and Management
+
+#### 3.11.1. Get Session Analytics
 
 Get comprehensive analytics across all sessions for the execution dashboard.
 
@@ -1341,7 +1915,7 @@ Get comprehensive analytics across all sessions for the execution dashboard.
         }
         ```
 
-#### 3.8.2. Get Sessions List
+#### 3.11.2. Get Sessions List
 
 Get a filtered and sorted list of all sessions.
 
@@ -1378,7 +1952,7 @@ Get a filtered and sorted list of all sessions.
         }
         ```
 
-#### 3.8.3. Get Session Details
+#### 3.11.3. Get Session Details
 
 Get complete details for a specific session including timeline and RAG associations.
 
@@ -1395,7 +1969,8 @@ Get complete details for a specific session including timeline and RAG associati
 
 ---
 
-### 3.9. System Prompts Management
+
+### 3.12. System Prompts Management
 
 The System Prompts API provides endpoints for managing profile-specific prompt mappings. This allows fine-grained control over which prompt versions are used for different functional areas (master system prompts, workflow classification, error recovery, data operations, visualization) on a per-profile basis.
 
@@ -1405,7 +1980,7 @@ The System Prompts API provides endpoints for managing profile-specific prompt m
 - **3-Level Fallback**: Profile-specific → System default → Configuration file defaults
 - **Active Versions**: Mappings always use the active version of the mapped prompt
 
-#### 3.9.1. Get Available Prompts
+#### 3.12.1. Get Available Prompts
 
 Retrieve all available prompts organized by category and subcategory for dropdown population in UI.
 
@@ -1462,7 +2037,7 @@ Retrieve all available prompts organized by category and subcategory for dropdow
 * **Error Response**:
     * **Code**: `500 Internal Server Error`
 
-#### 3.9.2. Get Profile Prompt Mappings
+#### 3.12.2. Get Profile Prompt Mappings
 
 Retrieve all prompt mappings for a specific profile.
 
@@ -1501,7 +2076,7 @@ Retrieve all prompt mappings for a specific profile.
 
 **Note:** Empty subcategories (`{}`) indicate the profile uses system defaults for those areas.
 
-#### 3.9.3. Set Profile Prompt Mappings
+#### 3.12.3. Set Profile Prompt Mappings
 
 Set or update prompt mappings for a profile. Supports single or bulk operations.
 
@@ -1562,7 +2137,7 @@ Set or update prompt mappings for a profile. Supports single or bulk operations.
     * **Code**: `403 Forbidden` - User does not have permission to modify this profile
     * **Code**: `500 Internal Server Error`
 
-#### 3.9.4. Delete Profile Prompt Mappings
+#### 3.12.4. Delete Profile Prompt Mappings
 
 Delete specific prompt mappings or all mappings for a profile (reset to system defaults).
 
