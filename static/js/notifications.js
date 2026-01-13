@@ -3,6 +3,7 @@ import * as UI from './ui.js';
 import * as DOM from './domElements.js';
 import { handleLoadSession } from './handlers/sessionManagement.js?v=3.2';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
+import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
 
 function showRestQueryNotification(message) {
     const notificationContainer = document.createElement('div');
@@ -120,6 +121,10 @@ function _getGenieStepTitle(eventType, payload) {
         }
         case 'genie_coordination_start':
             return 'Coordinating Response';
+        case 'genie_llm_step': {
+            const stepName = payload.step_name || `Step ${payload.step_number || '?'}`;
+            return `🤖 ${stepName}`;
+        }
         case 'genie_routing_decision': {
             const profileCount = payload.selected_profiles?.length || 0;
             return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
@@ -137,6 +142,38 @@ function _getGenieStepTitle(eventType, payload) {
             return 'Synthesizing Response';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordination Complete' : 'Coordination Failed';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Get human-readable step title for conversation agent events.
+ */
+function _getConversationAgentStepTitle(eventType, payload) {
+    switch (eventType) {
+        case 'conversation_agent_start': {
+            const toolCount = payload.available_tools?.length || 0;
+            return `🔧 Using Tools (${toolCount} available)`;
+        }
+        case 'conversation_llm_step': {
+            const stepName = payload.step_name || `Step ${payload.step_number || '?'}`;
+            return `🤖 ${stepName}`;
+        }
+        case 'conversation_tool_invoked':
+            return `Executing ${payload.tool_name || 'tool'}`;
+        case 'conversation_tool_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `${payload.tool_name || 'Tool'}: ${status}${duration}`;
+        }
+        case 'conversation_agent_complete': {
+            const toolCount = payload.tools_used?.length || 0;
+            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s` : '';
+            return payload.success
+                ? `Tools Complete (${toolCount} executed${duration})`
+                : 'Execution Failed';
+        }
         default:
             return eventType;
     }
@@ -332,6 +369,7 @@ export function subscribeToNotifications() {
             case 'genie_start':  // From execution_service.py
             case 'genie_routing':  // From execution_service.py
             case 'genie_coordination_start':
+            case 'genie_llm_step':
             case 'genie_routing_decision':
             case 'genie_slave_invoked':
             case 'genie_slave_progress':
@@ -353,6 +391,54 @@ export function subscribeToNotifications() {
                     details: payload,
                     type: data.type
                 }, data.type === 'genie_coordination_complete', 'genie');
+                break;
+            }
+            // --- Conversation Agent Events (conversation_with_tools profile) ---
+            case 'conversation_agent_start':
+            case 'conversation_llm_step':
+            case 'conversation_tool_invoked':
+            case 'conversation_tool_completed':
+            case 'conversation_agent_complete': {
+                const payload = data.payload || {};
+                // Only handle events for current session
+                if (payload.session_id && payload.session_id !== state.currentSessionId) {
+                    console.log('[ConversationAgent] Ignoring event for different session:', payload.session_id);
+                    break;
+                }
+                // IMPORTANT: Update status window BEFORE calling handler for completion event
+                // because handler sets isConversationAgentActive=false which would trigger a reset
+                const agentStepTitle = _getConversationAgentStepTitle(data.type, payload);
+                UI.updateStatusWindow({
+                    step: agentStepTitle,
+                    details: payload,
+                    type: data.type
+                }, data.type === 'conversation_agent_complete', 'conversation_agent');
+                // Delegate to conversation agent handler for state tracking (after UI update)
+                handleConversationAgentEvent(data.type, payload);
+                break;
+            }
+            // --- Knowledge Retrieval for Conversation Agent ---
+            case 'knowledge_retrieval': {
+                const payload = data.payload || {};
+                const collections = payload.collections || [];
+                const documentCount = payload.document_count || 0;
+                console.log('[knowledge_retrieval] Received direct notification:', { collections, documentCount });
+
+                // Update knowledge indicator
+                UI.blinkKnowledgeDot();
+                UI.updateKnowledgeIndicator(collections, documentCount);
+
+                // Store the knowledge event for potential replay
+                state.pendingKnowledgeRetrievalEvent = payload;
+
+                // Always update status window for knowledge retrieval
+                // For conversation_with_tools, this arrives BEFORE conversation_agent_start
+                // so we render it directly without checking isConversationAgentActive
+                UI.updateStatusWindow({
+                    step: `📚 Knowledge Retrieved (${documentCount} chunks)`,
+                    details: payload,
+                    type: 'knowledge_retrieval'
+                }, false, 'knowledge_retrieval');
                 break;
             }
             default:

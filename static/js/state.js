@@ -68,6 +68,10 @@ export const state = {
     // --- MODIFICATION START: Session Load Tracking ---
     sessionLoaded: false, // Tracks if session history is loaded in UI (vs just ID in state)
     // --- MODIFICATION END ---
+    // --- Execution State Tracking ---
+    isConversationAgentActive: false, // Tracks if conversation agent is executing
+    isGenieCoordinationActive: false, // Tracks if genie coordination is executing
+    pendingKnowledgeRetrievalEvent: null, // Stores knowledge retrieval event for conversation_with_tools
 };
 
 // Functions to modify state can be added here if needed, e.g.:

@@ -20,6 +20,7 @@ import {
     renameActiveSession
 } from './handlers/sessionManagement.js?v=3.2';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
+import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -69,6 +70,38 @@ function _getGenieStepTitle(eventType, payload) {
             return 'Synthesizing Response';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordination Complete' : 'Coordination Failed';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Get human-readable step title for conversation agent events.
+ */
+function _getConversationAgentStepTitle(eventType, payload) {
+    switch (eventType) {
+        case 'conversation_agent_start': {
+            const toolCount = payload.available_tools?.length || 0;
+            return `🔧 Using Tools (${toolCount} available)`;
+        }
+        case 'conversation_tool_invoked':
+            return `Executing ${payload.tool_name || 'tool'}`;
+        case 'conversation_tool_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `${payload.tool_name || 'Tool'}: ${status}${duration}`;
+        }
+        case 'conversation_agent_complete': {
+            const toolCount = payload.tools_used?.length || 0;
+            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s` : '';
+            return payload.success
+                ? `Tools Complete (${toolCount} executed${duration})`
+                : 'Execution Failed';
+        }
+        case 'knowledge_retrieval': {
+            const docCount = payload.document_count || 0;
+            return `📚 Knowledge Retrieved (${docCount} chunks)`;
+        }
         default:
             return eventType;
     }
@@ -185,6 +218,47 @@ async function processStream(responseBody) {
                             } else {
                                 console.log('[session_model_update] Not updating Live Status - wrong session');
                             }
+                        } else if (eventData.type === 'conversation_agent_start' ||
+                                   eventData.type === 'conversation_tool_invoked' ||
+                                   eventData.type === 'conversation_tool_completed' ||
+                                   eventData.type === 'conversation_agent_complete') {
+                            // Handle conversation agent events during execution stream
+                            const payload = eventData.payload || {};
+                            // Only handle events for current session
+                            if (payload.session_id && payload.session_id !== state.currentSessionId) {
+                                console.log('[ConversationAgent] Ignoring event for different session:', payload.session_id);
+                            } else {
+                                // IMPORTANT: Update status window BEFORE calling handler for completion event
+                                // because handler sets isConversationAgentActive=false which would trigger a reset
+                                const stepTitle = _getConversationAgentStepTitle(eventData.type, payload);
+                                UI.updateStatusWindow({
+                                    step: stepTitle,
+                                    details: payload,
+                                    type: eventData.type
+                                }, eventData.type === 'conversation_agent_complete', 'conversation_agent');
+                                // Delegate to conversation agent handler for state tracking (after UI update)
+                                handleConversationAgentEvent(eventData.type, payload);
+                            }
+                        } else if (eventData.type === 'knowledge_retrieval') {
+                            // Handle knowledge retrieval events during execution
+                            const payload = eventData.payload || {};
+                            const collections = payload.collections || [];
+                            const documentCount = payload.document_count || 0;
+                            console.log('[knowledge_retrieval] Received during execution:', { collections, documentCount });
+                            UI.blinkKnowledgeDot();
+                            UI.updateKnowledgeIndicator(collections, documentCount);
+
+                            // Store the knowledge event for potential replay
+                            state.pendingKnowledgeRetrievalEvent = payload;
+
+                            // Always update status window for knowledge retrieval
+                            // For conversation_with_tools, this arrives BEFORE conversation_agent_start
+                            // so we render it directly without checking isConversationAgentActive
+                            UI.updateStatusWindow({
+                                step: `📚 Knowledge Retrieved (${documentCount} chunks)`,
+                                details: payload,
+                                type: 'knowledge_retrieval'
+                            }, false, 'knowledge_retrieval');
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full RAG case data
@@ -607,6 +681,76 @@ async function handleReloadPlanClick(element) {
             }
 
             // Hide replay buttons for genie profiles (no plan to replay)
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.add('hidden');
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.add('hidden');
+            }
+
+            return; // Exit early
+        }
+
+        // Check if this is a conversation_with_tools profile (LangChain agent)
+        if (turnData && turnData.profile_type === 'conversation_with_tools') {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // If we have detailed conversation_agent_events, replay them for full UI experience
+            const agentEvents = turnData.conversation_agent_events || [];
+
+            // Also check for knowledge retrieval event (renders first)
+            if (turnData.knowledge_retrieval_event) {
+                const knowledgeEventData = {
+                    step: _getConversationAgentStepTitle('knowledge_retrieval', turnData.knowledge_retrieval_event),
+                    details: turnData.knowledge_retrieval_event,
+                    type: 'knowledge_retrieval'
+                };
+                UI.renderConversationAgentStepForReload(knowledgeEventData, DOM.statusWindowContent, false);
+            }
+
+            if (agentEvents.length > 0) {
+                // Update status title to indicate historical view
+                const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+                if (statusTitle) {
+                    statusTitle.textContent = `Conversation Agent - Turn ${turnId}`;
+                }
+
+                // Replay each event using the same renderer as live execution
+                agentEvents.forEach((event, index) => {
+                    const isFinal = index === agentEvents.length - 1;
+                    // Build eventData in the format expected by _renderConversationAgentStep
+                    const eventData = {
+                        step: _getConversationAgentStepTitle(event.type, event.payload),
+                        details: event.payload,
+                        type: event.type
+                    };
+                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                });
+            } else {
+                // Fallback: Show simple summary if no detailed events available
+                const agentInfoEl = document.createElement('div');
+                agentInfoEl.className = 'p-4 status-step info';
+
+                const toolsUsed = turnData.tools_used || [];
+                const toolCount = toolsUsed.length;
+                const success = turnData.status !== 'failed';
+
+                agentInfoEl.innerHTML = `
+                    <h4 class="font-bold text-sm text-white mb-2">🔧 Conversation Agent</h4>
+                    <p class="text-xs text-gray-300 mb-2">${success ? 'Agent execution completed successfully.' : 'Agent execution encountered errors.'}</p>
+                    <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Tools Used:</strong> ${toolCount}</p>
+                        ${toolsUsed.length > 0 ? `<p class="text-xs text-gray-400"><strong>Tools:</strong> ${toolsUsed.join(', ')}</p>` : ''}
+                        ${turnData.knowledge_accessed ? `<p class="text-xs text-gray-400"><strong>Knowledge:</strong> ${turnData.knowledge_accessed.length} collection(s) accessed</p>` : ''}
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> Detailed event history not available for this turn.</p>
+                    </div>
+                `;
+                DOM.statusWindowContent.appendChild(agentInfoEl);
+            }
+
+            // Hide replay buttons for conversation_with_tools (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
                 DOM.headerReplayPlannedButton.classList.add('hidden');
             }

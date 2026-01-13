@@ -128,6 +128,13 @@ def get_prompt_for_category(
                 "coordinator_prompt": "GENIE_COORDINATOR_PROMPT"
             })
             return genie_defaults.get(subcategory)
+        elif category == "conversation_execution":
+            # Conversation execution prompts with hardcoded defaults
+            conversation_defaults = defaults.get('conversation_execution', {
+                "conversation": "CONVERSATION_EXECUTION",
+                "conversation_with_tools": "CONVERSATION_WITH_TOOLS_EXECUTION"
+            })
+            return conversation_defaults.get(subcategory)
 
         return None
         
@@ -156,7 +163,8 @@ def get_all_mappings_for_profile(
         "error_recovery": {},
         "data_operations": {},
         "visualization": {},
-        "genie_coordination": {}
+        "genie_coordination": {},
+        "conversation_execution": {}
     }
     
     # Load all default mappings first
@@ -193,6 +201,16 @@ def get_all_mappings_for_profile(
     for subcategory in genie_defaults.keys():
         result["genie_coordination"][subcategory] = get_prompt_for_category(
             profile_id, "genie_coordination", subcategory, db_path
+        )
+
+    # Conversation execution (with hardcoded defaults if not in config)
+    conversation_defaults = defaults.get('conversation_execution', {
+        "conversation": "CONVERSATION_EXECUTION",
+        "conversation_with_tools": "CONVERSATION_WITH_TOOLS_EXECUTION"
+    })
+    for subcategory in conversation_defaults.keys():
+        result["conversation_execution"][subcategory] = get_prompt_for_category(
+            profile_id, "conversation_execution", subcategory, db_path
         )
 
     return result

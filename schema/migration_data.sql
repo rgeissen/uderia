@@ -114,6 +114,18 @@ INSERT INTO prompts (name, display_name, content, description, class_id, role, p
     1
 ),
 (
+    'CONVERSATION_WITH_TOOLS_EXECUTION',
+    'Conversation with Tools Execution Prompt',
+    '[MIGRATE]',
+    'Conversational AI with LangChain tool-calling agent for MCP tool integration',
+    2,
+    'system',
+    NULL,
+    1,
+    1,
+    1
+),
+(
     'RAG_FOCUSED_EXECUTION',
     'RAG Focused Execution Prompt',
     '[MIGRATE]',

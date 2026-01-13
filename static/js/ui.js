@@ -806,7 +806,10 @@ function _renderToolIntentDetails(details) {
 
 /**
  * Render Genie coordination events in the status window.
- * Uses purple-themed styling consistent with inline cards.
+ * Uses purple-themed styling for world-class visual feedback.
+ *
+ * ARCHITECTURE: All coordination visualization is in Live Status window only.
+ * The chat pane stays clean with just Q&A - this panel shows the "how".
  */
 function _renderGenieStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
@@ -833,121 +836,273 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
         stepEl.classList.add(details?.success ? 'genie-slave-success' : 'genie-slave-error');
     }
 
-    // Step header
-    const stepTitle = document.createElement('h4');
-    stepTitle.className = 'font-bold text-sm mb-2';
-    stepTitle.textContent = step || 'Genie Event';
-    stepEl.appendChild(stepTitle);
+    // Step header with icon
+    const stepHeader = document.createElement('div');
+    stepHeader.className = 'flex items-center gap-2 mb-2';
+
+    // Add appropriate icon based on event type
+    let iconSvg = '';
+    switch (type) {
+        case 'genie_start':
+        case 'genie_routing':
+        case 'genie_coordination_start':
+            iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
+            break;
+        case 'genie_llm_step':
+            iconSvg = '<svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
+            break;
+        case 'genie_routing_decision':
+            iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>';
+            break;
+        case 'genie_slave_invoked':
+            iconSvg = '<svg class="w-4 h-4 text-orange-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+            break;
+        case 'genie_slave_progress':
+            iconSvg = '<svg class="w-4 h-4 text-yellow-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-4h2v2h-2zm1-10c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>';
+            break;
+        case 'genie_slave_completed':
+            iconSvg = details?.success
+                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+            break;
+        case 'genie_synthesis_start':
+            iconSvg = '<svg class="w-4 h-4 text-blue-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l4.59-4.58L18 11l-6 6z"/></svg>';
+            break;
+        case 'genie_coordination_complete':
+            iconSvg = details?.success
+                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
+                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
+            break;
+        default:
+            iconSvg = '<svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
+    }
+
+    stepHeader.innerHTML = `
+        ${iconSvg}
+        <h4 class="font-bold text-sm text-white">${step || 'Genie Coordination'}</h4>
+    `;
+    stepEl.appendChild(stepHeader);
 
     // Render details based on event type
     if (details && typeof details === 'object') {
         const detailsEl = document.createElement('div');
-        detailsEl.className = 'text-xs text-gray-300';
+        detailsEl.className = 'text-xs';
 
         switch (type) {
-            case 'genie_coordination_start':
+            case 'genie_start':
+            case 'genie_routing':
+            case 'genie_coordination_start': {
                 const profileCount = details.slave_profiles?.length || 0;
                 detailsEl.innerHTML = `
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Profiles:</span>
-                        <span class="genie-detail-value">${profileCount} available</span>
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-purple-300">@GENIE</code></div>
+                        <div class="status-kv-key">Experts</div>
+                        <div class="status-kv-value">${profileCount} available</div>
                     </div>
-                    ${details.slave_profiles ? `
-                        <div class="genie-profile-tags mt-1">
-                            ${details.slave_profiles.map(p => `<span class="genie-tag">@${p.tag}</span>`).join(' ')}
-                        </div>
-                    ` : ''}
-                `;
-                break;
-
-            case 'genie_routing_decision':
-                detailsEl.innerHTML = `
-                    <div class="genie-decision-text">${details.decision_text || 'Routing decision made'}</div>
-                    ${details.selected_profiles ? `
-                        <div class="genie-profile-tags mt-1">
-                            ${details.selected_profiles.map(tag => `<span class="genie-tag selected">@${tag}</span>`).join(' ')}
-                        </div>
-                    ` : ''}
-                `;
-                break;
-
-            case 'genie_slave_invoked':
-            case 'genie_slave_progress':
-                detailsEl.innerHTML = `
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Profile:</span>
-                        <span class="genie-tag">@${details.profile_tag || 'UNKNOWN'}</span>
-                    </div>
-                    ${details.message ? `<div class="genie-status-message mt-1">${details.message}</div>` : ''}
-                    ${details.slave_session_id ? `<div class="genie-session-id mt-1 text-gray-500">Session: ${details.slave_session_id.slice(0, 8)}...</div>` : ''}
-                `;
-                break;
-
-            case 'genie_slave_completed':
-                const slaveStatus = details.success ? '✓ Completed' : '✗ Failed';
-                const slaveDuration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(1)}s` : '';
-                detailsEl.innerHTML = `
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Profile:</span>
-                        <span class="genie-tag">@${details.profile_tag || 'UNKNOWN'}</span>
-                    </div>
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Status:</span>
-                        <span class="genie-detail-value ${details.success ? 'text-green-400' : 'text-red-400'}">${slaveStatus}</span>
-                    </div>
-                    ${slaveDuration ? `
-                        <div class="genie-detail-row">
-                            <span class="genie-detail-label">Duration:</span>
-                            <span class="genie-detail-value">${slaveDuration}</span>
-                        </div>
-                    ` : ''}
-                    ${details.result_preview ? `
+                    ${details.slave_profiles && details.slave_profiles.length > 0 ? `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-gray-400 hover:text-white">Preview</summary>
-                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300">${details.result_preview}</div>
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Profiles</summary>
+                            <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
+                                ${details.slave_profiles.map(p => `<span class="genie-tag">@${p.tag}</span>`).join('')}
+                            </div>
                         </details>
                     ` : ''}
                 `;
                 break;
+            }
 
-            case 'genie_synthesis_start':
-                const consulted = details.profiles_consulted?.length || 0;
+            case 'genie_llm_step': {
+                const stepNumber = details.step_number || '?';
+                const stepName = details.step_name || `Step ${stepNumber}`;
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+
                 detailsEl.innerHTML = `
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Profiles consulted:</span>
-                        <span class="genie-detail-value">${consulted}</span>
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Step</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-green-400">✓ Complete</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
                     </div>
                 `;
                 break;
+            }
 
-            case 'genie_coordination_complete':
-                const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(1)}s` : '';
-                const usedCount = details.profiles_used?.length || 0;
+            case 'genie_routing_decision': {
+                const selectedCount = details.selected_profiles?.length || 0;
                 detailsEl.innerHTML = `
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Status:</span>
-                        <span class="genie-detail-value ${details.success ? 'text-green-400' : 'text-red-400'}">${details.success ? 'Success' : 'Failed'}</span>
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Decision</div>
+                        <div class="status-kv-value">${selectedCount} profile${selectedCount > 1 ? 's' : ''} selected</div>
                     </div>
-                    <div class="genie-detail-row">
-                        <span class="genie-detail-label">Profiles used:</span>
-                        <span class="genie-detail-value">${usedCount}</span>
-                    </div>
-                    ${totalDuration ? `
-                        <div class="genie-detail-row">
-                            <span class="genie-detail-label">Total time:</span>
-                            <span class="genie-detail-value">${totalDuration}</span>
+                    ${details.decision_text ? `
+                        <div class="mt-2 p-2 bg-purple-900/30 rounded border border-purple-500/30 text-gray-300 text-xs">
+                            ${details.decision_text}
                         </div>
                     ` : ''}
-                    ${details.error ? `<div class="genie-error-message mt-1 text-red-400">${details.error}</div>` : ''}
+                    ${details.selected_profiles && details.selected_profiles.length > 0 ? `
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            ${details.selected_profiles.map(tag => `<span class="genie-tag selected">@${tag}</span>`).join('')}
+                        </div>
+                    ` : ''}
                 `;
                 break;
+            }
+
+            case 'genie_slave_invoked': {
+                const profileTag = details.profile_tag || 'UNKNOWN';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-orange-300">@${profileTag}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-orange-400">⟳ Processing...</div>
+                    </div>
+                    ${details.slave_session_id ? `
+                        <div class="mt-1 text-gray-500 text-xs">Session: ${details.slave_session_id.slice(0, 8)}...</div>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_slave_progress': {
+                const profileTag = details.profile_tag || 'UNKNOWN';
+                const message = details.message || 'Working...';
+                const progress = details.progress_pct !== undefined ? details.progress_pct : null;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-yellow-300">@${profileTag}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-yellow-400">${message}</div>
+                        ${progress !== null ? `
+                            <div class="status-kv-key">Progress</div>
+                            <div class="status-kv-value">${progress}%</div>
+                        ` : ''}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'genie_slave_completed': {
+                const profileTag = details.profile_tag || 'UNKNOWN';
+                const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const statusText = details.success ? '✓ Success' : '✗ Failed';
+                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+
+                let resultHtml = '';
+                if (details.result_preview) {
+                    resultHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Result Preview</summary>
+                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap">${details.result_preview}</div>
+                        </details>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-green-300' : 'text-red-300'}">@${profileTag}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                    ${resultHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'genie_synthesis_start': {
+                const consulted = details.profiles_consulted?.length || 0;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-blue-400">Synthesizing response...</div>
+                        <div class="status-kv-key">Profiles</div>
+                        <div class="status-kv-value">${consulted} consulted</div>
+                    </div>
+                    ${details.profiles_consulted && details.profiles_consulted.length > 0 ? `
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            ${details.profiles_consulted.map(tag => `<span class="genie-tag completed">@${tag}</span>`).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_coordination_complete': {
+                const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const usedCount = details.profiles_used?.length || 0;
+                const statusText = details.success ? '✓ Complete' : '✗ Failed';
+                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+
+                // Token counts (if available)
+                const inputTokens = details.input_tokens;
+                const outputTokens = details.output_tokens;
+                let tokensHtml = '';
+                if (inputTokens !== undefined && outputTokens !== undefined && (inputTokens > 0 || outputTokens > 0)) {
+                    tokensHtml = `
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    `;
+                }
+
+                let profilesHtml = '';
+                if (details.profiles_used && details.profiles_used.length > 0) {
+                    profilesHtml = `
+                        <div class="mt-2">
+                            <div class="text-gray-500 text-xs mb-1">Profiles Consulted:</div>
+                            <div class="genie-profile-tags flex flex-wrap gap-1">
+                                ${details.profiles_used.map(tag => `<span class="genie-tag completed">@${tag}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass} font-semibold">${statusText}</div>
+                        <div class="status-kv-key">Profiles Used</div>
+                        <div class="status-kv-value">${usedCount}</div>
+                        <div class="status-kv-key">Total Time</div>
+                        <div class="status-kv-value">${totalDuration}</div>
+                        ${tokensHtml}
+                    </div>
+                    ${profilesHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
 
             default:
-                // Fallback: show raw JSON
+                // Generic fallback with JSON display
                 try {
-                    detailsEl.innerHTML = `<pre class="p-2 bg-gray-900/50 rounded overflow-auto">${JSON.stringify(details, null, 2)}</pre>`;
+                    const jsonStr = JSON.stringify(details, null, 2);
+                    detailsEl.innerHTML = `
+                        <details>
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Details</summary>
+                            <pre class="mt-1 p-2 bg-gray-900/50 rounded text-gray-400 overflow-x-auto">${jsonStr}</pre>
+                        </details>
+                    `;
                 } catch (e) {
-                    detailsEl.textContent = '[Could not display details]';
+                    detailsEl.innerHTML = `<span class="text-gray-500">[Unable to display details]</span>`;
                 }
         }
 
@@ -955,6 +1110,9 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
     }
 
     parentContainer.appendChild(stepEl);
+
+    // Auto-scroll to latest step
+    stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     // Reset genie coordination state on completion
     if (type === 'genie_coordination_complete') {
@@ -968,6 +1126,345 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
  */
 export function renderGenieStepForReload(eventData, parentContainer, isFinal = false) {
     _renderGenieStep(eventData, parentContainer, isFinal);
+}
+
+/**
+ * Render Conversation Agent tool execution events in the status window.
+ * Uses blue/cyan-themed styling to differentiate from genie (purple) events.
+ */
+/**
+ * Render conversation agent events in the Live Status window.
+ * Uses consistent styling with tool_enabled profiles for a world-class UX.
+ *
+ * ARCHITECTURE: All tool execution visualization is in Live Status window only.
+ * The chat pane stays clean with just Q&A - this panel shows the "how".
+ */
+function _renderConversationAgentStep(eventData, parentContainer, isFinal = false) {
+    const { step, details, type } = eventData;
+
+    // Mark previous active step as completed
+    const lastStep = parentContainer.querySelector('.status-step.active');
+    if (lastStep) {
+        lastStep.classList.remove('active');
+        lastStep.classList.add('completed');
+    }
+
+    const stepEl = document.createElement('div');
+    stepEl.className = 'status-step p-3 rounded-md mb-2 conversation-agent-status-step';
+    if (isFinal) {
+        stepEl.classList.add('completed');
+    } else {
+        stepEl.classList.add('active');
+    }
+
+    // Color-code based on event type
+    if (type === 'conversation_agent_complete') {
+        stepEl.classList.add(details?.success ? 'conv-agent-success' : 'conv-agent-error');
+    } else if (type === 'conversation_tool_completed') {
+        stepEl.classList.add(details?.success ? 'conv-tool-success' : 'conv-tool-error');
+    }
+
+    // Step header with icon
+    const stepHeader = document.createElement('div');
+    stepHeader.className = 'flex items-center gap-2 mb-2';
+
+    // Add appropriate icon based on event type
+    let iconSvg = '';
+    switch (type) {
+        case 'conversation_agent_start':
+            iconSvg = '<svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>';
+            break;
+        case 'conversation_llm_step':
+            iconSvg = '<svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
+            break;
+        case 'conversation_tool_invoked':
+            iconSvg = '<svg class="w-4 h-4 text-orange-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+            break;
+        case 'conversation_tool_completed':
+            iconSvg = details?.success
+                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+            break;
+        case 'conversation_agent_complete':
+            iconSvg = details?.success
+                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
+                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
+            break;
+        case 'knowledge_retrieval':
+            iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.01 4.5-4.5-2.01-4.5-4.5-4.5zm0 7c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zM3 21.5h8v-2H3v2zm0-3.5h8v-2H3v2z"/></svg>';
+            break;
+        default:
+            iconSvg = '<svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
+    }
+
+    stepHeader.innerHTML = `
+        ${iconSvg}
+        <h4 class="font-bold text-sm text-white">${step || 'Tool Execution'}</h4>
+    `;
+    stepEl.appendChild(stepHeader);
+
+    // Render details based on event type
+    if (details && typeof details === 'object') {
+        const detailsEl = document.createElement('div');
+        detailsEl.className = 'text-xs';
+
+        switch (type) {
+            case 'conversation_agent_start': {
+                const toolCount = details.available_tools?.length || 0;
+                const profileTag = details.profile_tag || 'CONV';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-blue-300">@${profileTag}</code></div>
+                        <div class="status-kv-key">Tools</div>
+                        <div class="status-kv-value">${toolCount} available</div>
+                    </div>
+                    ${details.available_tools && details.available_tools.length > 0 ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Tools</summary>
+                            <div class="conv-agent-tool-tags mt-2 flex flex-wrap gap-1">
+                                ${details.available_tools.map(t => `<span class="conv-agent-tag">${t}</span>`).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'conversation_llm_step': {
+                const stepNumber = details.step_number || '?';
+                const stepName = details.step_name || `Step ${stepNumber}`;
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Step</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-green-400">✓ Complete</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'conversation_tool_invoked': {
+                const toolName = details.tool_name || 'Unknown';
+                let argsHtml = '';
+                if (details.arguments) {
+                    try {
+                        // Clean up runtime noise from arguments if present
+                        let cleanArgs = details.arguments;
+                        if (typeof cleanArgs === 'object' && cleanArgs.runtime) {
+                            // Extract just the meaningful parts, not the runtime internals
+                            cleanArgs = { ...cleanArgs };
+                            delete cleanArgs.runtime;
+                        }
+                        const argsStr = typeof cleanArgs === 'string' ? cleanArgs : JSON.stringify(cleanArgs, null, 2);
+                        if (argsStr && argsStr !== '{}') {
+                            argsHtml = `
+                                <details class="mt-2">
+                                    <summary class="cursor-pointer text-gray-400 hover:text-white">View Arguments</summary>
+                                    <div class="mt-1 p-2 bg-gray-900/50 rounded status-text-block whitespace-pre-wrap text-gray-300">${argsStr}</div>
+                                </details>
+                            `;
+                        }
+                    } catch (e) {
+                        argsHtml = '';
+                    }
+                }
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code text-orange-300">${toolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-orange-400">⟳ Executing...</div>
+                    </div>
+                    ${argsHtml}
+                `;
+                break;
+            }
+
+            case 'conversation_tool_completed': {
+                const toolName = details.tool_name || 'Unknown';
+                const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const statusText = details.success ? '✓ Success' : '✗ Failed';
+                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+
+                let resultHtml = '';
+                if (details.result_preview) {
+                    resultHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Result Preview</summary>
+                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap">${details.result_preview}</div>
+                        </details>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-green-300' : 'text-red-300'}">${toolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                    ${resultHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'conversation_agent_complete': {
+                const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const toolCount = details.tools_used?.length || 0;
+                const statusText = details.success ? '✓ Complete' : '✗ Failed';
+                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+
+                // Token counts (if available)
+                const inputTokens = details.input_tokens;
+                const outputTokens = details.output_tokens;
+                let tokensHtml = '';
+                if (inputTokens !== undefined && outputTokens !== undefined && (inputTokens > 0 || outputTokens > 0)) {
+                    tokensHtml = `
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    `;
+                }
+
+                let toolsHtml = '';
+                if (details.tools_used && details.tools_used.length > 0) {
+                    toolsHtml = `
+                        <div class="mt-2">
+                            <div class="text-gray-500 text-xs mb-1">Tools Executed:</div>
+                            <div class="conv-agent-tool-tags flex flex-wrap gap-1">
+                                ${details.tools_used.map(t => `<span class="conv-agent-tag completed">${t}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass} font-semibold">${statusText}</div>
+                        <div class="status-kv-key">Tools Used</div>
+                        <div class="status-kv-value">${toolCount}</div>
+                        <div class="status-kv-key">Total Time</div>
+                        <div class="status-kv-value">${totalDuration}</div>
+                        ${tokensHtml}
+                    </div>
+                    ${toolsHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'knowledge_retrieval': {
+                // Knowledge retrieval event - use purple/violet theme for consistency
+                stepEl.classList.remove('conversation-agent-status-step');
+                stepEl.classList.add('knowledge-retrieval-status-step');
+
+                const collections = details.collections || [];
+                const chunks = details.chunks || [];
+                const documentCount = details.document_count || chunks.length;
+
+                let chunksHtml = '';
+                if (chunks.length > 0) {
+                    const chunkPreviews = chunks.slice(0, 3).map((chunk, idx) => {
+                        const similarity = chunk.similarity_score ? (chunk.similarity_score * 100).toFixed(1) : 'N/A';
+                        const content = chunk.content || '';
+                        const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
+                        const source = chunk.source || 'Unknown';
+                        return `
+                            <div class="p-2 bg-gray-900/50 rounded border border-purple-500/30">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="text-purple-400 font-semibold">Chunk ${idx + 1}</span>
+                                    <span class="text-gray-500">Relevance: ${similarity}%</span>
+                                </div>
+                                <div class="text-gray-500 text-xs mb-1">Source: ${source}</div>
+                                <div class="text-gray-300 whitespace-pre-wrap">${preview}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    chunksHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">
+                                View Retrieved Chunks (${chunks.length})
+                            </summary>
+                            <div class="space-y-2 mt-2">${chunkPreviews}</div>
+                            ${chunks.length > 3 ? `<div class="text-gray-500 mt-1">+${chunks.length - 3} more chunks</div>` : ''}
+                        </details>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collections.length > 0 ? collections.join(', ') : 'N/A'}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${documentCount} chunks retrieved</div>
+                    </div>
+                    ${chunksHtml}
+                `;
+
+                // Trigger the knowledge indicator
+                if (collections.length > 0) {
+                    blinkKnowledgeDot();
+                    updateKnowledgeIndicator(collections, documentCount);
+                }
+                break;
+            }
+
+            default:
+                // Generic fallback with JSON display
+                try {
+                    const jsonStr = JSON.stringify(details, null, 2);
+                    detailsEl.innerHTML = `
+                        <details>
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Details</summary>
+                            <pre class="mt-1 p-2 bg-gray-900/50 rounded text-gray-400 overflow-x-auto">${jsonStr}</pre>
+                        </details>
+                    `;
+                } catch (e) {
+                    detailsEl.innerHTML = `<span class="text-gray-500">[Unable to display details]</span>`;
+                }
+        }
+
+        stepEl.appendChild(detailsEl);
+    }
+
+    parentContainer.appendChild(stepEl);
+
+    // Auto-scroll to latest step
+    stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Reset conversation agent state on completion
+    if (type === 'conversation_agent_complete') {
+        state.isConversationAgentActive = false;
+    }
+}
+
+/**
+ * Exported wrapper for rendering conversation agent events during session reload.
+ * Uses the same rendering logic as live execution for consistent UX.
+ */
+export function renderConversationAgentStepForReload(eventData, parentContainer, isFinal = false) {
+    _renderConversationAgentStep(eventData, parentContainer, isFinal);
 }
 
 function _renderStandardStep(eventData, parentContainer, isFinal = false) {
@@ -1194,9 +1691,43 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
+    } else if (source === 'conversation_agent') {
+        // Conversation agent tool execution events
+        if (!state.isConversationAgentActive) {
+            // Only reset if there's no pending knowledge retrieval event
+            // (knowledge_retrieval arrives before conversation_agent_start for conversation_with_tools)
+            if (!state.pendingKnowledgeRetrievalEvent) {
+                resetStatusWindowForNewTask();
+            }
+            state.isConversationAgentActive = true;
+            state.isRestTaskActive = false;
+            state.isGenieCoordinationActive = false;
+            updateTaskIdDisplay(null);
+        }
+        statusTitle.textContent = 'Live Status - Tool Execution';
+        // Render conversation agent events using custom renderer
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'knowledge_retrieval') {
+        // Knowledge retrieval events (arrives before conversation_agent_start for conversation_with_tools)
+        // Reset the status window if no agent execution is active yet
+        if (!state.isConversationAgentActive && !state.isGenieCoordinationActive && !state.isRestTaskActive) {
+            resetStatusWindowForNewTask();
+            updateTaskIdDisplay(null);
+        }
+        statusTitle.textContent = 'Live Status - Knowledge Retrieval';
+        // Render knowledge retrieval using the conversation agent renderer (same styling)
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, false);
+        if (!state.isMouseOverStatus) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
     } else if (source === 'interactive') {
-        // If the last active view was a REST task, reset the view
-        if (state.isRestTaskActive || state.isGenieCoordinationActive) {
+        // If the last active view was a REST task or agent execution, reset the view
+        if (state.isRestTaskActive || state.isGenieCoordinationActive || state.isConversationAgentActive) {
             resetStatusWindowForNewTask();
             updateTaskIdDisplay(null); // Hide the task ID
         }

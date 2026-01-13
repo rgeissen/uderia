@@ -3121,6 +3121,298 @@ button.bg-gray-700.px-2:hover {
 }
 
 /* ============================================================================
+   CONVERSATION AGENT CARDS - Inline Tool Progress Display
+   ============================================================================ */
+
+/* Main agent card container - Similar styling to Genie but with tool-focused colors */
+.conversation-agent-card {
+    margin: 1rem 0;
+    padding: 1.25rem;
+    border-radius: 1rem;
+    background: linear-gradient(135deg,
+                                rgba(59, 130, 246, 0.08) 0%,
+                                rgba(30, 41, 59, 0.95) 50%,
+                                rgba(99, 102, 241, 0.05) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+    animation: agentCardSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes agentCardSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.conversation-agent-card.completed {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg,
+                                rgba(16, 185, 129, 0.05) 0%,
+                                rgba(30, 41, 59, 0.95) 100%);
+}
+
+.conversation-agent-card.error {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: linear-gradient(135deg,
+                                rgba(239, 68, 68, 0.05) 0%,
+                                rgba(30, 41, 59, 0.95) 100%);
+}
+
+/* Agent Card Header */
+.agent-card-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.agent-icon-wrapper {
+    flex-shrink: 0;
+}
+
+.agent-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #4f46e5 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 1.25rem;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.agent-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.agent-icon.pulsing {
+    animation: agentIconPulse 2s ease-in-out infinite;
+}
+
+@keyframes agentIconPulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+    }
+}
+
+.agent-icon.completed {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.agent-icon.error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.agent-header-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.agent-title {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.agent-subtitle {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+.agent-timer {
+    flex-shrink: 0;
+}
+
+.agent-timer .timer-value {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #60a5fa;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Tools Grid */
+.agent-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.agent-tool-card {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.75rem;
+    padding: 0.875rem;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.agent-tool-card.active {
+    border-color: rgba(241, 95, 34, 0.4);
+    background: rgba(241, 95, 34, 0.08);
+}
+
+.agent-tool-card.completed {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.agent-tool-card.error {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+/* Tool Status Indicator */
+.tool-status-indicator {
+    position: absolute;
+    top: 0.875rem;
+    right: 0.875rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #64748b;
+}
+
+.tool-status-indicator.active {
+    background: #F15F22;
+    animation: toolStatusPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes toolStatusPulse {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(241, 95, 34, 0.4);
+    }
+    50% {
+        opacity: 0.7;
+        box-shadow: 0 0 0 4px rgba(241, 95, 34, 0);
+    }
+}
+
+.tool-status-indicator.completed {
+    background: #10b981;
+    animation: none;
+}
+
+.tool-status-indicator.error {
+    background: #ef4444;
+    animation: none;
+}
+
+/* Tool Info */
+.tool-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+    padding-right: 1.5rem;
+}
+
+.tool-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.tool-args {
+    font-size: 0.75rem;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Tool Progress Bar */
+.tool-progress-bar {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 1.5px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.tool-progress-bar .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #6366f1);
+    border-radius: 1.5px;
+    transition: width 0.3s ease;
+}
+
+.agent-tool-card.completed .progress-fill {
+    background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.agent-tool-card.error .progress-fill {
+    background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+/* Tool Status Text */
+.tool-status-text {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.agent-tool-card.completed .tool-status-text {
+    color: #10b981;
+}
+
+.agent-tool-card.error .tool-status-text {
+    color: #ef4444;
+}
+
+/* Agent Synthesis */
+.agent-synthesis {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 0.5rem;
+    color: #93c5fd;
+    font-size: 0.875rem;
+}
+
+.agent-synthesis .synthesis-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(59, 130, 246, 0.3);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Fade-in animation helper */
+.conversation-agent-card .fade-in {
+    animation: agentFadeIn 0.3s ease;
+}
+
+@keyframes agentFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ============================================================================
    SPLIT VIEW - Genie Slave Session Side-by-Side Display
    ============================================================================ */
 
@@ -3490,6 +3782,18 @@ button.bg-gray-700.px-2:hover {
     color: #e9d5ff;
 }
 
+.genie-tag.completed {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+}
+
+.genie-tag.error {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
 /* Genie Decision Text */
 .genie-decision-text {
     color: #a5b4fc;
@@ -3514,4 +3818,130 @@ button.bg-gray-700.px-2:hover {
 .genie-error-message {
     font-size: 0.75rem;
     padding: 0.25rem 0;
+}
+
+/* ============================================================================
+   CONVERSATION AGENT STATUS WINDOW - Status panel styling for tool execution
+   ============================================================================ */
+
+.conversation-agent-status-step {
+    background: rgba(59, 130, 246, 0.1);
+    border-left: 3px solid #3b82f6;
+}
+
+.conversation-agent-status-step.active {
+    border-left-color: #60a5fa;
+    animation: convAgentStepPulse 2s ease-in-out infinite;
+}
+
+.conversation-agent-status-step.completed {
+    opacity: 0.8;
+    border-left-color: #6b7280;
+}
+
+.conversation-agent-status-step.conv-agent-success {
+    background: rgba(16, 185, 129, 0.1);
+    border-left-color: #10b981;
+}
+
+.conversation-agent-status-step.conv-agent-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: #ef4444;
+}
+
+.conversation-agent-status-step.conv-tool-success {
+    background: rgba(59, 130, 246, 0.15);
+    border-left-color: #10b981;
+}
+
+.conversation-agent-status-step.conv-tool-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: #ef4444;
+}
+
+@keyframes convAgentStepPulse {
+    0%, 100% { background: rgba(59, 130, 246, 0.1); }
+    50% { background: rgba(59, 130, 246, 0.2); }
+}
+
+/* Conversation Agent Detail Rows */
+.conv-agent-detail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.conv-agent-detail-label {
+    color: #9ca3af;
+    font-size: 0.75rem;
+    min-width: 80px;
+}
+
+.conv-agent-detail-value {
+    color: #e2e8f0;
+    font-size: 0.75rem;
+}
+
+/* Conversation Agent Tool Tags in Status Window */
+.conv-agent-tool-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.conv-agent-tag {
+    display: inline-block;
+    padding: 0.125rem 0.375rem;
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #93c5fd;
+}
+
+.conv-agent-tag.executing {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fcd34d;
+    animation: convAgentTagPulse 1.5s ease-in-out infinite;
+}
+
+.conv-agent-tag.completed {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+}
+
+.conv-agent-tag.error {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+@keyframes convAgentTagPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Knowledge Retrieval Status Step (within conversation agent) */
+.knowledge-retrieval-status-step {
+    background: rgba(139, 92, 246, 0.1);
+    border-left: 3px solid #8b5cf6;
+}
+
+.knowledge-retrieval-status-step.active {
+    border-left-color: #a855f7;
+    animation: knowledgeStepPulse 2s ease-in-out infinite;
+}
+
+.knowledge-retrieval-status-step.completed {
+    opacity: 0.8;
+    border-left-color: #6b7280;
+}
+
+@keyframes knowledgeStepPulse {
+    0%, 100% { background: rgba(139, 92, 246, 0.1); }
+    50% { background: rgba(139, 92, 246, 0.2); }
 }

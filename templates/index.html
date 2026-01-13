@@ -5344,9 +5344,9 @@
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="text-sm font-bold text-gray-100 group-hover:text-white">Conversation</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">Simple</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">Flexible</span>
                                 </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Direct conversation without tools</p>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Conversational AI with optional tools & knowledge</p>
                             </div>
                         </label>
 
@@ -5384,6 +5384,42 @@
                                     <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Beta</span>
                                 </div>
                                 <p class="text-xs text-gray-400 group-hover:text-gray-300">Orchestrates other profiles</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Conversation Capabilities Section (only shown for llm_only profile type) -->
+                <div id="conversation-capabilities-section" class="bg-gradient-to-br from-green-900/10 to-blue-900/10 rounded-xl p-6 border border-green-700/20" style="display: none;">
+                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Conversation Capabilities
+                    </h4>
+                    <p class="text-xs text-gray-400 mb-4">Enhance your conversation profile with additional capabilities</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
+                            <input type="checkbox" id="profile-modal-use-mcp-tools"
+                                   class="mt-0.5 w-5 h-5 rounded text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900 bg-gray-700 border-gray-600">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use MCP Tools</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">LangChain</span>
+                                </div>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Enable tool calling via MCP server integration</p>
+                            </div>
+                        </label>
+
+                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                            <input type="checkbox" id="profile-modal-use-knowledge"
+                                   class="mt-0.5 w-5 h-5 rounded text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900 bg-gray-700 border-gray-600">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use Knowledge Collections</span>
+                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">RAG</span>
+                                </div>
+                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Inject context from knowledge repositories</p>
                             </div>
                         </label>
                     </div>
@@ -5517,7 +5553,7 @@
                                  class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg 
                                         hover:border-gray-700/60 transition-all custom-scrollbar space-y-1"></div>
                         </div>
-                        <div>
+                        <div id="profile-modal-prompts-section">
                             <div class="flex items-center justify-between mb-2">
                                 <label class="block text-xs font-semibold text-green-300 uppercase tracking-wide flex items-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5525,14 +5561,14 @@
                                     </svg>
                                     Available Prompts
                                 </label>
-                                <button id="profile-modal-prompts-uncheck-all" 
-                                        class="px-2 py-1 text-xs text-gray-400 hover:text-gray-200 
+                                <button id="profile-modal-prompts-uncheck-all"
+                                        class="px-2 py-1 text-xs text-gray-400 hover:text-gray-200
                                                hover:bg-gray-700/40 rounded transition-all font-medium">
                                     Uncheck All
                                 </button>
                             </div>
-                            <div id="profile-modal-prompts" 
-                                 class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg 
+                            <div id="profile-modal-prompts"
+                                 class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg
                                         hover:border-gray-700/60 transition-all custom-scrollbar space-y-1"></div>
                         </div>
                     </div>

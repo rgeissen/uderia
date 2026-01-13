@@ -1150,6 +1150,19 @@ class ConfigManager:
                     if slave.get("profile_type") == "genie":
                         return False, "Genie profiles cannot have other genie profiles as slaves"
 
+        elif profile_type == "llm_only":
+            # llm_only profiles have optional capabilities via flags
+            llm_config_id = profile.get("llmConfigurationId")
+            if not llm_config_id:
+                return False, "Conversation profiles require an LLM configuration"
+
+            # If useMcpTools is enabled, MCP server is required
+            use_mcp_tools = profile.get("useMcpTools", False)
+            if use_mcp_tools:
+                mcp_server_id = profile.get("mcpServerId")
+                if not mcp_server_id:
+                    return False, "Conversation profiles with MCP Tools enabled require an MCP server configuration"
+
         return True, ""
 
     def get_default_profile_id(self, user_uuid: Optional[str] = None) -> Optional[str]:

@@ -214,3 +214,35 @@ class ProfilePromptResolver:
     def get_genie_coordinator_prompt(self) -> Optional[str]:
         """Get GENIE_COORDINATOR_PROMPT via profile mapping."""
         return self.get_genie_coordination_prompt("coordinator_prompt")
+
+    def get_conversation_execution_prompt(self, subcategory: str = "conversation") -> Optional[str]:
+        """
+        Get conversation execution prompt.
+
+        Args:
+            subcategory: Conversation type (e.g., "conversation", "conversation_with_tools")
+
+        Returns:
+            Prompt content as string
+        """
+        prompt_name = self._resolve_prompt_name("conversation_execution", subcategory)
+        return self._load_prompt_content(prompt_name)
+
+    def get_conversation_with_tools_prompt(self) -> Optional[str]:
+        """Get CONVERSATION_WITH_TOOLS_EXECUTION via profile mapping."""
+        return self.get_conversation_execution_prompt("conversation_with_tools")
+
+    def get_prompt(self, prompt_name: str) -> Optional[str]:
+        """
+        Direct prompt lookup by name (bypasses profile mapping).
+
+        This is a convenience method for prompts that don't use the category/subcategory
+        mapping system, or for direct fallback lookups.
+
+        Args:
+            prompt_name: The database prompt name (e.g., 'CONVERSATION_WITH_TOOLS_EXECUTION')
+
+        Returns:
+            Prompt content as string, or None if not found
+        """
+        return self._load_prompt_content(prompt_name)

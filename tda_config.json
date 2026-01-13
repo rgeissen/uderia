@@ -399,7 +399,8 @@
       "g2plot_guidelines": "G2PLOT_GUIDELINES"
     },
     "conversation_execution": {
-      "conversation_execution": "CONVERSATION_EXECUTION"
+      "conversation": "CONVERSATION_EXECUTION",
+      "conversation_with_tools": "CONVERSATION_WITH_TOOLS_EXECUTION"
     },
     "rag_focused_execution": {
       "rag_focused_execution": "RAG_FOCUSED_EXECUTION"

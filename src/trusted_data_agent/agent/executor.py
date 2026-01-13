@@ -857,6 +857,376 @@ class PlanExecutor:
         profile_type = self._detect_profile_type()
         return profile_type == "rag_focused"
 
+    async def _execute_conversation_with_tools(self):
+        """
+        Execute using LangChain tool-calling agent for conversation_with_tools profile.
+
+        This provides a simpler, more conversational approach to MCP tool usage
+        compared to the multi-phase planner/executor architecture.
+
+        Yields SSE events for:
+        - Agent initialization
+        - Tool invocations
+        - Tool completions
+        - Final response
+
+        Also saves turn data to workflow_history for session reload.
+        """
+        from trusted_data_agent.llm.langchain_adapter import (
+            create_langchain_llm,
+            load_mcp_tools_for_langchain
+        )
+        from trusted_data_agent.agent.conversation_agent import ConversationAgentExecutor
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+
+        # Get profile configuration
+        profile_config = self._get_profile_config()
+        profile_tag = profile_config.get("tag", "CONV")
+        mcp_server_id = profile_config.get("mcpServerId")
+        llm_config_id = profile_config.get("llmConfigurationId")
+
+        if not mcp_server_id:
+            error_msg = "conversation_with_tools profile requires an MCP server configuration."
+            app_logger.error(error_msg)
+            yield self._format_sse({"step": "Error", "error": error_msg}, "error")
+            return
+
+        if not llm_config_id:
+            error_msg = "conversation_with_tools profile requires an LLM configuration."
+            app_logger.error(error_msg)
+            yield self._format_sse({"step": "Error", "error": error_msg}, "error")
+            return
+
+        try:
+            # Create LangChain LLM instance
+            app_logger.info(f"Creating LangChain LLM for config {llm_config_id}")
+            llm_instance = create_langchain_llm(llm_config_id, self.user_uuid)
+
+            # Load MCP tools filtered by profile
+            app_logger.info(f"Loading MCP tools from server {mcp_server_id}")
+            mcp_tools = await load_mcp_tools_for_langchain(
+                mcp_server_id=mcp_server_id,
+                profile_id=self.active_profile_id,
+                user_uuid=self.user_uuid
+            )
+            app_logger.info(f"Loaded {len(mcp_tools)} tools for agent")
+
+            # Get conversation history for context
+            # NOTE: The current user query has already been added to chat_object by execution_service.py
+            # before this code runs. We need to exclude it to avoid duplication since the agent
+            # will add it again as the current query.
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            conversation_history = []
+            if session_data:
+                chat_object = session_data.get("chat_object", [])
+                app_logger.debug(f"[ConvAgent] chat_object has {len(chat_object)} messages")
+
+                # Take last N messages for context, excluding the current query
+                # We need to exclude ALL instances of the current query from the end of history
+                history_messages = chat_object[-11:]  # Get one extra to check
+
+                # Debug: Log what we're comparing
+                if history_messages:
+                    last_msg = history_messages[-1]
+                    last_content = last_msg.get("content", "")
+                    app_logger.debug(f"[ConvAgent] Last message role: {last_msg.get('role')}")
+                    app_logger.debug(f"[ConvAgent] Last message content (first 100 chars): {last_content[:100] if last_content else 'EMPTY'}")
+                    app_logger.debug(f"[ConvAgent] Current query (first 100 chars): {self.original_user_input[:100] if self.original_user_input else 'EMPTY'}")
+                    app_logger.debug(f"[ConvAgent] Contents match: {last_content == self.original_user_input}")
+                    app_logger.debug(f"[ConvAgent] Contents match (stripped): {last_content.strip() == self.original_user_input.strip() if last_content and self.original_user_input else False}")
+
+                # Use stripped comparison to handle whitespace differences
+                original_input_stripped = self.original_user_input.strip() if self.original_user_input else ""
+
+                # Remove current query from history if present (compare stripped to handle whitespace)
+                if history_messages and history_messages[-1].get("role") == "user":
+                    last_content = history_messages[-1].get("content", "").strip()
+                    if last_content == original_input_stripped:
+                        # Exclude the current query from history (it will be added by the agent)
+                        app_logger.info(f"[ConvAgent] Excluding current query from history")
+                        history_messages = history_messages[:-1]
+                    else:
+                        app_logger.info(f"[ConvAgent] Last message differs from current query, keeping in history")
+
+                # Take only the last 10 after exclusion
+                # Filter out Google's initial priming messages that shouldn't be in conversation history
+                priming_messages = {
+                    "You are a helpful assistant.",
+                    "Understood."
+                }
+
+                app_logger.info(f"[ConvAgent] Processing {len(history_messages[-10:])} messages for history")
+                for msg in history_messages[-10:]:
+                    msg_content = msg.get("content", "")
+
+                    # Skip Google priming messages
+                    if msg_content in priming_messages:
+                        app_logger.info(f"[ConvAgent] Skipping priming message: {msg_content[:50]}")
+                        continue
+
+                    # Normalize role: 'model' (Google) → 'assistant' (standard)
+                    msg_role = msg.get("role", "user")
+                    original_role = msg_role
+                    if msg_role == "model":
+                        msg_role = "assistant"
+                    app_logger.info(f"[ConvAgent] Adding to history: role={msg_role} (original: {original_role}), content first 50 chars: {msg_content[:50]}")
+                    conversation_history.append({
+                        "role": msg_role,
+                        "content": msg_content
+                    })
+
+                app_logger.info(f"[ConvAgent] Built conversation history with {len(conversation_history)} messages")
+
+            # --- KNOWLEDGE RETRIEVAL FOR CONVERSATION WITH TOOLS ---
+            # Check if knowledge collections are enabled for this profile
+            knowledge_config = profile_config.get("knowledgeConfig", {})
+            knowledge_enabled = knowledge_config.get("enabled", False)
+            knowledge_context_str = ""
+            knowledge_accessed = []
+            knowledge_chunks = []
+            knowledge_retrieval_event_data = None
+
+            if knowledge_enabled and self.rag_retriever:
+                app_logger.info("🔍 Knowledge retrieval enabled for conversation_with_tools profile")
+
+                try:
+                    knowledge_collections = knowledge_config.get("collections", [])
+                    max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+                    min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+                    max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+
+                    if knowledge_collections:
+                        from trusted_data_agent.agent.rag_access_context import RAGAccessContext
+                        rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
+
+                        all_results = self.rag_retriever.retrieve_examples(
+                            query=self.original_user_input,
+                            k=max_docs * len(knowledge_collections),
+                            min_score=min_relevance,
+                            allowed_collection_ids=set([c["id"] for c in knowledge_collections]),
+                            rag_context=rag_context,
+                            repository_type="knowledge"
+                        )
+
+                        if all_results:
+                            # Apply reranking if configured
+                            reranked_results = all_results
+                            for coll_config in knowledge_collections:
+                                if coll_config.get("reranking", False):
+                                    coll_results = [r for r in all_results
+                                                  if r.get("metadata", {}).get("collection_id") == coll_config["id"]]
+                                    if coll_results and self.llm_handler:
+                                        reranked = await self._rerank_knowledge_with_llm(
+                                            query=self.original_user_input,
+                                            documents=coll_results,
+                                            max_docs=max_docs
+                                        )
+                                        reranked_results = [r for r in reranked_results
+                                                          if r.get("metadata", {}).get("collection_id") != coll_config["id"]]
+                                        reranked_results.extend(reranked)
+
+                            # Limit total documents
+                            final_results = reranked_results[:max_docs]
+
+                            # Enrich documents with collection_name
+                            for doc in final_results:
+                                if not doc.get("collection_name"):
+                                    coll_id = doc.get("collection_id")
+                                    if coll_id:
+                                        coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                                        if coll_meta:
+                                            doc["collection_name"] = coll_meta.get("name", "Unknown")
+
+                            # Format knowledge context for agent
+                            knowledge_context_str = self._format_knowledge_for_prompt(final_results, max_tokens)
+
+                            # Build detailed event data for Live Status panel
+                            collection_names = set()
+                            for doc in final_results:
+                                collection_name = doc.get("collection_name", "Unknown")
+                                collection_names.add(collection_name)
+                                doc_metadata = doc.get("metadata", {})
+
+                                knowledge_chunks.append({
+                                    "source": doc_metadata.get("source", "Unknown"),
+                                    "content": doc.get("content", ""),
+                                    "similarity_score": doc.get("similarity_score", 0),
+                                    "document_id": doc.get("document_id"),
+                                    "chunk_index": doc.get("chunk_index", 0)
+                                })
+
+                            knowledge_accessed = list(collection_names)
+
+                            # Store event data for SSE emission and turn summary
+                            knowledge_retrieval_event_data = {
+                                "collections": list(collection_names),
+                                "document_count": len(final_results),
+                                "chunks": knowledge_chunks
+                            }
+
+                            # Emit SSE event for Live Status panel
+                            yield self._format_sse({
+                                "type": "knowledge_retrieval",
+                                "payload": knowledge_retrieval_event_data
+                            }, event="notification")
+
+                            app_logger.info(f"📚 Retrieved {len(final_results)} knowledge documents from {len(collection_names)} collection(s)")
+
+                except Exception as e:
+                    app_logger.error(f"Error during knowledge retrieval for conversation_with_tools: {e}", exc_info=True)
+                    # Continue without knowledge (graceful degradation)
+            # --- END KNOWLEDGE RETRIEVAL ---
+
+            # Create and execute agent with real-time SSE event handler
+            # Pass self.event_handler for immediate SSE streaming during execution
+            agent = ConversationAgentExecutor(
+                profile=profile_config,
+                user_uuid=self.user_uuid,
+                session_id=self.session_id,
+                llm_instance=llm_instance,
+                mcp_tools=mcp_tools,
+                async_event_handler=self.event_handler,  # Real-time SSE via asyncio.create_task()
+                max_iterations=5,
+                conversation_history=conversation_history,
+                knowledge_context=knowledge_context_str if knowledge_enabled else None
+            )
+
+            # Execute agent (events are emitted in real-time via async_event_handler)
+            result = await agent.execute(self.original_user_input)
+
+            # Note: Events are now emitted in real-time via asyncio.create_task() in the agent
+            # The collected_events in result are used for session storage/replay only
+
+            # Extract result data
+            response_text = result.get("response", "")
+            tools_used = result.get("tools_used", [])
+            success = result.get("success", False)
+            duration_ms = result.get("duration_ms", 0)
+            input_tokens = result.get("input_tokens", 0)
+            output_tokens = result.get("output_tokens", 0)
+
+            # Update turn token counters
+            self.turn_input_tokens += input_tokens
+            self.turn_output_tokens += output_tokens
+
+            # Update session token counters
+            await session_manager.update_token_count(
+                self.user_uuid,
+                self.session_id,
+                input_tokens,
+                output_tokens
+            )
+
+            # Emit token update event
+            updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+            if updated_session:
+                yield self._format_sse({
+                    "statement_input": input_tokens,
+                    "statement_output": output_tokens,
+                    "total_input": updated_session.get("input_tokens", 0),
+                    "total_output": updated_session.get("output_tokens", 0),
+                    "call_id": str(uuid.uuid4())
+                }, "token_update")
+
+            # Format the response using OutputFormatter's markdown renderer
+            # This ensures consistent formatting with other profile types
+            formatter_kwargs = {
+                "llm_response_text": response_text,  # Triggers markdown rendering
+                "collected_data": [],  # No structured data from conversation agent
+                "original_user_input": self.original_user_input,
+                "active_prompt_name": None
+            }
+            formatter = OutputFormatter(**formatter_kwargs)
+            final_html, tts_payload = formatter.render()
+
+            # Add assistant message to conversation history (with HTML for display)
+            await session_manager.add_message_to_histories(
+                user_uuid=self.user_uuid,
+                session_id=self.session_id,
+                role='assistant',
+                content=response_text,  # Clean text for LLM consumption
+                html_content=final_html,  # Formatted HTML for UI display
+                profile_tag=profile_tag
+            )
+
+            # Update session metadata
+            await session_manager.update_models_used(
+                self.user_uuid,
+                self.session_id,
+                self.current_provider,
+                self.current_model,
+                profile_tag
+            )
+
+            # Generate session name if first turn
+            if self.current_turn_number == 1:
+                new_name = await self._generate_session_name(self.original_user_input)
+                if new_name and new_name != "New Chat":
+                    await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                    yield self._format_sse({
+                        "type": "session_name_update",
+                        "payload": {
+                            "session_id": self.session_id,
+                            "name": new_name
+                        }
+                    }, event="notification")
+
+            # Emit final answer with formatted HTML
+            yield self._format_sse({
+                "step": "Finished",
+                "final_answer": final_html,  # Send formatted HTML
+                "final_answer_text": response_text,  # Also include clean text
+                "turn_id": self.current_turn_number,
+                "tts_payload": tts_payload
+            }, "final_answer")
+
+            # Save turn data to workflow_history for session reload
+            turn_summary = {
+                "turn": self.current_turn_number,
+                "user_query": self.original_user_input,
+                "final_summary_text": response_text,  # Clean text for LLM context
+                "final_summary_html": final_html,  # Formatted HTML for session reload
+                "status": "success" if success else "failed",
+                "execution_trace": [],
+                "tools_used": tools_used,
+                "conversation_agent_events": result.get("collected_events", []),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "provider": self.current_provider,
+                "model": self.current_model,
+                "profile_tag": profile_tag,
+                "profile_type": "conversation_with_tools",
+                "duration_ms": duration_ms,
+                "session_id": self.session_id,
+                "turn_input_tokens": input_tokens,
+                "turn_output_tokens": output_tokens,
+                # Knowledge retrieval tracking for session reload
+                "knowledge_accessed": knowledge_accessed,
+                "knowledge_retrieval_event": knowledge_retrieval_event_data
+            }
+
+            await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+            app_logger.info(f"✅ conversation_with_tools execution completed: {len(tools_used)} tools used")
+
+        except Exception as e:
+            app_logger.error(f"conversation_with_tools execution error: {e}", exc_info=True)
+            error_msg = f"Agent execution failed: {str(e)}"
+            yield self._format_sse({"step": "Error", "error": error_msg}, "error")
+
+            # Save error turn data
+            turn_summary = {
+                "turn": self.current_turn_number,
+                "user_query": self.original_user_input,
+                "final_summary_text": error_msg,
+                "status": "failed",
+                "error": str(e),
+                "profile_tag": profile_config.get("tag", "CONV"),
+                "profile_type": "conversation_with_tools",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+
     async def _build_user_message_for_conversation(self, knowledge_context: Optional[str] = None) -> str:
         """Build user message for LLM-only direct execution.
 
@@ -1089,7 +1459,11 @@ Response:"""
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH START ---
         # Detect if using LLM-only profile and bypass planner if so
         profile_type = self._detect_profile_type()
-        is_llm_only = (profile_type == "llm_only")
+        # Check if llm_only profile has MCP tools enabled (routes to LangChain agent path instead)
+        profile_config = self._get_profile_config()
+        use_mcp_tools = profile_config.get("useMcpTools", False)
+        # Only pure llm_only (without MCP tools) goes through direct execution
+        is_llm_only = (profile_type == "llm_only" and not use_mcp_tools)
 
         # --- MODIFICATION START: Calculate turn number from workflow_history ---
         # All profile types (llm_only, rag_focused, tool_enabled) use workflow_history for consistency
@@ -1423,6 +1797,25 @@ The following domain knowledge may be relevant to this conversation:
             app_logger.info("✅ LLM-only execution completed successfully")
             return
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH END ---
+
+        # --- CONVERSATION WITH TOOLS: LANGCHAIN AGENT PATH ---
+        # Check if this is an llm_only profile with useMcpTools enabled
+        # Note: profile_config and use_mcp_tools already computed at beginning of execute()
+        is_conversation_with_tools = (profile_type == "llm_only" and use_mcp_tools)
+        if is_conversation_with_tools:
+            app_logger.info("🔧 Conversation profile with MCP Tools - LangChain agent mode")
+
+            # Emit status event
+            yield self._format_sse({
+                "step": "Initializing Tool Agent",
+                "type": "conversation_agent_init",
+                "metadata": {"profile_type": "llm_only", "useMcpTools": True}
+            })
+
+            async for event in self._execute_conversation_with_tools():
+                yield event
+            return
+        # --- CONVERSATION WITH TOOLS END ---
 
         # --- RAG FOCUSED EXECUTION PATH ---
         is_rag_focused = self._is_rag_focused_profile()

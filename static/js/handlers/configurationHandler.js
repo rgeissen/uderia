@@ -3741,15 +3741,31 @@ async function populateSystemPrompts(modal, profile) {
     let categories = {};
 
     if (profileType === 'llm_only') {
-        // Conversation focused: only conversation_execution category
-        categories = {
-            conversation_execution: {
-                container: conversationPromptsContainer,
-                subcategories: {
-                    'conversation_execution': 'Conversation Execution Prompt'
+        // Conversation focused: check if MCP tools are enabled to determine which prompt category to show
+        const useMcpToolsCheckbox = modal.querySelector('#profile-modal-use-mcp-tools');
+        const useMcpTools = profile?.useMcpTools || useMcpToolsCheckbox?.checked || false;
+
+        if (useMcpTools) {
+            // MCP Tools enabled: show conversation_with_tools prompt option
+            categories = {
+                conversation_execution: {
+                    container: conversationPromptsContainer,
+                    subcategories: {
+                        'conversation_with_tools': 'Conversation with Tools Prompt'
+                    }
                 }
-            }
-        };
+            };
+        } else {
+            // Standard conversation: show basic conversation execution prompt
+            categories = {
+                conversation_execution: {
+                    container: conversationPromptsContainer,
+                    subcategories: {
+                        'conversation': 'Conversation Execution Prompt'
+                    }
+                }
+            };
+        }
     } else if (profileType === 'rag_focused') {
         // RAG focused: only rag_focused_execution category
         categories = {
@@ -4019,29 +4035,66 @@ async function showProfileModal(profileId = null) {
         // Get Genie slave profiles section reference (used in all profile types)
         const genieSlaveProfilesSection = modal.querySelector('#genie-slave-profiles-section');
 
+        // Get Conversation Capabilities section (only for llm_only)
+        const conversationCapabilitiesSection = modal.querySelector('#conversation-capabilities-section');
+        const useMcpToolsCheckbox = modal.querySelector('#profile-modal-use-mcp-tools');
+        const useKnowledgeCheckbox = modal.querySelector('#profile-modal-use-knowledge');
+
+        // Get MCP Prompts section (hidden for llm_only with MCP tools since LangChain doesn't support MCP prompts)
+        const mcpPromptsSection = modal.querySelector('#profile-modal-prompts-section');
+
         if (profileType === 'llm_only') {
-            console.log('[Profile Modal] Hiding MCP-related sections for LLM-only profile');
+            console.log('[Profile Modal] Configuring sections for Conversation profile with capability checkboxes');
             // Hide Genie section
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
 
-            // Hide MCP-related sections only
-            if (mcpServerContainer) mcpServerContainer.style.display = 'none';
-            if (classificationSection) classificationSection.style.display = 'none';
-            if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
-            if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
-            if (plannerSection) plannerSection.style.display = 'none';
+            // SHOW Conversation Capabilities section
+            if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = '';
 
-            // KEEP Intelligence tab visible for knowledge configuration
-            if (intelligenceTab) intelligenceTab.style.display = '';
-            if (intelligenceContent) intelligenceContent.style.display = '';
-            if (intelligenceTab) {
-                intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
+            // Get checkbox states
+            const useMcpTools = useMcpToolsCheckbox?.checked || false;
+            const useKnowledge = useKnowledgeCheckbox?.checked || false;
+
+            console.log('[Profile Modal] Conversation capabilities - MCP Tools:', useMcpTools, 'Knowledge:', useKnowledge);
+
+            // Conditionally show MCP-related sections based on checkbox
+            if (useMcpTools) {
+                if (mcpServerContainer) mcpServerContainer.style.display = '';
+                if (classificationSection) classificationSection.style.display = '';
+                if (mcpResourcesTab) mcpResourcesTab.style.display = '';
+                if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+                // Hide MCP Prompts section - LangChain approach doesn't support MCP prompts
+                if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
+            } else {
+                if (mcpServerContainer) mcpServerContainer.style.display = 'none';
+                if (classificationSection) classificationSection.style.display = 'none';
+                if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
+                if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+                // Show MCP Prompts section (not relevant when MCP tools disabled, but keep consistent)
+                if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
             }
 
-            // SHOW Knowledge Repository sections for LLM-only profiles
-            if (knowledgeSection) knowledgeSection.style.display = '';
-            if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = '';
-            if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = '';
+            // Always hide Planner section for conversation profiles
+            if (plannerSection) plannerSection.style.display = 'none';
+
+            // Conditionally show Intelligence tab based on checkbox
+            if (useKnowledge) {
+                if (intelligenceTab) intelligenceTab.style.display = '';
+                if (intelligenceContent) intelligenceContent.style.display = '';
+                if (intelligenceTab) {
+                    intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
+                }
+                // SHOW Knowledge Repository sections
+                if (knowledgeSection) knowledgeSection.style.display = '';
+                if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = '';
+                if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = '';
+            } else {
+                if (intelligenceTab) intelligenceTab.style.display = 'none';
+                if (intelligenceContent) intelligenceContent.style.display = 'none';
+                if (knowledgeSection) knowledgeSection.style.display = 'none';
+                if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
+                if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
+            }
 
             // KEEP System Prompts tab visible (for enterprise users to configure CONVERSATION_EXECUTION)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
@@ -4052,14 +4105,16 @@ async function showProfileModal(profileId = null) {
             }
         } else if (profileType === 'rag_focused') {
             console.log('[Profile Modal] Configuring sections for RAG-focused profile');
-            // Hide Genie section
+            // Hide Genie section and Conversation Capabilities section
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+            if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
 
             // Hide MCP and planner sections (RAG focused doesn't use tools/planner)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
             if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
             if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+            if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
             if (plannerSection) plannerSection.style.display = 'none';
 
             // KEEP Intelligence tab visible - REQUIRED for RAG focused
@@ -4084,11 +4139,15 @@ async function showProfileModal(profileId = null) {
         } else if (profileType === 'genie') {
             console.log('[Profile Modal] Configuring sections for genie profile');
 
+            // Hide Conversation Capabilities section
+            if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
+
             // Hide MCP-related sections (genie doesn't use MCP directly)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
             if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
             if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+            if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
             if (plannerSection) plannerSection.style.display = 'none';
 
             // Hide knowledge sections (slaves handle their own knowledge)
@@ -4116,14 +4175,16 @@ async function showProfileModal(profileId = null) {
             }
         } else {
             console.log('[Profile Modal] Configuring sections for tool-enabled profile');
-            // Hide Genie section
+            // Hide Genie section and Conversation Capabilities section
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+            if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
 
             // Show MCP sections and planner repos for tool-enabled profiles
             if (mcpServerContainer) mcpServerContainer.style.display = '';
             if (classificationSection) classificationSection.style.display = '';
             if (mcpResourcesTab) mcpResourcesTab.style.display = '';
             if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+            if (mcpPromptsSection) mcpPromptsSection.style.display = '';  // MCP prompts supported in planner/executor
             if (plannerSection) plannerSection.style.display = '';
             if (intelligenceTab) intelligenceTab.style.display = '';
             if (intelligenceContent) intelligenceContent.style.display = '';
@@ -4274,6 +4335,47 @@ async function showProfileModal(profileId = null) {
         });
     }
 
+    // Add event listeners for Conversation Capabilities checkboxes
+    const useMcpToolsCheckbox = modal.querySelector('#profile-modal-use-mcp-tools');
+    const useKnowledgeCheckbox = modal.querySelector('#profile-modal-use-knowledge');
+
+    if (useMcpToolsCheckbox) {
+        useMcpToolsCheckbox.addEventListener('change', async () => {
+            console.log('[Profile Modal] MCP Tools checkbox changed to:', useMcpToolsCheckbox.checked);
+            // Re-run visibility update for llm_only profile type
+            const currentProfileType = modal.querySelector('input[name="profile-type"]:checked')?.value;
+            if (currentProfileType === 'llm_only') {
+                updateSectionVisibility('llm_only');
+                // Update System Prompts tab to show correct prompt option (conversation vs conversation_with_tools)
+                if (Utils.isPrivilegedUser()) {
+                    const tempProfile = { ...profile, profile_type: 'llm_only', useMcpTools: useMcpToolsCheckbox.checked };
+                    await populateSystemPrompts(modal, tempProfile);
+                }
+            }
+        });
+    }
+
+    if (useKnowledgeCheckbox) {
+        useKnowledgeCheckbox.addEventListener('change', () => {
+            console.log('[Profile Modal] Knowledge checkbox changed to:', useKnowledgeCheckbox.checked);
+            // Re-run visibility update for llm_only profile type
+            const currentProfileType = modal.querySelector('input[name="profile-type"]:checked')?.value;
+            if (currentProfileType === 'llm_only') {
+                updateSectionVisibility('llm_only');
+            }
+        });
+    }
+
+    // Set initial checkbox states from profile data (for llm_only profiles)
+    if (profile && profileType === 'llm_only') {
+        if (useMcpToolsCheckbox) {
+            useMcpToolsCheckbox.checked = profile.useMcpTools || false;
+        }
+        if (useKnowledgeCheckbox) {
+            useKnowledgeCheckbox.checked = profile.useKnowledgeCollections || false;
+        }
+    }
+
     // NOW set the checked state (won't trigger old listeners since we cloned)
     if (profileType === 'llm_only') {
         cleanLLMOnlyRadio.checked = true;
@@ -4341,11 +4443,13 @@ async function showProfileModal(profileId = null) {
             allPrompts = Object.values(resources.prompts || {}).flat().map(p => p.name);
 
             // For new profiles (isEdit=false), default all to checked
-            // For existing profiles with empty tools array (not yet classified or inheriting), default all to checked
+            // For existing profiles with tools=null/undefined (truly not yet configured), default all to checked
+            // For existing profiles with tools=[] (explicitly no tools selected), respect that and leave unchecked
             // For existing profiles with populated arrays, respect their saved selections
-            const toolsNotYetConfigured = profile && (!profile.tools || profile.tools.length === 0);
-            const promptsNotYetConfigured = profile && (!profile.prompts || profile.prompts.length === 0);
-            
+            // NOTE: Empty array [] means "explicitly deselected all" - don't treat as "not configured"
+            const toolsNotYetConfigured = profile && (profile.tools === null || profile.tools === undefined);
+            const promptsNotYetConfigured = profile && (profile.prompts === null || profile.prompts === undefined);
+
             toolsContainer.innerHTML = allTools.map(tool => `
                 <label class="flex items-center gap-2 text-sm text-gray-300">
                     <input type="checkbox" value="${escapeHtml(tool)}" ${!isEdit || toolsNotYetConfigured || profile?.tools?.includes(tool) || profile?.tools?.includes('*') ? 'checked' : ''}>
@@ -4856,9 +4960,13 @@ async function showProfileModal(profileId = null) {
         const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
         const maxTokensInput = modal.querySelector('#profile-modal-max-tokens');
 
-        // Build knowledge config - tool_enabled profiles have knowledge DISABLED
-        // Only rag_focused and llm_only profiles have knowledge enabled
-        const knowledgeEnabled = selectedProfileType !== 'tool_enabled';
+        // Check if knowledge is enabled based on profile type and capability checkbox
+        // - rag_focused: always enabled
+        // - llm_only: enabled only if useKnowledgeCollections checkbox is checked
+        // - tool_enabled, genie: disabled
+        const useKnowledgeCheckboxForConfig = modal.querySelector('#profile-modal-use-knowledge');
+        const knowledgeEnabled = selectedProfileType === 'rag_focused' ||
+            (selectedProfileType === 'llm_only' && useKnowledgeCheckboxForConfig?.checked);
         const knowledgeConfig = {
             enabled: knowledgeEnabled,
             collections: knowledgeEnabled ? collectionsWithReranking : []
@@ -4905,6 +5013,12 @@ async function showProfileModal(profileId = null) {
             };
         }
 
+        // Get capability checkbox states for llm_only profiles
+        const useMcpToolsCheckbox = modal.querySelector('#profile-modal-use-mcp-tools');
+        const useKnowledgeCheckbox = modal.querySelector('#profile-modal-use-knowledge');
+        const useMcpTools = selectedProfileType === 'llm_only' && useMcpToolsCheckbox?.checked || false;
+        const useKnowledgeCollections = selectedProfileType === 'llm_only' && useKnowledgeCheckbox?.checked || false;
+
         const profileData = {
             id: profile ? profile.id : `profile-${generateId()}`,
             name,
@@ -4912,14 +5026,17 @@ async function showProfileModal(profileId = null) {
             description,
             profile_type: selectedProfileType,
             llmConfigurationId: llmSelect.value,
-            mcpServerId: selectedProfileType === 'genie' ? null : mcpSelect.value,  // Genie doesn't use MCP directly
+            mcpServerId: (selectedProfileType === 'genie' || (selectedProfileType === 'llm_only' && !useMcpTools)) ? null : mcpSelect.value,
             classification_mode: classificationMode,
             tools: selectedTools.length === allTools.length ? ['*'] : selectedTools,
             prompts: selectedPrompts.length === allPrompts.length ? ['*'] : selectedPrompts,
             ragCollections: selectedRag.length === ragCollections.length ? ['*'] : selectedRag,
             autocompleteCollections: selectedAutocomplete.length === ragCollections.length ? ['*'] : selectedAutocomplete,
             knowledgeConfig: knowledgeConfig,
-            genieConfig: genieConfig  // Will be null for non-genie profiles
+            genieConfig: genieConfig,  // Will be null for non-genie profiles
+            // Conversation capability flags (only relevant for llm_only profiles)
+            useMcpTools: useMcpTools,
+            useKnowledgeCollections: useKnowledgeCollections
         };
         
         // For new profiles: if a default profile exists, enable inherit_classification by default

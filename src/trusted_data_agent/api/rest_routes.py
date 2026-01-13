@@ -6170,9 +6170,13 @@ async def test_profile(profile_id: str):
         else:
             results["llm_connection"] = {"status": "error", "message": "No LLM configuration selected."}
 
-        # Test MCP connection (skip for llm_only profiles)
+        # Test MCP connection based on profile type and capabilities
         profile_type = profile.get("profile_type", "tool_enabled")
+        use_mcp_tools = profile.get("useMcpTools", False)
+        use_knowledge_collections = profile.get("useKnowledgeCollections", False)
+
         if profile_type == "tool_enabled":
+            # Tool-enabled profiles always require MCP
             mcp_server_id = profile.get("mcpServerId")
             if mcp_server_id:
                 mcp_server = next((s for s in config_manager.get_mcp_servers(user_uuid)
@@ -6183,9 +6187,31 @@ async def test_profile(profile_id: str):
                     results["mcp_connection"] = {"status": "error", "message": f"MCP server '{mcp_server_id}' not found."}
             else:
                 results["mcp_connection"] = {"status": "warning", "message": "No MCP server configured."}
+        elif profile_type == "llm_only" and use_mcp_tools:
+            # Conversation profile with MCP tools enabled - test MCP connection
+            mcp_server_id = profile.get("mcpServerId")
+            if mcp_server_id:
+                mcp_server = next((s for s in config_manager.get_mcp_servers(user_uuid)
+                                 if s.get("id") == mcp_server_id), None)
+                if mcp_server:
+                    results["mcp_connection"] = {"status": "success", "message": f"MCP tools enabled via: {mcp_server.get('name', 'Unknown')}."}
+                    # Build capability description
+                    capabilities = ["MCP Tools (LangChain)"]
+                    if use_knowledge_collections:
+                        capabilities.append("Knowledge Collections")
+                    results["profile_type"] = {"status": "success", "message": f"Conversation profile with {' + '.join(capabilities)}."}
+                else:
+                    results["mcp_connection"] = {"status": "error", "message": f"MCP server '{mcp_server_id}' not found."}
+                    results["profile_type"] = {"status": "error", "message": "Conversation profile with MCP Tools requires valid MCP server."}
+            else:
+                results["mcp_connection"] = {"status": "error", "message": "MCP Tools enabled but no MCP server configured."}
+                results["profile_type"] = {"status": "error", "message": "Conversation profile with MCP Tools requires MCP server configuration."}
+        elif profile_type == "llm_only" and use_knowledge_collections:
+            # Conversation profile with only knowledge collections (no MCP tools)
+            results["profile_type"] = {"status": "success", "message": "Conversation profile with Knowledge Collections (RAG-enhanced)."}
         else:
-            # LLM-only profile - MCP not required
-            results["profile_type"] = {"status": "success", "message": "Conversation profile (LLM only - no tools required)."}
+            # Pure LLM-only profile - no MCP, no knowledge
+            results["profile_type"] = {"status": "success", "message": "Conversation profile (pure LLM mode)."}
 
         # Test RAG collections (check database for user-accessible collections)
         # Note: Only show relevant collection types based on profile type
@@ -6234,10 +6260,57 @@ async def test_profile(profile_id: str):
                     parts = []
 
                     if profile_type == "llm_only":
-                        # LLM-only profiles: Only knowledge repositories are relevant
-                        if knowledge_count > 0:
-                            parts.append(f"{knowledge_count} knowledge")
-                        message_prefix = "Knowledge collections available"
+                        # Check if knowledge collections are enabled for this conversation profile
+                        if use_knowledge_collections:
+                            # Knowledge collections enabled - check if any are configured
+                            knowledge_config = profile.get("knowledgeConfig", {})
+                            configured_collections = knowledge_config.get("collections", [])
+
+                            if configured_collections and len(configured_collections) > 0:
+                                # Verify configured collections exist
+                                configured_ids = [c["id"] for c in configured_collections]
+                                accessible = [c for c in user_collections
+                                            if c.get("id") in configured_ids
+                                            and c.get("repository_type") == "knowledge"]
+                                if len(accessible) > 0:
+                                    results["rag_collections"] = {
+                                        "status": "success",
+                                        "message": f"Knowledge collections enabled with {len(accessible)} collection(s) configured."
+                                    }
+                                else:
+                                    results["rag_collections"] = {
+                                        "status": "warning",
+                                        "message": "Knowledge collections enabled but none of the configured collections are accessible."
+                                    }
+                            elif knowledge_count > 0:
+                                results["rag_collections"] = {
+                                    "status": "warning",
+                                    "message": f"Knowledge collections enabled but none selected. {knowledge_count} available."
+                                }
+                            else:
+                                results["rag_collections"] = {
+                                    "status": "warning",
+                                    "message": "Knowledge collections enabled but none available. Create a knowledge repository first."
+                                }
+                        else:
+                            # Knowledge collections not enabled for this conversation profile
+                            if knowledge_count > 0:
+                                results["rag_collections"] = {
+                                    "status": "info",
+                                    "message": f"Knowledge collections disabled. {knowledge_count} available if needed."
+                                }
+                            else:
+                                # Message depends on whether MCP tools are enabled
+                                if use_mcp_tools:
+                                    results["rag_collections"] = {
+                                        "status": "info",
+                                        "message": "Tool-enabled conversation (no knowledge collections)."
+                                    }
+                                else:
+                                    results["rag_collections"] = {
+                                        "status": "info",
+                                        "message": "Pure LLM conversation mode."
+                                    }
                     else:
                         # Tool-enabled profiles: Both planner and knowledge repositories are relevant
                         if planner_count > 0:
@@ -6246,19 +6319,32 @@ async def test_profile(profile_id: str):
                             parts.append(f"{knowledge_count} knowledge")
                         message_prefix = "Intelligence collections available"
 
-                    if parts:
-                        message = f"{message_prefix} ({', '.join(parts)})."
-                        results["rag_collections"] = {"status": "success", "message": message}
-                    elif profile_type == "llm_only":
-                        # LLM-only profile with no knowledge repositories - this is OK, knowledge is optional
-                        results["rag_collections"] = {"status": "info", "message": "Pure LLM mode (no knowledge collections). Knowledge collections are optional for conversation profiles."}
-                    else:
-                        results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
+                        if parts:
+                            message = f"{message_prefix} ({', '.join(parts)})."
+                            results["rag_collections"] = {"status": "success", "message": message}
+                        else:
+                            results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
             else:
                 # No collections at all in database
                 if profile_type == "llm_only":
-                    # LLM-only can work without any collections
-                    results["rag_collections"] = {"status": "info", "message": "Pure LLM mode (no knowledge collections). Knowledge collections are optional for conversation profiles."}
+                    if use_knowledge_collections:
+                        # Knowledge enabled but no collections exist
+                        results["rag_collections"] = {
+                            "status": "warning",
+                            "message": "Knowledge collections enabled but none available. Create a knowledge repository first."
+                        }
+                    else:
+                        # Knowledge not enabled - message depends on MCP tools state
+                        if use_mcp_tools:
+                            results["rag_collections"] = {
+                                "status": "info",
+                                "message": "Tool-enabled conversation (no knowledge collections)."
+                            }
+                        else:
+                            results["rag_collections"] = {
+                                "status": "info",
+                                "message": "Pure LLM conversation mode."
+                            }
                 else:
                     results["rag_collections"] = {"status": "warning", "message": "No intelligence collections found."}
         except Exception as rag_error:

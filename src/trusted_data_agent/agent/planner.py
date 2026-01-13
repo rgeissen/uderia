@@ -99,7 +99,7 @@ class Planner:
 
             # Remove UI-only fields from context to keep it lean
             # These are stored for plan reload UI but not needed for LLM planning
-            ui_only_fields = ["genie_events", "slave_sessions", "provider", "model", "status"]
+            ui_only_fields = ["genie_events", "slave_sessions", "provider", "model", "status", "conversation_agent_events"]
             for field in ui_only_fields:
                 if field in new_turn:
                     del new_turn[field]

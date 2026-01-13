@@ -221,6 +221,11 @@ async function initializeRAGAutoCompletion() {
     }
 
     function hideActiveTagBadge() {
+        // Skip if badge is already hidden (prevents unnecessary API calls on each keystroke)
+        if (activeProfileTag.classList.contains('hidden')) {
+            return;
+        }
+
         activeProfileTag.innerHTML = '';
         activeProfileTag.classList.add('hidden');
         userInput.classList.remove('has-tag');

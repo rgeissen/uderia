@@ -278,6 +278,11 @@ class GenieCoordinator:
         # Collect events during execution for plan reload
         self.collected_events = []
 
+        # Track LLM call count for step naming
+        self.llm_call_count = 0
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+
         # Register event callback for this parent session
         # Wrap the callback to also collect events from slave tools
         if event_callback:
@@ -467,26 +472,80 @@ After gathering information from profiles, provide a synthesized answer that:
                 HumanMessage(content=query)
             ]
 
-            # Invoke the LangGraph agent
-            result = await self.agent_executor.ainvoke({"messages": messages})
+            # Reset LLM call tracking for this execution
+            self.llm_call_count = 0
+            self.total_input_tokens = 0
+            self.total_output_tokens = 0
 
-            # Extract the final output from messages
-            output_messages = result.get("messages", [])
             output = ""
             tools_used = []
 
-            # Parse messages to extract output and tool usage
-            for msg in output_messages:
-                # Check for AI message (final response)
-                if hasattr(msg, 'content') and hasattr(msg, 'type'):
-                    if msg.type == 'ai' and msg.content:
-                        output = msg.content
-                    # Track tool calls
-                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            tool_name = tc.get('name', '') if isinstance(tc, dict) else getattr(tc, 'name', '')
-                            if tool_name and tool_name not in tools_used:
-                                tools_used.append(tool_name)
+            # Use astream_events to track LLM calls with token usage
+            async for event in self.agent_executor.astream_events(
+                {"messages": messages},
+                version="v2"
+            ):
+                event_kind = event.get("event", "")
+                event_name = event.get("name", "")
+                event_data = event.get("data", {})
+
+                # Track token usage from LLM calls
+                # Some providers emit on_llm_end, others emit on_chat_model_end
+                if event_kind in ("on_llm_end", "on_chat_model_end"):
+                    llm_output = event_data.get("output", {})
+
+                    # Extract token usage
+                    input_tokens = 0
+                    output_tokens = 0
+
+                    if hasattr(llm_output, 'usage_metadata') and llm_output.usage_metadata:
+                        usage = llm_output.usage_metadata
+                        if isinstance(usage, dict):
+                            input_tokens = usage.get('input_tokens', 0) or 0
+                            output_tokens = usage.get('output_tokens', 0) or 0
+                        else:
+                            input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                            output_tokens = getattr(usage, 'output_tokens', 0) or 0
+
+                    self.total_input_tokens += input_tokens
+                    self.total_output_tokens += output_tokens
+
+                    # Emit LLM step event
+                    self.llm_call_count += 1
+
+                    # Determine step type based on output
+                    has_tool_calls = hasattr(llm_output, 'tool_calls') and llm_output.tool_calls
+                    if self.llm_call_count == 1:
+                        step_name = "Routing Decision" if has_tool_calls else "Response Generation"
+                    else:
+                        step_name = "Response Synthesis" if not has_tool_calls else f"Routing Decision #{self.llm_call_count}"
+
+                    self._emit_event("genie_llm_step", {
+                        "step_number": self.llm_call_count,
+                        "step_name": step_name,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "session_id": self.parent_session_id
+                    })
+
+                    logger.info(f"[Genie] LLM Step {self.llm_call_count} ({step_name}): {input_tokens} in / {output_tokens} out")
+
+                # Capture final output from chain end
+                elif event_kind == "on_chain_end" and event_name == "LangGraph":
+                    chain_output = event_data.get("output", {})
+                    if isinstance(chain_output, dict) and "messages" in chain_output:
+                        # Extract final AI message for response
+                        for msg in reversed(chain_output["messages"]):
+                            if hasattr(msg, 'content') and hasattr(msg, 'type'):
+                                if msg.type == 'ai' and msg.content:
+                                    output = msg.content
+                                    break
+                                # Track tool calls
+                                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                    for tc in msg.tool_calls:
+                                        tool_name = tc.get('name', '') if isinstance(tc, dict) else getattr(tc, 'name', '')
+                                        if tool_name and tool_name not in tools_used:
+                                            tools_used.append(tool_name)
 
             # Emit synthesis start event
             self._emit_event("genie_synthesis_start", {
@@ -502,7 +561,9 @@ After gathering information from profiles, provide a synthesized answer that:
                 "total_duration_ms": total_duration_ms,
                 "profiles_used": tools_used,
                 "success": True,
-                "session_id": self.parent_session_id
+                "session_id": self.parent_session_id,
+                "input_tokens": self.total_input_tokens,
+                "output_tokens": self.total_output_tokens
             })
 
             logger.info(f"GenieCoordinator completed. Tools used: {tools_used}")
