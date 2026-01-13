@@ -17,6 +17,7 @@
  */
 
 import { state } from '../state.js';
+import * as UI from '../ui.js';
 
 // ============================================================================
 // Genie Coordination State
@@ -75,6 +76,27 @@ export function initGenieCoordination(payload) {
 
     // Mark genie coordination as active in global state
     state.isGenieCoordinationActive = true;
+
+    // Auto-expand slave sessions during execution for visibility
+    setTimeout(() => {
+        const collapseState = UI.getGenieCollapseState();
+        if (collapseState[effectiveSessionId]) {
+            // Sessions are currently collapsed - expand them
+            UI.toggleGenieSlaveVisibility(effectiveSessionId);
+
+            // Add visual feedback - brief highlight on master session
+            const masterItem = document.getElementById(`session-${effectiveSessionId}`);
+            if (masterItem) {
+                masterItem.style.transition = 'box-shadow 0.3s ease';
+                masterItem.style.boxShadow = '0 0 0 3px rgba(241, 95, 34, 0.3)';
+                setTimeout(() => {
+                    masterItem.style.boxShadow = '';
+                }, 800);
+            }
+
+            console.log('[GenieHandler] 🔓 Auto-expanded slave sessions for execution visibility');
+        }
+    }, 100); // Small delay to ensure DOM is ready
 
     console.log('[GenieHandler] Coordination started with', (slave_profiles || []).length, 'available profiles');
 }
@@ -187,8 +209,35 @@ export function completeCoordination(payload) {
         profiles: profiles_used
     });
 
+    // Store the session ID before cleanup
+    const completedSessionId = genieState.activeCoordination;
+
     // Mark genie coordination as inactive
     state.isGenieCoordinationActive = false;
+
+    // Auto-collapse slave sessions after execution for clean session list
+    if (completedSessionId) {
+        // Small delay to ensure session rendering is complete and user sees the completion
+        setTimeout(() => {
+            const collapseState = UI.getGenieCollapseState();
+            if (!collapseState[completedSessionId]) {
+                // Sessions are currently expanded - collapse them
+                UI.toggleGenieSlaveVisibility(completedSessionId);
+
+                // Add visual feedback - brief highlight on master session
+                const masterItem = document.getElementById(`session-${completedSessionId}`);
+                if (masterItem) {
+                    masterItem.style.transition = 'box-shadow 0.3s ease';
+                    masterItem.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.3)'; // Green for completion
+                    setTimeout(() => {
+                        masterItem.style.boxShadow = '';
+                    }, 800);
+                }
+
+                console.log('[GenieHandler] 🔒 Auto-collapsed slave sessions after completion');
+            }
+        }, 1500); // Longer delay so user sees completion before collapse
+    }
 
     // Clear state
     cleanupCoordination();

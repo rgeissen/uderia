@@ -61,22 +61,58 @@ export function toggleGenieSlaveVisibility(parentSessionId) {
     collapseState[parentSessionId] = newState;
     saveGenieCollapseState(collapseState);
 
-    // Find all slave sessions for this parent and toggle visibility
+    // Find all slave sessions for this parent and toggle visibility with smooth animation
     const slaveItems = document.querySelectorAll(`[data-genie-parent-id="${parentSessionId}"]`);
-    slaveItems.forEach(item => {
+
+    slaveItems.forEach((item, index) => {
         if (newState) {
-            item.classList.add('genie-slave-hidden');
+            // Collapsing: fade out and slide up with staggered timing
+            item.style.transition = `opacity 0.2s ease ${index * 0.05}s, max-height 0.3s ease ${index * 0.05}s, margin 0.3s ease ${index * 0.05}s`;
+            item.style.opacity = '0';
+            item.style.maxHeight = '0';
+            item.style.marginTop = '0';
+            item.style.marginBottom = '0';
+            item.style.overflow = 'hidden';
+
+            // After animation completes, hide completely
+            setTimeout(() => {
+                item.classList.add('genie-slave-hidden');
+            }, 300 + (index * 50));
         } else {
+            // Expanding: show first, then fade in and slide down with staggered timing
             item.classList.remove('genie-slave-hidden');
+            item.style.transition = `opacity 0.3s ease ${index * 0.05}s, max-height 0.3s ease ${index * 0.05}s`;
+            item.style.overflow = 'hidden';
+            item.style.maxHeight = '0';
+            item.style.opacity = '0';
+
+            // Trigger reflow to ensure transition works
+            item.offsetHeight;
+
+            // Animate to full visibility
+            requestAnimationFrame(() => {
+                item.style.opacity = '1';
+                item.style.maxHeight = '200px'; // Enough for session item
+                item.style.marginTop = '';
+                item.style.marginBottom = '';
+            });
+
+            // Clean up inline styles after animation
+            setTimeout(() => {
+                item.style.maxHeight = '';
+                item.style.overflow = '';
+                item.style.transition = '';
+            }, 400 + (index * 50));
         }
     });
 
-    // Update the toggle icon in the parent
+    // Update the toggle icon in the parent with rotation animation
     const parentItem = document.getElementById(`session-${parentSessionId}`);
     if (parentItem) {
         const toggleIcon = parentItem.querySelector('.genie-collapse-toggle');
         if (toggleIcon) {
-            toggleIcon.textContent = newState ? '▶' : '▼';
+            // Smooth rotation animation
+            toggleIcon.style.transform = newState ? 'rotate(-90deg)' : 'rotate(0deg)';
         }
     }
 
@@ -182,24 +218,91 @@ export function updateGenieMasterBadges() {
             parentItem.classList.add('genie-master-session');
             parentItem.dataset.isGenieMaster = 'true';
 
-            // Find the name container and add the badge
+            // Find the name container and add the badge with world-class styling
             const nameContainer = parentItem.querySelector('.flex-1.min-w-0');
             if (nameContainer) {
                 const collapseState = getGenieCollapseState();
                 const isCollapsed = collapseState[parentId] || false;
 
                 const genieMasterBadge = document.createElement('span');
-                genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1 mt-0.5 text-xs cursor-pointer';
-                genieMasterBadge.innerHTML = `
-                    <span class="genie-badge-icon">G</span>
-                    <span class="text-[#F15F22]">Genie Master</span>
-                    <span class="genie-collapse-toggle ml-1 text-[#F15F22] hover:text-[#FF8C00] transition-colors">${isCollapsed ? '▶' : '▼'}</span>
+                genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1.5 mt-1 text-xs cursor-pointer';
+                genieMasterBadge.style.cssText = `
+                    background: linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1));
+                    padding: 3px 8px;
+                    border-radius: 6px;
+                    border: 1px solid rgba(241, 95, 34, 0.4);
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 4px rgba(241, 95, 34, 0.1);
                 `;
+
+                // Icon
+                const icon = document.createElement('span');
+                icon.style.cssText = `
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 16px;
+                    height: 16px;
+                    background: linear-gradient(135deg, #FF8C00, #F15F22);
+                    border-radius: 4px;
+                    color: white;
+                    font-weight: bold;
+                    font-size: 10px;
+                    box-shadow: 0 0 12px rgba(255, 140, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+                `;
+                icon.textContent = 'G';
+                genieMasterBadge.appendChild(icon);
+
+                // Label
+                const label = document.createElement('span');
+                label.style.cssText = `
+                    color: #F15F22;
+                    font-weight: 600;
+                    text-shadow: 0 1px 2px rgba(241, 95, 34, 0.2);
+                `;
+                label.textContent = 'Master';
+                genieMasterBadge.appendChild(label);
+
+                // Toggle
+                const toggle = document.createElement('span');
+                toggle.style.cssText = `
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 18px;
+                    height: 18px;
+                    margin-left: 4px;
+                    color: #F15F22;
+                    background: rgba(241, 95, 34, 0.15);
+                    border-radius: 4px;
+                    border: 1px solid rgba(241, 95, 34, 0.3);
+                    transition: all 0.2s ease;
+                    font-size: 10px;
+                    transform: ${isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'};
+                `;
+                toggle.textContent = '▼';
+                genieMasterBadge.appendChild(toggle);
+
                 genieMasterBadge.title = 'Click to collapse/expand slave sessions';
+
+                // Hover effects
+                genieMasterBadge.addEventListener('mouseenter', () => {
+                    genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.3), rgba(255, 140, 0, 0.15))';
+                    genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.6)';
+                    genieMasterBadge.style.boxShadow = '0 3px 8px rgba(241, 95, 34, 0.2)';
+                });
+                genieMasterBadge.addEventListener('mouseleave', () => {
+                    genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1))';
+                    genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.4)';
+                    genieMasterBadge.style.boxShadow = '0 2px 4px rgba(241, 95, 34, 0.1)';
+                });
 
                 genieMasterBadge.addEventListener('click', (e) => {
                     e.stopPropagation();
                     toggleGenieSlaveVisibility(parentId);
+                    // Animate toggle
+                    const currentCollapsed = getGenieCollapseState()[parentId] || false;
+                    toggle.style.transform = currentCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
                 });
 
                 nameContainer.appendChild(genieMasterBadge);
@@ -2323,13 +2426,91 @@ export function addSessionToList(session, isActive = false) {
     // This is set by markGenieMasterSessions() after all sessions are loaded
     const isGenieMaster = session._isGenieMaster || false;
 
-    // Add orange left border and indentation for Genie slave sessions
+    // Add visual connector and styling for Genie slave sessions
     if (isGenieSlave) {
         sessionItem.classList.add('genie-slave-session');
-        sessionItem.style.borderLeft = '3px solid #F15F22';
-        sessionItem.style.marginLeft = '1rem';
-        sessionItem.style.paddingLeft = '0.625rem';
         sessionItem.dataset.genieParentId = genieParentSessionId || '';
+
+        // Create a wrapper with tree connector
+        sessionItem.style.position = 'relative';
+        sessionItem.style.marginLeft = '1.5rem';
+        sessionItem.style.paddingLeft = '1rem';
+
+        // Add visual tree connector using pseudo-element via inline style
+        // We'll add a vertical line and horizontal connector
+        const connector = document.createElement('div');
+        connector.className = 'genie-connector';
+        connector.style.cssText = `
+            position: absolute;
+            left: -1.5rem;
+            top: 0;
+            bottom: 0;
+            width: 1.5rem;
+            pointer-events: none;
+        `;
+
+        // Vertical line
+        const verticalLine = document.createElement('div');
+        verticalLine.style.cssText = `
+            position: absolute;
+            left: 0.75rem;
+            top: 0;
+            bottom: 50%;
+            width: 2px;
+            background: linear-gradient(to bottom, #F15F22 0%, #F15F2240 100%);
+        `;
+        connector.appendChild(verticalLine);
+
+        // Horizontal line (L-shape)
+        const horizontalLine = document.createElement('div');
+        horizontalLine.style.cssText = `
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            width: 0.75rem;
+            height: 2px;
+            background: #F15F22;
+        `;
+        connector.appendChild(horizontalLine);
+
+        sessionItem.appendChild(connector);
+
+        // Add subtle background to make nesting more obvious
+        sessionItem.style.background = 'rgba(241, 95, 34, 0.05)';
+        sessionItem.style.borderLeft = '2px solid rgba(241, 95, 34, 0.3)';
+
+        // Add hover effect to highlight the connection
+        sessionItem.addEventListener('mouseenter', () => {
+            sessionItem.style.background = 'rgba(241, 95, 34, 0.12)';
+            sessionItem.style.borderLeftColor = 'rgba(241, 95, 34, 0.6)';
+
+            // Highlight the connector lines
+            const lines = sessionItem.querySelectorAll('.genie-connector > div');
+            lines.forEach(line => {
+                line.style.opacity = '1';
+            });
+
+            // Subtle highlight of parent
+            const parentItem = document.getElementById(`session-${genieParentSessionId}`);
+            if (parentItem) {
+                parentItem.style.boxShadow = '0 0 0 2px rgba(241, 95, 34, 0.2)';
+            }
+        });
+
+        sessionItem.addEventListener('mouseleave', () => {
+            sessionItem.style.background = 'rgba(241, 95, 34, 0.05)';
+            sessionItem.style.borderLeftColor = 'rgba(241, 95, 34, 0.3)';
+
+            const lines = sessionItem.querySelectorAll('.genie-connector > div');
+            lines.forEach(line => {
+                line.style.opacity = '';
+            });
+
+            const parentItem = document.getElementById(`session-${genieParentSessionId}`);
+            if (parentItem) {
+                parentItem.style.boxShadow = '';
+            }
+        });
 
         // Check if slaves should be hidden (parent is collapsed)
         const collapseState = getGenieCollapseState();
@@ -2378,28 +2559,100 @@ export function addSessionToList(session, isActive = false) {
         nameContainer.appendChild(utilityBadge);
     }
 
-    // Add Genie slave indicator badge
+    // Add Genie slave indicator badge with enhanced styling
     if (isGenieSlave) {
         const genieBadge = document.createElement('span');
-        genieBadge.className = 'genie-slave-badge inline-flex items-center gap-1 mt-0.5 text-xs';
-        genieBadge.innerHTML = `
-            <span class="genie-badge-icon">G</span>
-            <span class="text-[#F15F22]">Genie Slave</span>
+        genieBadge.className = 'genie-slave-badge inline-flex items-center gap-1.5 mt-1 text-xs';
+        genieBadge.style.cssText = `
+            background: linear-gradient(135deg, rgba(241, 95, 34, 0.15), rgba(241, 95, 34, 0.05));
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(241, 95, 34, 0.3);
+            transition: all 0.2s ease;
         `;
+
+        // Add hover effect
+        genieBadge.addEventListener('mouseenter', () => {
+            genieBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.25), rgba(241, 95, 34, 0.1))';
+            genieBadge.style.borderColor = 'rgba(241, 95, 34, 0.5)';
+        });
+        genieBadge.addEventListener('mouseleave', () => {
+            genieBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.15), rgba(241, 95, 34, 0.05))';
+            genieBadge.style.borderColor = 'rgba(241, 95, 34, 0.3)';
+        });
+
+        // Icon with glow effect
+        const icon = document.createElement('span');
+        icon.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #F15F22, #FF8C00);
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+            box-shadow: 0 0 8px rgba(241, 95, 34, 0.4);
+        `;
+        icon.textContent = 'G';
+        genieBadge.appendChild(icon);
+
+        // Label
+        const label = document.createElement('span');
+        label.style.cssText = 'color: #F15F22; font-weight: 500;';
+        label.textContent = 'Slave';
+        genieBadge.appendChild(label);
+
         genieBadge.title = 'Spawned by Genie coordinator';
 
-        // Add click handler to navigate to parent session
+        // Add click handler to navigate to parent session with enhanced visual
         if (genieParentSessionId) {
             const parentLink = document.createElement('button');
-            parentLink.className = 'genie-parent-link ml-1 text-[#F15F22] hover:text-[#FF8C00] transition-colors';
+            parentLink.style.cssText = `
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                margin-left: 4px;
+                color: #F15F22;
+                background: rgba(241, 95, 34, 0.1);
+                border-radius: 4px;
+                border: 1px solid rgba(241, 95, 34, 0.3);
+                transition: all 0.2s ease;
+                font-size: 12px;
+            `;
             parentLink.innerHTML = '↑';
-            parentLink.title = 'Go to parent Genie session';
+            parentLink.title = 'Jump to parent Genie session';
+
+            parentLink.addEventListener('mouseenter', () => {
+                parentLink.style.background = 'rgba(241, 95, 34, 0.3)';
+                parentLink.style.borderColor = '#F15F22';
+                parentLink.style.transform = 'translateY(-1px)';
+            });
+            parentLink.addEventListener('mouseleave', () => {
+                parentLink.style.background = 'rgba(241, 95, 34, 0.1)';
+                parentLink.style.borderColor = 'rgba(241, 95, 34, 0.3)';
+                parentLink.style.transform = 'translateY(0)';
+            });
+
             parentLink.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const parentItem = document.getElementById(`session-${genieParentSessionId}`);
                 if (parentItem) {
+                    // Flash highlight effect on parent
+                    parentItem.style.transition = 'background 0.3s ease';
+                    parentItem.style.background = 'rgba(241, 95, 34, 0.2)';
+                    setTimeout(() => {
+                        parentItem.style.background = '';
+                    }, 600);
+
                     parentItem.click();
-                    parentItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => {
+                        parentItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 100);
                 }
             });
             genieBadge.appendChild(parentLink);
@@ -2407,26 +2660,105 @@ export function addSessionToList(session, isActive = false) {
         nameContainer.appendChild(genieBadge);
     }
 
-    // Add Genie master indicator badge with collapse toggle
+    // Add Genie master indicator badge with collapse toggle - world-class styling
     if (isGenieMaster) {
         const genieMasterBadge = document.createElement('span');
-        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1 mt-0.5 text-xs cursor-pointer';
+        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1.5 mt-1 text-xs cursor-pointer';
 
         // Check current collapse state
         const collapseState = getGenieCollapseState();
         const isCollapsed = collapseState[session.id] || false;
 
-        genieMasterBadge.innerHTML = `
-            <span class="genie-badge-icon">G</span>
-            <span class="text-[#F15F22]">Genie Master</span>
-            <span class="genie-collapse-toggle ml-1 text-[#F15F22] hover:text-[#FF8C00] transition-colors">${isCollapsed ? '▶' : '▼'}</span>
+        genieMasterBadge.style.cssText = `
+            background: linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1));
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(241, 95, 34, 0.4);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(241, 95, 34, 0.1);
         `;
+
+        // Add hover effect
+        genieMasterBadge.addEventListener('mouseenter', () => {
+            genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.3), rgba(255, 140, 0, 0.15))';
+            genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.6)';
+            genieMasterBadge.style.boxShadow = '0 3px 8px rgba(241, 95, 34, 0.2)';
+        });
+        genieMasterBadge.addEventListener('mouseleave', () => {
+            genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1))';
+            genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.4)';
+            genieMasterBadge.style.boxShadow = '0 2px 4px rgba(241, 95, 34, 0.1)';
+        });
+
+        // Icon with crown-like glow
+        const icon = document.createElement('span');
+        icon.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #FF8C00, #F15F22);
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+            box-shadow: 0 0 12px rgba(255, 140, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        `;
+        icon.textContent = 'G';
+        genieMasterBadge.appendChild(icon);
+
+        // Label
+        const label = document.createElement('span');
+        label.style.cssText = `
+            color: #F15F22;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(241, 95, 34, 0.2);
+        `;
+        label.textContent = 'Master';
+        genieMasterBadge.appendChild(label);
+
+        // Collapse toggle with smooth animation
+        const toggle = document.createElement('span');
+        toggle.className = 'genie-collapse-toggle';
+        toggle.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            margin-left: 4px;
+            color: #F15F22;
+            background: rgba(241, 95, 34, 0.15);
+            border-radius: 4px;
+            border: 1px solid rgba(241, 95, 34, 0.3);
+            transition: all 0.2s ease;
+            font-size: 10px;
+            transform: ${isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'};
+        `;
+        toggle.textContent = '▼';
+
+        toggle.addEventListener('mouseenter', () => {
+            toggle.style.background = 'rgba(241, 95, 34, 0.3)';
+            toggle.style.borderColor = '#F15F22';
+        });
+        toggle.addEventListener('mouseleave', () => {
+            toggle.style.background = 'rgba(241, 95, 34, 0.15)';
+            toggle.style.borderColor = 'rgba(241, 95, 34, 0.3)';
+        });
+
+        genieMasterBadge.appendChild(toggle);
+
         genieMasterBadge.title = 'Click to collapse/expand slave sessions';
 
-        // Add click handler to toggle slave sessions visibility
+        // Add click handler to toggle slave sessions visibility with animation
         genieMasterBadge.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleGenieSlaveVisibility(session.id);
+
+            // Animate the toggle icon
+            const newState = !isCollapsed;
+            toggle.style.transform = newState ? 'rotate(-90deg)' : 'rotate(0deg)';
         });
 
         nameContainer.appendChild(genieMasterBadge);
