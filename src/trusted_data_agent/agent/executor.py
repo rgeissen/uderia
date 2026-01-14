@@ -2551,8 +2551,21 @@ The following domain knowledge may be relevant to this conversation:
 
                             # Load and process tools using the same method as configuration_service
                             from langchain_mcp_adapters.tools import load_mcp_tools
+                            from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS
                             async with temp_mcp_client.session(override_mcp_server_id) as session:
                                 all_processed_tools = await load_mcp_tools(session)
+
+                            # CRITICAL FIX: Add CLIENT_SIDE_TOOLS to all_processed_tools
+                            # load_mcp_tools only loads server tools, but CLIENT_SIDE_TOOLS (TDA_FinalReport, etc.)
+                            # are core system tools that must always be available for FASTPATH optimization
+                            class SimpleTool:
+                                def __init__(self, **kwargs):
+                                    self.__dict__.update(kwargs)
+
+                            for tool_def in CLIENT_SIDE_TOOLS:
+                                all_processed_tools.append(SimpleTool(**tool_def))
+
+                            app_logger.info(f"   Loaded {len(all_processed_tools)} total tools (MCP + {len(CLIENT_SIDE_TOOLS)} client-side)")
 
                             # Get enabled tool and prompt names for this profile
                             # CRITICAL: Must pass user_uuid to load user-specific profile config (not bootstrap template)
@@ -2573,8 +2586,11 @@ The following domain knowledge may be relevant to this conversation:
                                 pass  # Prompts filtering happens differently via structured_prompts
 
                             # Filter to only enabled tools (prompts handled separately via original structure)
-                            filtered_tools = [tool for tool in all_processed_tools if tool.name in enabled_tool_names]
-                            
+                            # CRITICAL FIX: Always include TDA client-side tools (reporting, synthesis) regardless of profile filtering
+                            # These are core system tools, not MCP server tools, and must always be available for FASTPATH optimization
+                            TDA_CORE_TOOLS = {"TDA_FinalReport", "TDA_ComplexPromptReport", "TDA_ContextReport", "TDA_LLMTask", "TDA_LLMFilter", "TDA_Charting"}
+                            filtered_tools = [tool for tool in all_processed_tools if tool.name in enabled_tool_names or tool.name in TDA_CORE_TOOLS]
+
                             # Convert to dictionary with tool names as keys (matching normal structure)
                             filtered_tools_dict = {tool.name: tool for tool in filtered_tools}
 
