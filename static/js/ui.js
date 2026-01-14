@@ -821,9 +821,9 @@ function _renderKnowledgeRetrievalDetails(details) {
             const preview = content.length > previewLength ? content.substring(0, previewLength) + '...' : content;
             
             html += `
-                <div class="p-2 bg-gray-900/50 rounded border border-purple-500/30">
+                <div class="p-2 bg-gray-900/50 rounded border border-indigo-500/30">
                     <div class="flex justify-between items-start mb-1">
-                        <span class="text-purple-400 font-semibold text-xs">Chunk ${idx + 1}</span>
+                        <span class="text-indigo-400 font-semibold text-xs">Chunk ${idx + 1}</span>
                         <span class="text-gray-500 text-xs">Relevance: ${similarity}%</span>
                     </div>
                     <div class="text-gray-400 text-xs mb-1">
@@ -954,7 +954,7 @@ function _renderToolIntentDetails(details) {
                 </div>
             `;
         } catch (e) {
-            argsHtml = `<div class="status-kv-item"><div class="status-kv-key">Args</div><div class="status-kv-value text-red-400">[Error displaying arguments]</div></div>`;
+            argsHtml = `<div class="status-kv-item"><div class="status-kv-key">Args</div><div class="status-kv-value text-rose-400">[Error displaying arguments]</div></div>`;
         }
     }
 
@@ -1001,40 +1001,41 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
     stepHeader.className = 'flex items-center gap-2 mb-2';
 
     // Add appropriate icon based on event type
+    // Unified color schema: Indigo (primary), Amber (progress), Emerald (success), Rose (error), Slate (info)
     let iconSvg = '';
     switch (type) {
         case 'genie_start':
         case 'genie_routing':
         case 'genie_coordination_start':
-            iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
             break;
         case 'genie_llm_step':
-            iconSvg = '<svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
             break;
         case 'genie_routing_decision':
-            iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>';
             break;
         case 'genie_slave_invoked':
-            iconSvg = '<svg class="w-4 h-4 text-orange-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-amber-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
             break;
         case 'genie_slave_progress':
-            iconSvg = '<svg class="w-4 h-4 text-yellow-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-4h2v2h-2zm1-10c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-amber-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-4h2v2h-2zm1-10c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>';
             break;
         case 'genie_slave_completed':
             iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
-                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
             break;
         case 'genie_synthesis_start':
-            iconSvg = '<svg class="w-4 h-4 text-blue-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l4.59-4.58L18 11l-6 6z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l4.59-4.58L18 11l-6 6z"/></svg>';
             break;
         case 'genie_coordination_complete':
             iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
-                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
+                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
+                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
             break;
         default:
-            iconSvg = '<svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
     }
 
     stepHeader.innerHTML = `
@@ -1056,7 +1057,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-purple-300">@GENIE</code></div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">@GENIE</code></div>
                         <div class="status-kv-key">Experts</div>
                         <div class="status-kv-value">${profileCount} available</div>
                     </div>
@@ -1081,9 +1082,9 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Step</div>
-                        <div class="status-kv-value"><code class="status-code text-cyan-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">#${stepNumber}: ${stepName}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-green-400">✓ Complete</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
                     </div>
@@ -1099,7 +1100,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="status-kv-value">${selectedCount} profile${selectedCount > 1 ? 's' : ''} selected</div>
                     </div>
                     ${details.decision_text ? `
-                        <div class="mt-2 p-2 bg-purple-900/30 rounded border border-purple-500/30 text-gray-300 text-xs">
+                        <div class="mt-2 p-2 bg-slate-900/30 rounded border border-slate-500/30 text-gray-300 text-xs">
                             ${details.decision_text}
                         </div>
                     ` : ''}
@@ -1117,9 +1118,9 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-orange-300">@${profileTag}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-amber-300">@${profileTag}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-orange-400">⟳ Processing...</div>
+                        <div class="status-kv-value text-amber-400">⟳ Processing...</div>
                     </div>
                     ${details.slave_session_id ? `
                         <div class="mt-1 text-gray-500 text-xs">Session: ${details.slave_session_id.slice(0, 8)}...</div>
@@ -1135,9 +1136,9 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-yellow-300">@${profileTag}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-amber-300">@${profileTag}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-yellow-400">${message}</div>
+                        <div class="status-kv-value text-amber-400">${message}</div>
                         ${progress !== null ? `
                             <div class="status-kv-key">Progress</div>
                             <div class="status-kv-value">${progress}%</div>
@@ -1151,7 +1152,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 const profileTag = details.profile_tag || 'UNKNOWN';
                 const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const statusText = details.success ? '✓ Success' : '✗ Failed';
-                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
 
                 let resultHtml = '';
                 if (details.result_preview) {
@@ -1165,13 +1166,13 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
                 let errorHtml = '';
                 if (details.error) {
-                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
                 }
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-green-300' : 'text-red-300'}">@${profileTag}</code></div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">@${profileTag}</code></div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value ${statusClass}">${statusText}</div>
                         <div class="status-kv-key">Duration</div>
@@ -1188,7 +1189,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-blue-400">Synthesizing response...</div>
+                        <div class="status-kv-value text-indigo-400">Synthesizing response...</div>
                         <div class="status-kv-key">Profiles</div>
                         <div class="status-kv-value">${consulted} consulted</div>
                     </div>
@@ -1205,7 +1206,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const usedCount = details.profiles_used?.length || 0;
                 const statusText = details.success ? '✓ Complete' : '✗ Failed';
-                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
 
                 // Token counts (if available)
                 const inputTokens = details.input_tokens;
@@ -1232,7 +1233,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
                 let errorHtml = '';
                 if (details.error) {
-                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
                 }
 
                 detailsEl.innerHTML = `
@@ -1329,48 +1330,49 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     stepHeader.className = 'flex items-center gap-2 mb-2';
 
     // Add appropriate icon based on event type
+    // Unified color schema: Indigo (primary), Amber (progress), Emerald (success), Rose (error), Slate (info)
     let iconSvg = '';
     switch (type) {
         case 'conversation_agent_start':
-            iconSvg = '<svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>';
             break;
         case 'conversation_llm_step':
-            iconSvg = '<svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
             break;
         case 'conversation_tool_invoked':
-            iconSvg = '<svg class="w-4 h-4 text-orange-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-amber-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
             break;
         case 'conversation_tool_completed':
             iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
-                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
             break;
         case 'conversation_agent_complete':
             iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
-                : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
+                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
+                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
             break;
         case 'knowledge_retrieval':
         case 'knowledge_retrieval_complete':
-            iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.01 4.5-4.5-2.01-4.5-4.5-4.5zm0 7c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zM3 21.5h8v-2H3v2zm0-3.5h8v-2H3v2z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.01 4.5-4.5-2.01-4.5-4.5-4.5zm0 7c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zM3 21.5h8v-2H3v2zm0-3.5h8v-2H3v2z"/></svg>';
             break;
         case 'knowledge_retrieval_start':
-            iconSvg = '<svg class="w-4 h-4 text-violet-400" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
             break;
         case 'knowledge_reranking_start':
             iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>';
             break;
         case 'knowledge_reranking_complete':
-            iconSvg = '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
             break;
         case 'rag_llm_step':
-            iconSvg = '<svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
             break;
         case 'knowledge_search_complete':
-            iconSvg = '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
             break;
         default:
-            iconSvg = '<svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
+            iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
     }
 
     stepHeader.innerHTML = `
@@ -1391,7 +1393,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-blue-300">@${profileTag}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">@${profileTag}</code></div>
                         <div class="status-kv-key">Tools</div>
                         <div class="status-kv-value">${toolCount} available</div>
                     </div>
@@ -1416,9 +1418,9 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Step</div>
-                        <div class="status-kv-value"><code class="status-code text-cyan-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">#${stepNumber}: ${stepName}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-green-400">✓ Complete</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
                     </div>
@@ -1454,9 +1456,9 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Tool</div>
-                        <div class="status-kv-value"><code class="status-code text-orange-300">${toolName}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-amber-300">${toolName}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-orange-400">⟳ Executing...</div>
+                        <div class="status-kv-value text-amber-400">⟳ Executing...</div>
                     </div>
                     ${argsHtml}
                 `;
@@ -1467,7 +1469,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const toolName = details.tool_name || 'Unknown';
                 const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const statusText = details.success ? '✓ Success' : '✗ Failed';
-                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
 
                 let resultHtml = '';
                 if (details.result_preview) {
@@ -1481,13 +1483,13 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                 let errorHtml = '';
                 if (details.error) {
-                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
                 }
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Tool</div>
-                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-green-300' : 'text-red-300'}">${toolName}</code></div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">${toolName}</code></div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value ${statusClass}">${statusText}</div>
                         <div class="status-kv-key">Duration</div>
@@ -1503,7 +1505,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const toolCount = details.tools_used?.length || 0;
                 const statusText = details.success ? '✓ Complete' : '✗ Failed';
-                const statusClass = details.success ? 'text-green-400' : 'text-red-400';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
 
                 // Token counts (if available)
                 const inputTokens = details.input_tokens;
@@ -1530,7 +1532,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                 let errorHtml = '';
                 if (details.error) {
-                    errorHtml = `<div class="mt-2 p-2 bg-red-900/30 rounded border border-red-500/30 text-red-300">${details.error}</div>`;
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
                 }
 
                 detailsEl.innerHTML = `
@@ -1566,9 +1568,9 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
                         const source = chunk.source || 'Unknown';
                         return `
-                            <div class="p-2 bg-gray-900/50 rounded border border-purple-500/30">
+                            <div class="p-2 bg-gray-900/50 rounded border border-indigo-500/30">
                                 <div class="flex justify-between items-start mb-1">
-                                    <span class="text-purple-400 font-semibold">Chunk ${idx + 1}</span>
+                                    <span class="text-indigo-400 font-semibold">Chunk ${idx + 1}</span>
                                     <span class="text-gray-500">Relevance: ${similarity}%</span>
                                 </div>
                                 <div class="text-gray-500 text-xs mb-1">Source: ${source}</div>
@@ -1648,7 +1650,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-key">Collection</div>
                         <div class="status-kv-value">${collection}</div>
                         <div class="status-kv-key">Result</div>
-                        <div class="status-kv-value text-green-400">${rerankedCount} documents reranked</div>
+                        <div class="status-kv-value text-emerald-400">${rerankedCount} documents reranked</div>
                     </div>
                 `;
                 break;
@@ -1672,9 +1674,9 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
                         const source = chunk.source || 'Unknown';
                         return `
-                            <div class="p-2 bg-gray-900/50 rounded border border-purple-500/30">
+                            <div class="p-2 bg-gray-900/50 rounded border border-indigo-500/30">
                                 <div class="flex justify-between items-start mb-1">
-                                    <span class="text-purple-400 font-semibold">Chunk ${idx + 1}</span>
+                                    <span class="text-indigo-400 font-semibold">Chunk ${idx + 1}</span>
                                     <span class="text-gray-500">Relevance: ${similarity}%</span>
                                 </div>
                                 <div class="text-gray-500 text-xs mb-1">Source: ${source}</div>
@@ -1725,7 +1727,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Step</div>
-                        <div class="status-kv-value"><code class="status-code text-cyan-300">${stepName}</code></div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">${stepName}</code></div>
                         <div class="status-kv-key">Model</div>
                         <div class="status-kv-value">${model}</div>
                         <div class="status-kv-key">Tokens</div>
@@ -1753,7 +1755,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-green-400">✓ Complete</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
                         <div class="status-kv-key">Collections</div>
                         <div class="status-kv-value">${collectionNames.join(', ')}</div>
                         <div class="status-kv-key">Documents</div>
@@ -2477,7 +2479,7 @@ export function createResourceItem(resource, type) {
                                 <h5 class="font-semibold text-sm text-white mb-2">Parameters</h5>
                                 <ul class="space-y-2 text-xs">`;
         resource.arguments.forEach(arg => {
-            const requiredText = arg.required ? '<span class="text-red-400 font-bold">Required</span>' : '<span class="text-gray-400">Optional</span>';
+            const requiredText = arg.required ? '<span class="text-rose-400 font-bold">Required</span>' : '<span class="text-gray-400">Optional</span>';
             const typeText = arg.type && arg.type !== 'unknown' ? `<span class="font-mono text-xs text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded-md">${arg.type}</span>` : '';
 
             argsHTML += `<li class="p-2 bg-black/20 rounded-md">
@@ -2742,7 +2744,7 @@ export function addSessionToList(session, isActive = false) {
     // Add utility indicator badge for temporary sessions
     if (session.is_temporary) {
         const utilityBadge = document.createElement('span');
-        utilityBadge.className = 'inline-flex items-center gap-1 mt-0.5 text-xs text-purple-400';
+        utilityBadge.className = 'inline-flex items-center gap-1 mt-0.5 text-xs text-indigo-400';
         utilityBadge.innerHTML = `
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -3444,7 +3446,7 @@ export function updateHintAndIndicatorState() {
     const hintTooltipSpan = DOM.inputHint.querySelector('.tooltip');
 
     if (state.isLastTurnModeLocked) {
-        hintTextSpan.innerHTML = `<strong>Turn Summaries Context:</strong> <span class="text-orange-400 font-semibold">Locked</span>`;
+        hintTextSpan.innerHTML = `<strong>Turn Summaries Context:</strong> <span class="text-amber-400 font-semibold">Locked</span>`;
         hintTooltipSpan.innerHTML = `'Turn Summaries' context is locked on. Press <kbd>Shift</kbd> + <kbd>Alt</kbd> to switch back to the default 'Full Session Context'.`;
         DOM.contextStatusDot.className = 'connection-dot context-last-turn-locked';
         DOM.sendIcon.classList.remove('flipped');
@@ -3454,7 +3456,7 @@ export function updateHintAndIndicatorState() {
         DOM.contextStatusDot.className = 'connection-dot context-last-turn-temp';
         DOM.sendIcon.classList.remove('flipped');
     } else {
-        hintTextSpan.innerHTML = `<strong>Full Session Context:</strong> <span class="text-green-400 font-semibold">On</span>`;
+        hintTextSpan.innerHTML = `<strong>Full Session Context:</strong> <span class="text-emerald-400 font-semibold">On</span>`;
         hintTooltipSpan.innerHTML = `Full session context is the default. Hold <kbd>Alt</kbd> to temporarily use 'Turn Summaries' context. Press <kbd>Shift</kbd> + <kbd>Alt</kbd> to lock 'Turn Summaries' context on.`;
         DOM.contextStatusDot.className = 'connection-dot idle';
         DOM.sendIcon.classList.add('flipped');
@@ -4001,7 +4003,7 @@ export async function loadRagCollections() {
         console.error('Failed to load RAG collections:', err);
         DOM.ragMaintenanceCollectionsContainer.innerHTML = '';
         const errMsg = document.createElement('div');
-        errMsg.className = 'col-span-full text-red-400 text-sm';
+        errMsg.className = 'col-span-full text-rose-400 text-sm';
         errMsg.textContent = `Error loading collections: ${err.message}`;
         DOM.ragMaintenanceCollectionsContainer.appendChild(errMsg);
     }
@@ -4039,7 +4041,7 @@ function createKnowledgeRepositoryCard(col) {
     // Active/Disabled badge
     const statusBadge = document.createElement('span');
     statusBadge.className = col.enabled 
-        ? 'px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-400' 
+        ? 'px-2 py-1 text-xs rounded-full bg-green-500/20 text-emerald-400' 
         : 'px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-400';
     statusBadge.textContent = col.enabled ? 'Active' : 'Disabled';
     badgesContainer.appendChild(statusBadge);
@@ -4060,7 +4062,7 @@ function createKnowledgeRepositoryCard(col) {
     // Subscribed indicator (if user is subscribed but doesn't own it)
     if (col.is_subscribed && !col.is_owned) {
         const subscribedBadge = document.createElement('span');
-        subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-400';
+        subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-purple-500/20 text-indigo-400';
         subscribedBadge.textContent = '📌 Subscribed';
         subscribedBadge.title = 'You are subscribed to this collection';
         indicatorsRow.appendChild(subscribedBadge);
@@ -4069,7 +4071,7 @@ function createKnowledgeRepositoryCard(col) {
     // Published to marketplace indicator
     if (col.is_marketplace_listed) {
         const publishedBadge = document.createElement('span');
-        publishedBadge.className = 'px-2 py-1 text-xs rounded-full bg-orange-500/20 text-orange-400';
+        publishedBadge.className = 'px-2 py-1 text-xs rounded-full bg-orange-500/20 text-amber-400';
         const visibilityIcon = col.visibility === 'public' ? '🌐' : '🔗';
         publishedBadge.textContent = `${visibilityIcon} ${col.visibility === 'public' ? 'Public' : 'Unlisted'}`;
         publishedBadge.title = `Published to marketplace (${col.visibility})`;
@@ -4262,7 +4264,7 @@ function createCollectionCard(col) {
             // Active/Disabled badge
             const statusBadge = document.createElement('span');
             statusBadge.className = col.enabled 
-                ? 'px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-400' 
+                ? 'px-2 py-1 text-xs rounded-full bg-green-500/20 text-emerald-400' 
                 : 'px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-400';
             statusBadge.textContent = col.enabled ? 'Active' : 'Disabled';
             badgesContainer.appendChild(statusBadge);
@@ -4283,7 +4285,7 @@ function createCollectionCard(col) {
             // Subscribed indicator (if user is subscribed but doesn't own it)
             if (col.is_subscribed && !col.is_owned) {
                 const subscribedBadge = document.createElement('span');
-                subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-400';
+                subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-purple-500/20 text-indigo-400';
                 subscribedBadge.textContent = '📌 Subscribed';
                 subscribedBadge.title = 'You are subscribed to this collection';
                 indicatorsRow.appendChild(subscribedBadge);
@@ -4292,7 +4294,7 @@ function createCollectionCard(col) {
             // Published to marketplace indicator
             if (col.is_marketplace_listed) {
                 const publishedBadge = document.createElement('span');
-                publishedBadge.className = 'px-2 py-1 text-xs rounded-full bg-orange-500/20 text-orange-400';
+                publishedBadge.className = 'px-2 py-1 text-xs rounded-full bg-orange-500/20 text-amber-400';
                 const visibilityIcon = col.visibility === 'public' ? '🌐' : '🔗';
                 publishedBadge.textContent = `${visibilityIcon} ${col.visibility === 'public' ? 'Public' : 'Unlisted'}`;
                 publishedBadge.title = `Published to marketplace (${col.visibility})`;
@@ -4653,7 +4655,7 @@ async function fetchAndRenderCollectionRows({ collectionId, query = '', refresh 
             const message = isEmptyCollection 
                 ? 'No rows available.' 
                 : `Error loading rows: ${e.message}`;
-            const colorClass = isEmptyCollection ? 'text-gray-400' : 'text-red-400';
+            const colorClass = isEmptyCollection ? 'text-gray-400' : 'text-rose-400';
             DOM.ragCollectionTableBody.innerHTML = `<tr><td colspan="7" class="px-2 py-2 ${colorClass}">${message}</td></tr>`;
         }
     } finally {
@@ -5051,7 +5053,7 @@ async function selectKnowledgeChunk(chunkId) {
         
         if (!chunk) {
             if (DOM.ragSelectedCaseMetadata) {
-                DOM.ragSelectedCaseMetadata.innerHTML = '<span class="text-red-400">Chunk not found</span>';
+                DOM.ragSelectedCaseMetadata.innerHTML = '<span class="text-rose-400">Chunk not found</span>';
             }
             return;
         }
@@ -5094,7 +5096,7 @@ async function selectKnowledgeChunk(chunkId) {
     } catch (error) {
         console.error('Error fetching full chunk:', error);
         if (DOM.ragSelectedCaseMetadata) {
-            DOM.ragSelectedCaseMetadata.innerHTML = `<span class="text-red-400">Error loading chunk: ${escapeHtml(error.message)}</span>`;
+            DOM.ragSelectedCaseMetadata.innerHTML = `<span class="text-rose-400">Error loading chunk: ${escapeHtml(error.message)}</span>`;
         }
     }
 }
@@ -5203,7 +5205,7 @@ async function selectCaseRow(caseId) {
                     <div><span class='text-gray-500'>Provider:</span> ${escapeHtml(meta.llm_config?.provider || '')}</div>
                     <div><span class='text-gray-500'>Model:</span> ${escapeHtml(meta.llm_config?.model || '')}</div>
                     <div><span class='text-gray-500'>Output Tokens:</span> ${escapeHtml(String(meta.llm_config?.output_tokens ?? ''))}</div>
-                    <div><span class='text-gray-500'>Efficient:</span> ${meta.is_most_efficient ? '<span class="text-green-400">Yes</span>' : '<span class="text-gray-400">No</span>'}</div>
+                    <div><span class='text-gray-500'>Efficient:</span> ${meta.is_most_efficient ? '<span class="text-emerald-400">Yes</span>' : '<span class="text-gray-400">No</span>'}</div>
                     <div><span class='text-gray-500'>User Feedback:</span> ${feedbackHtml}</div>
                 </div>
                 <div class='mt-2 text-xs text-gray-400'>Total Execution Time: <span class='font-mono text-gray-200'>${totalExecutionTime}</span></div>`;
@@ -5340,7 +5342,7 @@ function updateSortIndicators() {
             // Show active sort indicator
             const arrow = state.ragCollectionSortDirection === 'asc' ? '↑' : '↓';
             span.textContent = arrow;
-            span.className = 'text-xs text-orange-400 font-bold';
+            span.className = 'text-xs text-amber-400 font-bold';
             th.classList.add('bg-orange-500/20');
         } else {
             // Show default indicator
@@ -5409,7 +5411,7 @@ function renderCaseTrace() {
         const repeatBadge = block.__count > 1 ? `<span class='ml-2 px-1 py-0.5 rounded bg-blue-600/60 text-[10px]'>x${block.__count}</span>` : '';
         const timingBadge = `<span class='text-[10px] text-gray-500'>t=${elapsed} Δ=${delta}</span>`;
         return `<div class='text-xs p-2 rounded bg-gray-900/40 border border-gray-700/40'>
-            <div class='flex justify-between items-center'><span class='font-mono text-gray-300'>${escapeHtml(tool)}</span><span class='text-[10px] ${status === 'error' ? 'text-red-400' : 'text-green-400'}'>${escapeHtml(status)}</span></div>
+            <div class='flex justify-between items-center'><span class='font-mono text-gray-300'>${escapeHtml(tool)}</span><span class='text-[10px] ${status === 'error' ? 'text-rose-400' : 'text-emerald-400'}'>${escapeHtml(status)}</span></div>
             <div class='text-gray-400 mt-1'>${escapeHtml(msg)}</div>
             <div class='flex justify-between mt-1'>${timingBadge}${repeatBadge}</div>
         </div>`;
