@@ -1317,6 +1317,77 @@ export function renderGenieStepForReload(eventData, parentContainer, isFinal = f
 function _renderConversationAgentStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
+    // CRITICAL FIX: For tool completion, UPDATE the existing "Executing..." step instead of creating a new one
+    if (type === 'conversation_tool_completed') {
+        const lastStep = parentContainer.querySelector('.status-step.active');
+        if (lastStep) {
+            // Update the existing step's icon and content
+            lastStep.classList.remove('active');
+            lastStep.classList.add('completed');
+
+            // Stop spinning animation
+            const iconGlow = lastStep.querySelector('.status-icon-glow.active');
+            if (iconGlow) {
+                iconGlow.classList.remove('active');
+            }
+
+            // Update icon to show success/failure
+            const stepHeader = lastStep.querySelector('.flex.items-center');
+            if (stepHeader) {
+                const iconSvg = details?.success
+                    ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                    : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+                // Replace the spinning icon with success/failure icon
+                const iconContainer = stepHeader.firstElementChild;
+                if (iconContainer) {
+                    iconContainer.innerHTML = iconSvg;
+                }
+            }
+
+            // Update details section with completion status
+            const detailsEl = lastStep.querySelector('.status-details');
+            if (detailsEl) {
+                const toolName = details.tool_name || 'Unknown';
+                const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const statusText = details.success ? '✓ Success' : '✗ Failed';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+
+                let resultHtml = '';
+                if (details.result_preview) {
+                    resultHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Result Preview</summary>
+                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap">${details.result_preview}</div>
+                        </details>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">${toolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                    ${resultHtml}
+                    ${errorHtml}
+                `;
+            }
+
+            // Scroll to updated step
+            lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return; // Exit early - we updated existing step, no need to create new one
+        }
+    }
+
     // Mark previous active step as completed and stop icon animations
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
@@ -2660,9 +2731,12 @@ export function addSessionToList(session, isActive = false) {
         sessionItem.dataset.genieParentId = genieParentSessionId || '';
 
         // Create a wrapper with tree connector
+        // CRITICAL FIX: Reduce indentation to prevent horizontal overflow in history panel
         sessionItem.style.position = 'relative';
-        sessionItem.style.marginLeft = '1.5rem';
-        sessionItem.style.paddingLeft = '1rem';
+        sessionItem.style.marginLeft = '1rem';  // Reduced from 1.5rem
+        sessionItem.style.paddingLeft = '0.5rem';  // Reduced from 1rem
+        sessionItem.style.maxWidth = 'calc(100% - 1rem)';  // Prevent overflow
+        sessionItem.style.boxSizing = 'border-box';  // Include padding in width calculation
 
         // Add visual tree connector using pseudo-element via inline style
         // We'll add a vertical line and horizontal connector
@@ -2670,10 +2744,10 @@ export function addSessionToList(session, isActive = false) {
         connector.className = 'genie-connector';
         connector.style.cssText = `
             position: absolute;
-            left: -1.5rem;
+            left: -1rem;
             top: 0;
             bottom: 0;
-            width: 1.5rem;
+            width: 1rem;
             pointer-events: none;
         `;
 
@@ -2681,7 +2755,7 @@ export function addSessionToList(session, isActive = false) {
         const verticalLine = document.createElement('div');
         verticalLine.style.cssText = `
             position: absolute;
-            left: 0.75rem;
+            left: 0.5rem;
             top: 0;
             bottom: 50%;
             width: 2px;
@@ -2693,9 +2767,9 @@ export function addSessionToList(session, isActive = false) {
         const horizontalLine = document.createElement('div');
         horizontalLine.style.cssText = `
             position: absolute;
-            left: 0.75rem;
+            left: 0.5rem;
             top: 50%;
-            width: 0.75rem;
+            width: 0.5rem;
             height: 2px;
             background: #F15F22;
         `;
