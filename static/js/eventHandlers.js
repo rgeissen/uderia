@@ -86,7 +86,7 @@ function _getConversationAgentStepTitle(eventType, payload) {
     switch (eventType) {
         case 'conversation_agent_start': {
             const toolCount = payload.available_tools?.length || 0;
-            return `🔧 Using Tools (${toolCount} available)`;
+            return `Using Tools (${toolCount} available)`;
         }
         case 'conversation_tool_invoked':
             return `Executing ${payload.tool_name || 'tool'}`;
@@ -104,38 +104,38 @@ function _getConversationAgentStepTitle(eventType, payload) {
         }
         case 'knowledge_retrieval': {
             const docCount = payload.document_count || 0;
-            return `📚 Knowledge Retrieved (${docCount} chunks)`;
+            return `Knowledge Retrieved (${docCount} chunks)`;
         }
         case 'knowledge_retrieval_start': {
             const collections = payload.collections || [];
-            return `🔍 Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+            return `Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
         }
         case 'knowledge_reranking_start': {
             const collection = payload.collection || 'Unknown';
-            return `🔄 Reranking Documents (${collection})`;
+            return `Reranking Documents (${collection})`;
         }
         case 'knowledge_reranking_complete': {
             const collection = payload.collection || 'Unknown';
             const count = payload.reranked_count || 0;
-            return `✅ Reranked ${count} documents (${collection})`;
+            return `Reranked ${count} documents (${collection})`;
         }
         case 'knowledge_retrieval_complete': {
             const docCount = payload.document_count || 0;
             const duration = payload.duration_ms || 0;
-            return `📚 Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`;
+            return `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`;
         }
         case 'rag_llm_step': {
             const stepName = payload.step_name || 'Knowledge Synthesis';
             const inputTokens = payload.input_tokens || 0;
             const outputTokens = payload.output_tokens || 0;
-            return `🤖 ${stepName} (${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out)`;
+            return `${stepName} (${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out)`;
         }
         case 'knowledge_search_complete': {
             const collections = payload.collections_searched || 0;
             const docs = payload.documents_retrieved || 0;
             const totalTime = payload.total_time_ms || 0;
             const timeSeconds = (totalTime / 1000).toFixed(1);
-            return `✅ Knowledge Search Complete (${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s)`;
+            return `Knowledge Search Complete (${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s)`;
         }
         default:
             return eventType;
@@ -806,7 +806,7 @@ async function handleReloadPlanClick(element) {
                 const success = turnData.status !== 'failed';
 
                 agentInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">🔧 Conversation Agent</h4>
+                    <h4 class="font-bold text-sm text-white mb-2">Conversation Agent</h4>
                     <p class="text-xs text-gray-300 mb-2">${success ? 'Agent execution completed successfully.' : 'Agent execution encountered errors.'}</p>
                     <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
                         <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
@@ -861,10 +861,10 @@ async function handleReloadPlanClick(element) {
                 // Add profile info after knowledge events
                 const profileInfoEl = document.createElement('div');
                 profileInfoEl.className = 'p-4 status-step info mt-4';
-                const icon = isRagFocused ? '🔍' : '💬';
+                // Removed emoji icons - using clean SVG icons instead
                 const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
                 profileInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">${icon} ${title}</h4>
+                    <h4 class="font-bold text-sm text-white mb-2">${title}</h4>
                     <div class="mt-2 p-3 bg-gray-800/30 rounded border border-white/10">
                         <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
                         <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
@@ -893,10 +893,10 @@ async function handleReloadPlanClick(element) {
                 // Add profile info after knowledge details
                 const profileInfoEl = document.createElement('div');
                 profileInfoEl.className = 'p-4 status-step info mt-4';
-                const icon = isRagFocused ? '🔍' : '💬';
+                // Removed emoji icons - using clean SVG icons instead
                 const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
                 profileInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">${icon} ${title}</h4>
+                    <h4 class="font-bold text-sm text-white mb-2">${title}</h4>
                     <div class="mt-2 p-3 bg-gray-800/30 rounded border border-white/10">
                         <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
                         <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
@@ -906,7 +906,7 @@ async function handleReloadPlanClick(element) {
                 DOM.statusWindowContent.appendChild(profileInfoEl);
             } else {
                 // Fallback: Show simple summary if no detailed knowledge data
-                const icon = isRagFocused ? '🔍' : '💬';
+                // Removed emoji icons - using clean SVG icons instead
                 const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
                 const message = isRagFocused
                     ? 'This turn used a RAG focused profile with mandatory knowledge retrieval.'
@@ -917,7 +917,7 @@ async function handleReloadPlanClick(element) {
 
                 DOM.statusWindowContent.innerHTML = `
                     <div class="p-4 status-step info">
-                        <h4 class="font-bold text-sm text-white mb-2">${icon} ${title}</h4>
+                        <h4 class="font-bold text-sm text-white mb-2">${title}</h4>
                         <p class="text-xs text-gray-300 mb-2">${turnData.message || message}</p>
                         <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
                             <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
@@ -1024,7 +1024,7 @@ export async function handleReplayQueryClick(buttonEl) {
             throw new Error("Could not retrieve the original query for this turn.");
         }
 
-        const displayMessage = `🔄 Replaying **query** from Turn ${turnId}: ${originalQuery}`;
+        const displayMessage = `Replaying **query** from Turn ${turnId}: ${originalQuery}`;
         // Add a message indicating a *query* replay
         UI.addMessage('user', displayMessage, null, true, 'text');
 
@@ -1074,7 +1074,7 @@ async function handleReplayPlanClick(buttonEl) {
             throw new Error("Could not retrieve the original plan for this turn.");
         }
 
-        const displayMessage = `🔄 Replaying **plan** from Turn ${turnId}: ${originalQuery}`;
+        const displayMessage = `Replaying **plan** from Turn ${turnId}: ${originalQuery}`;
         // Add a message indicating a *plan* replay
         UI.addMessage('user', displayMessage, null, true, 'text');
 

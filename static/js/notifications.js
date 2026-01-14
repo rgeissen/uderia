@@ -123,7 +123,7 @@ function _getGenieStepTitle(eventType, payload) {
             return 'Coordinating Response';
         case 'genie_llm_step': {
             const stepName = payload.step_name || `Step ${payload.step_number || '?'}`;
-            return `🤖 ${stepName}`;
+            return `${stepName}`;
         }
         case 'genie_routing_decision': {
             const profileCount = payload.selected_profiles?.length || 0;
@@ -154,11 +154,11 @@ function _getConversationAgentStepTitle(eventType, payload) {
     switch (eventType) {
         case 'conversation_agent_start': {
             const toolCount = payload.available_tools?.length || 0;
-            return `🔧 Using Tools (${toolCount} available)`;
+            return `Using Tools (${toolCount} available)`;
         }
         case 'conversation_llm_step': {
             const stepName = payload.step_name || `Step ${payload.step_number || '?'}`;
-            return `🤖 ${stepName}`;
+            return `${stepName}`;
         }
         case 'conversation_tool_invoked':
             return `Executing ${payload.tool_name || 'tool'}`;

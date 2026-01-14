@@ -347,8 +347,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         const docCount = knowledgeRetrievalEvent.document_count || 0;
         const duration = knowledgeRetrievalEvent.duration_ms || 0;
         const stepTitle = eventType === 'knowledge_retrieval_complete'
-            ? `📚 Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`
-            : `📚 Knowledge Retrieved (${docCount} chunks)`;
+            ? `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`
+            : `Knowledge Retrieved (${docCount} chunks)`;
         updateStatusWindow({
             step: stepTitle,
             details: knowledgeRetrievalEvent,
@@ -974,11 +974,17 @@ function _renderToolIntentDetails(details) {
 function _renderGenieStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
-    // Mark previous active step as completed
+    // Mark previous active step as completed and stop icon animations
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
         lastStep.classList.remove('active');
         lastStep.classList.add('completed');
+
+        // Also remove active state from icon glow to stop spinning animation
+        const iconGlow = lastStep.querySelector('.status-icon-glow.active');
+        if (iconGlow) {
+            iconGlow.classList.remove('active');
+        }
     }
 
     const stepEl = document.createElement('div');
@@ -1038,10 +1044,18 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
             iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
     }
 
-    stepHeader.innerHTML = `
-        ${iconSvg}
-        <h4 class="font-bold text-sm text-white">${step || 'Genie Coordination'}</h4>
-    `;
+    // Wrap icon in glow container for world-class visual effects
+    const iconContainer = document.createElement('div');
+    iconContainer.className = `status-icon-glow${isFinal ? '' : ' active'}`;
+    iconContainer.innerHTML = iconSvg;
+
+    stepHeader.appendChild(iconContainer);
+
+    const titleEl = document.createElement('h4');
+    titleEl.className = 'font-bold text-sm text-white';
+    titleEl.textContent = step || 'Genie Coordination';
+    stepHeader.appendChild(titleEl);
+
     stepEl.appendChild(stepHeader);
 
     // Render details based on event type
@@ -1120,7 +1134,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="status-kv-key">Profile</div>
                         <div class="status-kv-value"><code class="status-code text-amber-300">@${profileTag}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-amber-400">⟳ Processing...</div>
+                        <div class="status-kv-value text-amber-400">Processing...</div>
                     </div>
                     ${details.slave_session_id ? `
                         <div class="mt-1 text-gray-500 text-xs">Session: ${details.slave_session_id.slice(0, 8)}...</div>
@@ -1303,11 +1317,17 @@ export function renderGenieStepForReload(eventData, parentContainer, isFinal = f
 function _renderConversationAgentStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
-    // Mark previous active step as completed
+    // Mark previous active step as completed and stop icon animations
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
         lastStep.classList.remove('active');
         lastStep.classList.add('completed');
+
+        // Also remove active state from icon glow to stop spinning animation
+        const iconGlow = lastStep.querySelector('.status-icon-glow.active');
+        if (iconGlow) {
+            iconGlow.classList.remove('active');
+        }
     }
 
     const stepEl = document.createElement('div');
@@ -1319,11 +1339,11 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     }
 
     // Color-code based on event type
+    // ONLY apply success/error backgrounds to the FINAL summary event
     if (type === 'conversation_agent_complete') {
         stepEl.classList.add(details?.success ? 'conv-agent-success' : 'conv-agent-error');
-    } else if (type === 'conversation_tool_completed') {
-        stepEl.classList.add(details?.success ? 'conv-tool-success' : 'conv-tool-error');
     }
+    // Individual tool completions don't get background emphasis - only icon color shows status
 
     // Step header with icon
     const stepHeader = document.createElement('div');
@@ -1340,17 +1360,20 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
             break;
         case 'conversation_tool_invoked':
-            iconSvg = '<svg class="w-4 h-4 text-amber-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+            // Distinct animated progress ring for executing state
+            iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><circle cx="12" cy="12" r="10" stroke-dasharray="63" stroke-dashoffset="16" class="origin-center animate-spin"/></svg>';
             break;
         case 'conversation_tool_completed':
+            // Simple checkmark/X (no circle) for individual tool completions
             iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
-                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
             break;
         case 'conversation_agent_complete':
+            // Bold checkmark in circle for FINAL summary (this gets background color)
             iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
-                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
+                ? '<svg class="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+                : '<svg class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
             break;
         case 'knowledge_retrieval':
         case 'knowledge_retrieval_complete':
@@ -1375,10 +1398,18 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
     }
 
-    stepHeader.innerHTML = `
-        ${iconSvg}
-        <h4 class="font-bold text-sm text-white">${step || 'Tool Execution'}</h4>
-    `;
+    // Wrap icon in glow container for world-class visual effects
+    const iconContainer = document.createElement('div');
+    iconContainer.className = `status-icon-glow${isFinal ? '' : ' active'}`;
+    iconContainer.innerHTML = iconSvg;
+
+    stepHeader.appendChild(iconContainer);
+
+    const titleEl = document.createElement('h4');
+    titleEl.className = 'font-bold text-sm text-white';
+    titleEl.textContent = step || 'Tool Execution';
+    stepHeader.appendChild(titleEl);
+
     stepEl.appendChild(stepHeader);
 
     // Render details based on event type
@@ -1458,7 +1489,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-key">Tool</div>
                         <div class="status-kv-value"><code class="status-code text-amber-300">${toolName}</code></div>
                         <div class="status-kv-key">Status</div>
-                        <div class="status-kv-value text-amber-400">⟳ Executing...</div>
+                        <div class="status-kv-value text-amber-400">Executing...</div>
                     </div>
                     ${argsHtml}
                 `;
@@ -3032,8 +3063,8 @@ export function addSessionToList(session, isActive = false) {
         console.log('[DEBUG] Using profile tags:', session.profile_tags_used);
         session.profile_tags_used.forEach(tag => {
             const tagSpan = document.createElement('span');
-            tagSpan.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-semibold';
-            
+            tagSpan.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all duration-200';
+
             // Find profile by tag to get color
             const profile = window.configState?.profiles?.find(p => p.tag === tag);
             if (profile && profile.color) {
@@ -3044,23 +3075,49 @@ export function addSessionToList(session, isActive = false) {
                     const b = parseInt(hex.slice(5, 7), 16);
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 };
-                const color1 = hexToRgba(profile.color, 0.3);
-                const color2 = hexToRgba(profile.color, 0.15);
-                const borderColor = hexToRgba(profile.color, 0.5);
-                tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-                tagSpan.style.borderColor = borderColor;
-                tagSpan.style.color = profile.color;
-                tagSpan.style.border = '1px solid';
-                // Add color dot
+                const color1 = hexToRgba(profile.color, 0.2);
+                const color2 = hexToRgba(profile.color, 0.08);
+                const borderColor = hexToRgba(profile.color, 0.4);
+                tagSpan.style.cssText = `
+                    background: linear-gradient(135deg, ${color1}, ${color2});
+                    border: 1px solid ${borderColor};
+                    color: ${profile.color};
+                    box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
+                    backdrop-filter: blur(4px);
+                `;
+
+                // Add hover effect
+                tagSpan.addEventListener('mouseenter', () => {
+                    tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, 0.3)}, ${hexToRgba(profile.color, 0.12)})`;
+                    tagSpan.style.borderColor = hexToRgba(profile.color, 0.6);
+                    tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
+                    tagSpan.style.transform = 'translateY(-1px)';
+                });
+                tagSpan.addEventListener('mouseleave', () => {
+                    tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
+                    tagSpan.style.borderColor = borderColor;
+                    tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
+                    tagSpan.style.transform = 'translateY(0)';
+                });
+
+                // Add enhanced color dot with glow
                 const dot = document.createElement('span');
                 dot.className = 'w-1.5 h-1.5 rounded-full';
-                dot.style.background = profile.color;
+                dot.style.cssText = `
+                    background: ${profile.color};
+                    box-shadow: 0 0 6px ${hexToRgba(profile.color, 0.6)};
+                `;
                 tagSpan.appendChild(dot);
             } else {
-                // Fallback to orange if no color
-                tagSpan.className += ' bg-[#F15F22]/20 text-[#F15F22] border border-[#F15F22]/30';
+                // Fallback to indigo (unified palette) if no color
+                tagSpan.style.cssText = `
+                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.08));
+                    border: 1px solid rgba(99, 102, 241, 0.4);
+                    color: #818cf8;
+                    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+                `;
             }
-            
+
             const text = document.createElement('span');
             text.textContent = `@${tag}`;
             tagSpan.appendChild(text);
@@ -3118,8 +3175,8 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
         if (profile_tags_used && Array.isArray(profile_tags_used) && profile_tags_used.length > 0) {
             profile_tags_used.forEach(tag => {
                 const tagSpan = document.createElement('span');
-                tagSpan.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-semibold';
-                
+                tagSpan.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all duration-200';
+
                 // Find profile by tag to get color
                 const profile = window.configState?.profiles?.find(p => p.tag === tag);
                 if (profile && profile.color) {
@@ -3130,23 +3187,49 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
                         const b = parseInt(hex.slice(5, 7), 16);
                         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                     };
-                    const color1 = hexToRgba(profile.color, 0.3);
-                    const color2 = hexToRgba(profile.color, 0.15);
-                    const borderColor = hexToRgba(profile.color, 0.5);
-                    tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-                    tagSpan.style.borderColor = borderColor;
-                    tagSpan.style.color = profile.color;
-                    tagSpan.style.border = '1px solid';
-                    // Add color dot
+                    const color1 = hexToRgba(profile.color, 0.2);
+                    const color2 = hexToRgba(profile.color, 0.08);
+                    const borderColor = hexToRgba(profile.color, 0.4);
+                    tagSpan.style.cssText = `
+                        background: linear-gradient(135deg, ${color1}, ${color2});
+                        border: 1px solid ${borderColor};
+                        color: ${profile.color};
+                        box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
+                        backdrop-filter: blur(4px);
+                    `;
+
+                    // Add hover effect
+                    tagSpan.addEventListener('mouseenter', () => {
+                        tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, 0.3)}, ${hexToRgba(profile.color, 0.12)})`;
+                        tagSpan.style.borderColor = hexToRgba(profile.color, 0.6);
+                        tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
+                        tagSpan.style.transform = 'translateY(-1px)';
+                    });
+                    tagSpan.addEventListener('mouseleave', () => {
+                        tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
+                        tagSpan.style.borderColor = borderColor;
+                        tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
+                        tagSpan.style.transform = 'translateY(0)';
+                    });
+
+                    // Add enhanced color dot with glow
                     const dot = document.createElement('span');
                     dot.className = 'w-1.5 h-1.5 rounded-full';
-                    dot.style.background = profile.color;
+                    dot.style.cssText = `
+                        background: ${profile.color};
+                        box-shadow: 0 0 6px ${hexToRgba(profile.color, 0.6)};
+                    `;
                     tagSpan.appendChild(dot);
                 } else {
-                    // Fallback to orange if no color
-                    tagSpan.className += ' bg-[#F15F22]/20 text-[#F15F22] border border-[#F15F22]/30';
+                    // Fallback to indigo (unified palette) if no color
+                    tagSpan.style.cssText = `
+                        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.08));
+                        border: 1px solid rgba(99, 102, 241, 0.4);
+                        color: #818cf8;
+                        box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+                    `;
                 }
-                
+
                 const text = document.createElement('span');
                 text.textContent = `@${tag}`;
                 tagSpan.appendChild(text);
