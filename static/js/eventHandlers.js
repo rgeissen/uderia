@@ -53,6 +53,10 @@ function _getGenieStepTitle(eventType, payload) {
         }
         case 'genie_coordination_start':
             return 'Coordinating Response';
+        case 'genie_llm_step': {
+            const stepName = payload.step_name || 'LLM Processing';
+            return `🧠 ${stepName}`;
+        }
         case 'genie_routing_decision': {
             const profileCount = payload.selected_profiles?.length || 0;
             return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
@@ -101,6 +105,37 @@ function _getConversationAgentStepTitle(eventType, payload) {
         case 'knowledge_retrieval': {
             const docCount = payload.document_count || 0;
             return `📚 Knowledge Retrieved (${docCount} chunks)`;
+        }
+        case 'knowledge_retrieval_start': {
+            const collections = payload.collections || [];
+            return `🔍 Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+        }
+        case 'knowledge_reranking_start': {
+            const collection = payload.collection || 'Unknown';
+            return `🔄 Reranking Documents (${collection})`;
+        }
+        case 'knowledge_reranking_complete': {
+            const collection = payload.collection || 'Unknown';
+            const count = payload.reranked_count || 0;
+            return `✅ Reranked ${count} documents (${collection})`;
+        }
+        case 'knowledge_retrieval_complete': {
+            const docCount = payload.document_count || 0;
+            const duration = payload.duration_ms || 0;
+            return `📚 Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`;
+        }
+        case 'rag_llm_step': {
+            const stepName = payload.step_name || 'Knowledge Synthesis';
+            const inputTokens = payload.input_tokens || 0;
+            const outputTokens = payload.output_tokens || 0;
+            return `🤖 ${stepName} (${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out)`;
+        }
+        case 'knowledge_search_complete': {
+            const collections = payload.collections_searched || 0;
+            const docs = payload.documents_retrieved || 0;
+            const totalTime = payload.total_time_ms || 0;
+            const timeSeconds = (totalTime / 1000).toFixed(1);
+            return `✅ Knowledge Search Complete (${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s)`;
         }
         default:
             return eventType;
@@ -240,25 +275,34 @@ async function processStream(responseBody) {
                                 // Delegate to conversation agent handler for state tracking (after UI update)
                                 handleConversationAgentEvent(eventData.type, payload);
                             }
-                        } else if (eventData.type === 'knowledge_retrieval') {
-                            // Handle knowledge retrieval events during execution
+                        } else if (eventData.type === 'knowledge_retrieval' ||
+                                   eventData.type === 'knowledge_retrieval_start' ||
+                                   eventData.type === 'knowledge_reranking_start' ||
+                                   eventData.type === 'knowledge_reranking_complete' ||
+                                   eventData.type === 'knowledge_retrieval_complete') {
+                            // Handle all knowledge retrieval events during execution
                             const payload = eventData.payload || {};
-                            const collections = payload.collections || [];
-                            const documentCount = payload.document_count || 0;
-                            console.log('[knowledge_retrieval] Received during execution:', { collections, documentCount });
-                            UI.blinkKnowledgeDot();
-                            UI.updateKnowledgeIndicator(collections, documentCount);
+                            const stepTitle = _getConversationAgentStepTitle(eventData.type, payload);
 
-                            // Store the knowledge event for potential replay
-                            state.pendingKnowledgeRetrievalEvent = payload;
+                            console.log(`[${eventData.type}] Received during execution:`, payload);
 
-                            // Always update status window for knowledge retrieval
-                            // For conversation_with_tools, this arrives BEFORE conversation_agent_start
-                            // so we render it directly without checking isConversationAgentActive
+                            // Update knowledge indicator for completion events
+                            if (eventData.type === 'knowledge_retrieval_complete' || eventData.type === 'knowledge_retrieval') {
+                                const collections = payload.collections || [];
+                                const documentCount = payload.document_count || 0;
+                                UI.blinkKnowledgeDot();
+                                UI.updateKnowledgeIndicator(collections, documentCount);
+                                // Store the knowledge event for potential replay
+                                state.pendingKnowledgeRetrievalEvent = payload;
+                            }
+
+                            // Always update status window for knowledge retrieval events
+                            // For conversation_with_tools, these arrive BEFORE conversation_agent_start
+                            // so we render them directly without checking isConversationAgentActive
                             UI.updateStatusWindow({
-                                step: `📚 Knowledge Retrieved (${documentCount} chunks)`,
+                                step: stepTitle,
                                 details: payload,
-                                type: 'knowledge_retrieval'
+                                type: eventData.type
                             }, false, 'knowledge_retrieval');
                         }
                     } else if (eventName === 'rag_retrieval') {
@@ -290,7 +334,8 @@ async function processStream(responseBody) {
                         }
                     // --- Genie Coordination Events ---
                     } else if (eventName === 'genie_start' || eventName === 'genie_routing' ||
-                               eventName === 'genie_coordination_start' || eventName === 'genie_routing_decision' ||
+                               eventName === 'genie_coordination_start' || eventName === 'genie_llm_step' ||
+                               eventName === 'genie_routing_decision' ||
                                eventName === 'genie_slave_invoked' || eventName === 'genie_slave_progress' ||
                                eventName === 'genie_slave_completed' || eventName === 'genie_synthesis_start' ||
                                eventName === 'genie_coordination_complete') {
@@ -657,6 +702,17 @@ async function handleReloadPlanClick(element) {
                     };
                     UI.renderGenieStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
+
+                // Update Last Statement token count from historical turn data
+                // Backend stores as turn_input_tokens/turn_output_tokens
+                const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+                const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+                UI.updateTokenDisplay({
+                    statement_input: inputTokens,
+                    statement_output: outputTokens,
+                    total_input: turnData.total_input_tokens || inputTokens,  // Use session total if available
+                    total_output: turnData.total_output_tokens || outputTokens
+                });
             } else {
                 // Fallback: Show simple summary if no detailed events available
                 const genieInfoEl = document.createElement('div');
@@ -701,10 +757,12 @@ async function handleReloadPlanClick(element) {
 
             // Also check for knowledge retrieval event (renders first)
             if (turnData.knowledge_retrieval_event) {
+                // Use knowledge_retrieval_complete type to show duration if available
+                const eventType = turnData.knowledge_retrieval_event.duration_ms ? 'knowledge_retrieval_complete' : 'knowledge_retrieval';
                 const knowledgeEventData = {
-                    step: _getConversationAgentStepTitle('knowledge_retrieval', turnData.knowledge_retrieval_event),
+                    step: _getConversationAgentStepTitle(eventType, turnData.knowledge_retrieval_event),
                     details: turnData.knowledge_retrieval_event,
-                    type: 'knowledge_retrieval'
+                    type: eventType
                 };
                 UI.renderConversationAgentStepForReload(knowledgeEventData, DOM.statusWindowContent, false);
             }
@@ -726,6 +784,17 @@ async function handleReloadPlanClick(element) {
                         type: event.type
                     };
                     UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                });
+
+                // Update Last Statement token count from historical turn data
+                // Backend stores as turn_input_tokens/turn_output_tokens
+                const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+                const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+                UI.updateTokenDisplay({
+                    statement_input: inputTokens,
+                    statement_output: outputTokens,
+                    total_input: turnData.total_input_tokens || inputTokens,
+                    total_output: turnData.total_output_tokens || outputTokens
                 });
             } else {
                 // Fallback: Show simple summary if no detailed events available
@@ -764,10 +833,47 @@ async function handleReloadPlanClick(element) {
 
         // Check if this is an llm_only or rag_focused profile (non-tool profiles)
         if (turnData && (turnData.profile_type === 'llm_only' || turnData.profile_type === 'rag_focused')) {
+            DOM.statusWindowContent.innerHTML = '';
             const isRagFocused = turnData.profile_type === 'rag_focused';
 
-            // If there's detailed knowledge retrieval data, render it using the standard UI
-            if (turnData.knowledge_retrieval_event && turnData.knowledge_retrieval_event.chunks) {
+            // Check for detailed knowledge events (similar to genie_events and conversation_agent_events)
+            const knowledgeEvents = turnData.knowledge_events || [];
+
+            if (knowledgeEvents.length > 0) {
+                // Update status title to indicate historical view
+                const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+                if (statusTitle) {
+                    statusTitle.textContent = `${isRagFocused ? 'RAG Focused' : 'Conversation'} Profile - Turn ${turnId}`;
+                }
+
+                // Replay each event using the same renderer as live execution
+                knowledgeEvents.forEach((event, index) => {
+                    const isFinal = index === knowledgeEvents.length - 1;
+                    // Build eventData in the format expected by _renderConversationAgentStep
+                    const eventData = {
+                        step: _getConversationAgentStepTitle(event.type, event.payload),
+                        details: event.payload,
+                        type: event.type
+                    };
+                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                });
+
+                // Add profile info after knowledge events
+                const profileInfoEl = document.createElement('div');
+                profileInfoEl.className = 'p-4 status-step info mt-4';
+                const icon = isRagFocused ? '🔍' : '💬';
+                const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
+                profileInfoEl.innerHTML = `
+                    <h4 class="font-bold text-sm text-white mb-2">${icon} ${title}</h4>
+                    <div class="mt-2 p-3 bg-gray-800/30 rounded border border-white/10">
+                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${isRagFocused ? 'RAG focused profiles retrieve documents from knowledge repositories and synthesize answers from those sources only.' : 'Conversation profiles bypass the planner and execute directly via LLM without tool calls.'}</p>
+                    </div>
+                `;
+                DOM.statusWindowContent.appendChild(profileInfoEl);
+            } else if (turnData.knowledge_retrieval_event && turnData.knowledge_retrieval_event.chunks) {
+                // Fallback: Use old rendering method if no detailed events
                 // Use the standard renderHistoricalTrace function to show detailed knowledge retrieval
                 UI.renderHistoricalTrace(
                     [], // No plan for non-tool profiles
@@ -817,6 +923,17 @@ async function handleReloadPlanClick(element) {
                         </div>
                     </div>`;
             }
+
+            // Update Last Statement token count from historical turn data
+            // Backend stores as turn_input_tokens/turn_output_tokens
+            const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+            const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+            UI.updateTokenDisplay({
+                statement_input: inputTokens,
+                statement_output: outputTokens,
+                total_input: turnData.total_input_tokens || inputTokens,
+                total_output: turnData.total_output_tokens || outputTokens
+            });
 
             // Hide replay buttons for non-tool profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {

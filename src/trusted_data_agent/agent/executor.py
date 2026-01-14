@@ -992,12 +992,48 @@ class PlanExecutor:
                 app_logger.info("🔍 Knowledge retrieval enabled for conversation_with_tools profile")
 
                 try:
+                    import time
+                    retrieval_start_time = time.time()
+
                     knowledge_collections = knowledge_config.get("collections", [])
                     max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
                     min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
                     max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
 
                     if knowledge_collections:
+                        # Emit start event (fetch actual collection names from metadata)
+                        collection_names_for_start = []
+                        for coll_config in knowledge_collections:
+                            coll_id = coll_config.get("id")
+                            if coll_id and self.rag_retriever:
+                                coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                                if coll_meta:
+                                    collection_names_for_start.append(coll_meta.get("name", coll_id))
+                                else:
+                                    # Fallback: try to get name from collection DB table directly
+                                    try:
+                                        from trusted_data_agent.core.collection_db import CollectionDB
+                                        coll_db = CollectionDB(user_uuid=self.user_uuid)
+                                        coll_info = coll_db.get_collection(coll_id)
+                                        if coll_info and coll_info.get("name"):
+                                            collection_names_for_start.append(coll_info["name"])
+                                        else:
+                                            collection_names_for_start.append(coll_config.get("name", coll_id))
+                                    except Exception as e:
+                                        logger.warning(f"Failed to fetch collection name for {coll_id}: {e}")
+                                        collection_names_for_start.append(coll_config.get("name", coll_id))
+                            else:
+                                collection_names_for_start.append(coll_config.get("name", coll_id or "Unknown"))
+
+                        yield self._format_sse({
+                            "type": "knowledge_retrieval_start",
+                            "payload": {
+                                "collections": collection_names_for_start,
+                                "max_docs": max_docs,
+                                "session_id": self.session_id
+                            }
+                        }, event="notification")
+
                         from trusted_data_agent.agent.rag_access_context import RAGAccessContext
                         rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
 
@@ -1018,11 +1054,47 @@ class PlanExecutor:
                                     coll_results = [r for r in all_results
                                                   if r.get("metadata", {}).get("collection_id") == coll_config["id"]]
                                     if coll_results and self.llm_handler:
+                                        # Get actual collection name from metadata
+                                        coll_id = coll_config.get("id")
+                                        coll_name = "Unknown"
+                                        if coll_id and self.rag_retriever:
+                                            coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                                            if coll_meta:
+                                                coll_name = coll_meta.get("name", "Unknown")
+                                            else:
+                                                coll_name = coll_config.get("name", "Unknown")
+                                        else:
+                                            coll_name = coll_config.get("name", "Unknown")
+
+                                        # Emit reranking start event
+                                        yield self._format_sse({
+                                            "type": "knowledge_reranking_start",
+                                            "payload": {
+                                                "collection": coll_name,
+                                                "document_count": len(coll_results),
+                                                "session_id": self.session_id
+                                            }
+                                        }, event="notification")
+
                                         reranked = await self._rerank_knowledge_with_llm(
                                             query=self.original_user_input,
                                             documents=coll_results,
                                             max_docs=max_docs
                                         )
+
+                                        # Emit reranking complete event with token info
+                                        # Get session to show updated token counts
+                                        updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+                                        if updated_session:
+                                            yield self._format_sse({
+                                                "type": "knowledge_reranking_complete",
+                                                "payload": {
+                                                    "collection": coll_name,
+                                                    "reranked_count": len(reranked),
+                                                    "session_id": self.session_id
+                                                }
+                                            }, event="notification")
+
                                         reranked_results = [r for r in reranked_results
                                                           if r.get("metadata", {}).get("collection_id") != coll_config["id"]]
                                         reranked_results.extend(reranked)
@@ -1049,8 +1121,18 @@ class PlanExecutor:
                                 collection_names.add(collection_name)
                                 doc_metadata = doc.get("metadata", {})
 
+                                # Try title first (user-friendly name), then filename
+                                source_name = doc_metadata.get("title") or doc_metadata.get("filename")
+
+                                # If no title or filename, check if this is an imported collection
+                                if not source_name:
+                                    if "(Imported)" in collection_name or doc_metadata.get("source") == "import":
+                                        source_name = "No Document Source (Imported)"
+                                    else:
+                                        source_name = "Unknown Source"
+
                                 knowledge_chunks.append({
-                                    "source": doc_metadata.get("source", "Unknown"),
+                                    "source": source_name,
                                     "content": doc.get("content", ""),
                                     "similarity_score": doc.get("similarity_score", 0),
                                     "document_id": doc.get("document_id"),
@@ -1059,20 +1141,24 @@ class PlanExecutor:
 
                             knowledge_accessed = list(collection_names)
 
+                            # Calculate retrieval duration
+                            retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
+
                             # Store event data for SSE emission and turn summary
                             knowledge_retrieval_event_data = {
                                 "collections": list(collection_names),
                                 "document_count": len(final_results),
-                                "chunks": knowledge_chunks
+                                "chunks": knowledge_chunks,
+                                "duration_ms": retrieval_duration_ms
                             }
 
-                            # Emit SSE event for Live Status panel
+                            # Emit completion event for Live Status panel (replaces old single event)
                             yield self._format_sse({
-                                "type": "knowledge_retrieval",
+                                "type": "knowledge_retrieval_complete",
                                 "payload": knowledge_retrieval_event_data
                             }, event="notification")
 
-                            app_logger.info(f"📚 Retrieved {len(final_results)} knowledge documents from {len(collection_names)} collection(s)")
+                            app_logger.info(f"📚 Retrieved {len(final_results)} knowledge documents from {len(collection_names)} collection(s) in {retrieval_duration_ms}ms")
 
                 except Exception as e:
                     app_logger.error(f"Error during knowledge retrieval for conversation_with_tools: {e}", exc_info=True)
@@ -1350,9 +1436,18 @@ User: {self.original_user_input}""")
         for doc in results:
             content = doc.get("content", "")
             metadata = doc.get("metadata", {})
-            source = metadata.get("source", "Unknown")
             # Get collection_name from document level (matching RAG retriever behavior)
             collection_name = doc.get("collection_name", "Unknown")
+
+            # Try title first (user-friendly name), then filename
+            source = metadata.get("title") or metadata.get("filename")
+
+            # If no title or filename, check if this is an imported collection
+            if not source:
+                if "(Imported)" in collection_name or metadata.get("source") == "import":
+                    source = "No Document Source (Imported)"
+                else:
+                    source = "Unknown Source"
 
             doc_text = f"""
 Source: {source} (Collection: {collection_name})
@@ -1575,14 +1670,26 @@ The following domain knowledge may be relevant to this conversation:
 """
 
                                 # Track accessed collections (get collection_name from document level)
-                                knowledge_accessed = [
-                                    {
+                                knowledge_accessed = []
+                                for r in final_results:
+                                    r_metadata = r.get("metadata", {})
+                                    r_collection_name = r.get("collection_name", "Unknown")
+
+                                    # Try title first (user-friendly name), then filename
+                                    source_name = r_metadata.get("title") or r_metadata.get("filename")
+
+                                    # If no title or filename, check if this is an imported collection
+                                    if not source_name:
+                                        if "(Imported)" in r_collection_name or r_metadata.get("source") == "import":
+                                            source_name = "No Document Source (Imported)"
+                                        else:
+                                            source_name = "Unknown Source"
+
+                                    knowledge_accessed.append({
                                         "collection_id": r.get("collection_id"),
-                                        "collection_name": r.get("collection_name", "Unknown"),
-                                        "source": r.get("metadata", {}).get("source", "Unknown")
-                                    }
-                                    for r in final_results
-                                ]
+                                        "collection_name": r_collection_name,
+                                        "source": source_name
+                                    })
 
                                 # Build detailed chunks metadata (matching planner.py format)
                                 knowledge_chunks = []
@@ -1595,8 +1702,18 @@ The following domain knowledge may be relevant to this conversation:
                                     # Get metadata for source info
                                     doc_metadata = doc.get("metadata", {})
 
+                                    # Try title first (user-friendly name), then filename
+                                    source_name = doc_metadata.get("title") or doc_metadata.get("filename")
+
+                                    # If no title or filename, check if this is an imported collection
+                                    if not source_name:
+                                        if "(Imported)" in collection_name or doc_metadata.get("source") == "import":
+                                            source_name = "No Document Source (Imported)"
+                                        else:
+                                            source_name = "Unknown Source"
+
                                     knowledge_chunks.append({
-                                        "source": doc_metadata.get("source", "Unknown"),
+                                        "source": source_name,
                                         "content": doc.get("content", ""),
                                         "similarity_score": doc.get("similarity_score", 0),
                                         "document_id": doc.get("document_id"),
@@ -1829,6 +1946,12 @@ The following domain knowledge may be relevant to this conversation:
             })
 
             # --- MANDATORY Knowledge Retrieval ---
+            import time
+            retrieval_start_time = time.time()
+
+            # Collect events for plan reload (similar to genie_events and conversation_agent_events)
+            knowledge_events = []
+
             profile_config = self._get_profile_config()
             knowledge_config = profile_config.get("knowledgeConfig", {})
             knowledge_collections = knowledge_config.get("collections", [])
@@ -1842,6 +1965,41 @@ The following domain knowledge may be relevant to this conversation:
             max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
             min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
             max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+
+            # Emit start event (fetch actual collection names from metadata)
+            collection_names_for_start = []
+            for coll_config in knowledge_collections:
+                coll_id = coll_config.get("id")
+                if coll_id and self.rag_retriever:
+                    coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                    if coll_meta:
+                        collection_names_for_start.append(coll_meta.get("name", coll_id))
+                    else:
+                        # Fallback: try to get name from collection DB table directly
+                        try:
+                            from trusted_data_agent.core.collection_db import CollectionDB
+                            coll_db = CollectionDB(user_uuid=self.user_uuid)
+                            coll_info = coll_db.get_collection(coll_id)
+                            if coll_info and coll_info.get("name"):
+                                collection_names_for_start.append(coll_info["name"])
+                            else:
+                                collection_names_for_start.append(coll_config.get("name", coll_id))
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch collection name for {coll_id}: {e}")
+                            collection_names_for_start.append(coll_config.get("name", coll_id))
+                else:
+                    collection_names_for_start.append(coll_config.get("name", coll_id or "Unknown"))
+
+            start_event_payload = {
+                "collections": collection_names_for_start,
+                "max_docs": max_docs,
+                "session_id": self.session_id
+            }
+            knowledge_events.append({"type": "knowledge_retrieval_start", "payload": start_event_payload})
+            yield self._format_sse({
+                "type": "knowledge_retrieval_start",
+                "payload": start_event_payload
+            }, event="notification")
 
             from trusted_data_agent.agent.rag_access_context import RAGAccessContext
             rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
@@ -1872,11 +2030,48 @@ The following domain knowledge may be relevant to this conversation:
                     coll_results = [r for r in all_results
                                   if r.get("metadata", {}).get("collection_id") == coll_config["id"]]
                     if coll_results and self.llm_handler:
+                        # Get actual collection name from metadata
+                        coll_id = coll_config.get("id")
+                        coll_name = "Unknown"
+                        if coll_id and self.rag_retriever:
+                            coll_meta = self.rag_retriever.get_collection_metadata(coll_id)
+                            if coll_meta:
+                                coll_name = coll_meta.get("name", "Unknown")
+                            else:
+                                coll_name = coll_config.get("name", "Unknown")
+                        else:
+                            coll_name = coll_config.get("name", "Unknown")
+
+                        # Emit reranking start event
+                        rerank_start_payload = {
+                            "collection": coll_name,
+                            "document_count": len(coll_results),
+                            "session_id": self.session_id
+                        }
+                        knowledge_events.append({"type": "knowledge_reranking_start", "payload": rerank_start_payload})
+                        yield self._format_sse({
+                            "type": "knowledge_reranking_start",
+                            "payload": rerank_start_payload
+                        }, event="notification")
+
                         reranked = await self._rerank_knowledge_with_llm(
                             query=self.original_user_input,
                             documents=coll_results,
                             max_docs=max_docs
                         )
+
+                        # Emit reranking complete event
+                        rerank_complete_payload = {
+                            "collection": coll_name,
+                            "reranked_count": len(reranked),
+                            "session_id": self.session_id
+                        }
+                        knowledge_events.append({"type": "knowledge_reranking_complete", "payload": rerank_complete_payload})
+                        yield self._format_sse({
+                            "type": "knowledge_reranking_complete",
+                            "payload": rerank_complete_payload
+                        }, event="notification")
+
                         reranked_results = [r for r in reranked_results
                                           if r.get("metadata", {}).get("collection_id") != coll_config["id"]]
                         reranked_results.extend(reranked)
@@ -1904,29 +2099,41 @@ The following domain knowledge may be relevant to this conversation:
                 collection_names.add(collection_name)
                 doc_metadata = doc.get("metadata", {})
 
+                # Try title first (user-friendly name), then filename
+                source_name = doc_metadata.get("title") or doc_metadata.get("filename")
+
+                # If no title or filename, check if this is an imported collection
+                if not source_name:
+                    if "(Imported)" in collection_name or doc_metadata.get("source") == "import":
+                        source_name = "No Document Source (Imported)"
+                    else:
+                        source_name = "Unknown Source"
+
                 knowledge_chunks.append({
-                    "source": doc_metadata.get("source", "Unknown"),
+                    "source": source_name,
                     "content": doc.get("content", ""),
                     "similarity_score": doc.get("similarity_score", 0),
                     "document_id": doc.get("document_id"),
                     "chunk_index": doc.get("chunk_index", 0)
                 })
 
-            # Emit detailed SSE event for Live Status panel
+            # Calculate retrieval duration
+            retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
+
+            # Emit completion event for Live Status panel (replaces old single event)
             event_details = {
                 "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)",
                 "collections": list(collection_names),
                 "document_count": len(final_results),
-                "chunks": knowledge_chunks
+                "chunks": knowledge_chunks,
+                "duration_ms": retrieval_duration_ms
             }
 
-            event_data = {
-                "step": "Knowledge Retrieved",
-                "type": "knowledge_retrieval",
-                "details": event_details
-            }
-            self._log_system_event(event_data)
-            yield self._format_sse(event_data)
+            knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": event_details})
+            yield self._format_sse({
+                "type": "knowledge_retrieval_complete",
+                "payload": event_details
+            }, event="notification")
 
             # --- LLM Synthesis ---
             from trusted_data_agent.agent.prompt_loader import get_prompt_loader
@@ -1944,6 +2151,8 @@ The following domain knowledge may be relevant to this conversation:
 
             # Emit "Calling LLM" event with call_id for token tracking
             call_id = str(uuid.uuid4())
+            llm_start_time = time.time()
+
             yield self._format_sse({
                 "step": "Calling LLM for Knowledge Synthesis",
                 "type": "system_message",
@@ -1965,6 +2174,9 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt_override=system_prompt
             )
 
+            # Calculate LLM call duration
+            llm_duration_ms = int((time.time() - llm_start_time) * 1000)
+
             # Set LLM idle indicator
             yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
@@ -1978,6 +2190,21 @@ The following domain knowledge may be relevant to this conversation:
                     "total_output": session_data.get("output_tokens", 0),
                     "call_id": call_id
                 }, "token_update")
+
+            # Emit RAG LLM step event for plan reload (similar to conversation_llm_step)
+            rag_llm_step_payload = {
+                "step_name": "Knowledge Synthesis",
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "duration_ms": llm_duration_ms,
+                "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown",
+                "session_id": self.session_id
+            }
+            knowledge_events.append({"type": "rag_llm_step", "payload": rag_llm_step_payload})
+            yield self._format_sse({
+                "type": "rag_llm_step",
+                "payload": rag_llm_step_payload
+            }, event="notification")
 
             # Emit tool execution result event for LLM synthesis
             # This shows the synthesis as a proper tool step with token tracking
@@ -2000,6 +2227,28 @@ The following domain knowledge may be relevant to this conversation:
                 "details": synthesis_result_data,
                 "tool_name": "LLM_Synthesis"
             }, "tool_result")
+
+            # Calculate total knowledge search time (retrieval + synthesis)
+            total_knowledge_search_time_ms = int((time.time() - retrieval_start_time) * 1000)
+
+            # Emit Knowledge Search Complete summary event (similar to Tools Complete)
+            knowledge_search_complete_payload = {
+                "status": "complete",
+                "collections_searched": len(collection_names),
+                "collection_names": list(collection_names),
+                "documents_retrieved": len(final_results),
+                "total_time_ms": total_knowledge_search_time_ms,
+                "retrieval_time_ms": retrieval_duration_ms,
+                "synthesis_time_ms": llm_duration_ms,
+                "synthesis_tokens_in": input_tokens,
+                "synthesis_tokens_out": output_tokens,
+                "session_id": self.session_id
+            }
+            knowledge_events.append({"type": "knowledge_search_complete", "payload": knowledge_search_complete_payload})
+            yield self._format_sse({
+                "type": "knowledge_search_complete",
+                "payload": knowledge_search_complete_payload
+            }, event="notification")
 
             # --- Format Response with Sources ---
             formatter = OutputFormatter(
@@ -2059,6 +2308,8 @@ The following domain knowledge may be relevant to this conversation:
             # Track which knowledge collections were accessed
             knowledge_accessed = list(set([r.get("collection_id") for r in final_results if r.get("collection_id")]))
 
+            # Note: retrieval_duration_ms already calculated earlier (line ~1991)
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -2078,12 +2329,14 @@ The following domain knowledge may be relevant to this conversation:
                 "rag_source_collection_id": knowledge_accessed[0] if knowledge_accessed else None,
                 "case_id": None,
                 "knowledge_accessed": knowledge_accessed,  # Track knowledge collections accessed
+                "knowledge_events": knowledge_events,  # Store all events for plan reload (like genie_events)
                 "knowledge_retrieval_event": {
                     "enabled": True,  # Always true for rag_focused
                     "retrieved": len(knowledge_accessed) > 0,
                     "document_count": len(final_results),
                     "collections": list(collection_names),  # Include collection names
                     "chunks": knowledge_chunks,  # Include detailed chunks for turn reload
+                    "duration_ms": retrieval_duration_ms,  # Add duration for plan reload
                     "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)"
                 }
             }

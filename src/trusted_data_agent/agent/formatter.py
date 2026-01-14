@@ -1019,8 +1019,17 @@ class OutputFormatter:
 
         for idx, doc in enumerate(sources):
             metadata = doc.get("metadata", {})
-            source_name = metadata.get("source", "Unknown Source")
             collection_name = doc.get("collection_name", "Unknown")
+
+            # Try title first (user-friendly name), then filename
+            source_name = metadata.get("title") or metadata.get("filename")
+
+            # If no title or filename, check if this is an imported collection
+            if not source_name:
+                if "(Imported)" in collection_name or metadata.get("source") == "import":
+                    source_name = "No Document Source (Imported)"
+                else:
+                    source_name = "Unknown Source"
             similarity_score = doc.get("similarity_score", 0)
             content = doc.get("content", "")
 

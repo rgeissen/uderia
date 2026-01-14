@@ -342,10 +342,17 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 
     // --- PHASE 2: Render knowledge retrieval event FIRST if present ---
     if (knowledgeRetrievalEvent) {
+        // Use knowledge_retrieval_complete type to show duration if available
+        const eventType = knowledgeRetrievalEvent.duration_ms ? 'knowledge_retrieval_complete' : 'knowledge_retrieval';
+        const docCount = knowledgeRetrievalEvent.document_count || 0;
+        const duration = knowledgeRetrievalEvent.duration_ms || 0;
+        const stepTitle = eventType === 'knowledge_retrieval_complete'
+            ? `📚 Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`
+            : `📚 Knowledge Retrieved (${docCount} chunks)`;
         updateStatusWindow({
-            step: 'Knowledge Retrieved',
+            step: stepTitle,
             details: knowledgeRetrievalEvent,
-            type: 'knowledge_retrieval'
+            type: eventType
         }, false, 'knowledge_retrieval');
     }
     // --- PHASE 2 END ---
@@ -1344,7 +1351,23 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 : '<svg class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
             break;
         case 'knowledge_retrieval':
+        case 'knowledge_retrieval_complete':
             iconSvg = '<svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.01 4.5-4.5-2.01-4.5-4.5-4.5zm0 7c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zM3 21.5h8v-2H3v2zm0-3.5h8v-2H3v2z"/></svg>';
+            break;
+        case 'knowledge_retrieval_start':
+            iconSvg = '<svg class="w-4 h-4 text-violet-400" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
+            break;
+        case 'knowledge_reranking_start':
+            iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>';
+            break;
+        case 'knowledge_reranking_complete':
+            iconSvg = '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+            break;
+        case 'rag_llm_step':
+            iconSvg = '<svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
+            break;
+        case 'knowledge_search_complete':
+            iconSvg = '<svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
             break;
         default:
             iconSvg = '<svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
@@ -1580,6 +1603,176 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                     blinkKnowledgeDot();
                     updateKnowledgeIndicator(collections, documentCount);
                 }
+                break;
+            }
+
+            case 'knowledge_retrieval_start': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const collections = details.collections || [];
+                const maxDocs = details.max_docs || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collections.length > 0 ? collections.join(', ') : 'N/A'}</div>
+                        <div class="status-kv-key">Target</div>
+                        <div class="status-kv-value">Up to ${maxDocs} documents</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_reranking_start': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const collection = details.collection || 'Unknown';
+                const docCount = details.document_count || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collection</div>
+                        <div class="status-kv-value">${collection}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${docCount} documents to rerank</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_reranking_complete': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const collection = details.collection || 'Unknown';
+                const rerankedCount = details.reranked_count || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collection</div>
+                        <div class="status-kv-value">${collection}</div>
+                        <div class="status-kv-key">Result</div>
+                        <div class="status-kv-value text-green-400">${rerankedCount} documents reranked</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_retrieval_complete': {
+                // Same styling as knowledge_retrieval
+                stepEl.classList.remove('conversation-agent-status-step');
+                stepEl.classList.add('knowledge-retrieval-status-step');
+
+                const collections = details.collections || [];
+                const chunks = details.chunks || [];
+                const documentCount = details.document_count || chunks.length;
+                const durationMs = details.duration_ms || 0;
+
+                let chunksHtml = '';
+                if (chunks.length > 0) {
+                    const chunkPreviews = chunks.slice(0, 3).map((chunk, idx) => {
+                        const similarity = chunk.similarity_score ? (chunk.similarity_score * 100).toFixed(1) : 'N/A';
+                        const content = chunk.content || '';
+                        const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
+                        const source = chunk.source || 'Unknown';
+                        return `
+                            <div class="p-2 bg-gray-900/50 rounded border border-purple-500/30">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="text-purple-400 font-semibold">Chunk ${idx + 1}</span>
+                                    <span class="text-gray-500">Relevance: ${similarity}%</span>
+                                </div>
+                                <div class="text-gray-500 text-xs mb-1">Source: ${source}</div>
+                                <div class="text-gray-300 whitespace-pre-wrap">${preview}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    chunksHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">
+                                View Retrieved Chunks (${chunks.length})
+                            </summary>
+                            <div class="space-y-2 mt-2">${chunkPreviews}</div>
+                            ${chunks.length > 3 ? `<div class="text-gray-500 mt-1">+${chunks.length - 3} more chunks</div>` : ''}
+                        </details>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collections.length > 0 ? collections.join(', ') : 'N/A'}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${documentCount} chunks retrieved</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${durationMs}ms</div>
+                    </div>
+                    ${chunksHtml}
+                `;
+
+                // Trigger the knowledge indicator
+                if (collections.length > 0) {
+                    blinkKnowledgeDot();
+                    updateKnowledgeIndicator(collections, documentCount);
+                }
+                break;
+            }
+
+            case 'rag_llm_step': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const stepName = details.step_name || 'Knowledge Synthesis';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const durationMs = details.duration_ms || 0;
+                const model = details.model || 'Unknown';
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Step</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">${stepName}</code></div>
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value">${model}</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${durationMs}ms</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_search_complete': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const status = details.status || 'complete';
+                const collectionsSearched = details.collections_searched || 0;
+                const collectionNames = details.collection_names || [];
+                const docsRetrieved = details.documents_retrieved || 0;
+                const totalTimeMs = details.total_time_ms || 0;
+                const retrievalTimeMs = details.retrieval_time_ms || 0;
+                const synthesisTimeMs = details.synthesis_time_ms || 0;
+                const tokensIn = details.synthesis_tokens_in || 0;
+                const tokensOut = details.synthesis_tokens_out || 0;
+                const totalTimeSec = (totalTimeMs / 1000).toFixed(1);
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-green-400">✓ Complete</div>
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collectionNames.join(', ')}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${docsRetrieved} retrieved</div>
+                        <div class="status-kv-key">Total Time</div>
+                        <div class="status-kv-value">${totalTimeSec}s</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${tokensIn.toLocaleString()} in / ${tokensOut.toLocaleString()} out</div>
+                    </div>
+                    <details class="mt-2">
+                        <summary class="cursor-pointer text-gray-400 hover:text-white">Timing Breakdown</summary>
+                        <div class="status-kv-grid mt-2">
+                            <div class="status-kv-key">Retrieval</div>
+                            <div class="status-kv-value">${retrievalTimeMs}ms</div>
+                            <div class="status-kv-key">Synthesis</div>
+                            <div class="status-kv-value">${synthesisTimeMs}ms</div>
+                        </div>
+                    </details>
+                `;
                 break;
             }
 
@@ -1880,7 +2073,9 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         return;
     } else if (source === 'interactive') {
         // If the last active view was a REST task or agent execution, reset the view
-        if (state.isRestTaskActive || state.isGenieCoordinationActive || state.isConversationAgentActive) {
+        // BUT: Don't reset if genie/conversation agent is CURRENTLY active - let them finish!
+        // Only reset when switching FROM those modes TO interactive mode.
+        if ((state.isRestTaskActive || state.isConversationAgentActive) && !state.isGenieCoordinationActive) {
             resetStatusWindowForNewTask();
             updateTaskIdDisplay(null); // Hide the task ID
         }

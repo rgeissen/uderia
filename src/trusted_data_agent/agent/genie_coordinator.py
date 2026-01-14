@@ -283,6 +283,9 @@ class GenieCoordinator:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
+        # Track which profiles were actually invoked during execution
+        self.invoked_profiles = []
+
         # Register event callback for this parent session
         # Wrap the callback to also collect events from slave tools
         if event_callback:
@@ -292,6 +295,13 @@ class GenieCoordinator:
                     "type": event_type,
                     "payload": dict(payload)
                 })
+
+                # Track profile invocations for synthesis/completion events
+                if event_type == "genie_slave_invoked":
+                    profile_tag = payload.get("profile_tag")
+                    if profile_tag and profile_tag not in self.invoked_profiles:
+                        self.invoked_profiles.append(profile_tag)
+
                 # Forward to original callback
                 event_callback(event_type, payload)
             _event_callbacks[parent_session_id] = collecting_callback
@@ -302,6 +312,12 @@ class GenieCoordinator:
                     "type": event_type,
                     "payload": dict(payload)
                 })
+
+                # Track profile invocations for synthesis/completion events
+                if event_type == "genie_slave_invoked":
+                    profile_tag = payload.get("profile_tag")
+                    if profile_tag and profile_tag not in self.invoked_profiles:
+                        self.invoked_profiles.append(profile_tag)
             _event_callbacks[parent_session_id] = collecting_only_callback
 
         # Build tools and agent
@@ -472,10 +488,11 @@ After gathering information from profiles, provide a synthesized answer that:
                 HumanMessage(content=query)
             ]
 
-            # Reset LLM call tracking for this execution
+            # Reset tracking for this execution
             self.llm_call_count = 0
             self.total_input_tokens = 0
             self.total_output_tokens = 0
+            self.invoked_profiles = []  # Reset profile invocation tracking
 
             output = ""
             tools_used = []
@@ -548,8 +565,9 @@ After gathering information from profiles, provide a synthesized answer that:
                                             tools_used.append(tool_name)
 
             # Emit synthesis start event
+            # Use tracked invoked profiles (already clean tags like "FIT", "TDAT")
             self._emit_event("genie_synthesis_start", {
-                "profiles_consulted": tools_used,
+                "profiles_consulted": self.invoked_profiles,
                 "session_id": self.parent_session_id
             })
 
@@ -559,7 +577,7 @@ After gathering information from profiles, provide a synthesized answer that:
             # Emit coordination complete event
             self._emit_event("genie_coordination_complete", {
                 "total_duration_ms": total_duration_ms,
-                "profiles_used": tools_used,
+                "profiles_used": self.invoked_profiles,  # Use tracked invoked profiles
                 "success": True,
                 "session_id": self.parent_session_id,
                 "input_tokens": self.total_input_tokens,
@@ -589,7 +607,9 @@ After gathering information from profiles, provide a synthesized answer that:
                 "tools_used": tools_used,
                 "slave_sessions": turn_slave_sessions,
                 "genie_events": self.collected_events,  # For plan reload
-                "success": True
+                "success": True,
+                "input_tokens": self.total_input_tokens,
+                "output_tokens": self.total_output_tokens
             }
 
         except Exception as e:
@@ -613,7 +633,9 @@ After gathering information from profiles, provide a synthesized answer that:
                 "slave_sessions": {},  # No sessions for failed turn
                 "genie_events": self.collected_events,  # For plan reload (includes error event)
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "input_tokens": self.total_input_tokens,
+                "output_tokens": self.total_output_tokens
             }
 
     def get_used_slave_sessions(self) -> Dict[str, str]:

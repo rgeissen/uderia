@@ -401,6 +401,33 @@ async def _run_genie_execution(
         except Exception as log_error:
             app_logger.error(f"Failed to log Genie session data: {log_error}")
 
+        # Extract token counts from coordination result
+        input_tokens = result.get('input_tokens', 0) or 0
+        output_tokens = result.get('output_tokens', 0) or 0
+
+        # Update session token counts
+        if input_tokens > 0 or output_tokens > 0:
+            # Update the token counts in session
+            await session_manager.update_token_count(
+                user_uuid,
+                session_id,
+                input_tokens,
+                output_tokens
+            )
+
+            # Fetch updated session to get totals
+            updated_session = await session_manager.get_session(user_uuid, session_id)
+
+            # Send token update event to UI
+            if updated_session:
+                await event_handler({
+                    "statement_input": input_tokens,
+                    "statement_output": output_tokens,
+                    "total_input": updated_session.get("input_tokens", 0),
+                    "total_output": updated_session.get("output_tokens", 0),
+                    "call_id": f"genie_{turn_number}"
+                }, "token_update")
+
         # Send final answer event with proper fields for frontend
         final_payload = {
             "final_answer": coordinator_response,  # Required by eventHandlers.js

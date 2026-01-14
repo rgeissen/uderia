@@ -212,8 +212,10 @@ export function completeCoordination(payload) {
     // Store the session ID before cleanup
     const completedSessionId = genieState.activeCoordination;
 
-    // Mark genie coordination as inactive
-    state.isGenieCoordinationActive = false;
+    // IMPORTANT: Don't set state.isGenieCoordinationActive = false here!
+    // The UI (ui.js:_renderGenieStep) will handle this AFTER rendering the final event.
+    // Setting it to false here causes ui.js:updateStatusWindow to reset the status window
+    // and clear all previous events before rendering the completion event.
 
     // Auto-collapse slave sessions after execution for clean session list
     if (completedSessionId) {
@@ -333,6 +335,11 @@ export function handleGenieEvent(eventType, payload) {
             if (!genieState.activeCoordination) {
                 initGenieCoordination(payload);
             }
+            break;
+
+        case 'genie_llm_step':
+            // LLM step events are purely informational for the Live Status window
+            // No state tracking needed - handled by ui.js:_renderGenieStep()
             break;
 
         case 'genie_routing_decision':

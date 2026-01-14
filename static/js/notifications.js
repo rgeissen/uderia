@@ -427,27 +427,35 @@ export function subscribeToNotifications() {
                 handleConversationAgentEvent(data.type, payload);
                 break;
             }
-            // --- Knowledge Retrieval for Conversation Agent ---
-            case 'knowledge_retrieval': {
+            // --- Knowledge Retrieval Events for Conversation Agent ---
+            case 'knowledge_retrieval':
+            case 'knowledge_retrieval_start':
+            case 'knowledge_reranking_start':
+            case 'knowledge_reranking_complete':
+            case 'knowledge_retrieval_complete':
+            case 'rag_llm_step':
+            case 'knowledge_search_complete': {
                 const payload = data.payload || {};
-                const collections = payload.collections || [];
-                const documentCount = payload.document_count || 0;
-                console.log('[knowledge_retrieval] Received direct notification:', { collections, documentCount });
+                const stepTitle = _getConversationAgentStepTitle(data.type, payload);
+                console.log(`[${data.type}] Received direct notification:`, payload);
 
-                // Update knowledge indicator
-                UI.blinkKnowledgeDot();
-                UI.updateKnowledgeIndicator(collections, documentCount);
+                // Update knowledge indicator for completion events
+                if (data.type === 'knowledge_retrieval_complete' || data.type === 'knowledge_retrieval') {
+                    const collections = payload.collections || [];
+                    const documentCount = payload.document_count || 0;
+                    UI.blinkKnowledgeDot();
+                    UI.updateKnowledgeIndicator(collections, documentCount);
+                    // Store the knowledge event for potential replay
+                    state.pendingKnowledgeRetrievalEvent = payload;
+                }
 
-                // Store the knowledge event for potential replay
-                state.pendingKnowledgeRetrievalEvent = payload;
-
-                // Always update status window for knowledge retrieval
-                // For conversation_with_tools, this arrives BEFORE conversation_agent_start
-                // so we render it directly without checking isConversationAgentActive
+                // Always update status window for knowledge retrieval events
+                // For conversation_with_tools, these arrive BEFORE conversation_agent_start
+                // so we render them directly without checking isConversationAgentActive
                 UI.updateStatusWindow({
-                    step: `📚 Knowledge Retrieved (${documentCount} chunks)`,
+                    step: stepTitle,
                     details: payload,
-                    type: 'knowledge_retrieval'
+                    type: data.type
                 }, false, 'knowledge_retrieval');
                 break;
             }
