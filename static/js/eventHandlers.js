@@ -872,15 +872,22 @@ async function handleReloadPlanClick(element) {
                     </div>
                 `;
                 DOM.statusWindowContent.appendChild(profileInfoEl);
-            } else if (turnData.knowledge_retrieval_event && turnData.knowledge_retrieval_event.chunks) {
+            } else if (turnData.knowledge_retrieval_event && (turnData.knowledge_chunks_ui || turnData.knowledge_retrieval_event.chunks)) {
                 // Fallback: Use old rendering method if no detailed events
+                // Get chunks from new location (knowledge_chunks_ui) or fall back to old location for backwards compatibility
+                const chunks = turnData.knowledge_chunks_ui || turnData.knowledge_retrieval_event.chunks || [];
+                const knowledgeEventWithChunks = {
+                    ...turnData.knowledge_retrieval_event,
+                    chunks: chunks  // Add chunks from appropriate source
+                };
+
                 // Use the standard renderHistoricalTrace function to show detailed knowledge retrieval
                 UI.renderHistoricalTrace(
                     [], // No plan for non-tool profiles
                     [], // No execution trace for non-tool profiles
                     turnId,
                     turnData.user_query || 'N/A',
-                    turnData.knowledge_retrieval_event // Pass the knowledge event with chunks
+                    knowledgeEventWithChunks // Pass the knowledge event with chunks
                 );
 
                 // Add profile info after knowledge details

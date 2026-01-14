@@ -1145,11 +1145,12 @@ class PlanExecutor:
                             retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
 
                             # Store event data for SSE emission and turn summary
+                            # Note: Chunks stored separately in knowledge_chunks_ui for UI-only use
                             knowledge_retrieval_event_data = {
                                 "collections": list(collection_names),
                                 "document_count": len(final_results),
-                                "chunks": knowledge_chunks,
-                                "duration_ms": retrieval_duration_ms
+                                "duration_ms": retrieval_duration_ms,
+                                "summary": f"Retrieved {len(final_results)} documents from {len(collection_names)} collection(s)"
                             }
 
                             # Emit completion event for Live Status panel (replaces old single event)
@@ -1289,7 +1290,9 @@ class PlanExecutor:
                 "turn_output_tokens": output_tokens,
                 # Knowledge retrieval tracking for session reload
                 "knowledge_accessed": knowledge_accessed,
-                "knowledge_retrieval_event": knowledge_retrieval_event_data
+                "knowledge_retrieval_event": knowledge_retrieval_event_data,
+                # UI-only: Full document chunks for plan reload display (not sent to LLM)
+                "knowledge_chunks_ui": knowledge_chunks if knowledge_enabled else []
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -2121,11 +2124,11 @@ The following domain knowledge may be relevant to this conversation:
             retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
 
             # Emit completion event for Live Status panel (replaces old single event)
+            # Note: Chunks not included in event to keep SSE payload lean
             event_details = {
                 "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)",
                 "collections": list(collection_names),
                 "document_count": len(final_results),
-                "chunks": knowledge_chunks,
                 "duration_ms": retrieval_duration_ms
             }
 
@@ -2335,10 +2338,11 @@ The following domain knowledge may be relevant to this conversation:
                     "retrieved": len(knowledge_accessed) > 0,
                     "document_count": len(final_results),
                     "collections": list(collection_names),  # Include collection names
-                    "chunks": knowledge_chunks,  # Include detailed chunks for turn reload
                     "duration_ms": retrieval_duration_ms,  # Add duration for plan reload
                     "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)"
-                }
+                },
+                # UI-only: Full document chunks for plan reload display (not sent to LLM)
+                "knowledge_chunks_ui": knowledge_chunks
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
