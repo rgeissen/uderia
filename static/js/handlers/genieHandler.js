@@ -123,7 +123,7 @@ export function updateRoutingDecision(payload) {
 export function updateSlaveInvoked(payload) {
     if (!genieState.activeCoordination) return;
 
-    const { profile_tag, slave_session_id, profile_id } = payload;
+    const { profile_tag, slave_session_id, profile_id, query } = payload;
 
     // Update or create progress entry
     if (!genieState.slaveProgress[profile_tag]) {
@@ -131,12 +131,14 @@ export function updateSlaveInvoked(payload) {
             status: 'active',
             id: profile_id,
             sessionId: slave_session_id,
-            startTime: Date.now()
+            startTime: Date.now(),
+            query: query || ''  // Store the query sent to the slave
         };
     } else {
         genieState.slaveProgress[profile_tag].status = 'active';
         genieState.slaveProgress[profile_tag].sessionId = slave_session_id;
         genieState.slaveProgress[profile_tag].startTime = Date.now();
+        genieState.slaveProgress[profile_tag].query = query || '';  // Store the query
     }
 
     // Add to invoked list if not already there
@@ -144,7 +146,7 @@ export function updateSlaveInvoked(payload) {
         genieState.profilesInvoked.push(profile_tag);
     }
 
-    console.log('[GenieHandler] Slave invoked:', profile_tag);
+    console.log('[GenieHandler] Slave invoked:', profile_tag, 'with query:', query?.slice(0, 50) + '...');
 }
 
 /**
@@ -171,12 +173,13 @@ export function updateSlaveProgress(payload) {
 export function updateSlaveCompleted(payload) {
     if (!genieState.activeCoordination) return;
 
-    const { profile_tag, result_preview, duration_ms, success, error } = payload;
+    const { profile_tag, result, result_preview, duration_ms, success, error } = payload;
 
     if (genieState.slaveProgress[profile_tag]) {
         genieState.slaveProgress[profile_tag].status = success ? 'completed' : 'error';
         genieState.slaveProgress[profile_tag].duration = duration_ms;
-        genieState.slaveProgress[profile_tag].result = result_preview;
+        // Store full result if available, otherwise use preview
+        genieState.slaveProgress[profile_tag].result = result || result_preview;
         genieState.slaveProgress[profile_tag].error = error;
     }
 
@@ -217,28 +220,17 @@ export function completeCoordination(payload) {
     // Setting it to false here causes ui.js:updateStatusWindow to reset the status window
     // and clear all previous events before rendering the completion event.
 
-    // Auto-collapse slave sessions after execution for clean session list
+    // Keep slave sessions expanded after execution - user can collapse manually if desired
+    // Visual feedback on completion (brief green highlight on master session)
     if (completedSessionId) {
-        // Small delay to ensure session rendering is complete and user sees the completion
-        setTimeout(() => {
-            const collapseState = UI.getGenieCollapseState();
-            if (!collapseState[completedSessionId]) {
-                // Sessions are currently expanded - collapse them
-                UI.toggleGenieSlaveVisibility(completedSessionId);
-
-                // Add visual feedback - brief highlight on master session
-                const masterItem = document.getElementById(`session-${completedSessionId}`);
-                if (masterItem) {
-                    masterItem.style.transition = 'box-shadow 0.3s ease';
-                    masterItem.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.3)'; // Green for completion
-                    setTimeout(() => {
-                        masterItem.style.boxShadow = '';
-                    }, 800);
-                }
-
-                console.log('[GenieHandler] 🔒 Auto-collapsed slave sessions after completion');
-            }
-        }, 1500); // Longer delay so user sees completion before collapse
+        const masterItem = document.getElementById(`session-${completedSessionId}`);
+        if (masterItem) {
+            masterItem.style.transition = 'box-shadow 0.3s ease';
+            masterItem.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.3)'; // Green for completion
+            setTimeout(() => {
+                masterItem.style.boxShadow = '';
+            }, 800);
+        }
     }
 
     // Clear state

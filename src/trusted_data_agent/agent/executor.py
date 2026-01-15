@@ -961,6 +961,11 @@ class PlanExecutor:
                 for msg in history_messages[-10:]:
                     msg_content = msg.get("content", "")
 
+                    # Skip messages marked as invalid (purged or toggled off by user)
+                    if msg.get("isValid") is False:
+                        app_logger.debug(f"[ConvAgent] Skipping invalid message: {msg_content[:50]}...")
+                        continue
+
                     # Skip Google priming messages
                     if msg_content in priming_messages:
                         app_logger.info(f"[ConvAgent] Skipping priming message: {msg_content[:50]}")
@@ -1345,10 +1350,11 @@ class PlanExecutor:
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
             session_history = session_data.get('chat_object', []) if session_data else []
 
-            # Format last 10 messages for context
+            # Format last 10 messages for context, filtering out invalid messages
             history_text = "\n".join([
                 f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
                 for msg in session_history[-10:]
+                if msg.get("isValid") is not False  # Skip messages marked as invalid
             ])
         except Exception as e:
             app_logger.error(f"Failed to load session history: {e}")
@@ -1391,10 +1397,11 @@ User: {self.original_user_input}""")
                 session_history = session_data.get('chat_object', []) if session_data else []
 
                 if session_history:
-                    # Format last 10 messages for context
+                    # Format last 10 messages for context, filtering out invalid messages
                     history_text = "\n".join([
                         f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
                         for msg in session_history[-10:]
+                        if msg.get("isValid") is not False  # Skip messages marked as invalid
                     ])
                     if history_text:
                         parts.append(f"\n--- CONVERSATION HISTORY ---\n{history_text}\n")

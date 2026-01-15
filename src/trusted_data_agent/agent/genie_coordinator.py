@@ -87,11 +87,12 @@ class SlaveSessionTool(BaseTool):
         """Execute query via slave session with context reuse."""
         start_time = time.time()
 
-        # Emit slave invoked event
+        # Emit slave invoked event with full query for UI display
         self._emit_event("genie_slave_invoked", {
             "profile_tag": self.profile_tag,
             "profile_id": self.profile_id,
-            "query": query[:100] if query else "",
+            "query": query or "",  # Full query for UI display
+            "query_preview": query[:100] if query else "",  # Short preview for logs
             "session_id": self.parent_session_id
         })
 
@@ -109,12 +110,13 @@ class SlaveSessionTool(BaseTool):
 
             result = await self._execute_and_poll(session_id, query)
 
-            # Emit completion event
+            # Emit completion event with full result for UI display
             duration_ms = int((time.time() - start_time) * 1000)
             self._emit_event("genie_slave_completed", {
                 "profile_tag": self.profile_tag,
                 "slave_session_id": session_id,
-                "result_preview": result[:200] if result else "",
+                "result": result or "",  # Full result for UI display
+                "result_preview": result[:200] if result else "",  # Short preview for compact view
                 "duration_ms": duration_ms,
                 "success": True,
                 "session_id": self.parent_session_id
@@ -215,9 +217,15 @@ class SlaveSessionTool(BaseTool):
 
                 if status in ("completed", "complete"):
                     result = status_data.get("result", {})
-                    # Try both field names - REST API uses final_answer, SSE uses final_response
-                    final_response = result.get("final_response") or result.get("final_answer") or result.get("final_answer_text", "")
-                    logger.info(f"@{self.profile_tag} completed successfully")
+                    # Prefer clean text (final_answer_text) for LLM consumption
+                    # HTML formatting in final_answer adds noise for coordinator reasoning
+                    # Fall back to final_answer/final_response if clean text not available
+                    final_response = (
+                        result.get("final_answer_text") or  # Clean text - preferred for LLM
+                        result.get("final_response") or     # Legacy field
+                        result.get("final_answer", "")      # HTML formatted - fallback
+                    )
+                    logger.info(f"@{self.profile_tag} completed successfully (text length: {len(final_response)})")
                     return final_response
 
                 elif status in ("failed", "error"):

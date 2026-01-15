@@ -1129,6 +1129,26 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
             case 'genie_slave_invoked': {
                 const profileTag = details.profile_tag || 'UNKNOWN';
+                const query = details.query || details.query_preview || '';
+
+                // Build query display - show full query in expandable section
+                let queryHtml = '';
+                if (query) {
+                    const queryPreview = query.length > 100 ? query.slice(0, 100) + '...' : query;
+                    const needsExpand = query.length > 100;
+                    queryHtml = needsExpand ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to @${profileTag}</summary>
+                            <div class="mt-1 p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
+                        </details>
+                    ` : `
+                        <div class="mt-2">
+                            <div class="text-slate-400 text-xs font-medium mb-1">Question to @${profileTag}</div>
+                            <div class="p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
+                        </div>
+                    `;
+                }
+
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
@@ -1136,6 +1156,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value text-amber-400">Processing...</div>
                     </div>
+                    ${queryHtml}
                     ${details.slave_session_id ? `
                         <div class="mt-1 text-gray-500 text-xs">Session: ${details.slave_session_id.slice(0, 8)}...</div>
                     ` : ''}
@@ -1168,19 +1189,27 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 const statusText = details.success ? '✓ Success' : '✗ Failed';
                 const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
 
+                // Use full result if available, otherwise fall back to preview
+                const result = details.result || details.result_preview || '';
                 let resultHtml = '';
-                if (details.result_preview) {
+                if (result) {
+                    // Show result collapsed by default - user can expand to see details
                     resultHtml = `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Result Preview</summary>
-                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap">${details.result_preview}</div>
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from @${profileTag}</summary>
+                            <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(result)}</div>
                         </details>
                     `;
                 }
 
                 let errorHtml = '';
                 if (details.error) {
-                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
+                    errorHtml = `
+                        <div class="mt-2">
+                            <div class="text-rose-400 text-xs font-medium mb-1">Error from @${profileTag}</div>
+                            <div class="p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${escapeHtml(details.error)}</div>
+                        </div>
+                    `;
                 }
 
                 detailsEl.innerHTML = `
