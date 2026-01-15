@@ -35,7 +35,7 @@ from pydantic import Field
 
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from trusted_data_agent.agent.profile_prompt_resolver import ProfilePromptResolver
 
@@ -466,12 +466,14 @@ After gathering information from profiles, provide a synthesized answer that:
 - Credits which profiles contributed to the answer (if multiple were used)
 """
 
-    async def execute(self, query: str) -> Dict[str, Any]:
+    async def execute(self, query: str, conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """
         Execute the coordinator logic for a user query.
 
         Args:
             query: The user's question
+            conversation_history: Optional list of previous messages in format:
+                [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
 
         Returns:
             Dict with coordinator_response and metadata
@@ -495,11 +497,22 @@ After gathering information from profiles, provide a synthesized answer that:
         })
 
         try:
-            # Build input messages with system prompt
-            messages = [
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(content=query)
-            ]
+            # Build input messages with system prompt and conversation history
+            messages = [SystemMessage(content=self.system_prompt)]
+
+            # Add conversation history if provided (for multi-turn context)
+            if conversation_history:
+                logger.info(f"Including {len(conversation_history)} messages from conversation history")
+                for msg in conversation_history:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role == "user":
+                        messages.append(HumanMessage(content=content))
+                    elif role in ("assistant", "model"):
+                        messages.append(AIMessage(content=content))
+
+            # Add the current query
+            messages.append(HumanMessage(content=query))
 
             # Reset tracking for this execution
             self.llm_call_count = 0

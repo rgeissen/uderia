@@ -835,7 +835,7 @@ async def purge_session_memory(user_uuid: str, session_id: str) -> bool:
 async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) -> bool:
     """
     Toggles the 'isValid' status of a specific turn and its corresponding
-    UI messages in the session history.
+    UI messages in the session history and LLM chat_object.
     """
     app_logger.info(f"Toggling validity for turn {turn_id} in session '{session_id}' for user '{user_uuid}'.")
     session_data = await _load_session(user_uuid, session_id)
@@ -857,7 +857,7 @@ async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) ->
                     turn_found = True
                     app_logger.info(f"Found turn {turn_id} in workflow_history. Set isValid to {new_status}.")
                     break
-        
+
         if not turn_found:
             app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}.")
             return False # If the planner's source of truth can't be updated, fail fast
@@ -875,6 +875,18 @@ async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) ->
                             session_history[i-1]['isValid'] = new_status
                         app_logger.info(f"Updated messages in session_history for turn {turn_id} to isValid={new_status}.")
                         break
+
+        # 3. Toggle validity in chat_object (for LLM context / Genie conversation history)
+        chat_object = session_data.get('chat_object', [])
+        if isinstance(chat_object, list):
+            # Find messages with matching turn_number
+            chat_updated = 0
+            for msg in chat_object:
+                if isinstance(msg, dict) and msg.get('turn_number') == turn_id:
+                    msg['isValid'] = new_status
+                    chat_updated += 1
+            if chat_updated > 0:
+                app_logger.info(f"Updated {chat_updated} messages in chat_object for turn {turn_id} to isValid={new_status}.")
 
         if not await _save_session(user_uuid, session_id, session_data):
             app_logger.error(f"Failed to save session after toggling validity for turn {turn_id}")

@@ -179,7 +179,8 @@ async def run_agent_execution(
                 user_input=user_input,
                 event_handler=event_handler,
                 genie_profile=active_profile,
-                task_id=task_id
+                task_id=task_id,
+                disabled_history=disabled_history  # Pass history context flag
             )
             return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
@@ -224,7 +225,8 @@ async def _run_genie_execution(
     user_input: str,
     event_handler,
     genie_profile: dict,
-    task_id: str = None
+    task_id: str = None,
+    disabled_history: bool = False
 ):
     """
     Execute a query using Genie coordination for SSE streaming.
@@ -339,8 +341,56 @@ async def _run_genie_execution(
             coordinator.load_existing_slave_sessions(existing_slaves)
             app_logger.info(f"Loaded {len(existing_slaves)} existing slave sessions for Genie session {session_id}")
 
-        # Execute coordination
-        result = await coordinator.execute(user_input)
+        # Build conversation history from session's chat_object
+        # This provides multi-turn context to the Genie coordinator
+        # Respects disabled_history flag (for single-turn context mode) and isValid flag (for purged/toggled turns)
+        session_data = await session_manager.get_session(user_uuid, session_id)
+        conversation_history = []
+
+        if disabled_history:
+            # When disabled_history is True, skip loading conversation history
+            # This supports the Alt-key single-turn context mode
+            app_logger.info(f"[Genie] History disabled for this turn - skipping conversation context")
+        elif session_data:
+            chat_object = session_data.get("chat_object", [])
+            app_logger.debug(f"[Genie] chat_object has {len(chat_object)} messages")
+
+            # Take last 10 messages for context, excluding the current query
+            # (current query was already saved by caller before this runs)
+            history_messages = chat_object[-11:]  # Get one extra to check
+
+            # Remove current query from history if present (it will be passed separately)
+            user_input_stripped = user_input.strip() if user_input else ""
+            if history_messages and history_messages[-1].get("role") == "user":
+                last_content = history_messages[-1].get("content", "").strip()
+                if last_content == user_input_stripped:
+                    history_messages = history_messages[:-1]
+                    app_logger.debug("[Genie] Excluding current query from history")
+
+            # Build conversation history (filter priming messages and respect isValid flag)
+            priming_messages = {"You are a helpful assistant.", "Understood."}
+            for msg in history_messages[-10:]:
+                msg_content = msg.get("content", "")
+
+                # Skip messages marked as invalid (purged or toggled off)
+                if msg.get("isValid") is False:
+                    app_logger.debug(f"[Genie] Skipping invalid message: {msg_content[:50]}...")
+                    continue
+
+                if msg_content in priming_messages:
+                    continue
+                msg_role = msg.get("role", "user")
+                if msg_role == "model":
+                    msg_role = "assistant"
+                conversation_history.append({
+                    "role": msg_role,
+                    "content": msg_content
+                })
+
+            app_logger.info(f"[Genie] Built conversation history with {len(conversation_history)} messages")
+
+        # Execute coordination with conversation context
+        result = await coordinator.execute(user_input, conversation_history=conversation_history)
 
         # Extract the final response
         coordinator_response = result.get('coordinator_response', '')

@@ -1373,13 +1373,24 @@ async def delete_session_endpoint(current_user, session_id: str):
 @api_bp.route("/api/session/<session_id>/purge_memory", methods=["POST"])
 @require_auth
 async def purge_memory(current_user, session_id: str):
-    """Purges the agent's LLM context memory (`chat_object`) for a session."""
+    """Purges the agent's LLM context memory (`chat_object`) for a session.
+    For Genie sessions, also purges all slave session memory."""
     user_uuid = current_user.id
     app_logger.info(f"Purge memory request for session {session_id}, user {user_uuid}")
 
     success = await session_manager.purge_session_memory(user_uuid, session_id)
 
     if success:
+        # Also purge memory for any Genie slave sessions
+        slave_sessions = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
+        if slave_sessions:
+            app_logger.info(f"Purging memory for {len(slave_sessions)} Genie slave sessions")
+            for slave in slave_sessions:
+                slave_id = slave.get('slave_session_id')
+                if slave_id:
+                    await session_manager.purge_session_memory(user_uuid, slave_id)
+                    app_logger.debug(f"Purged memory for slave session: {slave_id}")
+
         app_logger.info(f"Agent memory purged successfully for session {session_id}, user {user_uuid}.")
         return jsonify({"status": "success", "message": "Agent memory purged."}), 200
     else:
