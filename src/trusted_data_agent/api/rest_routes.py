@@ -5234,6 +5234,41 @@ async def get_profile_resources(profile_id: str):
                 "slave_profiles": profile.get("genieConfig", {}).get("slaveProfiles", [])
             })
 
+        # RAG-focused profiles retrieve from knowledge repositories and don't have direct MCP tools
+        if profile.get("profile_type") == "rag_focused":
+            knowledge_config = profile.get("knowledgeConfig", {})
+            collection_entries = knowledge_config.get("collections", [])
+
+            # Get collection details for display
+            # collection_entries can be objects like {"id": 2, "reranking": false} or just IDs
+            knowledge_collections = []
+            if collection_entries:
+                from trusted_data_agent.core.collection_db import CollectionDatabase
+                collection_db = CollectionDatabase()
+                for entry in collection_entries:
+                    # Handle both object format {"id": X} and plain ID format
+                    coll_id = entry.get("id") if isinstance(entry, dict) else entry
+                    try:
+                        coll_data = collection_db.get_collection_by_id(coll_id)
+                        if coll_data:
+                            knowledge_collections.append({
+                                "id": coll_id,
+                                "name": coll_data.get("name", f"Collection {coll_id}")
+                            })
+                        else:
+                            knowledge_collections.append({"id": coll_id, "name": f"Collection {coll_id}"})
+                    except Exception:
+                        knowledge_collections.append({"id": coll_id, "name": f"Collection {coll_id}"})
+
+            return jsonify({
+                "status": "success",
+                "tools": {},
+                "prompts": {},
+                "profile_type": "rag_focused",
+                "profile_tag": profile.get("tag"),
+                "knowledge_collections": knowledge_collections
+            })
+
         # Get enabled tools and prompts for THIS profile (not inherited from master)
         # CRITICAL: Inheritance only applies to classification (categories), NOT to enabled states
         # Each profile has its own tools/prompts list
@@ -7223,18 +7258,56 @@ async def get_sessions_list():
                     # Analyze workflow
                     workflow_history = session_data.get('last_turn_data', {}).get('workflow_history', [])
                     turn_count = len([t for t in workflow_history if t.get('isValid', True)])
-                    
+
                     # Determine status
                     has_errors = False
                     all_successful = True
+
+                    # Check for incomplete/failed turns by comparing session_history with workflow_history
+                    # Failed turns show up as user messages in session_history but don't get saved to workflow_history
+                    session_history = session_data.get('session_history', [])
+                    user_turn_numbers = set()
+                    for msg in session_history:
+                        if msg.get('role') == 'user' and msg.get('turn_number'):
+                            user_turn_numbers.add(msg.get('turn_number'))
+
+                    # Get the turn numbers that have completed workflow entries
+                    completed_turn_numbers = set()
+                    for turn in workflow_history:
+                        if turn.get('isValid', True) and turn.get('turn'):
+                            completed_turn_numbers.add(turn.get('turn'))
+
+                    # If there are user messages without corresponding workflow entries, mark as partial
+                    incomplete_turns = user_turn_numbers - completed_turn_numbers
+                    if incomplete_turns:
+                        has_errors = True  # There were failed/incomplete turns
+
                     for turn in workflow_history:
                         if not turn.get('isValid', True):
                             continue
-                        # LLM-only profiles don't have final_summary but are still successful
-                        # if they completed without errors
-                        is_llm_only_turn = turn.get('profile_type') == 'llm_only'
-                        if not is_llm_only_turn and not turn.get('final_summary'):
-                            all_successful = False
+
+                        # Different profile types track success differently:
+                        # - Genie: has 'genie_coordination' flag or profile_type='genie', uses 'status'/'success' fields
+                        # - LLM-only/RAG-focused/Conversation: has 'profile_type' and 'final_summary_text'
+                        # - Tool-enabled: has 'final_summary'
+                        is_genie_turn = turn.get('genie_coordination', False) or turn.get('profile_type') == 'genie'
+                        is_llm_only_turn = turn.get('profile_type') in ('llm_only', 'rag_focused', 'conversation_with_tools')
+
+                        if is_genie_turn:
+                            # Genie turns have explicit 'status' or 'success' fields
+                            turn_status = turn.get('status', '')
+                            turn_success = turn.get('success', False)
+                            if turn_status == 'failed' or (turn_status != 'success' and not turn_success):
+                                all_successful = False
+                        elif is_llm_only_turn:
+                            # LLM-only/RAG-focused profiles use final_summary_text
+                            if not turn.get('final_summary_text') and turn.get('status') != 'success':
+                                all_successful = False
+                        else:
+                            # Tool-enabled profiles use final_summary
+                            if not turn.get('final_summary'):
+                                all_successful = False
+
                         # Check for errors in execution trace
                         exec_trace = turn.get('execution_trace', [])
                         for entry in exec_trace:

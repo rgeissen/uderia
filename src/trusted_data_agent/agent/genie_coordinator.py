@@ -65,6 +65,7 @@ class SlaveSessionTool(BaseTool):
     parent_session_id: str = Field(description="Parent Genie session ID")
     base_url: str = Field(default="http://localhost:5050", description="API base URL")
     auth_token: str = Field(description="Authentication token for API calls")
+    query_timeout: float = Field(default=300.0, description="Timeout for query execution in seconds")
 
     class Config:
         arbitrary_types_allowed = True
@@ -172,7 +173,7 @@ class SlaveSessionTool(BaseTool):
 
     async def _execute_and_poll(self, session_id: str, query: str) -> str:
         """Submit query and poll for completion."""
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=self.query_timeout) as client:
             # Submit query
             response = await client.post(
                 f"{self.base_url}/api/v1/sessions/{session_id}/query",
@@ -194,9 +195,9 @@ class SlaveSessionTool(BaseTool):
 
             logger.info(f"Submitted query to @{self.profile_tag}, task_id: {task_id}")
 
-            # Poll for completion
-            max_polls = 300  # 5 minutes max
+            # Poll for completion - derive max_polls from query_timeout
             poll_interval = 1.0
+            max_polls = int(self.query_timeout / poll_interval)
 
             for _ in range(max_polls):
                 status_response = await client.get(
@@ -250,7 +251,8 @@ class GenieCoordinator:
         auth_token: str,
         llm_instance: Any,  # LangChain-compatible LLM
         base_url: str = "http://localhost:5050",
-        event_callback: Optional[Callable[[str, Dict], None]] = None
+        event_callback: Optional[Callable[[str, Dict], None]] = None,
+        genie_config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize the Genie Coordinator.
@@ -265,6 +267,10 @@ class GenieCoordinator:
             base_url: Base URL for REST API (default localhost:5050)
             event_callback: Optional callback for real-time UI events.
                            Signature: (event_type: str, payload: dict) -> None
+            genie_config: Optional configuration dict with parameters:
+                         - temperature: LLM temperature (0.0-1.0)
+                         - queryTimeout: Query timeout in seconds (60-900)
+                         - maxIterations: Max agent iterations (1-25)
         """
         self.genie_profile = genie_profile
         self.slave_profiles = slave_profiles
@@ -274,6 +280,11 @@ class GenieCoordinator:
         self.llm_instance = llm_instance
         self.base_url = base_url
         self.event_callback = event_callback
+
+        # Extract effective config values with defaults
+        genie_config = genie_config or {}
+        self.query_timeout = float(genie_config.get('queryTimeout', 300))
+        self.max_iterations = int(genie_config.get('maxIterations', 10))
 
         # Collect events during execution for plan reload
         self.collected_events = []
@@ -359,7 +370,8 @@ class GenieCoordinator:
                 user_uuid=self.user_uuid,
                 parent_session_id=self.parent_session_id,
                 base_url=self.base_url,
-                auth_token=self.auth_token
+                auth_token=self.auth_token,
+                query_timeout=self.query_timeout
             )
 
             tools.append(tool)
@@ -409,9 +421,12 @@ class GenieCoordinator:
         self.system_prompt = system_prompt
 
         # Create LangGraph react agent (new API in langchain v1 / langgraph)
+        # Note: recursion_limit controls max agent iterations (tool calls + responses)
+        # A value of N allows roughly N/2 tool invocations since each iteration is tool_call -> tool_result
         return create_react_agent(
             model=self.llm_instance,
-            tools=self.tools
+            tools=self.tools,
+            recursion_limit=self.max_iterations * 2  # Convert iterations to recursion limit
         )
 
     def _get_fallback_prompt(self) -> str:

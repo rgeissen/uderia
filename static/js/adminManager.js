@@ -12,12 +12,19 @@ const AdminManager = {
     consumptionSortDirection: 'asc',
     featureChanges: {},
 
+    // Dirty state tracking for settings tabs
+    optimizerSettingsOriginal: {},  // Original values loaded from server
+    systemSettingsOriginal: {},     // Original values loaded from server
+    optimizerSettingsDirty: false,  // Has user modified optimizer settings?
+    systemSettingsDirty: false,     // Has user modified system settings?
+
     /**
      * Initialize the administration module
      */
     init() {
         console.log('[AdminManager] Initializing...');
         this.setupEventListeners();
+        this.initConfigSubtabs();
     },
 
     /**
@@ -164,10 +171,50 @@ const AdminManager = {
 
         // MCP Classification toggle is handled by configurationHandler.js
 
-        // Expert Settings
+        // Optimizer Settings (Agent Config, Performance, Behavior, Query Optimization)
         const saveExpertSettingsBtn = document.getElementById('save-expert-settings-btn');
         if (saveExpertSettingsBtn) {
             saveExpertSettingsBtn.addEventListener('click', () => this.saveExpertSettings());
+        }
+
+        // System Settings (LLM Behavior, Security) - now in Application Configuration tab
+        const saveSystemSettingsBtn = document.getElementById('save-system-settings-btn');
+        if (saveSystemSettingsBtn) {
+            saveSystemSettingsBtn.addEventListener('click', () => this.saveSystemSettings());
+        }
+
+        // Temperature slider value display
+        const genieTemperatureSlider = document.getElementById('genie-temperature');
+        if (genieTemperatureSlider) {
+            genieTemperatureSlider.addEventListener('input', (e) => {
+                const valueDisplay = document.getElementById('genie-temperature-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = parseFloat(e.target.value).toFixed(1);
+                }
+            });
+        }
+
+        // Setup dirty state tracking for Optimizer Settings
+        this.setupOptimizerSettingsChangeListeners();
+
+        // Setup dirty state tracking for System Settings
+        this.setupSystemSettingsChangeListeners();
+
+        // Knowledge Global Settings
+        const saveKnowledgeGlobalSettingsBtn = document.getElementById('save-knowledge-global-settings-btn');
+        if (saveKnowledgeGlobalSettingsBtn) {
+            saveKnowledgeGlobalSettingsBtn.addEventListener('click', () => this.saveKnowledgeGlobalSettings());
+        }
+
+        // Knowledge min relevance slider value display
+        const knowledgeMinRelevanceSlider = document.getElementById('knowledge-min-relevance');
+        if (knowledgeMinRelevanceSlider) {
+            knowledgeMinRelevanceSlider.addEventListener('input', (e) => {
+                const valueDisplay = document.getElementById('knowledge-min-relevance-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = parseFloat(e.target.value).toFixed(2);
+                }
+            });
         }
 
         const clearCacheBtn = document.getElementById('clear-cache-btn');
@@ -339,7 +386,8 @@ const AdminManager = {
                 DocumentUploadConfigManager.loadConfigurations();
             }
         } else if (tabName === 'expert-settings-tab') {
-            this.loadExpertSettings();
+            this.loadExpertSettings();  // Now includes Genie settings
+            this.loadKnowledgeGlobalSettings();
         } else if (tabName === 'system-prompts-tab') {
             // Load all prompts first to populate the dropdown
             this.loadAllPrompts().then(() => {
@@ -381,6 +429,45 @@ const AdminManager = {
         if (subtabName === 'user-consumption-subtab') {
             this.loadUserConsumption();
         }
+    },
+
+    /**
+     * Switch Application Configuration sub-tabs (vertical tabs)
+     */
+    switchConfigSubtab(tabName) {
+        // Update vertical tab buttons
+        document.querySelectorAll('.config-subtab').forEach(tab => {
+            if (tab.dataset.configTab === tabName) {
+                tab.classList.add('bg-[#F15F22]/20', 'text-[#F15F22]', 'border', 'border-[#F15F22]/30');
+                tab.classList.remove('text-gray-400', 'hover:bg-gray-700/50', 'hover:text-white');
+            } else {
+                tab.classList.remove('bg-[#F15F22]/20', 'text-[#F15F22]', 'border', 'border-[#F15F22]/30');
+                tab.classList.add('text-gray-400', 'hover:bg-gray-700/50', 'hover:text-white');
+            }
+        });
+
+        // Update config panel content
+        document.querySelectorAll('.config-panel').forEach(panel => {
+            if (panel.id === `config-panel-${tabName}`) {
+                panel.classList.remove('hidden');
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+    },
+
+    /**
+     * Initialize Application Configuration sub-tab listeners
+     */
+    initConfigSubtabs() {
+        document.querySelectorAll('.config-subtab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.configTab;
+                if (tabName) {
+                    this.switchConfigSubtab(tabName);
+                }
+            });
+        });
     },
 
     currentUserStatusFilter: 'all',
@@ -2136,14 +2223,158 @@ const AdminManager = {
         }
     },
 
+    // =========================================================================
+    // Dirty State Tracking for Settings Tabs
+    // =========================================================================
+
     /**
-     * Load expert settings from backend
+     * Setup change listeners for Optimizer Settings tab fields
+     */
+    setupOptimizerSettingsChangeListeners() {
+        // All optimizer settings field IDs
+        const optimizerFields = [
+            // Agent Configuration
+            'max-execution-steps', 'tool-call-timeout',
+            // Performance & Context
+            'context-max-rows', 'context-max-chars', 'description-threshold',
+            // Agent Behavior (checkboxes)
+            'allow-synthesis', 'force-sub-summary', 'condense-prompts',
+            // Query Optimization
+            'enable-sql-consolidation',
+            // Genie Coordination
+            'genie-temperature', 'genie-temperature-locked',
+            'genie-query-timeout', 'genie-query-timeout-locked',
+            'genie-max-iterations', 'genie-max-iterations-locked'
+        ];
+
+        optimizerFields.forEach(fieldId => {
+            const element = document.getElementById(fieldId);
+            if (element) {
+                const eventType = element.type === 'checkbox' || element.type === 'range' ? 'change' : 'input';
+                element.addEventListener(eventType, () => this.checkOptimizerSettingsDirty());
+            }
+        });
+    },
+
+    /**
+     * Setup change listeners for System Settings fields (in App Config tab)
+     */
+    setupSystemSettingsChangeListeners() {
+        // System settings field IDs (LLM Behavior + Security)
+        const systemFields = [
+            'llm-max-retries', 'llm-base-delay',
+            'session-timeout', 'token-expiry'
+        ];
+
+        systemFields.forEach(fieldId => {
+            const element = document.getElementById(fieldId);
+            if (element) {
+                element.addEventListener('input', () => this.checkSystemSettingsDirty());
+            }
+        });
+    },
+
+    /**
+     * Get current optimizer settings values for comparison
+     */
+    getOptimizerSettingsSnapshot() {
+        return {
+            // Agent Configuration
+            max_execution_steps: this.getFieldValue('max-execution-steps'),
+            tool_call_timeout: this.getFieldValue('tool-call-timeout'),
+            // Performance & Context
+            context_max_rows: this.getFieldValue('context-max-rows'),
+            context_max_chars: this.getFieldValue('context-max-chars'),
+            description_threshold: this.getFieldValue('description-threshold'),
+            // Agent Behavior
+            allow_synthesis: document.getElementById('allow-synthesis')?.checked || false,
+            force_sub_summary: document.getElementById('force-sub-summary')?.checked || false,
+            condense_prompts: document.getElementById('condense-prompts')?.checked || false,
+            // Query Optimization
+            enable_sql_consolidation: document.getElementById('enable-sql-consolidation')?.checked || false,
+            // Genie Coordination
+            genie_temperature: this.getFieldValue('genie-temperature'),
+            genie_temperature_locked: document.getElementById('genie-temperature-locked')?.checked || false,
+            genie_query_timeout: this.getFieldValue('genie-query-timeout'),
+            genie_query_timeout_locked: document.getElementById('genie-query-timeout-locked')?.checked || false,
+            genie_max_iterations: this.getFieldValue('genie-max-iterations'),
+            genie_max_iterations_locked: document.getElementById('genie-max-iterations-locked')?.checked || false
+        };
+    },
+
+    /**
+     * Get current system settings values for comparison
+     */
+    getSystemSettingsSnapshot() {
+        return {
+            llm_max_retries: this.getFieldValue('llm-max-retries'),
+            llm_base_delay: this.getFieldValue('llm-base-delay'),
+            session_timeout: this.getFieldValue('session-timeout'),
+            token_expiry: this.getFieldValue('token-expiry')
+        };
+    },
+
+    /**
+     * Check if optimizer settings have changed from original values
+     */
+    checkOptimizerSettingsDirty() {
+        const current = this.getOptimizerSettingsSnapshot();
+        const original = this.optimizerSettingsOriginal;
+
+        // Compare all values (convert to string for consistent comparison)
+        const isDirty = Object.keys(current).some(key => {
+            return String(current[key]) !== String(original[key]);
+        });
+
+        this.optimizerSettingsDirty = isDirty;
+        this.updateOptimizerSaveButton();
+    },
+
+    /**
+     * Check if system settings have changed from original values
+     */
+    checkSystemSettingsDirty() {
+        const current = this.getSystemSettingsSnapshot();
+        const original = this.systemSettingsOriginal;
+
+        // Compare all values
+        const isDirty = Object.keys(current).some(key => {
+            return String(current[key]) !== String(original[key]);
+        });
+
+        this.systemSettingsDirty = isDirty;
+        this.updateSystemSaveButton();
+    },
+
+    /**
+     * Update the Optimizer Settings save button state
+     */
+    updateOptimizerSaveButton() {
+        const btn = document.getElementById('save-expert-settings-btn');
+        if (btn) {
+            btn.disabled = !this.optimizerSettingsDirty;
+        }
+    },
+
+    /**
+     * Update the System Settings save button state
+     */
+    updateSystemSaveButton() {
+        const btn = document.getElementById('save-system-settings-btn');
+        if (btn) {
+            btn.disabled = !this.systemSettingsDirty;
+        }
+    },
+
+    /**
+     * Load optimizer settings from backend (Agent Config, Performance, Behavior, Query Optimization, Genie)
      */
     async loadExpertSettings() {
         try {
             const token = localStorage.getItem('tda_auth_token');
             if (!token) return;
 
+            // Load expert settings
             const response = await fetch('/api/v1/admin/expert-settings', {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -2154,26 +2385,20 @@ const AdminManager = {
                 const data = await response.json();
                 if (data.status === 'success' && data.settings) {
                     const s = data.settings;
-                    
-                    // LLM Behavior
-                    if (s.llm_behavior) {
-                        this.setFieldValue('llm-max-retries', s.llm_behavior.max_retries);
-                        this.setFieldValue('llm-base-delay', s.llm_behavior.base_delay);
-                    }
-                    
+
                     // Agent Configuration
                     if (s.agent_config) {
                         this.setFieldValue('max-execution-steps', s.agent_config.max_execution_steps);
                         this.setFieldValue('tool-call-timeout', s.agent_config.tool_call_timeout);
                     }
-                    
+
                     // Performance & Context
                     if (s.performance) {
                         this.setFieldValue('context-max-rows', s.performance.context_max_rows);
                         this.setFieldValue('context-max-chars', s.performance.context_max_chars);
                         this.setFieldValue('description-threshold', s.performance.description_threshold);
                     }
-                    
+
                     // Agent Behavior
                     if (s.agent_behavior) {
                         const allowSynthesis = document.getElementById('allow-synthesis');
@@ -2183,27 +2408,82 @@ const AdminManager = {
                         if (forceSubSummary) forceSubSummary.checked = s.agent_behavior.force_sub_summary;
                         if (condensePrompts) condensePrompts.checked = s.agent_behavior.condense_prompts;
                     }
-                    
+
                     // Query Optimization
                     if (s.query_optimization) {
                         const sqlConsolidation = document.getElementById('enable-sql-consolidation');
                         if (sqlConsolidation) sqlConsolidation.checked = s.query_optimization.enable_sql_consolidation;
                     }
-                    
-                    // Security
-                    if (s.security) {
-                        this.setFieldValue('session-timeout', s.security.session_timeout);
-                        this.setFieldValue('token-expiry', s.security.token_expiry);
-                    }
                 }
             }
+
+            // Also load Genie settings
+            await this.loadGenieSettingsForOptimizer();
+
+            // Store original values for dirty tracking
+            this.optimizerSettingsOriginal = this.getOptimizerSettingsSnapshot();
+            this.optimizerSettingsDirty = false;
+            this.updateOptimizerSaveButton();
+
         } catch (error) {
-            console.error('[AdminManager] Error loading expert settings:', error);
+            console.error('[AdminManager] Error loading optimizer settings:', error);
         }
     },
 
     /**
-     * Save expert settings to backend
+     * Load Genie settings (called as part of loadExpertSettings)
+     */
+    async loadGenieSettingsForOptimizer() {
+        const token = localStorage.getItem('tda_auth_token');
+        if (!token) return;
+
+        try {
+            const response = await fetch('/api/v1/admin/genie-settings', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+            const settings = data.settings || {};
+
+            // Populate temperature
+            if (settings.temperature) {
+                const tempSlider = document.getElementById('genie-temperature');
+                const tempValue = document.getElementById('genie-temperature-value');
+                const tempLocked = document.getElementById('genie-temperature-locked');
+                if (tempSlider) tempSlider.value = settings.temperature.value;
+                if (tempValue) tempValue.textContent = parseFloat(settings.temperature.value).toFixed(1);
+                if (tempLocked) tempLocked.checked = settings.temperature.is_locked;
+            }
+
+            // Populate query timeout
+            if (settings.queryTimeout) {
+                const timeoutInput = document.getElementById('genie-query-timeout');
+                const timeoutLocked = document.getElementById('genie-query-timeout-locked');
+                if (timeoutInput) timeoutInput.value = settings.queryTimeout.value;
+                if (timeoutLocked) timeoutLocked.checked = settings.queryTimeout.is_locked;
+            }
+
+            // Populate max iterations
+            if (settings.maxIterations) {
+                const iterInput = document.getElementById('genie-max-iterations');
+                const iterLocked = document.getElementById('genie-max-iterations-locked');
+                if (iterInput) iterInput.value = settings.maxIterations.value;
+                if (iterLocked) iterLocked.checked = settings.maxIterations.is_locked;
+            }
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading genie settings:', error);
+        }
+    },
+
+    /**
+     * Save optimizer settings to backend (Agent Config, Performance, Behavior, Query Optimization, Genie)
      */
     async saveExpertSettings() {
         try {
@@ -2213,11 +2493,26 @@ const AdminManager = {
                 return;
             }
 
+            // Validate Genie settings
+            const genieTemp = parseFloat(this.getFieldValue('genie-temperature'));
+            const genieTimeout = parseInt(this.getFieldValue('genie-query-timeout'));
+            const genieIter = parseInt(this.getFieldValue('genie-max-iterations'));
+
+            if (genieTemp < 0 || genieTemp > 1) {
+                window.showNotification('error', 'Temperature must be between 0.0 and 1.0');
+                return;
+            }
+            if (genieTimeout < 60 || genieTimeout > 900) {
+                window.showNotification('error', 'Query timeout must be between 60 and 900 seconds');
+                return;
+            }
+            if (genieIter < 1 || genieIter > 25) {
+                window.showNotification('error', 'Max iterations must be between 1 and 25');
+                return;
+            }
+
+            // Save expert settings (agent config, performance, behavior, query optimization)
             const settings = {
-                llm_behavior: {
-                    max_retries: parseInt(this.getFieldValue('llm-max-retries')),
-                    base_delay: parseFloat(this.getFieldValue('llm-base-delay'))
-                },
                 agent_config: {
                     max_execution_steps: parseInt(this.getFieldValue('max-execution-steps')),
                     tool_call_timeout: parseInt(this.getFieldValue('tool-call-timeout'))
@@ -2234,6 +2529,84 @@ const AdminManager = {
                 },
                 query_optimization: {
                     enable_sql_consolidation: document.getElementById('enable-sql-consolidation')?.checked || false
+                }
+            };
+
+            const response = await fetch('/api/v1/admin/expert-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.status !== 'success') {
+                window.showNotification('error', data.message || 'Failed to save settings');
+                return;
+            }
+
+            // Also save Genie settings
+            const genieSettings = {
+                temperature: {
+                    value: genieTemp,
+                    is_locked: document.getElementById('genie-temperature-locked')?.checked || false
+                },
+                queryTimeout: {
+                    value: genieTimeout,
+                    is_locked: document.getElementById('genie-query-timeout-locked')?.checked || false
+                },
+                maxIterations: {
+                    value: genieIter,
+                    is_locked: document.getElementById('genie-max-iterations-locked')?.checked || false
+                }
+            };
+
+            const genieResponse = await fetch('/api/v1/admin/genie-settings', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(genieSettings)
+            });
+
+            if (!genieResponse.ok) {
+                const genieError = await genieResponse.json();
+                window.showNotification('error', genieError.message || 'Failed to save Genie settings');
+                return;
+            }
+
+            // Success - update dirty state
+            this.optimizerSettingsOriginal = this.getOptimizerSettingsSnapshot();
+            this.optimizerSettingsDirty = false;
+            this.updateOptimizerSaveButton();
+
+            window.showNotification('success', 'Optimizer settings saved successfully');
+
+        } catch (error) {
+            console.error('[AdminManager] Error saving optimizer settings:', error);
+            window.showNotification('error', error.message);
+        }
+    },
+
+    /**
+     * Save system settings to backend (LLM Behavior, Security)
+     */
+    async saveSystemSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) {
+                window.showNotification('error', 'Not authenticated');
+                return;
+            }
+
+            const settings = {
+                llm_behavior: {
+                    max_retries: parseInt(this.getFieldValue('llm-max-retries')),
+                    base_delay: parseFloat(this.getFieldValue('llm-base-delay'))
                 },
                 security: {
                     session_timeout: parseInt(this.getFieldValue('session-timeout')),
@@ -2251,22 +2624,20 @@ const AdminManager = {
             });
 
             const data = await response.json();
-            
+
             if (response.ok && data.status === 'success') {
-                // Use configurationHandler's notification system (positioned in header)
-                if (window.showNotification) {
-                    window.showNotification('success', 'Expert settings saved successfully');
-                }
+                // Success - update dirty state
+                this.systemSettingsOriginal = this.getSystemSettingsSnapshot();
+                this.systemSettingsDirty = false;
+                this.updateSystemSaveButton();
+
+                window.showNotification('success', 'System settings saved successfully');
             } else {
-                if (window.showNotification) {
-                    window.showNotification('error', data.message || 'Failed to save settings');
-                }
+                window.showNotification('error', data.message || 'Failed to save settings');
             }
         } catch (error) {
-            console.error('[AdminManager] Error saving expert settings:', error);
-            if (window.showNotification) {
-                window.showNotification('error', error.message);
-            }
+            console.error('[AdminManager] Error saving system settings:', error);
+            window.showNotification('error', error.message);
         }
     },
 
@@ -2394,6 +2765,38 @@ const AdminManager = {
                 } catch (knowledgeError) {
                     console.error('[AdminManager] Error loading knowledge config:', knowledgeError);
                 }
+
+                // Load LLM Behavior and Security settings from expert-settings endpoint
+                try {
+                    const expertResp = await fetch('/api/v1/admin/expert-settings', {
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('tda_auth_token')}` }
+                    });
+                    if (expertResp.ok) {
+                        const expertData = await expertResp.json();
+                        if (expertData.status === 'success' && expertData.settings) {
+                            const s = expertData.settings;
+
+                            // LLM Behavior
+                            if (s.llm_behavior) {
+                                this.setFieldValue('llm-max-retries', s.llm_behavior.max_retries);
+                                this.setFieldValue('llm-base-delay', s.llm_behavior.base_delay);
+                            }
+
+                            // Security
+                            if (s.security) {
+                                this.setFieldValue('session-timeout', s.security.session_timeout);
+                                this.setFieldValue('token-expiry', s.security.token_expiry);
+                            }
+                        }
+                    }
+                } catch (expertError) {
+                    console.error('[AdminManager] Error loading system settings:', expertError);
+                }
+
+                // Store original values for dirty tracking (after all settings are loaded)
+                this.systemSettingsOriginal = this.getSystemSettingsSnapshot();
+                this.systemSettingsDirty = false;
+                this.updateSystemSaveButton();
             }
 
             // Load window defaults
@@ -4304,6 +4707,266 @@ const AdminManager = {
         } catch (error) {
             console.error('[AdminManager] Error saving rate limit settings:', error);
             window.showAppBanner(`Failed to save rate limit settings: ${error.message}`, 'error', 5000);
+        }
+    },
+
+    /**
+     * Load Genie coordination global settings
+     */
+    async loadGenieSettings() {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            console.warn('[AdminManager] No token for loading genie settings');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/admin/genie-settings', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load genie settings');
+            }
+
+            const data = await response.json();
+            const settings = data.settings || {};
+
+            // Populate temperature
+            if (settings.temperature) {
+                const tempSlider = document.getElementById('genie-temperature');
+                const tempValue = document.getElementById('genie-temperature-value');
+                const tempLocked = document.getElementById('genie-temperature-locked');
+                if (tempSlider) tempSlider.value = settings.temperature.value;
+                if (tempValue) tempValue.textContent = parseFloat(settings.temperature.value).toFixed(1);
+                if (tempLocked) tempLocked.checked = settings.temperature.is_locked;
+            }
+
+            // Populate query timeout
+            if (settings.queryTimeout) {
+                const timeoutInput = document.getElementById('genie-query-timeout');
+                const timeoutLocked = document.getElementById('genie-query-timeout-locked');
+                if (timeoutInput) timeoutInput.value = settings.queryTimeout.value;
+                if (timeoutLocked) timeoutLocked.checked = settings.queryTimeout.is_locked;
+            }
+
+            // Populate max iterations
+            if (settings.maxIterations) {
+                const iterInput = document.getElementById('genie-max-iterations');
+                const iterLocked = document.getElementById('genie-max-iterations-locked');
+                if (iterInput) iterInput.value = settings.maxIterations.value;
+                if (iterLocked) iterLocked.checked = settings.maxIterations.is_locked;
+            }
+
+            console.log('[AdminManager] Genie settings loaded:', settings);
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading genie settings:', error);
+        }
+    },
+
+    /**
+     * Save Genie coordination global settings
+     */
+    async saveGenieSettings() {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            window.showAppBanner('Authentication required', 'error', 3000);
+            return;
+        }
+
+        try {
+            // Collect settings from form
+            const settings = {
+                temperature: {
+                    value: parseFloat(document.getElementById('genie-temperature')?.value || 0.7),
+                    is_locked: document.getElementById('genie-temperature-locked')?.checked || false
+                },
+                queryTimeout: {
+                    value: parseInt(document.getElementById('genie-query-timeout')?.value || 300),
+                    is_locked: document.getElementById('genie-query-timeout-locked')?.checked || false
+                },
+                maxIterations: {
+                    value: parseInt(document.getElementById('genie-max-iterations')?.value || 10),
+                    is_locked: document.getElementById('genie-max-iterations-locked')?.checked || false
+                }
+            };
+
+            // Validate values
+            if (settings.temperature.value < 0 || settings.temperature.value > 1) {
+                window.showAppBanner('Temperature must be between 0.0 and 1.0', 'error', 3000);
+                return;
+            }
+            if (settings.queryTimeout.value < 60 || settings.queryTimeout.value > 900) {
+                window.showAppBanner('Query timeout must be between 60 and 900 seconds', 'error', 3000);
+                return;
+            }
+            if (settings.maxIterations.value < 1 || settings.maxIterations.value > 25) {
+                window.showAppBanner('Max iterations must be between 1 and 25', 'error', 3000);
+                return;
+            }
+
+            const response = await fetch('/api/v1/admin/genie-settings', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to save genie settings');
+            }
+
+            const data = await response.json();
+            window.showAppBanner('Genie coordination settings saved successfully', 'success', 5000);
+            console.log('[AdminManager] Genie settings saved:', data);
+
+        } catch (error) {
+            console.error('[AdminManager] Error saving genie settings:', error);
+            window.showAppBanner(`Failed to save genie settings: ${error.message}`, 'error', 5000);
+        }
+    },
+
+    /**
+     * Load Knowledge global settings
+     */
+    async loadKnowledgeGlobalSettings() {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            console.warn('[AdminManager] No token for loading knowledge global settings');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/admin/knowledge-global-settings', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load knowledge global settings');
+            }
+
+            const data = await response.json();
+            const settings = data.settings || {};
+
+            // Populate min relevance score
+            if (settings.minRelevanceScore) {
+                const slider = document.getElementById('knowledge-min-relevance');
+                const valueDisplay = document.getElementById('knowledge-min-relevance-value');
+                const locked = document.getElementById('knowledge-min-relevance-locked');
+                if (slider) slider.value = settings.minRelevanceScore.value;
+                if (valueDisplay) valueDisplay.textContent = parseFloat(settings.minRelevanceScore.value).toFixed(2);
+                if (locked) locked.checked = settings.minRelevanceScore.is_locked;
+            }
+
+            // Populate max docs
+            if (settings.maxDocs) {
+                const input = document.getElementById('knowledge-num-docs');
+                const locked = document.getElementById('knowledge-num-docs-locked');
+                if (input) input.value = settings.maxDocs.value;
+                if (locked) locked.checked = settings.maxDocs.is_locked;
+            }
+
+            // Populate max tokens
+            if (settings.maxTokens) {
+                const input = document.getElementById('knowledge-max-tokens');
+                const locked = document.getElementById('knowledge-max-tokens-locked');
+                if (input) input.value = settings.maxTokens.value;
+                if (locked) locked.checked = settings.maxTokens.is_locked;
+            }
+
+            // Populate reranking enabled
+            if (settings.rerankingEnabled) {
+                const checkbox = document.getElementById('knowledge-reranking-enabled');
+                const locked = document.getElementById('knowledge-reranking-locked');
+                if (checkbox) checkbox.checked = settings.rerankingEnabled.value;
+                if (locked) locked.checked = settings.rerankingEnabled.is_locked;
+            }
+
+            console.log('[AdminManager] Knowledge global settings loaded:', settings);
+
+        } catch (error) {
+            console.error('[AdminManager] Error loading knowledge global settings:', error);
+        }
+    },
+
+    /**
+     * Save Knowledge global settings
+     */
+    async saveKnowledgeGlobalSettings() {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            window.showAppBanner('Authentication required', 'error', 3000);
+            return;
+        }
+
+        try {
+            // Collect settings from form
+            const settings = {
+                minRelevanceScore: {
+                    value: parseFloat(document.getElementById('knowledge-min-relevance')?.value || 0.30),
+                    is_locked: document.getElementById('knowledge-min-relevance-locked')?.checked || false
+                },
+                maxDocs: {
+                    value: parseInt(document.getElementById('knowledge-num-docs')?.value || 3),
+                    is_locked: document.getElementById('knowledge-num-docs-locked')?.checked || false
+                },
+                maxTokens: {
+                    value: parseInt(document.getElementById('knowledge-max-tokens')?.value || 2000),
+                    is_locked: document.getElementById('knowledge-max-tokens-locked')?.checked || false
+                },
+                rerankingEnabled: {
+                    value: document.getElementById('knowledge-reranking-enabled')?.checked || false,
+                    is_locked: document.getElementById('knowledge-reranking-locked')?.checked || false
+                }
+            };
+
+            // Validate values
+            if (settings.minRelevanceScore.value < 0 || settings.minRelevanceScore.value > 1) {
+                window.showAppBanner('Min relevance score must be between 0.0 and 1.0', 'error', 3000);
+                return;
+            }
+            if (settings.maxDocs.value < 1 || settings.maxDocs.value > 20) {
+                window.showAppBanner('Max documents must be between 1 and 20', 'error', 3000);
+                return;
+            }
+            if (settings.maxTokens.value < 500 || settings.maxTokens.value > 10000) {
+                window.showAppBanner('Max tokens must be between 500 and 10000', 'error', 3000);
+                return;
+            }
+
+            const response = await fetch('/api/v1/admin/knowledge-global-settings', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to save knowledge global settings');
+            }
+
+            const data = await response.json();
+            window.showAppBanner('Knowledge settings saved successfully', 'success', 5000);
+            console.log('[AdminManager] Knowledge global settings saved:', data);
+
+        } catch (error) {
+            console.error('[AdminManager] Error saving knowledge global settings:', error);
+            window.showAppBanner(`Failed to save knowledge settings: ${error.message}`, 'error', 5000);
         }
     }
 };

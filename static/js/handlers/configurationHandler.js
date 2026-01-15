@@ -422,17 +422,22 @@ class ConfigurationState {
     async setDefaultProfile(profileId) {
         await API.setDefaultProfile(profileId);
         this.defaultProfileId = profileId;
-        
+
         // Dispatch event to mark configuration as dirty
-        document.dispatchEvent(new CustomEvent('default-profile-changed', { 
-            detail: { profileId } 
+        document.dispatchEvent(new CustomEvent('default-profile-changed', {
+            detail: { profileId }
         }));
-        
+
         // Update Planner Repository navigation state when default profile changes
         if (typeof window.updatePlannerRepositoryNavigation === 'function') {
             window.updatePlannerRepositoryNavigation();
         }
-        
+
+        // Update resource panel to reflect new default profile's tools/prompts
+        if (typeof window.updateResourcePanelForProfile === 'function') {
+            window.updateResourcePanelForProfile(profileId);
+        }
+
         // Reset initialization state when default profile changes
         import('../conversationInitializer.js').then(({ resetInitialization }) => {
             resetInitialization();
@@ -4046,10 +4051,14 @@ async function showProfileModal(profileId = null) {
         // Get MCP Prompts section (hidden for llm_only with MCP tools since LangChain doesn't support MCP prompts)
         const mcpPromptsSection = modal.querySelector('#profile-modal-prompts-section');
 
+        // Get Genie settings section reference
+        const genieProfileSettingsSection = modal.querySelector('#genie-profile-settings-section');
+
         if (profileType === 'llm_only') {
             console.log('[Profile Modal] Configuring sections for Conversation profile with capability checkboxes');
-            // Hide Genie section
+            // Hide Genie sections
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+            if (genieProfileSettingsSection) genieProfileSettingsSection.style.display = 'none';
 
             // SHOW Conversation Capabilities section
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = '';
@@ -4108,8 +4117,9 @@ async function showProfileModal(profileId = null) {
             }
         } else if (profileType === 'rag_focused') {
             console.log('[Profile Modal] Configuring sections for RAG-focused profile');
-            // Hide Genie section and Conversation Capabilities section
+            // Hide Genie sections and Conversation Capabilities section
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+            if (genieProfileSettingsSection) genieProfileSettingsSection.style.display = 'none';
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
 
             // Hide MCP and planner sections (RAG focused doesn't use tools/planner)
@@ -4169,6 +4179,14 @@ async function showProfileModal(profileId = null) {
                 populateGenieSlaveProfilesList(modal, profile);
             }
 
+            // SHOW Genie settings section
+            const genieProfileSettingsSection = modal.querySelector('#genie-profile-settings-section');
+            if (genieProfileSettingsSection) {
+                genieProfileSettingsSection.style.display = '';
+                // Load global settings and populate the form
+                loadGenieProfileSettings(modal, profile);
+            }
+
             // KEEP System Prompts tab visible (for genie_coordination prompt)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
                 systemPromptsTab.style.display = '';
@@ -4178,8 +4196,9 @@ async function showProfileModal(profileId = null) {
             }
         } else {
             console.log('[Profile Modal] Configuring sections for tool-enabled profile');
-            // Hide Genie section and Conversation Capabilities section
+            // Hide Genie sections and Conversation Capabilities section
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
+            if (genieProfileSettingsSection) genieProfileSettingsSection.style.display = 'none';
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
 
             // Show MCP sections and planner repos for tool-enabled profiles
@@ -4265,6 +4284,115 @@ async function showProfileModal(profileId = null) {
             `;
             container.appendChild(div);
         });
+    }
+
+    // Helper function to load Genie profile settings (temperature, timeout, max iterations)
+    async function loadGenieProfileSettings(modal, profile) {
+        console.log('[Profile Modal] Loading Genie settings for profile:', profile?.id);
+
+        // Get form elements
+        const tempSlider = modal.querySelector('#profile-genie-temperature');
+        const tempValue = modal.querySelector('#profile-genie-temperature-value');
+        const tempLockedBadge = modal.querySelector('#profile-genie-temperature-locked-badge');
+        const tempHint = modal.querySelector('#profile-genie-temperature-hint');
+
+        const timeoutInput = modal.querySelector('#profile-genie-query-timeout');
+        const timeoutLockedBadge = modal.querySelector('#profile-genie-query-timeout-locked-badge');
+        const timeoutHint = modal.querySelector('#profile-genie-query-timeout-hint');
+
+        const iterInput = modal.querySelector('#profile-genie-max-iterations');
+        const iterLockedBadge = modal.querySelector('#profile-genie-max-iterations-locked-badge');
+        const iterHint = modal.querySelector('#profile-genie-max-iterations-hint');
+
+        // Get profile's genie config
+        const genieConfig = profile?.genieConfig || {};
+
+        // Load global settings to check for locks
+        let globalSettings = {};
+        try {
+            const token = localStorage.getItem('jwt_token');
+            if (token) {
+                const response = await fetch('/api/v1/admin/genie-settings', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    globalSettings = data.settings || {};
+                }
+            }
+        } catch (e) {
+            console.warn('[Profile Modal] Could not load global genie settings:', e);
+        }
+
+        // Setup temperature slider with live update
+        if (tempSlider) {
+            tempSlider.addEventListener('input', (e) => {
+                if (tempValue) tempValue.textContent = parseFloat(e.target.value).toFixed(1);
+            });
+        }
+
+        // Configure temperature
+        if (tempSlider && tempValue) {
+            const isLocked = globalSettings.temperature?.is_locked || false;
+            const globalValue = globalSettings.temperature?.value ?? 0.7;
+            const profileValue = genieConfig.temperature;
+
+            if (isLocked) {
+                tempSlider.value = globalValue;
+                tempSlider.disabled = true;
+                tempValue.textContent = parseFloat(globalValue).toFixed(1);
+                if (tempLockedBadge) tempLockedBadge.classList.remove('hidden');
+                if (tempHint) tempHint.textContent = `Locked by admin to ${globalValue}`;
+            } else {
+                tempSlider.value = profileValue ?? globalValue;
+                tempSlider.disabled = false;
+                tempValue.textContent = parseFloat(profileValue ?? globalValue).toFixed(1);
+                if (tempLockedBadge) tempLockedBadge.classList.add('hidden');
+                if (tempHint) tempHint.textContent = `Leave at ${globalValue} to use global default`;
+            }
+        }
+
+        // Configure query timeout
+        if (timeoutInput) {
+            const isLocked = globalSettings.queryTimeout?.is_locked || false;
+            const globalValue = globalSettings.queryTimeout?.value ?? 300;
+            const profileValue = genieConfig.queryTimeout;
+
+            if (isLocked) {
+                timeoutInput.value = globalValue;
+                timeoutInput.disabled = true;
+                if (timeoutLockedBadge) timeoutLockedBadge.classList.remove('hidden');
+                if (timeoutHint) timeoutHint.textContent = `Locked by admin to ${globalValue}s`;
+            } else {
+                timeoutInput.value = profileValue ?? '';
+                timeoutInput.placeholder = String(globalValue);
+                timeoutInput.disabled = false;
+                if (timeoutLockedBadge) timeoutLockedBadge.classList.add('hidden');
+                if (timeoutHint) timeoutHint.textContent = `Leave empty to use global default (${globalValue}s)`;
+            }
+        }
+
+        // Configure max iterations
+        if (iterInput) {
+            const isLocked = globalSettings.maxIterations?.is_locked || false;
+            const globalValue = globalSettings.maxIterations?.value ?? 10;
+            const profileValue = genieConfig.maxIterations;
+
+            if (isLocked) {
+                iterInput.value = globalValue;
+                iterInput.disabled = true;
+                if (iterLockedBadge) iterLockedBadge.classList.remove('hidden');
+                if (iterHint) iterHint.textContent = `Locked by admin to ${globalValue}`;
+            } else {
+                iterInput.value = profileValue ?? '';
+                iterInput.placeholder = String(globalValue);
+                iterInput.disabled = false;
+                if (iterLockedBadge) iterLockedBadge.classList.add('hidden');
+                if (iterHint) iterHint.textContent = `Leave empty to use global default (${globalValue})`;
+            }
+        }
+
+        console.log('[Profile Modal] Genie settings loaded - global:', globalSettings, 'profile:', genieConfig);
     }
 
     // Add event listeners to profile type radio buttons FIRST (before setting checked state)
@@ -4699,44 +4827,82 @@ async function showProfileModal(profileId = null) {
     const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
     const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
     const maxTokensInput = modal.querySelector('#profile-modal-max-tokens');
+    const minRelevanceLockedBadge = modal.querySelector('#profile-knowledge-min-relevance-locked-badge');
+    const maxDocsLockedBadge = modal.querySelector('#profile-knowledge-max-docs-locked-badge');
+    const maxTokensLockedBadge = modal.querySelector('#profile-knowledge-max-tokens-locked-badge');
 
-    // Fetch global defaults from Administration panel to set as placeholders
+    // Fetch global settings from database to check for locks and set placeholders
+    let knowledgeGlobalSettings = {};
     try {
-        const token = localStorage.getItem('tda_auth_token');
+        const token = localStorage.getItem('jwt_token');
         if (token) {
-            const response = await fetch('/api/v1/admin/knowledge-config', {
+            const response = await fetch('/api/v1/admin/knowledge-global-settings', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                const globalConfig = data.config || {};
-
-                // Set placeholders to actual global defaults
-                minRelevanceInput.placeholder = globalConfig.min_relevance_score !== undefined
-                    ? globalConfig.min_relevance_score.toString()
-                    : '0.70';
-                maxDocsInput.placeholder = globalConfig.num_docs !== undefined
-                    ? globalConfig.num_docs.toString()
-                    : '3';
-                maxTokensInput.placeholder = globalConfig.max_tokens !== undefined
-                    ? globalConfig.max_tokens.toString()
-                    : '2000';
+                knowledgeGlobalSettings = data.settings || {};
             }
         }
     } catch (error) {
-        console.warn('[Profile Modal] Failed to fetch global knowledge defaults:', error);
-        // Keep default placeholders on error
+        console.warn('[Profile Modal] Failed to fetch global knowledge settings:', error);
     }
 
-    if (profile?.knowledgeConfig) {
-        minRelevanceInput.value = profile.knowledgeConfig.minRelevanceScore !== undefined ? profile.knowledgeConfig.minRelevanceScore : '';
-        maxDocsInput.value = profile.knowledgeConfig.maxDocs !== undefined ? profile.knowledgeConfig.maxDocs : '';
-        maxTokensInput.value = profile.knowledgeConfig.maxTokens !== undefined ? profile.knowledgeConfig.maxTokens : '';
-    } else {
-        minRelevanceInput.value = '';
-        maxDocsInput.value = '';
-        maxTokensInput.value = '';
+    // Configure min relevance score
+    if (minRelevanceInput) {
+        const isLocked = knowledgeGlobalSettings.minRelevanceScore?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.minRelevanceScore?.value ?? 0.30;
+        const profileValue = profile?.knowledgeConfig?.minRelevanceScore;
+
+        if (isLocked) {
+            minRelevanceInput.value = globalValue;
+            minRelevanceInput.disabled = true;
+            if (minRelevanceLockedBadge) minRelevanceLockedBadge.classList.remove('hidden');
+        } else {
+            minRelevanceInput.value = profileValue !== undefined ? profileValue : '';
+            minRelevanceInput.placeholder = String(globalValue);
+            minRelevanceInput.disabled = false;
+            if (minRelevanceLockedBadge) minRelevanceLockedBadge.classList.add('hidden');
+        }
     }
+
+    // Configure max docs
+    if (maxDocsInput) {
+        const isLocked = knowledgeGlobalSettings.maxDocs?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.maxDocs?.value ?? 3;
+        const profileValue = profile?.knowledgeConfig?.maxDocs;
+
+        if (isLocked) {
+            maxDocsInput.value = globalValue;
+            maxDocsInput.disabled = true;
+            if (maxDocsLockedBadge) maxDocsLockedBadge.classList.remove('hidden');
+        } else {
+            maxDocsInput.value = profileValue !== undefined ? profileValue : '';
+            maxDocsInput.placeholder = String(globalValue);
+            maxDocsInput.disabled = false;
+            if (maxDocsLockedBadge) maxDocsLockedBadge.classList.add('hidden');
+        }
+    }
+
+    // Configure max tokens
+    if (maxTokensInput) {
+        const isLocked = knowledgeGlobalSettings.maxTokens?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.maxTokens?.value ?? 2000;
+        const profileValue = profile?.knowledgeConfig?.maxTokens;
+
+        if (isLocked) {
+            maxTokensInput.value = globalValue;
+            maxTokensInput.disabled = true;
+            if (maxTokensLockedBadge) maxTokensLockedBadge.classList.remove('hidden');
+        } else {
+            maxTokensInput.value = profileValue !== undefined ? profileValue : '';
+            maxTokensInput.placeholder = String(globalValue);
+            maxTokensInput.disabled = false;
+            if (maxTokensLockedBadge) maxTokensLockedBadge.classList.add('hidden');
+        }
+    }
+
+    console.log('[Profile Modal] Knowledge settings loaded - global:', knowledgeGlobalSettings, 'profile:', profile?.knowledgeConfig);
 
     // Tag generation function
     function generateTag() {
@@ -4998,7 +5164,7 @@ async function showProfileModal(profileId = null) {
             }
         }
 
-        // Collect Genie slave profiles if this is a genie profile
+        // Collect Genie slave profiles and settings if this is a genie profile
         let genieConfig = null;
         if (selectedProfileType === 'genie') {
             const slaveCheckboxes = modal.querySelectorAll('.genie-slave-checkbox:checked');
@@ -5013,6 +5179,36 @@ async function showProfileModal(profileId = null) {
                 slaveProfiles: selectedSlaveProfiles,
                 maxConcurrentSlaves: 3  // Default value
             };
+
+            // Collect optional Genie settings (temperature, queryTimeout, maxIterations)
+            // Only include if not locked and user provided a value
+            const tempSlider = modal.querySelector('#profile-genie-temperature');
+            const timeoutInput = modal.querySelector('#profile-genie-query-timeout');
+            const iterInput = modal.querySelector('#profile-genie-max-iterations');
+
+            // Temperature - only save if not disabled (not locked) and different from placeholder
+            if (tempSlider && !tempSlider.disabled) {
+                const tempVal = parseFloat(tempSlider.value);
+                if (!isNaN(tempVal)) {
+                    genieConfig.temperature = tempVal;
+                }
+            }
+
+            // Query timeout - only save if not disabled (not locked) and user provided a value
+            if (timeoutInput && !timeoutInput.disabled && timeoutInput.value !== '') {
+                const timeoutVal = parseInt(timeoutInput.value);
+                if (!isNaN(timeoutVal) && timeoutVal >= 60 && timeoutVal <= 900) {
+                    genieConfig.queryTimeout = timeoutVal;
+                }
+            }
+
+            // Max iterations - only save if not disabled (not locked) and user provided a value
+            if (iterInput && !iterInput.disabled && iterInput.value !== '') {
+                const iterVal = parseInt(iterInput.value);
+                if (!isNaN(iterVal) && iterVal >= 1 && iterVal <= 25) {
+                    genieConfig.maxIterations = iterVal;
+                }
+            }
         }
 
         // Get capability checkbox states for llm_only profiles

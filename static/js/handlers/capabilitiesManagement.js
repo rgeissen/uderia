@@ -141,6 +141,39 @@ export function renderResourcePanel(type) {
             return;
         }
 
+        // Special handling for RAG-focused profiles
+        if (state.activeRagProfile && type === 'tools') {
+            // Show RAG-focused info instead of tools
+            if (tabButton) {
+                tabButton.style.display = 'inline-block';
+                tabButton.textContent = `Tools (Knowledge)`;
+            }
+
+            categoriesContainer.innerHTML = '';
+            panelsContainer.innerHTML = `
+                <div class="p-6 text-center space-y-3">
+                    <div class="text-2xl">📚</div>
+                    <div class="text-lg font-semibold text-gray-200">Knowledge-Focused Profile</div>
+                    <div class="text-sm text-gray-400 max-w-md mx-auto">
+                        This profile retrieves knowledge from document repositories to answer questions.
+                        It doesn't use tools directly - instead, it searches configured knowledge collections.
+                    </div>
+                    ${state.activeRagProfile.knowledgeCollections && state.activeRagProfile.knowledgeCollections.length > 0 ? `
+                        <div class="mt-4 text-sm text-gray-300">
+                            <div class="font-semibold mb-2">Knowledge Collections:</div>
+                            <div class="flex flex-wrap gap-2 justify-center">
+                                ${state.activeRagProfile.knowledgeCollections.map(collection => {
+                                    const name = collection.name || collection.collection_name || 'Unknown';
+                                    return `<span class="px-3 py-1 bg-gray-700 rounded-md">${name}</span>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            return;
+        }
+
         if (!data || Object.keys(data).length === 0) {
             if(tabButton) {
                 tabButton.style.display = 'none';

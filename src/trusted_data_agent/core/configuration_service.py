@@ -25,8 +25,8 @@ from trusted_data_agent.core.config import (
 from trusted_data_agent.llm import handler as llm_handler
 from trusted_data_agent.mcp_adapter import adapter as mcp_adapter
 from trusted_data_agent.core.utils import unwrap_exception, _regenerate_contexts
-# --- MODIFICATION START: Import RAGRetriever, config_manager, and encryption ---
-from trusted_data_agent.agent.rag_retriever import RAGRetriever
+# --- MODIFICATION START: Import config_manager and encryption ---
+# Note: RAGRetriever import is lazy to avoid loading SentenceTransformer at module import time
 from trusted_data_agent.core.config_manager import get_config_manager
 
 # Authentication is always enabled - import encryption module
@@ -917,6 +917,8 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                         APP_STATE["rag_collections"] = collections_list
                         app_logger.info(f"Loaded {len(collections_list)} RAG collections from persistent config")
 
+                        # Lazy import to avoid loading SentenceTransformer at module import time
+                        from trusted_data_agent.agent.rag_retriever import RAGRetriever
                         app_logger.info(f"Initializing RAGRetriever with cases dir: {rag_cases_dir}")
                         retriever_instance = RAGRetriever(
                             rag_cases_dir=rag_cases_dir,

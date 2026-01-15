@@ -1576,6 +1576,368 @@ class ConfigManager:
         config["active_llm_configuration_id"] = config_id
         return self.save_config(config, user_uuid)
 
+    # =========================================================================
+    # Genie Global Settings Management
+    # =========================================================================
+
+    def get_genie_global_settings(self) -> Dict[str, Any]:
+        """
+        Get all global Genie coordination settings with lock status.
+
+        Returns:
+            Dict with setting keys and their values/lock status:
+            {
+                'temperature': {'value': 0.7, 'is_locked': False},
+                'queryTimeout': {'value': 300, 'is_locked': False},
+                'maxIterations': {'value': 10, 'is_locked': True}
+            }
+        """
+        from trusted_data_agent.auth.database import get_db_session
+
+        settings = {}
+        try:
+            with get_db_session() as session:
+                # Query genie_global_settings table
+                result = session.execute(
+                    "SELECT setting_key, setting_value, is_locked FROM genie_global_settings"
+                )
+                rows = result.fetchall()
+
+                for row in rows:
+                    key, value, is_locked = row
+                    # Parse value to appropriate type
+                    if key == 'temperature':
+                        parsed_value = float(value)
+                    else:
+                        parsed_value = int(value)
+
+                    settings[key] = {
+                        'value': parsed_value,
+                        'is_locked': bool(is_locked)
+                    }
+
+                # Ensure defaults if table is empty
+                defaults = {
+                    'temperature': {'value': 0.7, 'is_locked': False},
+                    'queryTimeout': {'value': 300, 'is_locked': False},
+                    'maxIterations': {'value': 10, 'is_locked': False}
+                }
+                for key, default in defaults.items():
+                    if key not in settings:
+                        settings[key] = default
+
+        except Exception as e:
+            app_logger.error(f"Error loading genie global settings: {e}")
+            # Return defaults on error
+            settings = {
+                'temperature': {'value': 0.7, 'is_locked': False},
+                'queryTimeout': {'value': 300, 'is_locked': False},
+                'maxIterations': {'value': 10, 'is_locked': False}
+            }
+
+        return settings
+
+    def set_genie_global_setting(
+        self,
+        setting_key: str,
+        setting_value: Any,
+        is_locked: bool,
+        user_uuid: Optional[str] = None
+    ) -> bool:
+        """
+        Update a global Genie setting.
+
+        Args:
+            setting_key: Setting identifier (temperature, queryTimeout, maxIterations)
+            setting_value: New value for the setting
+            is_locked: Whether to lock this setting (prevent profile overrides)
+            user_uuid: Admin user who made the change (for audit)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        from trusted_data_agent.auth.database import get_db_session
+
+        try:
+            with get_db_session() as session:
+                session.execute(
+                    """
+                    INSERT OR REPLACE INTO genie_global_settings
+                    (setting_key, setting_value, is_locked, updated_at, updated_by)
+                    VALUES (?, ?, ?, datetime('now'), ?)
+                    """,
+                    (setting_key, str(setting_value), int(is_locked), user_uuid)
+                )
+                session.commit()
+                app_logger.info(f"Updated genie global setting: {setting_key}={setting_value}, locked={is_locked}")
+                return True
+        except Exception as e:
+            app_logger.error(f"Error saving genie global setting: {e}")
+            return False
+
+    def save_genie_global_settings(
+        self,
+        settings: Dict[str, Dict[str, Any]],
+        user_uuid: Optional[str] = None
+    ) -> bool:
+        """
+        Save all global Genie settings at once.
+
+        Args:
+            settings: Dict of settings in format:
+                {
+                    'temperature': {'value': 0.7, 'is_locked': False},
+                    'queryTimeout': {'value': 300, 'is_locked': True},
+                    ...
+                }
+            user_uuid: Admin user who made the change (for audit)
+
+        Returns:
+            True if all settings saved successfully
+        """
+        success = True
+        for key, config in settings.items():
+            if not self.set_genie_global_setting(
+                key,
+                config.get('value'),
+                config.get('is_locked', False),
+                user_uuid
+            ):
+                success = False
+        return success
+
+    def get_effective_genie_config(self, profile_genie_config: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Get effective Genie configuration by merging global settings with profile overrides.
+
+        Resolution hierarchy:
+        1. If global setting is locked -> use global value
+        2. If profile has a non-null value -> use profile value
+        3. Otherwise -> use global default
+
+        Args:
+            profile_genie_config: Profile-level genieConfig dict (may contain temperature,
+                                 queryTimeout, maxIterations)
+
+        Returns:
+            Effective configuration dict with resolved values:
+            {
+                'temperature': 0.7,
+                'queryTimeout': 300,
+                'maxIterations': 10
+            }
+        """
+        global_settings = self.get_genie_global_settings()
+        profile_genie_config = profile_genie_config or {}
+
+        effective = {}
+
+        for key, global_config in global_settings.items():
+            global_value = global_config['value']
+            is_locked = global_config['is_locked']
+
+            if is_locked:
+                # Admin-locked: always use global value
+                effective[key] = global_value
+            else:
+                # Check for profile override
+                profile_value = profile_genie_config.get(key)
+                if profile_value is not None:
+                    effective[key] = profile_value
+                else:
+                    effective[key] = global_value
+
+        return effective
+
+    # =========================================================================
+    # Knowledge Global Settings Management
+    # =========================================================================
+
+    def get_knowledge_global_settings(self) -> Dict[str, Any]:
+        """
+        Get all global Knowledge repository settings with lock status.
+
+        Returns:
+            Dict with setting keys and their values/lock status:
+            {
+                'minRelevanceScore': {'value': 0.30, 'is_locked': False},
+                'maxDocs': {'value': 3, 'is_locked': False},
+                'maxTokens': {'value': 2000, 'is_locked': False},
+                'rerankingEnabled': {'value': False, 'is_locked': False}
+            }
+        """
+        from trusted_data_agent.auth.database import get_db_session
+
+        settings = {}
+        try:
+            with get_db_session() as session:
+                # Query genie_global_settings table for knowledge_ prefixed keys
+                result = session.execute(
+                    "SELECT setting_key, setting_value, is_locked FROM genie_global_settings WHERE setting_key LIKE 'knowledge_%'"
+                )
+                rows = result.fetchall()
+
+                for row in rows:
+                    key, value, is_locked = row
+                    # Remove 'knowledge_' prefix for API response
+                    short_key = key.replace('knowledge_', '')
+
+                    # Parse value to appropriate type
+                    if short_key == 'minRelevanceScore':
+                        parsed_value = float(value)
+                    elif short_key == 'rerankingEnabled':
+                        parsed_value = bool(int(value))
+                    else:
+                        parsed_value = int(value)
+
+                    settings[short_key] = {
+                        'value': parsed_value,
+                        'is_locked': bool(is_locked)
+                    }
+
+                # Ensure defaults if table is empty
+                defaults = {
+                    'minRelevanceScore': {'value': 0.30, 'is_locked': False},
+                    'maxDocs': {'value': 3, 'is_locked': False},
+                    'maxTokens': {'value': 2000, 'is_locked': False},
+                    'rerankingEnabled': {'value': False, 'is_locked': False}
+                }
+                for key, default in defaults.items():
+                    if key not in settings:
+                        settings[key] = default
+
+        except Exception as e:
+            app_logger.error(f"Error loading knowledge global settings: {e}")
+            # Return defaults on error
+            settings = {
+                'minRelevanceScore': {'value': 0.30, 'is_locked': False},
+                'maxDocs': {'value': 3, 'is_locked': False},
+                'maxTokens': {'value': 2000, 'is_locked': False},
+                'rerankingEnabled': {'value': False, 'is_locked': False}
+            }
+
+        return settings
+
+    def set_knowledge_global_setting(
+        self,
+        setting_key: str,
+        setting_value: Any,
+        is_locked: bool,
+        user_uuid: Optional[str] = None
+    ) -> bool:
+        """
+        Update a global Knowledge setting.
+
+        Args:
+            setting_key: Setting identifier (minRelevanceScore, maxDocs, maxTokens, rerankingEnabled)
+            setting_value: New value for the setting
+            is_locked: Whether to lock this setting (prevent profile overrides)
+            user_uuid: Admin user who made the change (for audit)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        from trusted_data_agent.auth.database import get_db_session
+
+        # Add 'knowledge_' prefix for database storage
+        db_key = f"knowledge_{setting_key}"
+
+        # Convert boolean to int for storage
+        if setting_key == 'rerankingEnabled':
+            setting_value = 1 if setting_value else 0
+
+        try:
+            with get_db_session() as session:
+                session.execute(
+                    """
+                    INSERT OR REPLACE INTO genie_global_settings
+                    (setting_key, setting_value, is_locked, updated_at, updated_by)
+                    VALUES (?, ?, ?, datetime('now'), ?)
+                    """,
+                    (db_key, str(setting_value), int(is_locked), user_uuid)
+                )
+                session.commit()
+                app_logger.info(f"Updated knowledge global setting: {setting_key}={setting_value}, locked={is_locked}")
+                return True
+        except Exception as e:
+            app_logger.error(f"Error saving knowledge global setting: {e}")
+            return False
+
+    def save_knowledge_global_settings(
+        self,
+        settings: Dict[str, Dict[str, Any]],
+        user_uuid: Optional[str] = None
+    ) -> bool:
+        """
+        Save all global Knowledge settings at once.
+
+        Args:
+            settings: Dict of settings in format:
+                {
+                    'minRelevanceScore': {'value': 0.30, 'is_locked': False},
+                    'maxDocs': {'value': 3, 'is_locked': True},
+                    ...
+                }
+            user_uuid: Admin user who made the change (for audit)
+
+        Returns:
+            True if all settings saved successfully
+        """
+        success = True
+        for key, config in settings.items():
+            if not self.set_knowledge_global_setting(
+                key,
+                config.get('value'),
+                config.get('is_locked', False),
+                user_uuid
+            ):
+                success = False
+        return success
+
+    def get_effective_knowledge_config(self, profile_knowledge_config: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Get effective Knowledge configuration by merging global settings with profile overrides.
+
+        Resolution hierarchy:
+        1. If global setting is locked -> use global value
+        2. If profile has a non-null value -> use profile value
+        3. Otherwise -> use global default
+
+        Args:
+            profile_knowledge_config: Profile-level knowledgeConfig dict (may contain
+                                     minRelevanceScore, maxDocs, maxTokens)
+
+        Returns:
+            Effective configuration dict with resolved values:
+            {
+                'minRelevanceScore': 0.30,
+                'maxDocs': 3,
+                'maxTokens': 2000,
+                'rerankingEnabled': False
+            }
+        """
+        global_settings = self.get_knowledge_global_settings()
+        profile_knowledge_config = profile_knowledge_config or {}
+
+        effective = {}
+
+        for key, global_config in global_settings.items():
+            global_value = global_config['value']
+            is_locked = global_config['is_locked']
+
+            if is_locked:
+                # Admin-locked: always use global value
+                effective[key] = global_value
+            else:
+                # Check for profile override
+                profile_value = profile_knowledge_config.get(key)
+                if profile_value is not None:
+                    effective[key] = profile_value
+                else:
+                    effective[key] = global_value
+
+        return effective
+
 
 # Singleton instance
 _config_manager_instance: Optional[ConfigManager] = None

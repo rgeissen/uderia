@@ -14,11 +14,11 @@ from trusted_data_agent.core.config import APP_CONFIG
 from trusted_data_agent.agent.prompts import (
     WORKFLOW_META_PLANNING_PROMPT,
 )
-from trusted_data_agent.agent.rag_retriever import RAGRetriever # Import RAGRetriever
 from trusted_data_agent.agent.rag_access_context import RAGAccessContext  # --- MODIFICATION: Import RAGAccessContext ---
 
 if TYPE_CHECKING:
     from trusted_data_agent.agent.executor import PlanExecutor
+    from trusted_data_agent.agent.rag_retriever import RAGRetriever  # Type hint only - lazy loaded at runtime
 
 
 app_logger = logging.getLogger("quart.app")
@@ -55,7 +55,7 @@ class Planner:
     and helper method access.
     """
     # --- MODIFICATION START: Accept RAGRetriever instance from executor ---
-    def __init__(self, executor: 'PlanExecutor', rag_retriever_instance: Optional[RAGRetriever] = None, event_handler=None):
+    def __init__(self, executor: 'PlanExecutor', rag_retriever_instance: Optional['RAGRetriever'] = None, event_handler=None):
         self.executor = executor
         self.rag_retriever = rag_retriever_instance
         self.event_handler = event_handler
@@ -1413,11 +1413,14 @@ Ranking:"""
             app_logger.warning("RAG retriever not available for knowledge retrieval")
             return ""
         
-        # Get retrieval parameters from profile or use defaults
+        # Get retrieval parameters using three-tier configuration (global -> profile -> locks)
         knowledge_config = profile_config.get("knowledgeConfig", {}) if profile_config else {}
-        max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
-        min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
-        max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        effective_config = config_manager.get_effective_knowledge_config(knowledge_config)
+        max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+        min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+        max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
         
         # Create RAG context for user-aware retrieval
         rag_context = RAGAccessContext(

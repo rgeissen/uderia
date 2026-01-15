@@ -1005,16 +1005,14 @@ class OutputFormatter:
             '.rag-sources-section button:hover { background: #4B5563 !important; }',
             '</style>',
             '<div class="rag-sources-section mt-6">',
-            '<div class="flex items-center justify-between mb-3">',
-            '<h3 class="text-lg font-bold text-white">Source Documents</h3>',
             '<button ',
             'onclick="const container = this.closest(\'.rag-sources-section\').querySelector(\'.rag-sources-container\'); ',
             'container.classList.toggle(\'hidden\'); ',
             'this.textContent = container.classList.contains(\'hidden\') ? \'Show Sources\' : \'Hide Sources\';">',
             'Show Sources',
             '</button>',
-            '</div>',
-            '<div class="rag-sources-container hidden space-y-3">'
+            '<div class="rag-sources-container hidden space-y-3 mt-3">',
+            '<h3 class="text-lg font-bold text-white mb-3">Source Documents</h3>'
         ]
 
         for idx, doc in enumerate(sources):

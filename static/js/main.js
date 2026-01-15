@@ -274,10 +274,20 @@ async function initializeRAGAutoCompletion() {
                         tag: data.profile_tag,
                         slaveProfiles: data.slave_profiles || []
                     };
+                    state.activeRagProfile = null;
                     console.log(`🧞 Genie coordinator profile active: @${data.profile_tag}`);
-                } else {
-                    // Clear Genie profile info if switching away
+                } else if (data.profile_type === 'rag_focused') {
+                    // Store RAG-focused profile info in state for rendering
+                    state.activeRagProfile = {
+                        tag: data.profile_tag,
+                        knowledgeCollections: data.knowledge_collections || []
+                    };
                     state.activeGenieProfile = null;
+                    console.log(`📚 RAG-focused profile active: @${data.profile_tag}`);
+                } else {
+                    // Clear special profile info if switching away
+                    state.activeGenieProfile = null;
+                    state.activeRagProfile = null;
                     console.log(`🔍 Resource panel updated for profile: @${data.profile_tag}`);
                 }
             } else {
@@ -290,8 +300,9 @@ async function initializeRAGAutoCompletion() {
                 tools = toolsResponse.ok ? await toolsResponse.json() : {};
                 prompts = promptsResponse.ok ? await promptsResponse.json() : {};
 
-                // Clear Genie profile info when restoring default
+                // Clear special profile info when restoring default
                 state.activeGenieProfile = null;
+                state.activeRagProfile = null;
 
                 console.log('🔄 Resource panel restored to default profile');
             }
@@ -310,6 +321,9 @@ async function initializeRAGAutoCompletion() {
             console.error('Error updating resource panel:', error);
         }
     }
+
+    // Expose globally for use by configurationHandler when default profile changes
+    window.updateResourcePanelForProfile = updateResourcePanelForProfile;
 
     function updateTagBadge() {
         if (isUpdatingInput) return;

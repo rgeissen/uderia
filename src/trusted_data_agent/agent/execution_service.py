@@ -291,8 +291,15 @@ async def _run_genie_execution(
             }, "error")
             return None
 
-        # Create LangChain LLM from Uderia config
-        llm_instance = create_langchain_llm(llm_config_id, user_uuid)
+        # Get effective genie config (merges global settings with profile overrides)
+        effective_genie_config = config_manager.get_effective_genie_config(genie_config)
+
+        # Create LangChain LLM from Uderia config with temperature from genie config
+        llm_instance = create_langchain_llm(
+            llm_config_id,
+            user_uuid,
+            temperature=float(effective_genie_config['temperature'])
+        )
 
         # Get LLM config details for logging
         llm_configurations = config_manager.get_llm_configurations(user_uuid)
@@ -322,7 +329,8 @@ async def _run_genie_execution(
             auth_token=auth_token,
             llm_instance=llm_instance,
             base_url=base_url,
-            event_callback=lambda t, p: asyncio.create_task(genie_sse_event_handler(t, p))
+            event_callback=lambda t, p: asyncio.create_task(genie_sse_event_handler(t, p)),
+            genie_config=effective_genie_config
         )
 
         # Load existing slave sessions to preserve context across multiple queries
@@ -366,7 +374,8 @@ async def _run_genie_execution(
                 'status': 'success' if success else 'failed',
                 'provider': provider,
                 'model': model,
-                'profile_tag': profile_tag
+                'profile_tag': profile_tag,
+                'profile_type': 'genie'  # Mark as genie for session gallery status detection
             }
 
             await session_manager.update_last_turn_data(

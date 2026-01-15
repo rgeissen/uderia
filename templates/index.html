@@ -2121,7 +2121,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                                 </svg>
-                                Expert Settings
+                                Optimizer Settings
                             </div>
                         </button>
                         <button class="admin-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="cost-management-tab">
@@ -2591,84 +2591,61 @@
 
                         <!-- Tab 5: Application Configuration -->
                         <div id="app-config-tab" class="admin-tab-content hidden">
-                            <div class="space-y-6">
-                                <!-- MCP Resource Classification -->
-                                <div class="glass-panel rounded-xl p-6">
-                                    <details class="group">
-                                        <summary class="flex justify-between items-center cursor-pointer list-none">
-                                            <div class="flex items-center gap-3">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                                </svg>
-                                                <div>
-                                                    <h3 class="text-lg font-bold text-white">MCP Resource Classification</h3>
-                                                    <p class="text-sm text-gray-400">Configure LLM-based classification of MCP capabilities</p>
-                                                </div>
-                                            </div>
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            <div class="flex gap-6">
+                                <!-- Vertical Tab Bar -->
+                                <div class="w-48 flex-shrink-0">
+                                    <nav class="space-y-1 sticky top-4">
+                                        <button type="button" data-config-tab="features" class="config-subtab w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors bg-[#F15F22]/20 text-[#F15F22] border border-[#F15F22]/30">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                             </svg>
-                                        </summary>
-                                        <div class="mt-6 pl-9 space-y-4">
-                                            <!-- Classification Toggle -->
-                                            <div class="p-4 bg-gray-700/50 rounded-lg">
-                                                <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-mcp-classification" name="enable_mcp_classification" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0" checked>
-                                                    <div class="flex-1">
-                                                        <label for="enable-mcp-classification" class="block text-sm font-semibold text-white cursor-pointer">Enable Automatic Classification</label>
-                                                        <p class="text-xs text-gray-400 mt-1">When enabled, MCP capabilities are automatically categorized during configuration using the LLM (takes 2-10 seconds). When disabled, generic categories like "All Tools" and "All Prompts" are used for faster configuration (90-95% faster).</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                </svg>
-                                                <div>
-                                                    <h4 class="text-sm font-bold text-white mb-2">About Classification</h4>
-                                                    <p class="text-sm text-gray-400 mb-2">Uses an LLM to intelligently categorize MCP capabilities into user-friendly groups like "Data Quality", "Table Management", "Performance", etc.</p>
-                                                    <ul class="text-sm text-gray-400 space-y-1 list-disc list-inside">
-                                                        <li>Improves organization in the configuration UI</li>
-                                                        <li>Makes capabilities easier to find and manage</li>
-                                                        <li>Requires an active LLM connection</li>
-                                                        <li>May take several seconds to complete</li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-
-                                            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
-                                                <div>
-                                                    <h4 class="text-sm font-semibold text-white mb-1">Classification Status</h4>
-                                                    <p id="mcp-classification-status" class="text-sm text-gray-400">Ready to classify</p>
-                                                    <p id="mcp-classification-details" class="text-xs text-gray-500 mt-1"></p>
-                                                </div>
-                                                <button type="button" id="run-mcp-classification-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm flex items-center gap-2">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                    </svg>
-                                                    Run Classification
-                                                </button>
-                                            </div>
-
-                                            <!-- Progress indicator (hidden by default) -->
-                                            <div id="mcp-classification-progress" class="hidden p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                                                <div class="flex items-center gap-3">
-                                                    <svg class="animate-spin h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                    </svg>
-                                                    <div>
-                                                        <p class="text-sm font-medium text-yellow-400">Classification in progress...</p>
-                                                        <p class="text-xs text-gray-400 mt-1">This may take a few moments</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </details>
+                                            <span class="text-sm font-medium">Features</span>
+                                        </button>
+                                        <button type="button" data-config-tab="ai-knowledge" class="config-subtab w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors text-gray-400 hover:bg-gray-700/50 hover:text-white">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                            </svg>
+                                            <span class="text-sm font-medium">AI & Knowledge</span>
+                                        </button>
+                                        <button type="button" data-config-tab="user-interface" class="config-subtab w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors text-gray-400 hover:bg-gray-700/50 hover:text-white">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                            </svg>
+                                            <span class="text-sm font-medium">User Interface</span>
+                                        </button>
+                                        <button type="button" data-config-tab="security" class="config-subtab w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors text-gray-400 hover:bg-gray-700/50 hover:text-white">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                            </svg>
+                                            <span class="text-sm font-medium">Security</span>
+                                        </button>
+                                        <button type="button" data-config-tab="operations" class="config-subtab w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-colors text-gray-400 hover:bg-gray-700/50 hover:text-white">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                            <span class="text-sm font-medium">Operations</span>
+                                        </button>
+                                    </nav>
                                 </div>
 
-                                <!-- System Feature Availability -->
+                                <!-- Content Area -->
+                                <div class="flex-1 min-w-0">
+                                    <!-- ============================================================ -->
+                                    <!-- TAB: Feature Toggles -->
+                                    <!-- ============================================================ -->
+                                    <div id="config-panel-features" class="config-panel space-y-6">
+                                        <div class="border-b border-gray-700 pb-2">
+                                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                                </svg>
+                                                Feature Toggles
+                                            </h2>
+                                            <p class="text-sm text-gray-400 mt-1">Enable or disable system-wide features</p>
+                                        </div>
+
+                                        <!-- System Feature Availability -->
                                 <div class="glass-panel rounded-xl p-6">
                                     <details class="group">
                                         <summary class="flex justify-between items-center cursor-pointer list-none">
@@ -2719,121 +2696,52 @@
                                                 </div>
                                             </div>
 
-                                            <!-- Save Button -->
-                                            <div class="pt-4 border-t border-white/10">
-                                                <button type="button" id="save-app-config-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
-                                                    Save Feature Settings
-                                                </button>
-                                            </div>
                                         </div>
                                     </details>
                                 </div>
+                                    </div>
 
-                                <!-- Security & Rate Limiting -->
+                                    <!-- ============================================================ -->
+                                    <!-- TAB: AI & Knowledge Settings -->
+                                    <!-- ============================================================ -->
+                                    <div id="config-panel-ai-knowledge" class="config-panel hidden space-y-6">
+                                        <div class="border-b border-gray-700 pb-2">
+                                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                                </svg>
+                                                AI & Knowledge Settings
+                                            </h2>
+                                            <p class="text-sm text-gray-400 mt-1">Configure LLM behavior, knowledge repositories, and document processing</p>
+                                        </div>
+
+                                        <!-- LLM Behavior -->
                                 <div class="glass-panel rounded-xl p-6">
                                     <details class="group">
                                         <summary class="flex justify-between items-center cursor-pointer list-none">
                                             <div class="flex items-center gap-3">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                                 </svg>
                                                 <div>
-                                                    <h3 class="text-lg font-bold text-white">Security & Rate Limiting</h3>
-                                                    <p class="text-sm text-gray-400">Configure system-wide rate limiting and security policies</p>
+                                                    <h3 class="text-lg font-bold text-white">LLM Behavior</h3>
+                                                    <p class="text-sm text-gray-400">Configure retry logic and API behavior</p>
                                                 </div>
                                             </div>
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
                                             </svg>
                                         </summary>
-                                        <div class="mt-6 pl-9 space-y-4">
-                                            <!-- Rate Limiting Toggle -->
-                                            <div class="p-4 bg-gray-700/50 rounded-lg">
-                                                <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="rate-limit-enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
-                                                    <div class="flex-1">
-                                                        <label for="rate-limit-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable Rate Limiting</label>
-                                                        <p class="text-xs text-gray-400 mt-1">When enabled, enforces request limits to prevent abuse. Recommended for production and multi-user deployments. Disabled by default for single-user installations.</p>
-                                                    </div>
-                                                </div>
+                                        <div class="mt-4 space-y-4 pl-9">
+                                            <div>
+                                                <label for="llm-max-retries" class="block text-sm font-medium text-gray-300 mb-2">Max API Retries</label>
+                                                <input type="number" id="llm-max-retries" min="0" max="20" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-1">Maximum attempts for failed LLM API calls (default: 5)</p>
                                             </div>
-
-                                            <!-- Global Override Toggle -->
-                                            <div class="p-4 bg-gray-700/50 rounded-lg">
-                                                <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="rate-limit-global-override" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" disabled>
-                                                    <div class="flex-1">
-                                                        <label for="rate-limit-global-override" class="block text-sm font-semibold text-white cursor-pointer">Global Override</label>
-                                                        <p class="text-xs text-gray-400 mt-1">When enabled, the global limits below override individual consumption profile settings for all users. Use for emergency rate limiting.</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- Rate Limit Settings (visible when enabled) -->
-                                            <div id="rate-limit-settings" class="hidden space-y-4">
-                                                <!-- User Limits -->
-                                                <div class="p-4 bg-gray-700/30 rounded-lg space-y-3">
-                                                    <h4 class="text-sm font-bold text-white">Per-User Limits (Authenticated)</h4>
-                                                    
-                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                        <div>
-                                                            <label for="rate-limit-user-prompts-per-hour" class="block text-xs font-medium text-gray-300 mb-1">Prompts per Hour</label>
-                                                            <input type="number" id="rate-limit-user-prompts-per-hour" min="1" max="10000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="100">
-                                                        </div>
-                                                        <div>
-                                                            <label for="rate-limit-user-prompts-per-day" class="block text-xs font-medium text-gray-300 mb-1">Prompts per Day</label>
-                                                            <input type="number" id="rate-limit-user-prompts-per-day" min="1" max="100000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="1000">
-                                                        </div>
-                                                        <div>
-                                                            <label for="rate-limit-user-configs-per-hour" class="block text-xs font-medium text-gray-300 mb-1">Config Changes per Hour</label>
-                                                            <input type="number" id="rate-limit-user-configs-per-hour" min="1" max="1000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="10">
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <!-- IP-based Limits -->
-                                                <div class="p-4 bg-gray-700/30 rounded-lg space-y-3">
-                                                    <h4 class="text-sm font-bold text-white">Per-IP Limits (Anonymous/Authentication)</h4>
-                                                    
-                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                        <div>
-                                                            <label for="rate-limit-ip-login-per-minute" class="block text-xs font-medium text-gray-300 mb-1">Login Attempts per Minute</label>
-                                                            <input type="number" id="rate-limit-ip-login-per-minute" min="1" max="100" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="5">
-                                                        </div>
-                                                        <div>
-                                                            <label for="rate-limit-ip-register-per-hour" class="block text-xs font-medium text-gray-300 mb-1">Registrations per Hour</label>
-                                                            <input type="number" id="rate-limit-ip-register-per-hour" min="1" max="100" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="3">
-                                                        </div>
-                                                        <div>
-                                                            <label for="rate-limit-ip-api-per-minute" class="block text-xs font-medium text-gray-300 mb-1">API Calls per Minute</label>
-                                                            <input type="number" id="rate-limit-ip-api-per-minute" min="1" max="1000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="60">
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <!-- Info Box -->
-                                                <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                    <div>
-                                                        <h4 class="text-sm font-bold text-white mb-2">About Rate Limiting</h4>
-                                                        <p class="text-sm text-gray-400 mb-2">Rate limiting protects your application from abuse and ensures fair resource allocation across users.</p>
-                                                        <ul class="text-sm text-gray-400 space-y-1 list-disc list-inside">
-                                                            <li>Changes take effect within 60 seconds (cache refresh)</li>
-                                                            <li>Authenticated users tracked by user ID, anonymous by IP address</li>
-                                                            <li>Uses token bucket algorithm for smooth rate limiting</li>
-                                                            <li>Disable for single-user installations or trusted environments</li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- Save Button -->
-                                            <div class="pt-4 border-t border-white/10">
-                                                <button type="button" id="save-rate-limit-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
-                                                    Save Rate Limit Settings
-                                                </button>
+                                            <div>
+                                                <label for="llm-base-delay" class="block text-sm font-medium text-gray-300 mb-2">Retry Base Delay (seconds)</label>
+                                                <input type="number" id="llm-base-delay" min="0" max="30" step="0.5" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-1">Initial delay for exponential backoff (default: 2)</p>
                                             </div>
                                         </div>
                                     </details>
@@ -2936,45 +2844,86 @@
                                                 </div>
                                             </div>
 
-                                            <div>
-                                                <label for="knowledge-num-docs" class="block text-sm font-medium text-gray-300 mb-2">Default Number of Documents</label>
-                                                <input type="number" id="knowledge-num-docs" min="1" max="20" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">Number of knowledge chunks to retrieve per planning call (default: 3)</p>
-                                            </div>
-
-                                            <div>
-                                                <label for="knowledge-min-relevance" class="block text-sm font-medium text-gray-300 mb-2">Minimum Relevance Score</label>
-                                                <input type="number" id="knowledge-min-relevance" min="0" max="1" step="0.05" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">Minimum cosine similarity threshold (0.0-1.0, default: 0.70)</p>
-                                            </div>
-
-                                            <div>
-                                                <label for="knowledge-max-tokens" class="block text-sm font-medium text-gray-300 mb-2">Maximum Context Tokens</label>
-                                                <input type="number" id="knowledge-max-tokens" min="100" max="10000" step="100" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">Token limit for all knowledge context combined (default: 2000)</p>
-                                            </div>
-
+                                            <!-- Min Relevance Score with Lock -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-min-relevance" class="block text-sm font-medium text-gray-300">Minimum Relevance Score</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-min-relevance-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <label for="knowledge-min-relevance-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                    <input type="range" id="knowledge-min-relevance" min="0" max="1" step="0.05" value="0.30" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-[#F15F22]">
+                                                    <span id="knowledge-min-relevance-value" class="text-sm text-white font-mono w-12 text-right">0.30</span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-2">Minimum cosine similarity threshold (0.0-1.0). Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Max Documents with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-num-docs" class="block text-sm font-medium text-gray-300">Max Documents</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-num-docs-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <label for="knowledge-num-docs-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <input type="number" id="knowledge-num-docs" min="1" max="20" value="3" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">Number of knowledge chunks to retrieve per query (1-20). Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Max Tokens with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-max-tokens" class="block text-sm font-medium text-gray-300">Max Tokens</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-max-tokens-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <label for="knowledge-max-tokens-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <input type="number" id="knowledge-max-tokens" min="500" max="10000" step="100" value="2000" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">Token limit for all knowledge context combined (500-10000). Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Reranking with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label class="block text-sm font-medium text-gray-300">LLM Reranking</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-reranking-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <label for="knowledge-reranking-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
                                                 <div class="flex items-start gap-3">
                                                     <input type="checkbox" id="knowledge-reranking-enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
                                                     <div class="flex-1">
-                                                        <label for="knowledge-reranking-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable LLM Reranking (Global Default)</label>
-                                                        <p class="text-xs text-gray-400 mt-1">Use LLM to rerank retrieved documents by relevance. Can be overridden per-collection in profiles. Increases latency. (default: disabled)</p>
+                                                        <label for="knowledge-reranking-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable LLM Reranking</label>
+                                                        <p class="text-xs text-gray-400 mt-1">Use LLM to rerank retrieved documents by relevance. Increases latency. Lock to enforce globally.</p>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <!-- Save Button -->
-                                            <div class="pt-4 border-t border-white/10">
-                                                <button type="button" id="save-knowledge-config-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
-                                                    Save Knowledge Settings
-                                                </button>
-                                            </div>
                                         </div>
                                     </details>
                                 </div>
+                                    </div>
 
-                                <!-- Startup Management -->
+                                    <!-- ============================================================ -->
+                                    <!-- TAB: User Interface -->
+                                    <!-- ============================================================ -->
+                                    <div id="config-panel-user-interface" class="config-panel hidden space-y-6">
+                                        <div class="border-b border-gray-700 pb-2">
+                                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                                </svg>
+                                                User Interface
+                                            </h2>
+                                            <p class="text-sm text-gray-400 mt-1">Configure panel visibility, startup behavior, and MCP classification</p>
+                                        </div>
+
+                                        <!-- Startup & Panel Defaults -->
                                 <div class="glass-panel rounded-xl p-6">
                                     <details class="group">
                                         <summary class="flex justify-between items-center cursor-pointer list-none">
@@ -2983,7 +2932,7 @@
                                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0a2 2 0 012 2v8a2 2 0 01-2 2h-2a2 2 0 01-2-2V9a2 2 0 012-2z" />
                                                 </svg>
                                                 <div>
-                                                    <h3 class="text-lg font-bold text-white">Startup Management</h3>
+                                                    <h3 class="text-lg font-bold text-white">Startup & Panel Defaults</h3>
                                                     <p class="text-sm text-gray-400">Default panel visibility and welcome screen settings at startup</p>
                                                 </div>
                                             </div>
@@ -3135,12 +3084,6 @@
                                                 </div>
                                             </div>
 
-                                            <!-- Save Button -->
-                                            <div class="pt-4 border-t border-white/10">
-                                                <button type="button" id="save-window-defaults-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
-                                                    Save Startup Settings
-                                                </button>
-                                            </div>
                                         </div>
                                     </details>
                                 </div>
@@ -3247,36 +3190,93 @@
                                         </div>
                                     </details>
                                 </div>
-                            </div>
-                        </div>
 
-                        <!-- Tab 5: Expert Settings -->
-                        <div id="expert-settings-tab" class="admin-tab-content hidden">
-                            <div class="space-y-6">
-                                <!-- Warning Banner -->
-                                <div class="glass-panel rounded-xl p-4 bg-red-500/10 border border-red-500/30">
-                                    <div class="flex items-start gap-3">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                        <div>
-                                            <h4 class="text-sm font-bold text-red-400 mb-1">Advanced Configuration Area</h4>
-                                            <p class="text-sm text-gray-300">These settings directly affect system behavior and performance. Incorrect values may cause instability or errors. Modify only if you understand the implications.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- LLM Behavior -->
+                                <!-- MCP Resource Classification -->
                                 <div class="glass-panel rounded-xl p-6">
                                     <details class="group">
                                         <summary class="flex justify-between items-center cursor-pointer list-none">
                                             <div class="flex items-center gap-3">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                                                 </svg>
                                                 <div>
-                                                    <h3 class="text-lg font-bold text-white">LLM Behavior</h3>
-                                                    <p class="text-sm text-gray-400">Configure retry logic and API behavior</p>
+                                                    <h3 class="text-lg font-bold text-white">MCP Resource Classification</h3>
+                                                    <p class="text-sm text-gray-400">Configure LLM-based classification of MCP capabilities</p>
+                                                </div>
+                                            </div>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </summary>
+                                        <div class="mt-6 pl-9 space-y-4">
+                                            <!-- Classification Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <input type="checkbox" id="enable-mcp-classification" name="enable_mcp_classification" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0" checked>
+                                                    <div class="flex-1">
+                                                        <label for="enable-mcp-classification" class="block text-sm font-semibold text-white cursor-pointer">Enable Automatic Classification</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, MCP capabilities are automatically categorized during configuration using the LLM. When disabled, generic categories are used for faster configuration.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                                                <div>
+                                                    <h4 class="text-sm font-semibold text-white mb-1">Classification Status</h4>
+                                                    <p id="mcp-classification-status" class="text-sm text-gray-400">Ready to classify</p>
+                                                    <p id="mcp-classification-details" class="text-xs text-gray-500 mt-1"></p>
+                                                </div>
+                                                <button type="button" id="run-mcp-classification-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                    </svg>
+                                                    Run Classification
+                                                </button>
+                                            </div>
+
+                                            <!-- Progress indicator (hidden by default) -->
+                                            <div id="mcp-classification-progress" class="hidden p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                                                <div class="flex items-center gap-3">
+                                                    <svg class="animate-spin h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                    <div>
+                                                        <p class="text-sm font-medium text-yellow-400">Classification in progress...</p>
+                                                        <p class="text-xs text-gray-400 mt-1">This may take a few moments</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
+                                    </div>
+
+                                    <!-- ============================================================ -->
+                                    <!-- TAB: Security & Access -->
+                                    <!-- ============================================================ -->
+                                    <div id="config-panel-security" class="config-panel hidden space-y-6">
+                                        <div class="border-b border-gray-700 pb-2">
+                                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                </svg>
+                                                Security & Access
+                                            </h2>
+                                            <p class="text-sm text-gray-400 mt-1">Configure rate limiting, session management, and security policies</p>
+                                        </div>
+
+                                        <!-- Security Settings -->
+                                <div class="glass-panel rounded-xl p-6">
+                                    <details class="group">
+                                        <summary class="flex justify-between items-center cursor-pointer list-none">
+                                            <div class="flex items-center gap-3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                </svg>
+                                                <div>
+                                                    <h3 class="text-lg font-bold text-white">Security Settings</h3>
+                                                    <p class="text-sm text-gray-400">Session and authentication parameters</p>
                                                 </div>
                                             </div>
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -3285,17 +3285,208 @@
                                         </summary>
                                         <div class="mt-4 space-y-4 pl-9">
                                             <div>
-                                                <label for="llm-max-retries" class="block text-sm font-medium text-gray-300 mb-2">Max API Retries</label>
-                                                <input type="number" id="llm-max-retries" min="0" max="20" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">Maximum attempts for failed LLM API calls (default: 5)</p>
+                                                <label for="session-timeout" class="block text-sm font-medium text-gray-300 mb-2">Session Timeout (hours)</label>
+                                                <input type="number" id="session-timeout" min="1" max="168" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-1">How long sessions remain valid (default: 24)</p>
                                             </div>
                                             <div>
-                                                <label for="llm-base-delay" class="block text-sm font-medium text-gray-300 mb-2">Retry Base Delay (seconds)</label>
-                                                <input type="number" id="llm-base-delay" min="0" max="30" step="0.5" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">Initial delay for exponential backoff (default: 2)</p>
+                                                <label for="token-expiry" class="block text-sm font-medium text-gray-300 mb-2">Token Expiry (hours)</label>
+                                                <input type="number" id="token-expiry" min="1" max="720" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-1">Authentication token validity period (default: 168)</p>
                                             </div>
                                         </div>
                                     </details>
+                                </div>
+
+                                <!-- Rate Limiting -->
+                                <div class="glass-panel rounded-xl p-6">
+                                    <details class="group">
+                                        <summary class="flex justify-between items-center cursor-pointer list-none">
+                                            <div class="flex items-center gap-3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                </svg>
+                                                <div>
+                                                    <h3 class="text-lg font-bold text-white">Rate Limiting</h3>
+                                                    <p class="text-sm text-gray-400">Configure system-wide rate limiting policies</p>
+                                                </div>
+                                            </div>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </summary>
+                                        <div class="mt-6 pl-9 space-y-4">
+                                            <!-- Rate Limiting Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <input type="checkbox" id="rate-limit-enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <div class="flex-1">
+                                                        <label for="rate-limit-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable Rate Limiting</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, enforces request limits to prevent abuse. Recommended for production and multi-user deployments. Disabled by default for single-user installations.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Global Override Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <input type="checkbox" id="rate-limit-global-override" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" disabled>
+                                                    <div class="flex-1">
+                                                        <label for="rate-limit-global-override" class="block text-sm font-semibold text-white cursor-pointer">Global Override</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, the global limits below override individual consumption profile settings for all users. Use for emergency rate limiting.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Rate Limit Settings (visible when enabled) -->
+                                            <div id="rate-limit-settings" class="hidden space-y-4">
+                                                <!-- User Limits -->
+                                                <div class="p-4 bg-gray-700/30 rounded-lg space-y-3">
+                                                    <h4 class="text-sm font-bold text-white">Per-User Limits (Authenticated)</h4>
+
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                        <div>
+                                                            <label for="rate-limit-user-prompts-per-hour" class="block text-xs font-medium text-gray-300 mb-1">Prompts per Hour</label>
+                                                            <input type="number" id="rate-limit-user-prompts-per-hour" min="1" max="10000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="100">
+                                                        </div>
+                                                        <div>
+                                                            <label for="rate-limit-user-prompts-per-day" class="block text-xs font-medium text-gray-300 mb-1">Prompts per Day</label>
+                                                            <input type="number" id="rate-limit-user-prompts-per-day" min="1" max="100000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="1000">
+                                                        </div>
+                                                        <div>
+                                                            <label for="rate-limit-user-configs-per-hour" class="block text-xs font-medium text-gray-300 mb-1">Config Changes per Hour</label>
+                                                            <input type="number" id="rate-limit-user-configs-per-hour" min="1" max="1000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="10">
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- IP-based Limits -->
+                                                <div class="p-4 bg-gray-700/30 rounded-lg space-y-3">
+                                                    <h4 class="text-sm font-bold text-white">Per-IP Limits (Anonymous/Authentication)</h4>
+
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                        <div>
+                                                            <label for="rate-limit-ip-login-per-minute" class="block text-xs font-medium text-gray-300 mb-1">Login Attempts per Minute</label>
+                                                            <input type="number" id="rate-limit-ip-login-per-minute" min="1" max="100" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="5">
+                                                        </div>
+                                                        <div>
+                                                            <label for="rate-limit-ip-register-per-hour" class="block text-xs font-medium text-gray-300 mb-1">Registrations per Hour</label>
+                                                            <input type="number" id="rate-limit-ip-register-per-hour" min="1" max="100" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="3">
+                                                        </div>
+                                                        <div>
+                                                            <label for="rate-limit-ip-api-per-minute" class="block text-xs font-medium text-gray-300 mb-1">API Calls per Minute</label>
+                                                            <input type="number" id="rate-limit-ip-api-per-minute" min="1" max="1000" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]" value="60">
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Info Box -->
+                                                <div class="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    <div>
+                                                        <h4 class="text-sm font-bold text-white mb-2">About Rate Limiting</h4>
+                                                        <p class="text-sm text-gray-400 mb-2">Rate limiting protects your application from abuse and ensures fair resource allocation across users.</p>
+                                                        <ul class="text-sm text-gray-400 space-y-1 list-disc list-inside">
+                                                            <li>Changes take effect within 60 seconds (cache refresh)</li>
+                                                            <li>Authenticated users tracked by user ID, anonymous by IP address</li>
+                                                            <li>Uses token bucket algorithm for smooth rate limiting</li>
+                                                            <li>Disable for single-user installations or trusted environments</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
+
+                                    </div>
+
+                                    <!-- ============================================================ -->
+                                    <!-- TAB: System Operations -->
+                                    <!-- ============================================================ -->
+                                    <div id="config-panel-operations" class="config-panel hidden space-y-6">
+                                        <div class="border-b border-gray-700 pb-2">
+                                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                </svg>
+                                                System Operations
+                                            </h2>
+                                            <p class="text-sm text-gray-400 mt-1">Maintenance tasks and cache management</p>
+                                        </div>
+
+                                        <!-- System Maintenance -->
+                                <div class="glass-panel rounded-xl p-6">
+                                    <details class="group">
+                                        <summary class="flex justify-between items-center cursor-pointer list-none">
+                                            <div class="flex items-center gap-3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                </svg>
+                                                <div>
+                                                    <h3 class="text-lg font-bold text-white">System Maintenance</h3>
+                                                    <p class="text-sm text-gray-400">Cache management and system operations</p>
+                                                </div>
+                                            </div>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </summary>
+                                        <div class="mt-4 space-y-4 pl-9">
+                                            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                                                <div>
+                                                    <h4 class="text-sm font-semibold text-white mb-1">Clear Application Cache</h4>
+                                                    <p class="text-xs text-gray-400">Clears temporary data and cached responses</p>
+                                                </div>
+                                                <button type="button" id="clear-cache-btn" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors text-white font-medium text-sm">
+                                                    Clear Cache
+                                                </button>
+                                            </div>
+                                            <div class="flex items-center justify-between p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                                                <div>
+                                                    <h4 class="text-sm font-semibold text-red-400 mb-1">Reset Application State</h4>
+                                                    <p class="text-xs text-gray-400">Resets runtime state (requires reconnection)</p>
+                                                </div>
+                                                <button type="button" id="reset-state-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md transition-colors text-white font-medium text-sm">
+                                                    Reset State
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
+                                    </div>
+
+                                    <!-- Save Button (visible on all tabs) -->
+                                    <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
+                                        <button type="button" id="save-system-settings-btn" disabled class="px-6 py-3 bg-gray-600 rounded-md transition-colors text-white font-medium opacity-50 cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:opacity-100 enabled:cursor-pointer">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Save System Settings
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 5: Optimizer Settings -->
+                        <div id="expert-settings-tab" class="admin-tab-content hidden">
+                            <div class="space-y-6">
+                                <!-- Info Banner -->
+                                <div class="glass-panel rounded-xl p-4 bg-blue-500/10 border border-blue-500/30">
+                                    <div class="flex items-start gap-3">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <div>
+                                            <h4 class="text-sm font-bold text-blue-400 mb-1">Optimizer Profile Configuration</h4>
+                                            <p class="text-sm text-gray-300">Settings in this section apply to Efficiency-Focused (Optimizer) and Genie profiles. These control agent execution behavior, context limits, and coordination parameters.</p>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- Agent Configuration -->
@@ -3447,17 +3638,17 @@
                                     </details>
                                 </div>
 
-                                <!-- Security Settings -->
+                                <!-- Genie Coordination Settings -->
                                 <div class="glass-panel rounded-xl p-6">
                                     <details class="group">
                                         <summary class="flex justify-between items-center cursor-pointer list-none">
                                             <div class="flex items-center gap-3">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                                                 </svg>
                                                 <div>
-                                                    <h3 class="text-lg font-bold text-white">Security Settings</h3>
-                                                    <p class="text-sm text-gray-400">Session and authentication parameters</p>
+                                                    <h3 class="text-lg font-bold text-white">Genie Coordination</h3>
+                                                    <p class="text-sm text-gray-400">Global defaults for Genie profile LangChain parameters</p>
                                                 </div>
                                             </div>
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -3465,68 +3656,59 @@
                                             </svg>
                                         </summary>
                                         <div class="mt-4 space-y-4 pl-9">
-                                            <div>
-                                                <label for="session-timeout" class="block text-sm font-medium text-gray-300 mb-2">Session Timeout (hours)</label>
-                                                <input type="number" id="session-timeout" min="1" max="168" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">How long sessions remain valid (default: 24)</p>
+                                            <!-- Temperature -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="genie-temperature" class="block text-sm font-medium text-gray-300">Temperature</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="genie-temperature-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <label for="genie-temperature-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                    <input type="range" id="genie-temperature" min="0" max="1" step="0.1" value="0.7" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                                                    <span id="genie-temperature-value" class="text-sm text-white font-mono w-12 text-right">0.7</span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-2">Controls creativity/randomness of coordinator responses. Lock to enforce globally.</p>
                                             </div>
-                                            <div>
-                                                <label for="token-expiry" class="block text-sm font-medium text-gray-300 mb-2">Token Expiry (hours)</label>
-                                                <input type="number" id="token-expiry" min="1" max="720" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-1">Authentication token validity period (default: 168)</p>
-                                            </div>
-                                        </div>
-                                    </details>
-                                </div>
 
-                                <!-- System Maintenance -->
-                                <div class="glass-panel rounded-xl p-6">
-                                    <details class="group">
-                                        <summary class="flex justify-between items-center cursor-pointer list-none">
-                                            <div class="flex items-center gap-3">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                </svg>
-                                                <div>
-                                                    <h3 class="text-lg font-bold text-white">System Maintenance</h3>
-                                                    <p class="text-sm text-gray-400">Cache management and system operations</p>
+                                            <!-- Query Timeout -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="genie-query-timeout" class="block text-sm font-medium text-gray-300">Query Timeout (seconds)</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="genie-query-timeout-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <label for="genie-query-timeout-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
                                                 </div>
+                                                <input type="number" id="genie-query-timeout" min="60" max="900" value="300" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">Maximum time for slave profile query execution (60-900s). Lock to enforce globally.</p>
                                             </div>
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </summary>
-                                        <div class="mt-4 space-y-4 pl-9">
-                                            <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
-                                                <div>
-                                                    <h4 class="text-sm font-semibold text-white mb-1">Clear Application Cache</h4>
-                                                    <p class="text-xs text-gray-400">Clears temporary data and cached responses</p>
+
+                                            <!-- Max Iterations -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="genie-max-iterations" class="block text-sm font-medium text-gray-300">Max Iterations</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="genie-max-iterations-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <label for="genie-max-iterations-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
                                                 </div>
-                                                <button type="button" id="clear-cache-btn" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors text-white font-medium text-sm">
-                                                    Clear Cache
-                                                </button>
+                                                <input type="number" id="genie-max-iterations" min="1" max="25" value="10" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">Maximum agent reasoning loops before stopping (1-25). Lock to enforce globally.</p>
                                             </div>
-                                            <div class="flex items-center justify-between p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-                                                <div>
-                                                    <h4 class="text-sm font-semibold text-red-400 mb-1">Reset Application State</h4>
-                                                    <p class="text-xs text-gray-400">Resets runtime state (requires reconnection)</p>
-                                                </div>
-                                                <button type="button" id="reset-state-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md transition-colors text-white font-medium text-sm">
-                                                    Reset State
-                                                </button>
-                                            </div>
+
                                         </div>
                                     </details>
                                 </div>
 
                                 <!-- Save Button -->
                                 <div class="flex justify-end">
-                                    <button type="button" id="save-expert-settings-btn" class="px-6 py-3 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
+                                    <button type="button" id="save-expert-settings-btn" disabled class="px-6 py-3 bg-gray-600 rounded-md transition-colors text-white font-medium opacity-50 cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:opacity-100 enabled:cursor-pointer">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
                                         </svg>
-                                        Save Expert Settings
+                                        Save Optimizer Settings
                                     </button>
                                 </div>
                             </div>
@@ -5504,6 +5686,67 @@
                     <p class="text-xs text-gray-500 mt-2">Tip: Select at least two profiles with different capabilities for best coordination results.</p>
                 </div>
 
+                <!-- Genie Settings Section (only shown for genie profile type) -->
+                <div id="genie-profile-settings-section" class="bg-gradient-to-br from-amber-900/10 to-orange-900/10 rounded-xl p-6 border border-amber-700/20" style="display: none;">
+                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                        Genie Coordination Settings
+                    </h4>
+                    <p class="text-xs text-gray-400 mb-4">Override global defaults for this Genie profile. Locked settings are enforced by admin.</p>
+
+                    <div class="space-y-4">
+                        <!-- Temperature -->
+                        <div class="p-3 bg-gray-800/40 rounded-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="profile-genie-temperature" class="text-sm font-medium text-gray-300">Temperature</label>
+                                <span id="profile-genie-temperature-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                    </svg>
+                                    Locked by Admin
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <input type="range" id="profile-genie-temperature" min="0" max="1" step="0.1" value="0.7" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                                <span id="profile-genie-temperature-value" class="text-sm text-white font-mono w-10 text-right">0.7</span>
+                            </div>
+                            <p id="profile-genie-temperature-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
+                        </div>
+
+                        <!-- Query Timeout -->
+                        <div class="p-3 bg-gray-800/40 rounded-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="profile-genie-query-timeout" class="text-sm font-medium text-gray-300">Query Timeout (seconds)</label>
+                                <span id="profile-genie-query-timeout-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                    </svg>
+                                    Locked by Admin
+                                </span>
+                            </div>
+                            <input type="number" id="profile-genie-query-timeout" min="60" max="900" placeholder="300" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                            <p id="profile-genie-query-timeout-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
+                        </div>
+
+                        <!-- Max Iterations -->
+                        <div class="p-3 bg-gray-800/40 rounded-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="profile-genie-max-iterations" class="text-sm font-medium text-gray-300">Max Iterations</label>
+                                <span id="profile-genie-max-iterations-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                    </svg>
+                                    Locked by Admin
+                                </span>
+                            </div>
+                            <input type="number" id="profile-genie-max-iterations" min="1" max="25" placeholder="10" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                            <p id="profile-genie-max-iterations-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Row 4: Tabbed Interface for MCP Resources and Intelligence Collections -->
                 <div class="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl overflow-hidden border border-gray-700/30">
                     <!-- Tab Headers -->
@@ -5533,7 +5776,7 @@
                     </div>
 
                     <!-- Tab Content: MCP Resources -->
-                    <div id="profile-content-mcp-resources" class="p-6">
+                    <div id="profile-content-mcp-resources" class="p-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
                     <div class="grid grid-cols-2 gap-6">
                         <div>
                             <div class="flex items-center justify-between mb-2">
@@ -5575,7 +5818,7 @@
                     </div>
 
                     <!-- Tab Content: Intelligence Collections -->
-                    <div id="profile-content-intelligence" class="p-6 hidden">
+                    <div id="profile-content-intelligence" class="p-6 hidden max-h-[50vh] overflow-y-auto custom-scrollbar">
                         <p class="text-sm text-gray-400 mb-6">Select which intelligence repositories should be available in this profile and enable autocomplete suggestions</p>
                     
                         <!-- Planner Repositories Section -->
@@ -5692,16 +5935,25 @@
                                     </div>
                                 </div>
                                 <div class="p-5">
+                                    <p class="text-xs text-gray-400 mb-4">Override global defaults for this profile. Locked settings are enforced by admin.</p>
                                     <div class="grid grid-cols-3 gap-4">
                                         <!-- Min Relevance Score -->
                                         <div>
-                                            <label for="profile-modal-min-relevance" class="block text-xs font-medium text-gray-300 mb-2">
-                                                Min Relevance Score
-                                            </label>
-                                            <input type="number" id="profile-modal-min-relevance" 
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label for="profile-modal-min-relevance" class="block text-xs font-medium text-gray-300">
+                                                    Min Relevance Score
+                                                </label>
+                                                <span id="profile-knowledge-min-relevance-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                    </svg>
+                                                    Locked
+                                                </span>
+                                            </div>
+                                            <input type="number" id="profile-modal-min-relevance"
                                                    min="0" max="1" step="0.05"
-                                                   placeholder="0.70"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white 
+                                                   placeholder="0.30"
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
                                                           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
                                                           hover:border-gray-600 transition-colors">
                                             <p class="text-xs text-gray-500 mt-1.5">Cosine similarity threshold (0.0-1.0)</p>
@@ -5709,33 +5961,49 @@
 
                                         <!-- Max Documents -->
                                         <div>
-                                            <label for="profile-modal-max-docs" class="block text-xs font-medium text-gray-300 mb-2">
-                                                Max Documents
-                                            </label>
-                                            <input type="number" id="profile-modal-max-docs" 
-                                                   min="1" max="10" step="1"
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label for="profile-modal-max-docs" class="block text-xs font-medium text-gray-300">
+                                                    Max Documents
+                                                </label>
+                                                <span id="profile-knowledge-max-docs-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                    </svg>
+                                                    Locked
+                                                </span>
+                                            </div>
+                                            <input type="number" id="profile-modal-max-docs"
+                                                   min="1" max="20" step="1"
                                                    placeholder="3"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white 
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
                                                           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
                                                           hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Number of chunks to retrieve</p>
+                                            <p class="text-xs text-gray-500 mt-1.5">Number of chunks to retrieve (1-20)</p>
                                         </div>
 
                                         <!-- Max Tokens -->
                                         <div>
-                                            <label for="profile-modal-max-tokens" class="block text-xs font-medium text-gray-300 mb-2">
-                                                Max Tokens
-                                            </label>
-                                            <input type="number" id="profile-modal-max-tokens" 
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label for="profile-modal-max-tokens" class="block text-xs font-medium text-gray-300">
+                                                    Max Tokens
+                                                </label>
+                                                <span id="profile-knowledge-max-tokens-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                    </svg>
+                                                    Locked
+                                                </span>
+                                            </div>
+                                            <input type="number" id="profile-modal-max-tokens"
                                                    min="500" max="10000" step="100"
                                                    placeholder="2000"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white 
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
                                                           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
                                                           hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Context window limit</p>
+                                            <p class="text-xs text-gray-500 mt-1.5">Context window limit (500-10000)</p>
                                         </div>
                                     </div>
-                                    
+
                                     <div class="mt-4 p-3 bg-gray-900/30 border border-gray-700/30 rounded-lg">
                                         <p class="text-xs text-gray-400">
                                             <svg class="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5750,7 +6018,7 @@
                     </div>
 
                     <!-- Tab Content: System Prompts -->
-                    <div id="profile-content-system-prompts" class="p-6 hidden">
+                    <div id="profile-content-system-prompts" class="p-6 hidden max-h-[50vh] overflow-y-auto custom-scrollbar">
                         <p id="system-prompts-description" class="text-xs text-gray-400 mb-4">Configure which prompt versions should be used for different functional areas. Defaults to system-wide prompt mappings.</p>
 
                         <!-- Conversation Focused (LLM Only) Section - shown only for llm_only profiles -->

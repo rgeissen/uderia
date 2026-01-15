@@ -253,30 +253,34 @@ def create_app():
                 from trusted_data_agent.agent.rag_template_manager import get_template_manager
                 from trusted_data_agent.core.config_manager import get_config_manager
                 from trusted_data_agent.core.utils import get_project_root
-                
+
+                app_logger.info("Initializing knowledge retrieval system...")
+
                 # Calculate paths using get_project_root to handle both installed and editable installs
                 project_root = get_project_root()
                 rag_cases_dir = project_root / APP_CONFIG.RAG_CASES_DIR
                 persist_dir = project_root / APP_CONFIG.RAG_PERSIST_DIR
-                
+
                 # Load collections from persistent config
                 config_manager = get_config_manager()
                 collections_list = config_manager.get_rag_collections()
                 APP_STATE["rag_collections"] = collections_list
-                
+
                 # Initialize RAG template manager
                 template_manager = get_template_manager()
                 templates = template_manager.list_templates()
                 APP_STATE['rag_template_manager'] = template_manager
-                
-                # Initialize RAG retriever
+
+                # Initialize RAG retriever (loads embedding model and ChromaDB)
+                app_logger.info("Loading embedding model and vector store...")
                 retriever_instance = RAGRetriever(
                     rag_cases_dir=rag_cases_dir,
                     embedding_model_name=APP_CONFIG.RAG_EMBEDDING_MODEL,
                     persist_directory=persist_dir
                 )
                 APP_STATE['rag_retriever_instance'] = retriever_instance
-                
+                app_logger.info("Knowledge retrieval system ready.")
+
             except Exception as e:
                 app_logger.error(f"Failed to initialize RAG at startup: {e}", exc_info=True)
                 APP_STATE["rag_collections"] = []

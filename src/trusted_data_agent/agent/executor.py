@@ -996,9 +996,13 @@ class PlanExecutor:
                     retrieval_start_time = time.time()
 
                     knowledge_collections = knowledge_config.get("collections", [])
-                    max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
-                    min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
-                    max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+                    # Use three-tier configuration (global -> profile -> locks)
+                    from trusted_data_agent.core.config_manager import get_config_manager
+                    config_manager = get_config_manager()
+                    effective_config = config_manager.get_effective_knowledge_config(knowledge_config)
+                    max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+                    min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+                    max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
 
                     if knowledge_collections:
                         # Emit start event (fetch actual collection names from metadata)
@@ -1603,9 +1607,13 @@ Response:"""
 
                 try:
                     knowledge_collections = knowledge_config.get("collections", [])
-                    max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
-                    min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
-                    max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+                    # Use three-tier configuration (global -> profile -> locks)
+                    from trusted_data_agent.core.config_manager import get_config_manager
+                    config_manager = get_config_manager()
+                    effective_config = config_manager.get_effective_knowledge_config(knowledge_config)
+                    max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+                    min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+                    max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
 
                     if knowledge_collections:
                         collection_ids = [c["id"] for c in knowledge_collections]
@@ -1964,10 +1972,19 @@ The following domain knowledge may be relevant to this conversation:
                 yield self._format_sse({"step": "Finished", "error": error_msg}, "error")
                 return
 
-            # Retrieve knowledge (REQUIRED)
-            max_docs = knowledge_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
-            min_relevance = knowledge_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
-            max_tokens = knowledge_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+            # Check if RAG retriever is available
+            if not self.rag_retriever:
+                error_msg = "Knowledge retrieval is not available. RAG system may not be initialized."
+                yield self._format_sse({"step": "Finished", "error": error_msg, "error_type": "rag_not_available"}, "error")
+                return
+
+            # Retrieve knowledge (REQUIRED) - using three-tier configuration (global -> profile -> locks)
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            effective_config = config_manager.get_effective_knowledge_config(knowledge_config)
+            max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
+            min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
+            max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
 
             # Emit start event (fetch actual collection names from metadata)
             collection_names_for_start = []

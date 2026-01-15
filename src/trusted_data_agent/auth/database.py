@@ -589,11 +589,13 @@ def _bootstrap_prompt_system():
         schema_dir = Path(__file__).resolve().parents[3] / "schema"
         schema_files = [
             "01_core_tables.sql",
-            "02_parameters.sql", 
+            "02_parameters.sql",
             "03_profile_integration.sql",
             "04_indexes.sql",
             "05_views.sql",
-            "06_prompt_mappings.sql"
+            "06_prompt_mappings.sql",
+            "07_genie_profiles.sql",
+            "08_genie_global_settings.sql"
         ]
         
         for schema_file in schema_files:

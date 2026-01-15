@@ -1967,3 +1967,236 @@ async def save_knowledge_config():
             'status': 'error',
             'message': str(e)
         }), 500
+
+
+# ============================================================================
+# Genie Global Settings Endpoints
+# ============================================================================
+
+@admin_api_bp.route('/v1/admin/genie-settings', methods=['GET'])
+@require_admin
+async def get_genie_global_settings():
+    """
+    Get global Genie coordination settings.
+
+    Returns all settings with their values and lock status.
+    """
+    from trusted_data_agent.core.config_manager import get_config_manager
+
+    try:
+        config_manager = get_config_manager()
+        settings = config_manager.get_genie_global_settings()
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting genie settings: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@admin_api_bp.route('/v1/admin/genie-settings', methods=['PUT'])
+@require_admin
+async def save_genie_global_settings():
+    """
+    Save global Genie coordination settings.
+
+    Expected payload:
+    {
+        "temperature": {"value": 0.7, "is_locked": false},
+        "queryTimeout": {"value": 300, "is_locked": true},
+        "maxIterations": {"value": 10, "is_locked": false}
+    }
+    """
+    from trusted_data_agent.core.config_manager import get_config_manager
+    from quart import g
+
+    try:
+        data = await request.get_json()
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'message': 'No settings provided'
+            }), 400
+
+        # Validate settings
+        valid_keys = {'temperature', 'queryTimeout', 'maxIterations'}
+        for key in data.keys():
+            if key not in valid_keys:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Invalid setting key: {key}'
+                }), 400
+
+        # Validate value ranges
+        if 'temperature' in data:
+            temp = data['temperature'].get('value')
+            if temp is not None and (temp < 0.0 or temp > 1.0):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Temperature must be between 0.0 and 1.0'
+                }), 400
+
+        if 'queryTimeout' in data:
+            timeout = data['queryTimeout'].get('value')
+            if timeout is not None and (timeout < 60 or timeout > 900):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Query timeout must be between 60 and 900 seconds'
+                }), 400
+
+        if 'maxIterations' in data:
+            max_iter = data['maxIterations'].get('value')
+            if max_iter is not None and (max_iter < 1 or max_iter > 25):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Max iterations must be between 1 and 25'
+                }), 400
+
+        config_manager = get_config_manager()
+        user_uuid = getattr(g, 'user_uuid', None)
+
+        success = config_manager.save_genie_global_settings(data, user_uuid)
+
+        if success:
+            # Return updated settings
+            updated_settings = config_manager.get_genie_global_settings()
+            return jsonify({
+                'status': 'success',
+                'message': 'Genie settings saved successfully',
+                'settings': updated_settings
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to save genie settings'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Error saving genie settings: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+# ============================================================================
+# Knowledge Global Settings Endpoints
+# ============================================================================
+
+@admin_api_bp.route('/v1/admin/knowledge-global-settings', methods=['GET'])
+@require_admin
+async def get_knowledge_global_settings():
+    """
+    Get global Knowledge repository settings.
+
+    Returns all settings with their values and lock status.
+    """
+    from trusted_data_agent.core.config_manager import get_config_manager
+
+    try:
+        config_manager = get_config_manager()
+        settings = config_manager.get_knowledge_global_settings()
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting knowledge global settings: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@admin_api_bp.route('/v1/admin/knowledge-global-settings', methods=['PUT'])
+@require_admin
+async def save_knowledge_global_settings():
+    """
+    Save global Knowledge repository settings.
+
+    Expected payload:
+    {
+        "minRelevanceScore": {"value": 0.30, "is_locked": false},
+        "maxDocs": {"value": 3, "is_locked": true},
+        "maxTokens": {"value": 2000, "is_locked": false},
+        "rerankingEnabled": {"value": false, "is_locked": false}
+    }
+    """
+    from trusted_data_agent.core.config_manager import get_config_manager
+    from quart import g
+
+    try:
+        data = await request.get_json()
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'message': 'No settings provided'
+            }), 400
+
+        # Validate settings
+        valid_keys = {'minRelevanceScore', 'maxDocs', 'maxTokens', 'rerankingEnabled'}
+        for key in data.keys():
+            if key not in valid_keys:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Invalid setting key: {key}'
+                }), 400
+
+        # Validate value ranges
+        if 'minRelevanceScore' in data:
+            score = data['minRelevanceScore'].get('value')
+            if score is not None and (score < 0.0 or score > 1.0):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Min relevance score must be between 0.0 and 1.0'
+                }), 400
+
+        if 'maxDocs' in data:
+            max_docs = data['maxDocs'].get('value')
+            if max_docs is not None and (max_docs < 1 or max_docs > 20):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Max documents must be between 1 and 20'
+                }), 400
+
+        if 'maxTokens' in data:
+            max_tokens = data['maxTokens'].get('value')
+            if max_tokens is not None and (max_tokens < 500 or max_tokens > 10000):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Max tokens must be between 500 and 10000'
+                }), 400
+
+        config_manager = get_config_manager()
+        user_uuid = getattr(g, 'user_uuid', None)
+
+        success = config_manager.save_knowledge_global_settings(data, user_uuid)
+
+        if success:
+            # Return updated settings
+            updated_settings = config_manager.get_knowledge_global_settings()
+            return jsonify({
+                'status': 'success',
+                'message': 'Knowledge settings saved successfully',
+                'settings': updated_settings
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to save knowledge settings'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Error saving knowledge global settings: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
