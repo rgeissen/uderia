@@ -4074,14 +4074,20 @@ async function showProfileModal(profileId = null) {
                 if (mcpServerContainer) mcpServerContainer.style.display = '';
                 if (classificationSection) classificationSection.style.display = '';
                 if (mcpResourcesTab) mcpResourcesTab.style.display = '';
-                if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+                if (mcpResourcesContent) {
+                    mcpResourcesContent.style.display = '';
+                    mcpResourcesContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
+                }
                 // Hide MCP Prompts section - LangChain approach doesn't support MCP prompts
                 if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
             } else {
                 if (mcpServerContainer) mcpServerContainer.style.display = 'none';
                 if (classificationSection) classificationSection.style.display = 'none';
                 if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
-                if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
+                if (mcpResourcesContent) {
+                    mcpResourcesContent.style.display = 'none';
+                    mcpResourcesContent.classList.add('hidden');  // Consistently use hidden class
+                }
                 // Show MCP Prompts section (not relevant when MCP tools disabled, but keep consistent)
                 if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
             }
@@ -4092,7 +4098,10 @@ async function showProfileModal(profileId = null) {
             // Conditionally show Intelligence tab based on checkbox
             if (useKnowledge) {
                 if (intelligenceTab) intelligenceTab.style.display = '';
-                if (intelligenceContent) intelligenceContent.style.display = '';
+                if (intelligenceContent) {
+                    intelligenceContent.style.display = '';
+                    intelligenceContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
+                }
                 if (intelligenceTab) {
                     intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
                 }
@@ -4102,7 +4111,10 @@ async function showProfileModal(profileId = null) {
                 if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = '';
             } else {
                 if (intelligenceTab) intelligenceTab.style.display = 'none';
-                if (intelligenceContent) intelligenceContent.style.display = 'none';
+                if (intelligenceContent) {
+                    intelligenceContent.style.display = 'none';
+                    intelligenceContent.classList.add('hidden');  // Consistently use hidden class
+                }
                 if (knowledgeSection) knowledgeSection.style.display = 'none';
                 if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
                 if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
@@ -4132,7 +4144,10 @@ async function showProfileModal(profileId = null) {
 
             // KEEP Intelligence tab visible - REQUIRED for RAG focused
             if (intelligenceTab) intelligenceTab.style.display = '';
-            if (intelligenceContent) intelligenceContent.style.display = '';
+            if (intelligenceContent) {
+                intelligenceContent.style.display = '';
+                intelligenceContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
+            }
             if (intelligenceTab) {
                 intelligenceTab.setAttribute('title', 'Configure knowledge repositories (REQUIRED for RAG focused profiles)');
             }
@@ -4205,11 +4220,17 @@ async function showProfileModal(profileId = null) {
             if (mcpServerContainer) mcpServerContainer.style.display = '';
             if (classificationSection) classificationSection.style.display = '';
             if (mcpResourcesTab) mcpResourcesTab.style.display = '';
-            if (mcpResourcesContent) mcpResourcesContent.style.display = '';
+            if (mcpResourcesContent) {
+                mcpResourcesContent.style.display = '';
+                mcpResourcesContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
+            }
             if (mcpPromptsSection) mcpPromptsSection.style.display = '';  // MCP prompts supported in planner/executor
             if (plannerSection) plannerSection.style.display = '';
             if (intelligenceTab) intelligenceTab.style.display = '';
-            if (intelligenceContent) intelligenceContent.style.display = '';
+            if (intelligenceContent) {
+                intelligenceContent.style.display = '';
+                intelligenceContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
+            }
             if (intelligenceTab) {
                 intelligenceTab.setAttribute('title', 'Configure planner repositories for execution patterns');
             }
@@ -5006,27 +5027,28 @@ async function showProfileModal(profileId = null) {
                 // Update active tab styles with enhanced industrial design
                 tab.classList.remove('border-transparent', 'text-gray-400', 'hover:bg-gray-800/40', 'hover:border-gray-600/50');
                 tab.classList.add('border-[#F15F22]', 'text-white', 'bg-gradient-to-b', 'from-gray-800/70', 'to-gray-900/50', 'shadow-lg', 'relative');
-                
+
                 // Add the gradient underline if it doesn't exist
                 if (!tab.querySelector('.absolute.inset-x-0.bottom-0')) {
                     const underline = document.createElement('div');
                     underline.className = 'absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-[#F15F22] to-[#D9501A] shadow-lg shadow-orange-500/50';
                     tab.appendChild(underline);
                 }
-                
-                // Show content
+
+                // CRITICAL FIX: Show content - remove both hidden class AND inline display style
                 allContents[index].classList.remove('hidden');
+                allContents[index].style.display = '';
             } else {
                 // Update inactive tab styles
                 tab.classList.remove('border-[#F15F22]', 'text-white', 'bg-gradient-to-b', 'from-gray-800/70', 'to-gray-900/50', 'shadow-lg', 'relative');
                 tab.classList.add('border-transparent', 'text-gray-400', 'hover:bg-gray-800/40', 'hover:border-gray-600/50');
-                
+
                 // Remove gradient underline from inactive tab
                 const underline = tab.querySelector('.absolute.inset-x-0.bottom-0');
                 if (underline) {
                     underline.remove();
                 }
-                
+
                 // Hide content
                 allContents[index].classList.add('hidden');
             }
