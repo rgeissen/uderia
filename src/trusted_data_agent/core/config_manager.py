@@ -10,6 +10,7 @@ import copy
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from sqlalchemy import text
 
 app_logger = logging.getLogger("quart.app")
 
@@ -1599,7 +1600,7 @@ class ConfigManager:
             with get_db_session() as session:
                 # Query genie_global_settings table
                 result = session.execute(
-                    "SELECT setting_key, setting_value, is_locked FROM genie_global_settings"
+                    text("SELECT setting_key, setting_value, is_locked FROM genie_global_settings")
                 )
                 rows = result.fetchall()
 
@@ -1661,12 +1662,12 @@ class ConfigManager:
         try:
             with get_db_session() as session:
                 session.execute(
-                    """
+                    text("""
                     INSERT OR REPLACE INTO genie_global_settings
                     (setting_key, setting_value, is_locked, updated_at, updated_by)
-                    VALUES (?, ?, ?, datetime('now'), ?)
-                    """,
-                    (setting_key, str(setting_value), int(is_locked), user_uuid)
+                    VALUES (:setting_key, :setting_value, :is_locked, datetime('now'), :updated_by)
+                    """),
+                    {"setting_key": setting_key, "setting_value": str(setting_value), "is_locked": int(is_locked), "updated_by": user_uuid}
                 )
                 session.commit()
                 app_logger.info(f"Updated genie global setting: {setting_key}={setting_value}, locked={is_locked}")
@@ -1773,7 +1774,7 @@ class ConfigManager:
             with get_db_session() as session:
                 # Query genie_global_settings table for knowledge_ prefixed keys
                 result = session.execute(
-                    "SELECT setting_key, setting_value, is_locked FROM genie_global_settings WHERE setting_key LIKE 'knowledge_%'"
+                    text("SELECT setting_key, setting_value, is_locked FROM genie_global_settings WHERE setting_key LIKE 'knowledge_%'")
                 )
                 rows = result.fetchall()
 
@@ -1849,12 +1850,12 @@ class ConfigManager:
         try:
             with get_db_session() as session:
                 session.execute(
-                    """
+                    text("""
                     INSERT OR REPLACE INTO genie_global_settings
                     (setting_key, setting_value, is_locked, updated_at, updated_by)
-                    VALUES (?, ?, ?, datetime('now'), ?)
-                    """,
-                    (db_key, str(setting_value), int(is_locked), user_uuid)
+                    VALUES (:setting_key, :setting_value, :is_locked, datetime('now'), :updated_by)
+                    """),
+                    {"setting_key": db_key, "setting_value": str(setting_value), "is_locked": int(is_locked), "updated_by": user_uuid}
                 )
                 session.commit()
                 app_logger.info(f"Updated knowledge global setting: {setting_key}={setting_value}, locked={is_locked}")

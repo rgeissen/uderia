@@ -421,12 +421,10 @@ class GenieCoordinator:
         self.system_prompt = system_prompt
 
         # Create LangGraph react agent (new API in langchain v1 / langgraph)
-        # Note: recursion_limit controls max agent iterations (tool calls + responses)
-        # A value of N allows roughly N/2 tool invocations since each iteration is tool_call -> tool_result
+        # Note: recursion_limit is passed at runtime via astream_events config, not here
         return create_react_agent(
             model=self.llm_instance,
-            tools=self.tools,
-            recursion_limit=self.max_iterations * 2  # Convert iterations to recursion limit
+            tools=self.tools
         )
 
     def _get_fallback_prompt(self) -> str:
@@ -513,9 +511,12 @@ After gathering information from profiles, provide a synthesized answer that:
             tools_used = []
 
             # Use astream_events to track LLM calls with token usage
+            # Pass recursion_limit in config to control max agent iterations
+            # A value of N allows roughly N/2 tool invocations since each iteration is tool_call -> tool_result
             async for event in self.agent_executor.astream_events(
                 {"messages": messages},
-                version="v2"
+                version="v2",
+                config={"recursion_limit": self.max_iterations * 2}
             ):
                 event_kind = event.get("event", "")
                 event_name = event.get("name", "")

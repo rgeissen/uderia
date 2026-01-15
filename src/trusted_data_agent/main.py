@@ -289,6 +289,14 @@ def create_app():
         
         # Start the single RAG worker as a background task
         asyncio.create_task(rag_processing_worker())
+
+        # Print ready message now that all initialization is complete
+        host = APP_STATE.get('server_host', '127.0.0.1')
+        port = APP_STATE.get('server_port', 5050)
+        print(f"\n{'='*60}")
+        print(f"  Web client initialized and ready!")
+        print(f"  Navigate to http://{host}:{port}")
+        print(f"{'='*60}\n")
     # --- MODIFICATION END ---
 
     return app
@@ -299,7 +307,10 @@ async def main(args): # MODIFIED: Accept args
     print("\n--- Starting Hypercorn Server for Quart App ---")
     host = args.host
     port = args.port
-    print(f"Web client initialized and ready. Navigate to http://{host}:{port}")
+    # Store host/port in APP_STATE so startup() can print the ready message after RAG initialization
+    APP_STATE['server_host'] = host
+    APP_STATE['server_port'] = port
+    print(f"Server starting on http://{host}:{port} - please wait for initialization...")
     config = Config()
     config.bind = [f"{host}:{port}"] # MODIFIED: Use dynamic host and port
     config.accesslog = None

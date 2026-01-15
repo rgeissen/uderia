@@ -27,13 +27,20 @@ INSERT OR IGNORE INTO schema_version (version, description) VALUES
 
 -- Note: When running this file, SQLite does not support .read directive
 -- You must run each schema file individually or concatenate them.
--- 
--- Recommended execution order:
+--
+-- Recommended execution order (prompts.db):
 -- 1. 01_core_tables.sql
 -- 2. 02_parameters.sql
 -- 3. 03_profile_integration.sql
 -- 4. 04_indexes.sql
 -- 5. 05_views.sql
+-- 6. 06_prompt_mappings.sql
+-- 7. 07_genie_profiles.sql
+--
+-- For tda_auth.db (run separately):
+-- 8. 08_genie_global_settings.sql - Three-tier configuration settings
+--    Note: This is auto-created by database.py bootstrap process.
+--    Manual execution only needed for existing installations.
 
 -- ============================================================================
 -- Alternatively, use the Python validation script to build the database

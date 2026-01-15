@@ -92,6 +92,9 @@ def init_database():
         # Create template defaults table (for template configuration)
         _create_template_defaults_table()
 
+        # Create global settings table (for three-tier configuration)
+        _create_global_settings_table()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -279,6 +282,59 @@ def _create_template_defaults_table():
         
     except Exception as e:
         logger.error(f"Error creating template defaults table: {e}", exc_info=True)
+
+
+def _create_global_settings_table():
+    """
+    Create the genie_global_settings table for three-tier configuration.
+    Stores global defaults for Genie and Knowledge settings with admin lock capability.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        # Create genie_global_settings table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS genie_global_settings (
+                id INTEGER PRIMARY KEY,
+                setting_key TEXT NOT NULL UNIQUE,
+                setting_value TEXT NOT NULL,
+                is_locked BOOLEAN DEFAULT FALSE,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_by TEXT
+            )
+        """)
+
+        # Create index for quick lookups
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_genie_settings_key ON genie_global_settings(setting_key)")
+
+        # Insert default values for Genie settings (if not already present)
+        cursor.execute("""
+            INSERT OR IGNORE INTO genie_global_settings (setting_key, setting_value, is_locked) VALUES
+                ('temperature', '0.7', 0),
+                ('queryTimeout', '300', 0),
+                ('maxIterations', '10', 0)
+        """)
+
+        # Insert default values for Knowledge settings (if not already present)
+        cursor.execute("""
+            INSERT OR IGNORE INTO genie_global_settings (setting_key, setting_value, is_locked) VALUES
+                ('knowledge_minRelevanceScore', '0.30', 0),
+                ('knowledge_maxDocs', '3', 0),
+                ('knowledge_maxTokens', '2000', 0),
+                ('knowledge_rerankingEnabled', '0', 0)
+        """)
+
+        conn.commit()
+        conn.close()
+
+        pass  # Global settings table initialized
+
+    except Exception as e:
+        logger.error(f"Error creating global settings table: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():
