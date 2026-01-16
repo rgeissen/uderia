@@ -724,19 +724,23 @@ After gathering information from profiles, provide a synthesized answer that:
             }
 
     def get_used_slave_sessions(self) -> Dict[str, str]:
-        """Get map of profile_id -> session_id for all used slave sessions."""
+        """Get map of profile_id -> session_id for all used child sessions.
+
+        Note: Method name preserved for API compatibility.
+        """
         return dict(_slave_session_cache)
 
     def load_existing_slave_sessions(self, existing_sessions: List[Dict[str, Any]]):
         """
-        Pre-populate the session cache with existing slave sessions from database.
+        Pre-populate the session cache with existing child sessions from database.
 
         This preserves conversational context across multiple queries by reusing
-        existing slave sessions instead of creating new ones.
+        existing child sessions instead of creating new ones.
 
         Args:
             existing_sessions: List of session records from get_genie_slave_sessions()
                 Each record should have 'slave_session_id' and 'slave_profile_id'
+                (field names preserved for API compatibility)
         """
         for session_record in existing_sessions:
             slave_session_id = session_record.get('slave_session_id')
@@ -745,9 +749,9 @@ After gathering information from profiles, provide a synthesized answer that:
             if slave_session_id and slave_profile_id:
                 cache_key = f"{self.parent_session_id}:{slave_profile_id}"
                 _slave_session_cache[cache_key] = slave_session_id
-                logger.info(f"Loaded existing slave session {slave_session_id} for profile {slave_profile_id}")
+                logger.info(f"Loaded existing child session {slave_session_id} for profile {slave_profile_id}")
 
-        logger.info(f"Pre-loaded {len(existing_sessions)} existing slave sessions into cache")
+        logger.info(f"Pre-loaded {len(existing_sessions)} existing child sessions into cache")
 
     def clear_session_cache(self):
         """Clear the session cache (useful for testing)."""

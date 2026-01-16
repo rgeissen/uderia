@@ -245,7 +245,7 @@ def create_internal_token(user_uuid: str, username: str = "internal") -> str:
         JWT token string
     """
     now = datetime.now(timezone.utc)
-    expiry = now + timedelta(minutes=30)  # Extended for Genie coordination (slave queries can take time)
+    expiry = now + timedelta(minutes=30)  # Extended for Genie coordination (child queries can take time)
 
     # Generate unique token ID
     jti = secrets.token_urlsafe(16)

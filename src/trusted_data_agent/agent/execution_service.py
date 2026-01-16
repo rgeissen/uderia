@@ -275,11 +275,11 @@ async def _run_genie_execution(
 
         if not slave_profile_ids:
             await event_handler({
-                "error": "Genie profile has no slave profiles configured."
+                "error": "Genie profile has no child profiles configured."
             }, "error")
             return None
 
-        # Get slave profile details
+        # Get child profile details
         slave_profiles = []
         for pid in slave_profile_ids:
             slave_profile = config_manager.get_profile(pid, user_uuid)

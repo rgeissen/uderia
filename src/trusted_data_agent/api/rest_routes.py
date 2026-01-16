@@ -2072,8 +2072,8 @@ async def create_session():
 
     Optional request body parameters:
     - profile_id: Use a specific profile instead of the default
-    - genie_parent_session_id: Parent session ID for Genie slave sessions
-    - genie_slave_profile_id: Profile ID being used as a slave
+    - genie_parent_session_id: Parent session ID for Genie child sessions
+    - genie_slave_profile_id: Profile ID being used as a child (parameter name preserved for API compatibility)
 
     Returns:
     - 201: Session created successfully with session_id
@@ -2116,7 +2116,7 @@ async def create_session():
         mcp_server_id = target_profile.get("mcpServerId")
         profile_type = target_profile.get("profile_type", "tool_enabled")
 
-        # Genie profiles don't need direct LLM/MCP - they coordinate via slave sessions
+        # Genie profiles don't need direct LLM/MCP - they coordinate via child sessions
         if profile_type != "genie":
             # LLM always required for non-genie profiles
             if not llm_config_id:
@@ -2160,12 +2160,12 @@ async def create_session():
 
         llm_instance = APP_STATE.get("llm")
 
-        # Determine sequence number AND nesting level for genie slave sessions
+        # Determine sequence number AND nesting level for genie child sessions
         genie_sequence_number = None
         genie_nesting_level = 0
 
         if genie_parent_session_id:
-            # Get current count of slave sessions for this parent
+            # Get current count of child sessions for this parent
             existing_slaves = await session_manager.get_genie_slave_sessions(genie_parent_session_id, user_uuid)
             genie_sequence_number = len(existing_slaves) + 1
 
@@ -2174,7 +2174,7 @@ async def create_session():
             if parent_link:
                 genie_nesting_level = parent_link.get('nesting_level', 0) + 1
             else:
-                # Parent has no parent, so it's level 0, this slave is level 1
+                # Parent has no parent, so it's level 0, this child is level 1
                 genie_nesting_level = 1
 
         # Create session with the profile's context
@@ -2193,7 +2193,7 @@ async def create_session():
         )
         app_logger.info(f"REST API: Created new session: {session_id} for user {user_uuid} using profile {profile_id_to_use}")
 
-        # Record genie session link if this is a slave session
+        # Record genie session link if this is a child session
         if genie_parent_session_id and genie_slave_profile_id:
             await session_manager.record_genie_session_link(
                 parent_session_id=genie_parent_session_id,
@@ -5245,7 +5245,7 @@ async def get_profile_resources(profile_id: str):
                 "profile_tag": profile.get("tag")
             })
 
-        # Genie profiles coordinate slave profiles and don't have direct MCP tools
+        # Genie profiles coordinate child profiles and don't have direct MCP tools
         if profile.get("profile_type") == "genie":
             return jsonify({
                 "status": "success",
@@ -8526,10 +8526,12 @@ async def get_cost_analytics():
 @rest_api_bp.route('/v1/config/master-classification-profile', methods=['GET'])
 async def get_master_classification_profile():
     """
-    Get master classification profile IDs (per-server).
+    Get primary classification profile IDs (per-server).
 
-    Returns a dictionary mapping MCP server IDs to their master classification profile IDs.
-    Each MCP server can have its own master profile for classification inheritance.
+    Returns a dictionary mapping MCP server IDs to their primary classification profile IDs.
+    Each MCP server can have its own primary profile for classification inheritance.
+
+    Note: API endpoint name preserved for backwards compatibility.
 
     Returns:
         JSON response with:
@@ -8545,10 +8547,10 @@ async def get_master_classification_profile():
 
         config_manager = get_config_manager()
 
-        # Load config to get per-server masters dict
+        # Load config to get per-server primary profiles dict
         config = config_manager.load_config(user_uuid)
-        master_ids_dict = config.get('master_classification_profile_ids', {})
-        legacy_master_id = config.get('master_classification_profile_id')
+        master_ids_dict = config.get('master_classification_profile_ids', {})  # Field name preserved for compatibility
+        legacy_master_id = config.get('master_classification_profile_id')  # Field name preserved for compatibility
 
         return jsonify({
             "status": "success",
@@ -8557,17 +8559,19 @@ async def get_master_classification_profile():
         }), 200
 
     except Exception as e:
-        app_logger.error(f"Failed to get master classification profile: {e}", exc_info=True)
+        app_logger.error(f"Failed to get primary classification profile: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @rest_api_bp.route('/v1/config/master-classification-profile', methods=['PUT'])
 async def set_master_classification_profile():
     """
-    Set master classification profile ID.
+    Set primary classification profile ID.
 
     Validates that the profile is tool_enabled (not llm_only) before setting.
-    The master profile must have an MCP server configured.
+    The primary profile must have an MCP server configured.
+
+    Note: API endpoint name preserved for backwards compatibility.
 
     Request body:
         {
@@ -8597,7 +8601,7 @@ async def set_master_classification_profile():
             return jsonify(result), 400
 
         # CRITICAL: If the currently active profile inherits classification, update APP_STATE
-        # This ensures the resource panel shows the correct enabled/disabled state after master profile change
+        # This ensures the resource panel shows the correct enabled/disabled state after primary profile change
         active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
 
         if active_profile_ids:
@@ -8685,9 +8689,9 @@ async def execute_genie_query(session_id: str):
         genie_config = profile.get("genieConfig", {})
         slave_profile_ids = genie_config.get("slaveProfiles", [])
         if not slave_profile_ids:
-            return jsonify({"error": "Genie profile has no slave profiles configured."}), 400
+            return jsonify({"error": "Genie profile has no child profiles configured."}), 400
 
-        # Get slave profile details
+        # Get child profile details
         slave_profiles = []
         for pid in slave_profile_ids:
             slave_profile = config_manager.get_profile(pid, user_uuid)
@@ -8704,7 +8708,7 @@ async def execute_genie_query(session_id: str):
         if not llm_config_id:
             return jsonify({"error": "Genie profile requires an LLM configuration."}), 400
 
-        # Get auth token for slave session REST calls
+        # Get auth token for child session REST calls
         auth_header = request.headers.get("Authorization", "")
         auth_token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
 
@@ -8931,7 +8935,7 @@ async def get_genie_slave_sessions(session_id: str):
         if not session_data:
             return jsonify({"error": f"Session '{session_id}' not found."}), 404
 
-        # Get slave sessions
+        # Get child sessions
         slaves = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
 
         return jsonify({

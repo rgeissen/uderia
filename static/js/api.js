@@ -538,7 +538,7 @@ export async function getMasterClassificationProfile() {
     });
     if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.message || 'Failed to fetch master classification profile');
+        throw new Error(errorData.message || 'Failed to fetch primary classification profile');
     }
     return await res.json();
 }
@@ -551,7 +551,7 @@ export async function setMasterClassificationProfile(profileId) {
     });
     if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.message || 'Failed to set master classification profile');
+        throw new Error(errorData.message || 'Failed to set primary classification profile');
     }
     return await res.json();
 }

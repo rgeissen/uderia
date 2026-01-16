@@ -351,11 +351,11 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
         if session.get("id") != RAGTemplateGenerator.TEMPLATE_SESSION_ID
     ]
 
-    # Sort sessions with genie slave sessions appearing directly after their parent
+    # Sort sessions with genie child sessions appearing directly after their parent
     # Build a lookup map for quick access
     session_by_id = {s.get("id"): s for s in session_summaries}
 
-    # Separate parent sessions from slave sessions
+    # Separate parent sessions from child sessions
     parent_sessions = []
     slave_sessions_by_parent = {}  # parent_id -> list of slaves
 
@@ -364,7 +364,7 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
         parent_id = genie_metadata.get("parent_session_id")
 
         if genie_metadata.get("is_genie_slave") and parent_id:
-            # This is a slave session
+            # This is a child session
             if parent_id not in slave_sessions_by_parent:
                 slave_sessions_by_parent[parent_id] = []
             slave_sessions_by_parent[parent_id].append(session)
@@ -381,20 +381,20 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
 
     parent_sessions.sort(key=sort_key, reverse=True)
 
-    # Sort slave sessions by sequence number (if available) or created_at
+    # Sort child sessions by sequence number (if available) or created_at
     for parent_id, slaves in slave_sessions_by_parent.items():
         slaves.sort(key=lambda s: s.get("genie_metadata", {}).get("slave_sequence_number", 0))
 
-    # Build final list with slaves inserted after their parents
+    # Build final list with children inserted after their parents
     final_sessions = []
     for parent in parent_sessions:
         final_sessions.append(parent)
-        # Add any slave sessions for this parent
+        # Add any child sessions for this parent
         parent_id = parent.get("id")
         if parent_id in slave_sessions_by_parent:
             final_sessions.extend(slave_sessions_by_parent[parent_id])
 
-    # Add any orphan slaves (parent not in list) at the end
+    # Add any orphan children (parent not in list) at the end
     for parent_id, slaves in slave_sessions_by_parent.items():
         if parent_id not in session_by_id:
             final_sessions.extend(slaves)
@@ -1077,14 +1077,16 @@ async def record_genie_session_link(parent_session_id: str, slave_session_id: st
 
 async def get_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> list:
     """
-    Get all slave sessions for a Genie parent session.
+    Get all child sessions for a Genie parent session.
+
+    Note: Function name preserved for API compatibility.
 
     Args:
         parent_session_id: The Genie coordinator session ID
         user_uuid: The user who owns the sessions
 
     Returns:
-        List of slave session info dicts
+        List of child session info dicts
     """
     try:
         import sqlite3
@@ -1114,14 +1116,16 @@ async def get_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> li
 
 async def get_genie_parent_session(slave_session_id: str, user_uuid: str) -> dict | None:
     """
-    Get the parent Genie session for a slave session.
+    Get the parent Genie session for a child session.
+
+    Note: Function name preserved for API compatibility.
 
     Args:
-        slave_session_id: The slave session ID
+        slave_session_id: The child session ID (parameter name preserved for API compatibility)
         user_uuid: The user who owns the sessions
 
     Returns:
-        Parent session link info or None if not a slave session
+        Parent session link info or None if not a child session
     """
     try:
         import sqlite3
@@ -1150,7 +1154,9 @@ async def get_genie_parent_session(slave_session_id: str, user_uuid: str) -> dic
 
 async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> bool:
     """
-    Clean up (delete) all slave sessions when a Genie parent session is deleted.
+    Clean up (delete) all child sessions when a Genie parent session is deleted.
+
+    Note: Function name preserved for API compatibility.
 
     Args:
         parent_session_id: The Genie coordinator session ID
@@ -1163,10 +1169,10 @@ async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -
         import sqlite3
         from trusted_data_agent.core.utils import get_project_root
 
-        # Get all slave sessions
+        # Get all child sessions
         slaves = await get_genie_slave_sessions(parent_session_id, user_uuid)
 
-        # Delete each slave session file
+        # Delete each child session file
         for slave in slaves:
             slave_session_id = slave.get('slave_session_id')
             if slave_session_id:

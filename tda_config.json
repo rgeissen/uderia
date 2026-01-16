@@ -116,9 +116,7 @@
       "classification_mode": null,
       "tools": ["*"],
       "prompts": ["*"],
-      "ragCollections": [
-        "*"
-      ],
+      "ragCollections": [],
       "autocompleteCollections": [],
       "useMcpTools": false,
       "useKnowledgeCollections": false,
@@ -142,12 +140,8 @@
       "classification_mode": "full",
       "tools": ["*"],
       "prompts": ["*"],
-      "ragCollections": [
-        "*"
-      ],
-      "autocompleteCollections": [
-        "*"
-      ],
+      "ragCollections": [],
+      "autocompleteCollections": [],
       "classification_results": {
         "tools": {},
         "prompts": {},
@@ -168,12 +162,8 @@
       "classification_mode": "light",
       "tools": ["*"],
       "prompts": ["*"],
-      "ragCollections": [
-        "*"
-      ],
-      "autocompleteCollections": [
-        "*"
-      ],
+      "ragCollections": [],
+      "autocompleteCollections": [],
       "classification_results": {
         "tools": {},
         "prompts": {},

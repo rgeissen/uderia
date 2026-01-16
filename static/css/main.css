@@ -2908,7 +2908,7 @@ button.bg-gray-700.px-2:hover {
     transform: scale(1.2);
 }
 
-/* Genie master badge container */
+/* Genie parent badge container (class name preserved for compatibility) */
 .genie-master-badge {
     color: #F15F22;
 }
@@ -2929,7 +2929,7 @@ button.bg-gray-700.px-2:hover {
     display: none !important;
 }
 
-/* Visual indicator for genie master with collapsed slaves */
+/* Visual indicator for genie parent with collapsed children (class name preserved for compatibility) */
 .genie-master-session.has-collapsed-slaves {
     border-bottom: 1px dashed rgba(241, 95, 34, 0.3);
 }

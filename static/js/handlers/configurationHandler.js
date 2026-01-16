@@ -2404,11 +2404,11 @@ function renderProfileCard(profile) {
                             // Master Classification status badge
                             if (isMasterClassification) {
                                 badges.push(`
-                                <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-400/30 rounded-full" title="This is the master classification profile - other profiles inherit classification from this one">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-400/30 rounded-full" title="This is the primary classification profile - other profiles inherit classification from this one">
                                     <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                                     </svg>
-                                    Master Classification
+                                    Primary Classification
                                 </span>
                                 `);
                             }
@@ -2523,20 +2523,20 @@ function renderProfileCard(profile) {
                                     class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-700 flex items-center gap-3 ${isMasterClassification ? 'text-amber-300 bg-amber-500/10' : 'text-gray-300'} ${!profile.mcpServerId ? 'opacity-50 cursor-not-allowed' : ''}"
                                     title="${(() => {
                                         if (!profile.mcpServerId) return 'Profile must have an MCP server configured';
-                                        if (isMasterClassification) return 'This is the master classification profile';
-                                        return 'Set as master classification profile (other profiles inherit from this)';
+                                        if (isMasterClassification) return 'This is the primary classification profile';
+                                        return 'Set as primary classification profile (other profiles inherit from this)';
                                     })()}"
                                     ${!profile.mcpServerId ? 'disabled' : ''}>
                                     <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                                     </svg>
-                                    <span class="flex-1">${isMasterClassification ? '⭐ Master Classification' : 'Set as Master'}</span>
+                                    <span class="flex-1">${isMasterClassification ? '⭐ Primary Classification' : 'Set as Primary'}</span>
                                 </button>
 
                                 <!-- Inherit Classification Toggle -->
                                 <button type="button" data-action="inherit-classification" data-profile-id="${profile.id}"
                                     class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-700 flex items-center gap-3 ${profile.inherit_classification ? 'text-orange-300 bg-orange-500/10' : 'text-gray-300'} ${!isActiveForConsumption || isMasterClassification ? 'opacity-50 cursor-not-allowed' : ''}"
-                                    title="${isMasterClassification ? 'Master profile cannot inherit (it is the source)' : (!isActiveForConsumption ? 'Activate profile to enable inheritance' : (profile.inherit_classification ? 'Currently inheriting - click to disable' : 'Inherit from master classification profile'))}"
+                                    title="${isMasterClassification ? 'Primary profile cannot inherit (it is the source)' : (!isActiveForConsumption ? 'Activate profile to enable inheritance' : (profile.inherit_classification ? 'Currently inheriting - click to disable' : 'Inherit from primary classification profile'))}"
                                     ${!isActiveForConsumption || isMasterClassification ? 'disabled' : ''}>
                                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
@@ -2686,7 +2686,7 @@ function attachProfileEventListeners() {
                 const mcpServerId = profile.mcpServerId;
                 const isMasterClassification = mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profileId;
                 if (isMasterClassification && profile.inherit_classification) {
-                    showNotification('info', 'Disabling classification inheritance (master classification profile cannot inherit from itself)...');
+                    showNotification('info', 'Disabling classification inheritance (primary classification profile cannot inherit from itself)...');
                     await configState.updateProfile(profileId, {
                         inherit_classification: false
                     });
@@ -2868,7 +2868,7 @@ function attachProfileEventListeners() {
                             // Also update legacy single master for backwards compatibility
                             configState.masterClassificationProfileId = profileId;
                             wasSetAsMaster = true;
-                            showNotification('info', `Profile "${profile.name}" set as master classification profile for this MCP server.`);
+                            showNotification('info', `Profile "${profile.name}" set as primary classification profile for this MCP server.`);
                         } catch (masterError) {
                             console.error('Failed to set master classification profile:', masterError);
                         }
@@ -2961,9 +2961,9 @@ function attachProfileEventListeners() {
                     // Build notification message based on what happened
                     let message;
                     if (wasSetAsDefault && wasSetAsMaster && classificationTriggered) {
-                        message = `Profile "${profile ? profile.name : 'Profile'}" activated, set as default and master classification profile, and classified successfully.`;
+                        message = `Profile "${profile ? profile.name : 'Profile'}" activated, set as default and primary classification profile, and classified successfully.`;
                     } else if (wasSetAsDefault && wasSetAsMaster) {
-                        message = `Profile "${profile ? profile.name : 'Profile'}" activated and set as default and master classification profile.`;
+                        message = `Profile "${profile ? profile.name : 'Profile'}" activated and set as default and primary classification profile.`;
                     } else if (wasSetAsDefault) {
                         message = `Profile "${profile ? profile.name : 'Profile'}" activated and set as default. Click "Reclassify" to classify tools and prompts.`;
                     } else {
@@ -3145,7 +3145,7 @@ function attachProfileEventListeners() {
             const isMasterForThisServer = mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profileId;
 
             if (isMasterForThisServer) {
-                showNotification('error', 'Master classification profile cannot inherit classification (it is the source for other profiles)');
+                showNotification('error', 'Primary classification profile cannot inherit classification (it is the source for other profiles)');
                 return;
             }
 
@@ -3165,7 +3165,7 @@ function attachProfileEventListeners() {
                 // Get the per-server master profile name
                 const masterProfileId = mcpServerId ? configState.masterClassificationProfileIds[mcpServerId] : null;
                 const masterProfile = masterProfileId ? configState.profiles.find(p => p.id === masterProfileId) : null;
-                const masterProfileName = masterProfile ? masterProfile.name : 'master classification profile';
+                const masterProfileName = masterProfile ? masterProfile.name : 'primary classification profile';
 
                 const message = newInheritState
                     ? `Profile "${profile.name}" will now inherit classification from ${masterProfileName}`
@@ -3192,7 +3192,7 @@ function attachProfileEventListeners() {
             // Check if this profile is already the master for its MCP server
             const mcpServerId = profile.mcpServerId;
             if (mcpServerId && configState.masterClassificationProfileIds[mcpServerId] === profileId) {
-                showNotification('info', `Profile "${profile.name}" is already the master classification profile for this MCP server`);
+                showNotification('info', `Profile "${profile.name}" is already the primary classification profile for this MCP server`);
                 return;
             }
 
@@ -3224,7 +3224,7 @@ function attachProfileEventListeners() {
                 // Also update legacy single master for backwards compatibility
                 configState.masterClassificationProfileId = profileId;
 
-                showNotification('success', `Profile "${profile.name}" is now the master classification profile for this MCP server`);
+                showNotification('success', `Profile "${profile.name}" is now the primary classification profile for this MCP server`);
 
                 // Trigger auto-classification for the new master profile
                 showNotification('info', `Running auto-classification for master profile "${profile.name}"...`);
@@ -3267,7 +3267,7 @@ function attachProfileEventListeners() {
                 button.textContent = originalText;
             } catch (error) {
                 console.error('Set master classification profile error:', error);
-                showNotification('error', `Failed to set master classification profile: ${error.message}`);
+                showNotification('error', `Failed to set primary classification profile: ${error.message}`);
 
                 // Restore button state
                 button.disabled = false;
@@ -3972,7 +3972,7 @@ async function populateSystemPrompts(modal, profile) {
     }
 }
 
-async function showProfileModal(profileId = null) {
+async function showProfileModal(profileId = null, defaultProfileType = null) {
     const profile = profileId ? configState.profiles.find(p => p.id === profileId) : null;
     const isEdit = !!profile;
 
@@ -3982,7 +3982,11 @@ async function showProfileModal(profileId = null) {
     modal.querySelector('#profile-modal-title').textContent = isEdit ? 'Edit Profile' : 'Add Profile';
 
     // Set profile type radio button
-    const profileType = profile ? (profile.profile_type || 'tool_enabled') : 'tool_enabled';
+    // For new profiles: use defaultProfileType if provided, otherwise default to 'tool_enabled'
+    // For existing profiles: use the profile's existing type
+    const profileType = profile ?
+        (profile.profile_type || 'tool_enabled') :
+        (defaultProfileType || 'tool_enabled');
     const profileTypeRadioLLMOnly = modal.querySelector('#profile-modal-type-llm-only');
     const profileTypeRadioToolEnabled = modal.querySelector('#profile-modal-type-tool-enabled');
     const profileTypeRadioRAGFocused = modal.querySelector('#profile-modal-type-rag-focused');
@@ -4262,15 +4266,27 @@ async function showProfileModal(profileId = null) {
         container.innerHTML = '';
 
         // Get all profiles except self (allow nested Genies)
-        const availableProfiles = configState.profiles.filter(p =>
-            p.id !== currentGenieProfile?.id  // Only exclude self-reference
-        );
+        // Only include profiles that are active for consumption
+        const availableProfiles = configState.profiles.filter(p => {
+            const isNotSelf = p.id !== currentGenieProfile?.id;  // Exclude self-reference
+            const isActive = configState.activeForConsumptionProfileIds.includes(p.id);  // Only active profiles
+            return isNotSelf && isActive;
+        });
 
         // Get currently selected children (if editing)
         const selectedSlaves = currentGenieProfile?.genieConfig?.slaveProfiles || [];
 
         if (availableProfiles.length === 0) {
-            container.innerHTML = '<p class="text-gray-500 text-sm italic">No profiles available. Create other profile types first.</p>';
+            const hasInactiveProfiles = configState.profiles.some(p =>
+                p.id !== currentGenieProfile?.id &&
+                !configState.activeForConsumptionProfileIds.includes(p.id)
+            );
+
+            if (hasInactiveProfiles) {
+                container.innerHTML = '<p class="text-gray-500 text-sm italic">No active profiles available. Activate profiles in the main list before selecting them as children.</p>';
+            } else {
+                container.innerHTML = '<p class="text-gray-500 text-sm italic">No profiles available. Create other profile types first.</p>';
+            }
             return;
         }
 
@@ -5279,8 +5295,8 @@ async function showProfileModal(profileId = null) {
             classification_mode: classificationMode,
             tools: selectedTools.length === allTools.length ? ['*'] : selectedTools,
             prompts: selectedPrompts.length === allPrompts.length ? ['*'] : selectedPrompts,
-            ragCollections: selectedRag.length === ragCollections.length ? ['*'] : selectedRag,
-            autocompleteCollections: selectedAutocomplete.length === ragCollections.length ? ['*'] : selectedAutocomplete,
+            ragCollections: selectedRag,  // Always save explicit IDs (no wildcard)
+            autocompleteCollections: selectedAutocomplete,  // Always save explicit IDs (no wildcard)
             knowledgeConfig: knowledgeConfig,
             genieConfig: genieConfig,  // Will be null for non-genie profiles
             // Conversation capability flags (only relevant for llm_only profiles)
@@ -5471,7 +5487,25 @@ export async function initializeConfigurationUI() {
     // Add Profile button
     const addProfileBtn = document.getElementById('add-profile-btn');
     if (addProfileBtn) {
-        addProfileBtn.addEventListener('click', () => showProfileModal());
+        addProfileBtn.addEventListener('click', () => {
+            // Detect which profile type tab is currently active
+            const activeTab = document.querySelector('.profile-type-tab.text-white.border-\\[\\#F15F22\\]');
+            let defaultProfileType = 'tool_enabled'; // Default fallback
+
+            if (activeTab) {
+                const tabType = activeTab.dataset.tab;
+                // Map tab data-tab values to profile_type values
+                const tabToProfileTypeMap = {
+                    'tool-profiles': 'tool_enabled',
+                    'conversation-profiles': 'llm_only',
+                    'rag-profiles': 'rag_focused',
+                    'genie-profiles': 'genie'
+                };
+                defaultProfileType = tabToProfileTypeMap[tabType] || 'tool_enabled';
+            }
+
+            showProfileModal(null, defaultProfileType);
+        });
     }
 
     // Test All Profiles button

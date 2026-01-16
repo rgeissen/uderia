@@ -1374,7 +1374,7 @@ async def delete_session_endpoint(current_user, session_id: str):
 @require_auth
 async def purge_memory(current_user, session_id: str):
     """Purges the agent's LLM context memory (`chat_object`) for a session.
-    For Genie sessions, also purges all slave session memory."""
+    For Genie sessions, also purges all child session memory."""
     user_uuid = current_user.id
     app_logger.info(f"Purge memory request for session {session_id}, user {user_uuid}")
 

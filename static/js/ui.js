@@ -49,8 +49,8 @@ function saveGenieCollapseState(state) {
 }
 
 /**
- * Toggle visibility of slave sessions for a genie master session.
- * @param {string} parentSessionId - The session ID of the genie master
+ * Toggle visibility of child sessions for a genie parent session.
+ * @param {string} parentSessionId - The session ID of the genie parent
  */
 export function toggleGenieSlaveVisibility(parentSessionId) {
     const collapseState = getGenieCollapseState();
@@ -120,10 +120,10 @@ export function toggleGenieSlaveVisibility(parentSessionId) {
 }
 
 /**
- * Mark sessions that are genie masters (have slave sessions).
- * Call this after loading all sessions to identify which sessions have slaves.
+ * Mark sessions that are genie parents (have child sessions).
+ * Call this after loading all sessions to identify which sessions have children.
  * @param {Array} sessions - Array of session objects
- * @returns {Array} - Sessions with _isGenieMaster flag added
+ * @returns {Array} - Sessions with _isGenieMaster flag added (flag name preserved for compatibility)
  */
 export function markGenieMasterSessions(sessions) {
     // Build a set of parent session IDs that have slaves
@@ -135,12 +135,12 @@ export function markGenieMasterSessions(sessions) {
         }
     });
 
-    // Mark sessions that have slaves as genie masters
+    // Mark sessions that have children as genie parents
     sessions.forEach(session => {
         session._isGenieMaster = parentIds.has(session.id);
     });
 
-    console.log(`[UI] Marked ${parentIds.size} sessions as genie masters`);
+    console.log(`[UI] Marked ${parentIds.size} sessions as genie parents`);
     return sessions;
 }
 
@@ -195,9 +195,9 @@ export function sortSessionsHierarchically(sessions) {
 }
 
 /**
- * Update the genie master badge visibility after sessions are rendered.
- * Call this after the session list is populated to add master badges to sessions
- * that weren't initially marked but have slave sessions in the DOM.
+ * Update the genie parent badge visibility after sessions are rendered.
+ * Call this after the session list is populated to add parent badges to sessions
+ * that weren't initially marked but have child sessions in the DOM.
  */
 export function updateGenieMasterBadges() {
     // Find all slave sessions and their parent IDs
@@ -211,7 +211,7 @@ export function updateGenieMasterBadges() {
         }
     });
 
-    // For each parent that doesn't have a master badge, add one
+    // For each parent that doesn't have a parent badge, add one
     parentIds.forEach(parentId => {
         const parentItem = document.getElementById(`session-${parentId}`);
         if (parentItem && !parentItem.querySelector('.genie-master-badge')) {
@@ -260,7 +260,7 @@ export function updateGenieMasterBadges() {
                     font-weight: 600;
                     text-shadow: 0 1px 2px rgba(241, 95, 34, 0.2);
                 `;
-                label.textContent = 'Master';
+                label.textContent = 'Parent';
                 genieMasterBadge.appendChild(label);
 
                 // Toggle
@@ -283,7 +283,7 @@ export function updateGenieMasterBadges() {
                 toggle.textContent = '▼';
                 genieMasterBadge.appendChild(toggle);
 
-                genieMasterBadge.title = 'Click to collapse/expand slave sessions';
+                genieMasterBadge.title = 'Click to collapse/expand child sessions';
 
                 // Hover effects
                 genieMasterBadge.addEventListener('mouseenter', () => {
@@ -2933,7 +2933,7 @@ export function addSessionToList(session, isActive = false) {
         // Label
         const label = document.createElement('span');
         label.style.cssText = 'color: #F15F22; font-weight: 500;';
-        label.textContent = 'Slave';
+        label.textContent = 'Child';
         genieBadge.appendChild(label);
 
         genieBadge.title = 'Spawned by Genie coordinator';
@@ -3080,9 +3080,9 @@ export function addSessionToList(session, isActive = false) {
 
         genieMasterBadge.appendChild(toggle);
 
-        genieMasterBadge.title = 'Click to collapse/expand slave sessions';
+        genieMasterBadge.title = 'Click to collapse/expand child sessions';
 
-        // Add click handler to toggle slave sessions visibility with animation
+        // Add click handler to toggle child sessions visibility with animation
         genieMasterBadge.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleGenieSlaveVisibility(session.id);

@@ -8,7 +8,7 @@ import json
 import logging
 import copy
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from sqlalchemy import text
 
@@ -1125,16 +1125,16 @@ class ConfigManager:
                 return False, "RAG focused profiles require at least 1 knowledge collection"
 
         elif profile_type == "genie":
-            # Genie profiles REQUIRE genieConfig with slaveProfiles
+            # Genie profiles REQUIRE genieConfig with slaveProfiles (field name preserved for API compatibility)
             genie_config = profile.get("genieConfig", {})
             if not genie_config:
                 return False, "Genie profiles require genieConfig"
 
             slave_profiles = genie_config.get("slaveProfiles", [])
             if not slave_profiles or len(slave_profiles) == 0:
-                return False, "Genie profiles require at least one slave profile"
+                return False, "Genie profiles require at least one child profile"
 
-            # Validate all slave profiles exist and are not genie profiles (prevent nesting)
+            # Validate all child profiles exist and are not genie profiles (prevent nesting)
             if user_uuid:
                 all_profiles = self.get_profiles(user_uuid)
                 profile_map = {p.get("id"): p for p in all_profiles}
@@ -1143,12 +1143,12 @@ class ConfigManager:
                 for slave_pid in slave_profiles:
                     # Check if referencing self
                     if slave_pid == current_profile_id:
-                        return False, "Genie profiles cannot reference themselves as slaves"
+                        return False, "Genie profiles cannot reference themselves as children"
 
                     slave = profile_map.get(slave_pid)
                     if not slave:
-                        return False, f"Slave profile {slave_pid} not found"
-                    # NOTE: Genie profiles CAN now have other Genie profiles as slaves
+                        return False, f"Child profile {slave_pid} not found"
+                    # NOTE: Genie profiles CAN now have other Genie profiles as children
                     # Circular dependencies and depth limits are checked below
 
                 # Get max nesting depth from global settings
@@ -1192,7 +1192,7 @@ class ConfigManager:
         max_depth: int = 3
     ) -> tuple[bool, str, int]:
         """
-        Detect circular dependencies in Genie slave profiles using DFS with path tracking.
+        Detect circular dependencies in Genie child profiles using DFS with path tracking.
 
         This method prevents:
         1. Circular dependencies (A → B → A)
@@ -1200,7 +1200,7 @@ class ConfigManager:
 
         Args:
             profile_id: Current profile being validated
-            slave_profiles: List of slave profile IDs for current profile
+            slave_profiles: List of child profile IDs for current profile (parameter name preserved for API compatibility)
             user_uuid: User UUID for profile lookup
             visited_path: Set of profile IDs in current traversal path (cycle detection)
             depth: Current nesting depth (0 = top level)
@@ -1214,9 +1214,9 @@ class ConfigManager:
         Algorithm:
             1. Initialize visited_path if first call
             2. Check max depth limit
-            3. For each slave profile:
+            3. For each child profile:
                a. Check if it's in visited_path (circular dependency)
-               b. If slave is Genie type, recursively check its slaves
+               b. If child is Genie type, recursively check its children
                c. Track maximum depth encountered
             4. Return result
         """
@@ -1236,7 +1236,7 @@ class ConfigManager:
 
         max_depth_encountered = depth
 
-        # Check each slave
+        # Check each child
         for slave_id in slave_profiles:
             # Check for circular reference
             if slave_id in visited_path:
@@ -1254,12 +1254,12 @@ class ConfigManager:
             if not slave_profile:
                 continue  # Skip missing profiles (caught by other validation)
 
-            # If slave is also a Genie, recursively check
+            # If child is also a Genie, recursively check
             if slave_profile.get("profile_type") == "genie":
                 slave_genie_config = slave_profile.get("genieConfig", {})
                 nested_slaves = slave_genie_config.get("slaveProfiles", [])
 
-                # Recursively check this Genie's slaves
+                # Recursively check this Genie's children
                 has_error, error_msg, nested_depth = self._detect_circular_genie_dependency(
                     profile_id=slave_id,
                     slave_profiles=nested_slaves,
@@ -1716,8 +1716,10 @@ class ConfigManager:
 
                 for row in rows:
                     key, value, is_locked = row
-                    # Parse value to appropriate type
-                    if key == 'temperature':
+                    # Parse value to appropriate type based on key
+                    # Float values: temperature, knowledge_minRelevanceScore
+                    # Integer values: everything else
+                    if key in ('temperature', 'knowledge_minRelevanceScore'):
                         parsed_value = float(value)
                     else:
                         parsed_value = int(value)
@@ -1731,7 +1733,12 @@ class ConfigManager:
                 defaults = {
                     'temperature': {'value': 0.7, 'is_locked': False},
                     'queryTimeout': {'value': 300, 'is_locked': False},
-                    'maxIterations': {'value': 10, 'is_locked': False}
+                    'maxIterations': {'value': 10, 'is_locked': False},
+                    'maxNestingDepth': {'value': 3, 'is_locked': False},
+                    'knowledge_minRelevanceScore': {'value': 0.30, 'is_locked': False},
+                    'knowledge_maxDocs': {'value': 3, 'is_locked': False},
+                    'knowledge_maxTokens': {'value': 2000, 'is_locked': False},
+                    'knowledge_rerankingEnabled': {'value': 0, 'is_locked': False}
                 }
                 for key, default in defaults.items():
                     if key not in settings:

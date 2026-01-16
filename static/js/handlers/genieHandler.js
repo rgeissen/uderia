@@ -84,13 +84,13 @@ export function initGenieCoordination(payload) {
             // Sessions are currently collapsed - expand them
             UI.toggleGenieSlaveVisibility(effectiveSessionId);
 
-            // Add visual feedback - brief highlight on master session
-            const masterItem = document.getElementById(`session-${effectiveSessionId}`);
-            if (masterItem) {
-                masterItem.style.transition = 'box-shadow 0.3s ease';
-                masterItem.style.boxShadow = '0 0 0 3px rgba(241, 95, 34, 0.3)';
+            // Add visual feedback - brief highlight on parent session
+            const parentItem = document.getElementById(`session-${effectiveSessionId}`);
+            if (parentItem) {
+                parentItem.style.transition = 'box-shadow 0.3s ease';
+                parentItem.style.boxShadow = '0 0 0 3px rgba(241, 95, 34, 0.3)';
                 setTimeout(() => {
-                    masterItem.style.boxShadow = '';
+                    parentItem.style.boxShadow = '';
                 }, 800);
             }
 
@@ -228,13 +228,13 @@ export function completeCoordination(payload) {
         localStorage.setItem('genie_slave_collapse_state', JSON.stringify(collapseState));
         console.log('[GenieHandler] 🔓 Keeping slave sessions expanded after execution');
 
-        // Visual feedback on completion (brief green highlight on master session)
-        const masterItem = document.getElementById(`session-${completedSessionId}`);
-        if (masterItem) {
-            masterItem.style.transition = 'box-shadow 0.3s ease';
-            masterItem.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.3)'; // Green for completion
+        // Visual feedback on completion (brief green highlight on parent session)
+        const parentItem = document.getElementById(`session-${completedSessionId}`);
+        if (parentItem) {
+            parentItem.style.transition = 'box-shadow 0.3s ease';
+            parentItem.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.3)'; // Green for completion
             setTimeout(() => {
-                masterItem.style.boxShadow = '';
+                parentItem.style.boxShadow = '';
             }, 800);
         }
     }
