@@ -2393,7 +2393,8 @@ button[data-action="delete-mcp"]:hover {
 }
 
 #profile-tag-selector {
-    max-height: 280px;
+    max-height: 400px; /* Increased from 280px to show more profiles */
+    scroll-behavior: smooth; /* Smooth scrolling for keyboard navigation */
 }
 
 .rag-suggestion-item {
@@ -2515,22 +2516,36 @@ button[data-action="delete-mcp"]:hover {
     border-bottom: none;
 }
 
-.profile-tag-item:hover,
+/* Keyboard highlight state (stronger visual) */
 .profile-tag-item.profile-tag-highlighted {
-    background: rgba(241, 95, 34, 0.08);
+    background: rgba(241, 95, 34, 0.12);
     padding-left: 24px;
     transform: translateX(2px);
-    border-left: 1px solid rgba(241, 95, 34, 0.15);
+    border-left: 1px solid rgba(241, 95, 34, 0.3);
 }
 
-.profile-tag-item:hover::before,
 .profile-tag-item.profile-tag-highlighted::before {
     width: 4px;
+    background: linear-gradient(180deg, rgba(241, 95, 34, 0.9), rgba(241, 95, 34, 0.6));
 }
 
-.profile-tag-item:hover::after,
 .profile-tag-item.profile-tag-highlighted::after {
     opacity: 1;
+}
+
+/* Hover state (lighter, only applies when NOT highlighted) */
+.profile-tag-item:not(.profile-tag-highlighted):hover {
+    background: rgba(241, 95, 34, 0.05);
+    padding-left: 20px;
+    transform: translateX(1px);
+}
+
+.profile-tag-item:not(.profile-tag-highlighted):hover::before {
+    width: 2px;
+}
+
+.profile-tag-item:not(.profile-tag-highlighted):hover::after {
+    opacity: 0.5;
 }
 
 .profile-tag-item:first-child {
@@ -2595,15 +2610,24 @@ button[data-action="delete-mcp"]:hover {
     margin-top: 2px;
 }
 
-.profile-tag-item:hover .profile-tag-name,
+/* Highlighted state text and badge */
 .profile-tag-item.profile-tag-highlighted .profile-tag-name {
     color: #ffffff;
 }
 
-.profile-tag-item:hover .profile-tag-badge,
 .profile-tag-item.profile-tag-highlighted .profile-tag-badge {
-    background: linear-gradient(135deg, rgba(241, 95, 34, 0.4), rgba(241, 95, 34, 0.25));
-    border-color: rgba(241, 95, 34, 0.5);
+    background: linear-gradient(135deg, rgba(241, 95, 34, 0.5), rgba(241, 95, 34, 0.3));
+    border-color: rgba(241, 95, 34, 0.6);
+}
+
+/* Hover state text and badge (only when not highlighted) */
+.profile-tag-item:not(.profile-tag-highlighted):hover .profile-tag-name {
+    color: #f3f4f6;
+}
+
+.profile-tag-item:not(.profile-tag-highlighted):hover .profile-tag-badge {
+    background: linear-gradient(135deg, rgba(241, 95, 34, 0.3), rgba(241, 95, 34, 0.15));
+    border-color: rgba(241, 95, 34, 0.3);
 }
 
 .profile-default-indicator {

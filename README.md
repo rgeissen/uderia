@@ -29,7 +29,8 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
 7. [Installation and Setup Guide](#-installation-and-setup-guide)
 8. [Developer Mode: Unlocking Models](#developer-mode-unlocking-models)
-9. [User Guide](#-user-guide)
+9. [Command Line Options](#command-line-options)
+10. [User Guide](#-user-guide)
    - [Getting Started](#getting-started)
    - [Using the Interface](#using-the-interface)
    - [Advanced Context Management](#advanced-context-management)
@@ -37,10 +38,10 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
    - [Real-Time Monitoring](#real-time-monitoring)
    - [Operationalization](#operationalization)
    - [Troubleshooting](#troubleshooting)
-10. [Docker Deployment](#docker-deployment)
-11. [License](#license)
-12. [Author & Contributions](#author-contributions)
-13. [Appendix: Feature Update List](#appendix-feature-update-list)
+11. [Docker Deployment](#docker-deployment)
+12. [License](#license)
+13. [Author & Contributions](#author-contributions)
+14. [Appendix: Feature Update List](#appendix-feature-update-list)
 
 
 ---
@@ -1545,6 +1546,65 @@ python -m trusted_data_agent.main --all-models
 ```
 
 **Note:** **No Ollama models are currently certified.** For testing purposes, Ollama models can be evaluated by starting the server with the `--all-models` developer flag.
+
+[⬆️ Back to Table of Contents](#table-of-contents)
+
+---
+
+## Command Line Options
+
+The Uderia Platform supports several command-line options for different deployment scenarios and operational modes:
+
+### Available Options
+
+```bash
+python -m trusted_data_agent.main [OPTIONS]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host` | Host address to bind the server to. Use `0.0.0.0` for Docker deployments. | `127.0.0.1` |
+| `--port` | Port to bind the server to. | `5050` |
+| `--all-models` | Enable all discovered models including uncertified ones (developer mode). | Disabled |
+| `--nogitcall` | Disable GitHub API calls to fetch repository star count. | Enabled |
+| `--offline` | Use cached HuggingFace models only (skip remote version checks). Useful when internet is slow or unavailable. | Disabled |
+
+### Usage Examples
+
+**Standard production deployment:**
+```bash
+python -m trusted_data_agent.main
+```
+
+**Development with all models:**
+```bash
+python -m trusted_data_agent.main --all-models
+```
+
+**Offline mode (use cached models):**
+```bash
+python -m trusted_data_agent.main --offline
+```
+
+**Docker deployment:**
+```bash
+python -m trusted_data_agent.main --host 0.0.0.0 --port 5050
+```
+
+**Combined options:**
+```bash
+python -m trusted_data_agent.main --all-models --offline --nogitcall
+```
+
+### Offline Mode Details
+
+The `--offline` flag is particularly useful when:
+- Internet connection is slow or unreliable
+- HuggingFace model downloads are timing out
+- Working in air-gapped or restricted network environments
+- Models are already cached from previous installations
+
+**Note:** The offline mode requires that HuggingFace models have been previously downloaded to the cache directory (`~/.cache/huggingface/hub/`). First-time installations will need internet access to download required models.
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 

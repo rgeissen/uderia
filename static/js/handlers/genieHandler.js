@@ -221,8 +221,14 @@ export function completeCoordination(payload) {
     // and clear all previous events before rendering the completion event.
 
     // Keep slave sessions expanded after execution - user can collapse manually if desired
-    // Visual feedback on completion (brief green highlight on master session)
     if (completedSessionId) {
+        // Ensure slaves remain visible after completion by explicitly setting expanded state
+        const collapseState = UI.getGenieCollapseState();
+        collapseState[completedSessionId] = false; // false = expanded (visible)
+        localStorage.setItem('genie_slave_collapse_state', JSON.stringify(collapseState));
+        console.log('[GenieHandler] 🔓 Keeping slave sessions expanded after execution');
+
+        // Visual feedback on completion (brief green highlight on master session)
         const masterItem = document.getElementById(`session-${completedSessionId}`);
         if (masterItem) {
             masterItem.style.transition = 'box-shadow 0.3s ease';

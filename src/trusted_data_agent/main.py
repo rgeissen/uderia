@@ -341,6 +341,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--all-models", action="store_true", help="Allow selection of all available models.")
     parser.add_argument("--nogitcall", action="store_true", help="Disable GitHub API calls to fetch star count.")
+    parser.add_argument("--offline", action="store_true", help="Use cached HuggingFace models only (skip remote version checks).")
     args = parser.parse_args()
 
     if args.all_models:
@@ -353,6 +354,10 @@ if __name__ == "__main__":
     else:
         APP_CONFIG.GITHUB_API_ENABLED = True
         print("\n--- GITHUB API ENABLED: Star count will be fetched from GitHub. ---\n")
+
+    if args.offline:
+        os.environ['HF_HUB_OFFLINE'] = '1'
+        print("\n--- OFFLINE MODE: Using cached HuggingFace models only (no remote checks). ---\n")
 
     print("\n--- CHARTING ENABLED: Charting configuration is active. ---\n")
 

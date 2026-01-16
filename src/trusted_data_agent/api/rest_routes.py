@@ -5161,25 +5161,36 @@ async def get_profiles():
     try:
         user_uuid = _get_user_uuid_from_request()
         from trusted_data_agent.core.config_manager import get_config_manager
-        from trusted_data_agent.core.provider_colors import get_provider_color, get_provider_from_llm_config
+        from trusted_data_agent.core.provider_colors import get_profile_colors, get_provider_from_llm_config
         config_manager = get_config_manager()
-        
+
         profiles = config_manager.get_profiles(user_uuid)
         default_profile_id = config_manager.get_default_profile_id(user_uuid)
         active_for_consumption_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
-        
-        # Enrich profiles with color information based on provider
+
+        # Enrich profiles with color information based on profile type and provider
+        # Priority: Profile type colors (Genie=orange, RAG=green) > Provider colors
         llm_configurations = config_manager.get_llm_configurations(user_uuid)
         for profile in profiles:
+            profile_type = profile.get("profile_type", "tool_enabled")
             llm_config_id = profile.get("llmConfigurationId")
+            provider = None
+
+            # Get provider for fallback coloring (tool-enabled profiles)
             if llm_config_id:
                 llm_config = next((c for c in llm_configurations if c.get("id") == llm_config_id), None)
                 if llm_config:
                     provider = get_provider_from_llm_config(llm_config)
-                    colors = get_provider_color(provider)
-                    profile["color"] = colors["primary"]
-                    profile["colorSecondary"] = colors["secondary"]
-                    profile["providerName"] = colors["name"]
+                    profile["providerName"] = llm_config.get("provider") or "Unknown"
+
+            # Get colors based on profile type (Genie always orange, etc.)
+            colors = get_profile_colors(profile_type, provider)
+            profile["color"] = colors["primary"]
+            profile["colorSecondary"] = colors["secondary"]
+
+            # Set type name if not already set by provider
+            if "providerName" not in profile and colors.get("name"):
+                profile["typeName"] = colors["name"]
         
         return jsonify({
             "status": "success",

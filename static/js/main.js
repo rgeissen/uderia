@@ -134,6 +134,13 @@ async function initializeRAGAutoCompletion() {
         items.forEach((item, idx) => {
             if (idx === index) {
                 item.classList.add('profile-tag-highlighted');
+                // Auto-scroll highlighted item into view for keyboard navigation
+                // Use 'center' to ensure item is always visible and centered
+                item.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                    inline: 'nearest'
+                });
             } else {
                 item.classList.remove('profile-tag-highlighted');
             }
