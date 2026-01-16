@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import * as UI from './ui.js';
 import * as DOM from './domElements.js';
+import * as API from './api.js';
 import { handleLoadSession } from './handlers/sessionManagement.js?v=3.2';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
@@ -190,9 +191,55 @@ export function subscribeToNotifications() {
     console.log('[SSE] Subscribing to notifications for user:', state.userUUID);
     const eventSource = new EventSource(`/api/notifications/subscribe?user_uuid=${state.userUUID}`);
 
-    eventSource.onopen = () => {
+    eventSource.onopen = async () => {
         console.log('[SSE] Connection established');
         UI.updateSSEStatus('connected');
+
+        // Load existing sessions and populate UI on initial connection
+        try {
+            console.log('[SSE] Loading existing sessions...');
+            const sessions = await API.loadAllSessions();
+            console.log('[SSE] Received sessions from API:', sessions);
+
+            if (sessions && sessions.length > 0) {
+                console.log(`[SSE] Found ${sessions.length} existing sessions, populating UI...`);
+
+                // Clear existing session list (in case of reconnection)
+                DOM.sessionList.innerHTML = '';
+
+                // Sessions are already in correct hierarchical order from backend
+                // (parent → L1 child → L2 grandchild, etc.)
+                let addedCount = 0;
+                for (const session of sessions) {
+                    const genieMetadata = session.genie_metadata || {};
+                    const isGenieSlave = genieMetadata.is_genie_slave;
+                    const parentSessionId = genieMetadata.parent_session_id;
+                    const nestingLevel = genieMetadata.nesting_level;
+
+                    console.log(`[SSE] Adding session ${session.id.substring(0, 12)}... (slave=${isGenieSlave}, level=${nestingLevel}, parent=${parentSessionId ? parentSessionId.substring(0, 12) + '...' : 'none'})`);
+
+                    const sessionItem = UI.addSessionToList(session, false);
+
+                    // Append in order (backend already sorted hierarchically)
+                    DOM.sessionList.appendChild(sessionItem);
+                    addedCount++;
+
+                    console.log(`[SSE] Session ${session.id.substring(0, 12)}... added to DOM, classList:`, sessionItem.classList.toString());
+                }
+
+                console.log(`[SSE] Added ${addedCount} sessions to DOM`);
+
+                // After all sessions loaded, update genie master badges
+                UI.updateGenieMasterBadges();
+
+                console.log('[SSE] Session list populated successfully');
+                console.log('[SSE] Final DOM.sessionList.children.length:', DOM.sessionList.children.length);
+            } else {
+                console.log('[SSE] No existing sessions found');
+            }
+        } catch (error) {
+            console.error('[SSE] Error loading existing sessions:', error);
+        }
     };
 
     eventSource.addEventListener('notification', (event) => {

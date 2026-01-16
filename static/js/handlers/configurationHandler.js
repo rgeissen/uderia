@@ -4298,7 +4298,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 'llm_only': 'Conversation',
                 'tool_enabled': 'Tool-Enabled',
                 'rag_focused': 'RAG Focused',
-                'genie': 'Nested Genie'
+                'genie': 'Genie'
             }[profile.profile_type] || profile.profile_type;
 
             const profileTypeColor = {
@@ -5444,7 +5444,8 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     // This ensures the correct sections are hidden/shown based on profile type,
     // even if something changed the radio button state during initialization
     setTimeout(() => {
-        const finalProfileType = profile?.profile_type || 'tool_enabled';
+        // Use the profileType variable which includes defaultProfileType for new profiles
+        const finalProfileType = profileType;
         console.log('[Profile Modal] Final visibility update with profileType:', finalProfileType);
         updateSectionVisibility(finalProfileType);
     }, 100); // Small delay to ensure all DOM updates are complete
@@ -5488,22 +5489,21 @@ export async function initializeConfigurationUI() {
     const addProfileBtn = document.getElementById('add-profile-btn');
     if (addProfileBtn) {
         addProfileBtn.addEventListener('click', () => {
-            // Detect which profile type tab is currently active
-            const activeTab = document.querySelector('.profile-type-tab.text-white.border-\\[\\#F15F22\\]');
+            // Detect which profile type tab is currently active by checking visible content containers
             let defaultProfileType = 'tool_enabled'; // Default fallback
 
-            if (activeTab) {
-                const tabType = activeTab.dataset.tab;
-                // Map tab data-tab values to profile_type values
-                const tabToProfileTypeMap = {
-                    'tool-profiles': 'tool_enabled',
-                    'conversation-profiles': 'llm_only',
-                    'rag-profiles': 'rag_focused',
-                    'genie-profiles': 'genie'
-                };
-                defaultProfileType = tabToProfileTypeMap[tabType] || 'tool_enabled';
+            // Check which content container is visible (not hidden)
+            if (!document.getElementById('tool-profiles-container')?.classList.contains('hidden')) {
+                defaultProfileType = 'tool_enabled';
+            } else if (!document.getElementById('conversation-profiles-container')?.classList.contains('hidden')) {
+                defaultProfileType = 'llm_only';
+            } else if (!document.getElementById('rag-profiles-container')?.classList.contains('hidden')) {
+                defaultProfileType = 'rag_focused';
+            } else if (!document.getElementById('genie-profiles-container')?.classList.contains('hidden')) {
+                defaultProfileType = 'genie';
             }
 
+            console.log('[Add Profile] Detected active profile type:', defaultProfileType);
             showProfileModal(null, defaultProfileType);
         });
     }

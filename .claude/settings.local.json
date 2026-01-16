@@ -23,7 +23,11 @@
       "Bash(python:*)",
       "Bash(source venv/bin/activate)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNmQ0YjE5ZjMtMmYwZC00NDMwLWI4NjktMjdmNTIyNDMwYzA1IiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc2ODMxNzExMiwiaWF0IjoxNzY4MjMwNzEyLCJqdGkiOiI4RlBkN1B4ZmpLYVdSaDJHUURyQS1WWmprMVo2YXV2SEJjakk5cWh6cnpRIn0.rz8qsmab3BdbpCpWkX1eCLuKQHh-xsPvIjQz7vfsk3w\")",
-      "Bash(PYTHONPATH=/Users/livin2rave/my_private_code/uderia/src python:*)"
+      "Bash(PYTHONPATH=/Users/livin2rave/my_private_code/uderia/src python:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(ps:*)",
+      "Bash(TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZjBiNmRmMWQtMDdlZS00ZTkyLWE3ZDAtMDAzNDUzOGNhZGRhIiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc2ODY3MDQ0NCwiaWF0IjoxNzY4NTg0MDQ0LCJqdGkiOiJiOUVvQVRpWHpfcV9uMy1fZXBoaTNuZlk0R1p3Y0VQTW1DWHA3SmUyRU5zIn0.OEEAjvNK17dJzF1yzSiDJeTP-2bRYtmJT1FtymmaA28')"
     ]
   }
 }

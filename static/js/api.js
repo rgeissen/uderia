@@ -236,12 +236,13 @@ export async function loadSession(sessionId) {
 }
 
 export async function loadAllSessions() {
-    const res = await fetch('/sessions', { headers: _getHeaders(false) });
-    const sessions = await res.json();
+    const res = await fetch('/api/v1/sessions', { headers: _getHeaders(false) });
+    const data = await res.json();
     if (!res.ok) {
-        throw new Error(sessions.error || "Could not retrieve past sessions.");
+        throw new Error(data.error || "Could not retrieve past sessions.");
     }
-    return sessions;
+    // REST API returns {sessions: [...], total: N}
+    return data.sessions || [];
 }
 
 export async function renameSession(sessionId, newName) {

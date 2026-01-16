@@ -61,8 +61,25 @@ export function toggleGenieSlaveVisibility(parentSessionId) {
     collapseState[parentSessionId] = newState;
     saveGenieCollapseState(collapseState);
 
-    // Find all slave sessions for this parent and toggle visibility with smooth animation
-    const slaveItems = document.querySelectorAll(`[data-genie-parent-id="${parentSessionId}"]`);
+    // Recursively find all descendant sessions (children, grandchildren, etc.)
+    function getAllDescendants(ancestorId) {
+        const directChildren = Array.from(document.querySelectorAll(`[data-genie-parent-id="${ancestorId}"]`));
+        let allDescendants = [...directChildren];
+
+        // For each direct child, recursively get their descendants
+        directChildren.forEach(childItem => {
+            const childSessionId = childItem.dataset.sessionId;
+            if (childSessionId) {
+                const grandchildren = getAllDescendants(childSessionId);
+                allDescendants = allDescendants.concat(grandchildren);
+            }
+        });
+
+        return allDescendants;
+    }
+
+    // Find all descendants (including nested children)
+    const slaveItems = getAllDescendants(parentSessionId);
 
     slaveItems.forEach((item, index) => {
         if (newState) {
@@ -152,45 +169,64 @@ export function markGenieMasterSessions(sessions) {
  * @returns {Array} - Sessions sorted with slaves directly under their parents
  */
 export function sortSessionsHierarchically(sessions) {
-    // Build maps for quick lookups
-    const parentToSlaves = new Map(); // parentId -> [slave sessions]
-    const slaveIds = new Set(); // All slave session IDs
+    // Build parent-to-children map for ALL sessions (supports multi-level nesting)
+    const parentToChildren = new Map(); // parentId -> [child sessions]
+    const topLevelSessions = []; // Sessions with no parent
 
+    // First pass: catalog all sessions
     sessions.forEach(session => {
         const genieMetadata = session.genie_metadata || {};
-        if (genieMetadata.is_genie_slave && genieMetadata.parent_session_id) {
-            const parentId = genieMetadata.parent_session_id;
-            if (!parentToSlaves.has(parentId)) {
-                parentToSlaves.set(parentId, []);
+        const parentId = genieMetadata.parent_session_id;
+
+        if (genieMetadata.is_genie_slave && parentId) {
+            // This session has a parent - add to parent's children list
+            if (!parentToChildren.has(parentId)) {
+                parentToChildren.set(parentId, []);
             }
-            parentToSlaves.get(parentId).push(session);
-            slaveIds.add(session.id);
+            parentToChildren.get(parentId).push(session);
+        } else {
+            // This is a top-level session (no parent)
+            topLevelSessions.push(session);
         }
     });
 
-    // Separate parents (including non-genie sessions) from slaves
-    const parentSessions = sessions.filter(s => !slaveIds.has(s.id));
+    // Recursive function to add session and all its descendants
+    function addSessionWithChildren(session, sorted) {
+        // Add the session itself
+        sorted.push(session);
 
-    // Build the final sorted list
-    const sorted = [];
-    parentSessions.forEach(parent => {
-        // Add the parent session
-        sorted.push(parent);
-
-        // Add its slave sessions immediately after (if any)
-        const slaves = parentToSlaves.get(parent.id);
-        if (slaves && slaves.length > 0) {
-            // Sort slaves by created_at (oldest first) to maintain consistent order
-            slaves.sort((a, b) => {
+        // Get children of this session
+        const children = parentToChildren.get(session.id);
+        if (children && children.length > 0) {
+            // Sort children by created_at (oldest first)
+            children.sort((a, b) => {
                 const timeA = new Date(a.created_at || 0).getTime();
                 const timeB = new Date(b.created_at || 0).getTime();
                 return timeA - timeB;
             });
-            sorted.push(...slaves);
+
+            // Recursively add each child and its descendants
+            children.forEach(child => {
+                addSessionWithChildren(child, sorted);
+            });
         }
+    }
+
+    // Build the final sorted list starting with top-level sessions
+    const sorted = [];
+
+    // Sort top-level sessions by created_at (NEWEST FIRST - most recent at top)
+    topLevelSessions.sort((a, b) => {
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        return timeB - timeA;  // Reversed: newest first
     });
 
-    console.log(`[UI] Sorted ${sorted.length} sessions hierarchically (${slaveIds.size} slaves under parents)`);
+    // Add each top-level session and all its descendants recursively
+    topLevelSessions.forEach(session => {
+        addSessionWithChildren(session, sorted);
+    });
+
     return sorted;
 }
 
@@ -522,7 +558,17 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     }
 
     const messageContent = document.createElement('div');
-    messageContent.innerHTML = content;
+    // Render markdown for assistant messages if marked.js is available
+    if (role === 'assistant' && typeof marked !== 'undefined') {
+        try {
+            messageContent.innerHTML = marked.parse(content);
+        } catch (e) {
+            console.warn('[UI] Failed to parse markdown, falling back to raw content:', e);
+            messageContent.innerHTML = content;
+        }
+    } else {
+        messageContent.innerHTML = content;
+    }
     messageContainer.appendChild(messageContent);
 
     if (role === 'user') {
@@ -2759,87 +2805,110 @@ export function addSessionToList(session, isActive = false) {
         sessionItem.classList.add('genie-slave-session');
         sessionItem.dataset.genieParentId = genieParentSessionId || '';
 
-        // Create a wrapper with tree connector
-        // CRITICAL FIX: Reduce indentation to prevent horizontal overflow in history panel
-        sessionItem.style.position = 'relative';
-        sessionItem.style.marginLeft = '1rem';  // Reduced from 1.5rem
-        sessionItem.style.paddingLeft = '0.5rem';  // Reduced from 1rem
-        sessionItem.style.maxWidth = 'calc(100% - 1rem)';  // Prevent overflow
-        sessionItem.style.boxSizing = 'border-box';  // Include padding in width calculation
+        // Get nesting level for progressive indentation and color coding
+        const nestingLevel = genieMetadata.nesting_level || 0;
 
-        // Add visual tree connector using pseudo-element via inline style
-        // We'll add a vertical line and horizontal connector
+        // Define color palette for each nesting level
+        const levelColors = {
+            0: { main: '#F15F22', bg: 'rgba(241, 95, 34, 0.06)', border: 'rgba(241, 95, 34, 0.35)' }, // Orange (L0)
+            1: { main: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.06)', border: 'rgba(139, 92, 246, 0.35)' }, // Purple (L1)
+            2: { main: '#10B981', bg: 'rgba(16, 185, 129, 0.06)', border: 'rgba(16, 185, 129, 0.35)' }  // Green (L2)
+        };
+        const colors = levelColors[nestingLevel] || levelColors[0];
+
+        // Progressive indentation: each level gets 1rem indent
+        const indentSize = 1.2; // rem per level
+        const totalIndent = (nestingLevel + 1) * indentSize;
+
+        // Create a wrapper with tree connector
+        sessionItem.style.position = 'relative';
+        sessionItem.style.marginLeft = `${totalIndent}rem`;
+        sessionItem.style.paddingLeft = '0.5rem';
+        sessionItem.style.maxWidth = `calc(100% - ${totalIndent}rem)`;
+        sessionItem.style.boxSizing = 'border-box';
+
+        // Add visual tree connector
         const connector = document.createElement('div');
         connector.className = 'genie-connector';
         connector.style.cssText = `
             position: absolute;
-            left: -1rem;
+            left: -${indentSize}rem;
             top: 0;
             bottom: 0;
-            width: 1rem;
+            width: ${indentSize}rem;
             pointer-events: none;
         `;
 
-        // Vertical line
+        // Vertical line (extends from top to middle)
         const verticalLine = document.createElement('div');
         verticalLine.style.cssText = `
             position: absolute;
-            left: 0.5rem;
+            left: ${indentSize * 0.5}rem;
             top: 0;
             bottom: 50%;
             width: 2px;
-            background: linear-gradient(to bottom, #F15F22 0%, #F15F2240 100%);
+            background: linear-gradient(to bottom, ${colors.main} 0%, ${colors.main}40 100%);
         `;
         connector.appendChild(verticalLine);
 
-        // Horizontal line (L-shape)
+        // Horizontal line (L-shape elbow)
         const horizontalLine = document.createElement('div');
         horizontalLine.style.cssText = `
             position: absolute;
-            left: 0.5rem;
+            left: ${indentSize * 0.5}rem;
             top: 50%;
-            width: 0.5rem;
+            width: ${indentSize * 0.4}rem;
             height: 2px;
-            background: #F15F22;
+            background: ${colors.main};
+            box-shadow: 0 0 4px ${colors.main}80;
         `;
         connector.appendChild(horizontalLine);
 
         sessionItem.appendChild(connector);
 
-        // Add subtle background to make nesting more obvious
-        sessionItem.style.background = 'rgba(241, 95, 34, 0.05)';
-        sessionItem.style.borderLeft = '2px solid rgba(241, 95, 34, 0.3)';
+        // Add depth-based background and border
+        sessionItem.style.background = colors.bg;
+        sessionItem.style.borderLeft = `3px solid ${colors.border}`;
+        sessionItem.style.transition = 'all 0.2s ease';
 
-        // Add hover effect to highlight the connection
+        // Add hover effect to highlight the connection (using level-specific colors)
         sessionItem.addEventListener('mouseenter', () => {
-            sessionItem.style.background = 'rgba(241, 95, 34, 0.12)';
-            sessionItem.style.borderLeftColor = 'rgba(241, 95, 34, 0.6)';
+            // Enhanced background on hover
+            sessionItem.style.background = colors.bg.replace('0.06', '0.15');
+            sessionItem.style.borderLeftColor = colors.main;
+            sessionItem.style.borderLeftWidth = '4px';
 
-            // Highlight the connector lines
+            // Highlight the connector lines with glow
             const lines = sessionItem.querySelectorAll('.genie-connector > div');
             lines.forEach(line => {
                 line.style.opacity = '1';
+                line.style.filter = `drop-shadow(0 0 3px ${colors.main})`;
             });
 
-            // Subtle highlight of parent
+            // Subtle highlight of parent with matching color
             const parentItem = document.getElementById(`session-${genieParentSessionId}`);
             if (parentItem) {
-                parentItem.style.boxShadow = '0 0 0 2px rgba(241, 95, 34, 0.2)';
+                parentItem.style.boxShadow = `0 0 0 2px ${colors.main}40`;
+                parentItem.style.transform = 'scale(1.01)';
             }
         });
 
         sessionItem.addEventListener('mouseleave', () => {
-            sessionItem.style.background = 'rgba(241, 95, 34, 0.05)';
-            sessionItem.style.borderLeftColor = 'rgba(241, 95, 34, 0.3)';
+            // Reset to normal state
+            sessionItem.style.background = colors.bg;
+            sessionItem.style.borderLeftColor = colors.border;
+            sessionItem.style.borderLeftWidth = '3px';
 
             const lines = sessionItem.querySelectorAll('.genie-connector > div');
             lines.forEach(line => {
                 line.style.opacity = '';
+                line.style.filter = '';
             });
 
             const parentItem = document.getElementById(`session-${genieParentSessionId}`);
             if (parentItem) {
                 parentItem.style.boxShadow = '';
+                parentItem.style.transform = '';
             }
         });
 
@@ -2890,53 +2959,76 @@ export function addSessionToList(session, isActive = false) {
         nameContainer.appendChild(utilityBadge);
     }
 
-    // Add Genie slave indicator badge with enhanced styling
+    // Add Genie child indicator badge with world-class hierarchical visualization
     if (isGenieSlave) {
-        const genieBadge = document.createElement('span');
-        genieBadge.className = 'genie-slave-badge inline-flex items-center gap-1.5 mt-1 text-xs';
-        genieBadge.style.cssText = `
-            background: linear-gradient(135deg, rgba(241, 95, 34, 0.15), rgba(241, 95, 34, 0.05));
-            padding: 3px 8px;
-            border-radius: 6px;
-            border: 1px solid rgba(241, 95, 34, 0.3);
-            transition: all 0.2s ease;
+        // Get nesting metadata (nesting_level, slave_profile_tag)
+        const nestingLevel = genieMetadata.nesting_level || 0;
+        const childProfileTag = genieMetadata.slave_profile_tag || session.profile_tag || 'UNKNOWN';
+        const maxNestingDepth = 3; // TODO: Get from global settings
+
+        // Determine if this child is itself a Genie (nested Genie)
+        const isNestedGenie = session.profile_type === 'genie';
+
+        // Calculate depth warning level
+        const depthWarningLevel = nestingLevel >= maxNestingDepth - 1 ? 'critical' :
+                                   nestingLevel >= maxNestingDepth - 2 ? 'warning' : 'normal';
+
+        const genieBadge = document.createElement('div');
+        genieBadge.className = 'genie-child-badge-container mt-0.5';
+
+        // Ultra-compact industrial design for narrow sidebar
+        const badgeHTML = `
+            <div class="inline-flex items-center gap-1 text-xs" style="
+                padding: 2px 6px;
+                border-radius: 4px;
+                background: ${depthWarningLevel === 'critical' ? 'rgba(239, 68, 68, 0.08)' :
+                             depthWarningLevel === 'warning' ? 'rgba(245, 158, 11, 0.08)' :
+                             'rgba(241, 95, 34, 0.06)'};
+                border-left: 2px solid ${depthWarningLevel === 'critical' ? '#ef4444' :
+                                         depthWarningLevel === 'warning' ? '#f59e0b' :
+                                         'rgba(241, 95, 34, 0.4)'};
+            ">
+                <!-- Tree connector (minimal) -->
+                <span style="color: rgba(148, 163, 184, 0.4); font-size: 10px; line-height: 1;">├</span>
+
+                <!-- Nesting level badge (ultra-compact) -->
+                <span style="
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 0 3px;
+                    background: ${depthWarningLevel === 'critical' ? 'rgba(239, 68, 68, 0.12)' :
+                                 depthWarningLevel === 'warning' ? 'rgba(245, 158, 11, 0.12)' :
+                                 'rgba(100, 116, 139, 0.12)'};
+                    border-radius: 2px;
+                    color: ${depthWarningLevel === 'critical' ? '#ef4444' :
+                             depthWarningLevel === 'warning' ? '#f59e0b' :
+                             '#94a3b8'};
+                    font-weight: 600;
+                    font-size: 9px;
+                    font-family: monospace;
+                    line-height: 1.3;
+                ">L${nestingLevel}</span>
+
+                <!-- Profile tag (compact) -->
+                <span style="
+                    color: ${isNestedGenie ? 'rgba(168, 85, 247, 0.85)' : 'rgba(241, 95, 34, 0.85)'};
+                    font-weight: 600;
+                    font-size: 10px;
+                    font-family: monospace;
+                ">@${childProfileTag}</span>
+
+                <!-- Nested Genie indicator (minimal icon) -->
+                ${isNestedGenie ? `<span style="color: rgba(168, 85, 247, 0.6); font-size: 10px; line-height: 1;">⚙</span>` : ''}
+            </div>
         `;
 
-        // Add hover effect
-        genieBadge.addEventListener('mouseenter', () => {
-            genieBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.25), rgba(241, 95, 34, 0.1))';
-            genieBadge.style.borderColor = 'rgba(241, 95, 34, 0.5)';
-        });
-        genieBadge.addEventListener('mouseleave', () => {
-            genieBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.15), rgba(241, 95, 34, 0.05))';
-            genieBadge.style.borderColor = 'rgba(241, 95, 34, 0.3)';
-        });
+        genieBadge.innerHTML = badgeHTML;
 
-        // Icon with glow effect
-        const icon = document.createElement('span');
-        icon.style.cssText = `
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            background: linear-gradient(135deg, #F15F22, #FF8C00);
-            border-radius: 4px;
-            color: white;
-            font-weight: bold;
-            font-size: 10px;
-            box-shadow: 0 0 8px rgba(241, 95, 34, 0.4);
-        `;
-        icon.textContent = 'G';
-        genieBadge.appendChild(icon);
+        const tooltip = isNestedGenie ?
+            `Nested Genie L${nestingLevel} - @${childProfileTag} can coordinate other profiles` :
+            `Child L${nestingLevel} - spawned using @${childProfileTag}`;
 
-        // Label
-        const label = document.createElement('span');
-        label.style.cssText = 'color: #F15F22; font-weight: 500;';
-        label.textContent = 'Child';
-        genieBadge.appendChild(label);
-
-        genieBadge.title = 'Spawned by Genie coordinator';
+        genieBadge.title = tooltip;
 
         // Add click handler to navigate to parent session with enhanced visual
         if (genieParentSessionId) {

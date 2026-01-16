@@ -7261,9 +7261,9 @@ async def get_sessions_list():
         
         sessions = []
         
-        # Load all sessions from determined directories
+        # Load all sessions from determined directories (recursively for nested Genie sessions)
         for session_dir in scan_dirs:
-            for session_file in session_dir.glob('*.json'):
+            for session_file in session_dir.glob('**/*.json'):
                 try:
                     with open(session_file, 'r', encoding='utf-8') as f:
                         session_data = json.load(f)
@@ -7277,6 +7277,15 @@ async def get_sessions_list():
                     input_tokens = session_data.get('input_tokens', 0)
                     output_tokens = session_data.get('output_tokens', 0)
                     
+                    # Enrich genie_metadata with nesting_level and slave_profile_tag from database
+                    genie_metadata = session_data.get("genie_metadata", {})
+                    if genie_metadata.get("is_genie_slave"):
+                        from trusted_data_agent.core.session_manager import get_genie_parent_session
+                        parent_link = await get_genie_parent_session(session_id, user_uuid)
+                        if parent_link:
+                            genie_metadata["nesting_level"] = parent_link.get("nesting_level", 0)
+                            genie_metadata["slave_profile_tag"] = parent_link.get("slave_profile_tag")
+
                     # Analyze workflow
                     workflow_history = session_data.get('last_turn_data', {}).get('workflow_history', [])
                     turn_count = len([t for t in workflow_history if t.get('isValid', True)])
@@ -7371,7 +7380,7 @@ async def get_sessions_list():
                         "profile_id": session_data.get("profile_id"),
                         "profile_tag": session_data.get("profile_tag"),
                         "profile_type": session_data.get("profile_type"),
-                        "genie_metadata": session_data.get("genie_metadata", {}),
+                        "genie_metadata": genie_metadata,  # Use enriched version
                         "turn_count": turn_count,
                         "total_tokens": input_tokens + output_tokens,
                         "status": status,
@@ -7389,20 +7398,85 @@ async def get_sessions_list():
                 except Exception as e:
                     app_logger.warning(f"Error processing session {session_file.name}: {e}")
                     continue
-        
-        # Sort sessions
+
+        # Build hierarchical structure (nested Genie sessions appear after their parents)
+        session_by_id = {s.get("id"): s for s in sessions}
+
+        # Separate parent sessions from child sessions
+        parent_sessions = []
+        slave_sessions_by_parent = {}  # parent_id -> list of children
+
+        app_logger.info(f"[REST API Session Hierarchy] Processing {len(sessions)} total sessions")
+        for session in sessions:
+            genie_metadata = session.get("genie_metadata", {})
+            parent_id = genie_metadata.get("parent_session_id")
+            session_id = session.get("id")
+            nesting_level = genie_metadata.get("nesting_level", 0)
+
+            if genie_metadata.get("is_genie_slave") and parent_id:
+                # This is a child session
+                if parent_id not in slave_sessions_by_parent:
+                    slave_sessions_by_parent[parent_id] = []
+                slave_sessions_by_parent[parent_id].append(session)
+                app_logger.info(f"[REST API Session Hierarchy] Child: {session_id} (L{nesting_level}) -> parent: {parent_id}")
+            else:
+                # This is a parent/normal session
+                parent_sessions.append(session)
+                app_logger.info(f"[REST API Session Hierarchy] Parent/Normal: {session_id}")
+
+        # Sort parent sessions ONLY (not children - they stay with parents)
         if sort_by == 'recent':
-            sessions.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
+            parent_sessions.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
         elif sort_by == 'oldest':
-            sessions.sort(key=lambda x: x.get('created_at', ''))
+            parent_sessions.sort(key=lambda x: x.get('created_at', ''))
         elif sort_by == 'tokens':
-            sessions.sort(key=lambda x: x.get('total_tokens', 0), reverse=True)
+            parent_sessions.sort(key=lambda x: x.get('total_tokens', 0), reverse=True)
         elif sort_by == 'turns':
-            sessions.sort(key=lambda x: x.get('turn_count', 0), reverse=True)
-        
-        # Paginate
-        total = len(sessions)
-        sessions_page = sessions[offset:offset + limit]
+            parent_sessions.sort(key=lambda x: x.get('turn_count', 0), reverse=True)
+
+        # Sort child sessions by sequence number (if available) or created_at
+        for parent_id, slaves in slave_sessions_by_parent.items():
+            slaves.sort(key=lambda s: s.get("genie_metadata", {}).get("slave_sequence_number", 0))
+
+        # Build final list with children inserted after their parents (recursively for nested Genies)
+        def add_session_with_children(session_id, sessions_dict, added_ids, depth=0):
+            """Recursively add a session and all its children (nested hierarchy support)"""
+            indent = "  " * depth
+
+            if session_id in added_ids:
+                app_logger.info(f"{indent}[REST API Recursive Build] Skipping {session_id} (already added)")
+                return  # Already added (prevent duplicates)
+
+            if session_id not in sessions_dict:
+                app_logger.warning(f"{indent}[REST API Recursive Build] Session {session_id} not found in sessions_dict")
+                return  # Session not found
+
+            session = sessions_dict[session_id]
+            final_sessions.append(session)
+            added_ids.add(session_id)
+            app_logger.info(f"{indent}[REST API Recursive Build] Added session {session_id} (depth={depth})")
+
+            # Recursively add children
+            if session_id in slave_sessions_by_parent:
+                children = slave_sessions_by_parent[session_id]
+                app_logger.info(f"{indent}[REST API Recursive Build] Session {session_id} has {len(children)} children")
+                for child in children:
+                    add_session_with_children(child.get("id"), sessions_dict, added_ids, depth + 1)
+            else:
+                app_logger.info(f"{indent}[REST API Recursive Build] Session {session_id} has no children")
+
+        final_sessions = []
+        added_ids = set()
+
+        # Add all parent sessions with their children recursively
+        for parent in parent_sessions:
+            add_session_with_children(parent.get("id"), session_by_id, added_ids)
+
+        app_logger.info(f"[REST API Session Hierarchy] Final session list: {len(final_sessions)} sessions (from {len(sessions)} total)")
+
+        # Paginate the final hierarchical list
+        total = len(final_sessions)
+        sessions_page = final_sessions[offset:offset + limit]
         
         return jsonify({
             "sessions": sessions_page,
@@ -8980,13 +9054,18 @@ async def get_genie_parent_session(session_id: str):
 
         parent_session_id = genie_metadata.get("parent_session_id")
         parent_session = None
+        parent_link_data = None
 
         if parent_session_id:
             parent_session = await session_manager.get_session(user_uuid, parent_session_id)
+            # Get nesting level and profile tag from genie_session_links
+            parent_link_data = await session_manager.get_genie_parent_session(session_id, user_uuid)
 
         return jsonify({
             "is_genie_slave": True,
             "parent_session_id": parent_session_id,
+            "nesting_level": parent_link_data.get("nesting_level", 0) if parent_link_data else 0,
+            "slave_profile_tag": parent_link_data.get("slave_profile_tag") if parent_link_data else None,
             "parent_session": {
                 "id": parent_session.get("id") if parent_session else None,
                 "name": parent_session.get("name") if parent_session else None,
