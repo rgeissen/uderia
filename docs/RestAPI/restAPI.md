@@ -1364,7 +1364,7 @@ Retrieve all profile configurations for the authenticated user.
       "colorSecondary": "#FCD34D",
       "llmConfigurationId": "llm-config-789",
       "genieConfig": {
-        "slaveProfiles": ["profile-550e8400-e29b", "profile-rag-002"]
+        "slaveProfiles": ["profile-550e8400-e29b", "profile-rag-002"]  // Field name preserved for API compatibility
       },
       "is_default": false,
       "active_for_consumption": false,
@@ -1470,7 +1470,7 @@ Create a new profile configuration.
   "profile_type": "genie",
   "llmConfigurationId": "llm-config-789",
   "genieConfig": {
-    "slaveProfiles": [
+    "slaveProfiles": [  // Field name preserved for API compatibility
       "profile-teradata-001",
       "profile-postgres-002",
       "profile-rag-003"
@@ -1679,7 +1679,7 @@ Get filtered tools, prompts, and resources for a specific profile. Used for real
   "prompts": {},
   "profile_type": "genie",
   "profile_tag": "GENIE",
-  "slave_profiles": [
+  "slave_profiles": [  // Field name preserved for API compatibility
     {
       "id": "profile-teradata-001",
       "name": "Teradata Agent",
@@ -1694,7 +1694,7 @@ Get filtered tools, prompts, and resources for a specific profile. Used for real
 }
 ```
 
-**Note:** Genie profiles don't have direct tools/prompts - they coordinate slave profiles. The response includes information about coordinated profiles instead.
+**Note:** Genie profiles don't have direct tools/prompts - they coordinate child profiles. The response includes information about coordinated profiles instead.
 
 ---
 
@@ -1820,7 +1820,7 @@ curl -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
 - Temporary override for single query only
 - Subsequent queries return to default profile
 - Useful for multi-profile workflows
-- Genie profiles automatically coordinate multiple slave profiles
+- Genie profiles automatically coordinate multiple child profiles
 
 ---
 
@@ -1829,18 +1829,18 @@ curl -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
 Genie profiles provide multi-agent coordination capabilities using LangChain ReAct agents:
 
 **Key Features:**
-- **Intelligent Routing**: Automatically routes queries to appropriate slave profiles
+- **Intelligent Routing**: Automatically routes queries to appropriate child profiles
 - **Multi-Profile Consultation**: Can invoke multiple profiles for comprehensive answers
 - **Synthesis**: Combines results from multiple profiles into coherent response
-- **Session Tracking**: Creates slave sessions linked to master session
-- **Visual Hierarchy**: Master/slave session relationships visible in UI
+- **Session Tracking**: Creates child sessions linked to parent session
+- **Visual Hierarchy**: Parent/child session relationships visible in UI
 
 **Genie Profile Structure:**
 ```json
 {
   "profile_type": "genie",
   "genieConfig": {
-    "slaveProfiles": [
+    "slaveProfiles": [  // Field name preserved for API compatibility
       "profile-teradata-001",    // SQL queries
       "profile-rag-002",          // Knowledge base
       "profile-analytics-003"     // Analytics tools
@@ -1852,7 +1852,7 @@ Genie profiles provide multi-agent coordination capabilities using LangChain ReA
 **Genie Execution Flow:**
 1. User submits query to Genie profile
 2. Genie coordinator analyzes query intent
-3. Routes to appropriate slave profile(s)
+3. Routes to appropriate child profile(s)
 4. Collects responses from invoked profiles
 5. Synthesizes final response
 6. Returns comprehensive answer to user
@@ -1862,16 +1862,16 @@ During Genie execution, the following SSE events are emitted:
 - `genie_coordination_start` - Coordination begins
 - `genie_llm_step` - LLM processing step
 - `genie_routing_decision` - Profiles selected
-- `genie_slave_invoked` - Slave profile called
-- `genie_slave_completed` - Slave response received
+- `genie_slave_invoked` - Child profile called (event name preserved for API compatibility)
+- `genie_slave_completed` - Child response received (event name preserved for API compatibility)
 - `genie_synthesis_start` - Response synthesis begins
 - `genie_coordination_complete` - Coordination complete
 
 **Database Schema:**
 Genie coordination creates session links tracked in `genie_session_links` table:
-- `parent_session_id` - Master Genie session
-- `slave_session_id` - Slave profile session
-- `slave_profile_id` - Profile used for slave
+- `parent_session_id` - Parent Genie session
+- `slave_session_id` - Child profile session (column name preserved for API compatibility)
+- `slave_profile_id` - Profile used for child (column name preserved for API compatibility)
 - `slave_profile_tag` - Profile tag (e.g., @TDAT)
 - `execution_order` - Order of invocation
 

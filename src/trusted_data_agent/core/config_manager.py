@@ -1148,8 +1148,24 @@ class ConfigManager:
                     slave = profile_map.get(slave_pid)
                     if not slave:
                         return False, f"Slave profile {slave_pid} not found"
-                    if slave.get("profile_type") == "genie":
-                        return False, "Genie profiles cannot have other genie profiles as slaves"
+                    # NOTE: Genie profiles CAN now have other Genie profiles as slaves
+                    # Circular dependencies and depth limits are checked below
+
+                # Get max nesting depth from global settings
+                global_settings = self.get_genie_global_settings()
+                max_depth = int(global_settings.get('maxNestingDepth', {}).get('value', 3))
+
+                # Check for circular dependencies and depth limits
+                has_error, error_msg, detected_depth = self._detect_circular_genie_dependency(
+                    profile_id=current_profile_id,
+                    slave_profiles=slave_profiles,
+                    user_uuid=user_uuid,
+                    depth=0,
+                    max_depth=max_depth
+                )
+
+                if has_error:
+                    return False, error_msg
 
         elif profile_type == "llm_only":
             # llm_only profiles have optional capabilities via flags
@@ -1165,6 +1181,100 @@ class ConfigManager:
                     return False, "Conversation profiles with MCP Tools enabled require an MCP server configuration"
 
         return True, ""
+
+    def _detect_circular_genie_dependency(
+        self,
+        profile_id: str,
+        slave_profiles: List[str],
+        user_uuid: str,
+        visited_path: Optional[set] = None,
+        depth: int = 0,
+        max_depth: int = 3
+    ) -> tuple[bool, str, int]:
+        """
+        Detect circular dependencies in Genie slave profiles using DFS with path tracking.
+
+        This method prevents:
+        1. Circular dependencies (A → B → A)
+        2. Excessive nesting depth (A → B → C → D when max is 3)
+
+        Args:
+            profile_id: Current profile being validated
+            slave_profiles: List of slave profile IDs for current profile
+            user_uuid: User UUID for profile lookup
+            visited_path: Set of profile IDs in current traversal path (cycle detection)
+            depth: Current nesting depth (0 = top level)
+            max_depth: Maximum allowed nesting depth
+
+        Returns:
+            Tuple of (has_error: bool, error_message: str, max_depth_found: int)
+            - (False, "", depth) if valid
+            - (True, "error message", depth) if circular or too deep
+
+        Algorithm:
+            1. Initialize visited_path if first call
+            2. Check max depth limit
+            3. For each slave profile:
+               a. Check if it's in visited_path (circular dependency)
+               b. If slave is Genie type, recursively check its slaves
+               c. Track maximum depth encountered
+            4. Return result
+        """
+        if visited_path is None:
+            visited_path = set()
+
+        # Check depth limit
+        if depth > max_depth:
+            return True, f"Genie nesting exceeds maximum depth of {max_depth} levels", depth
+
+        # Add current profile to path
+        visited_path.add(profile_id)
+
+        # Get all profiles for lookup
+        all_profiles = self.get_profiles(user_uuid)
+        profile_map = {p.get("id"): p for p in all_profiles}
+
+        max_depth_encountered = depth
+
+        # Check each slave
+        for slave_id in slave_profiles:
+            # Check for circular reference
+            if slave_id in visited_path:
+                # Build path string for error message
+                path_list = list(visited_path) + [slave_id]
+                path_tags = []
+                for pid in path_list:
+                    p = profile_map.get(pid)
+                    if p:
+                        path_tags.append(f"@{p.get('tag', pid)}")
+                cycle_path = " → ".join(path_tags)
+                return True, f"Circular dependency detected: {cycle_path}", depth
+
+            slave_profile = profile_map.get(slave_id)
+            if not slave_profile:
+                continue  # Skip missing profiles (caught by other validation)
+
+            # If slave is also a Genie, recursively check
+            if slave_profile.get("profile_type") == "genie":
+                slave_genie_config = slave_profile.get("genieConfig", {})
+                nested_slaves = slave_genie_config.get("slaveProfiles", [])
+
+                # Recursively check this Genie's slaves
+                has_error, error_msg, nested_depth = self._detect_circular_genie_dependency(
+                    profile_id=slave_id,
+                    slave_profiles=nested_slaves,
+                    user_uuid=user_uuid,
+                    visited_path=visited_path.copy(),  # Important: copy to isolate branches
+                    depth=depth + 1,
+                    max_depth=max_depth
+                )
+
+                if has_error:
+                    return True, error_msg, nested_depth
+
+                max_depth_encountered = max(max_depth_encountered, nested_depth)
+
+        return False, "", max_depth_encountered
 
     def get_default_profile_id(self, user_uuid: Optional[str] = None) -> Optional[str]:
         """

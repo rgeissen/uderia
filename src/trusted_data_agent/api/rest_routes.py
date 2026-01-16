@@ -2160,16 +2160,26 @@ async def create_session():
 
         llm_instance = APP_STATE.get("llm")
 
-        # Determine sequence number for genie slave sessions
+        # Determine sequence number AND nesting level for genie slave sessions
         genie_sequence_number = None
+        genie_nesting_level = 0
+
         if genie_parent_session_id:
             # Get current count of slave sessions for this parent
             existing_slaves = await session_manager.get_genie_slave_sessions(genie_parent_session_id, user_uuid)
             genie_sequence_number = len(existing_slaves) + 1
 
+            # Calculate nesting level by checking parent's nesting level
+            parent_link = await session_manager.get_genie_parent_session(genie_parent_session_id, user_uuid)
+            if parent_link:
+                genie_nesting_level = parent_link.get('nesting_level', 0) + 1
+            else:
+                # Parent has no parent, so it's level 0, this slave is level 1
+                genie_nesting_level = 1
+
         # Create session with the profile's context
         is_genie_slave = genie_parent_session_id is not None
-        app_logger.info(f"REST API: Creating session with profile_id={profile_id_to_use}, profile_tag={target_profile.get('tag')}, is_genie_slave={is_genie_slave}")
+        app_logger.info(f"REST API: Creating session with profile_id={profile_id_to_use}, profile_tag={target_profile.get('tag')}, is_genie_child={is_genie_slave}")
         session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=provider,
@@ -2191,7 +2201,8 @@ async def create_session():
                 slave_profile_id=genie_slave_profile_id,
                 slave_profile_tag=target_profile.get("tag"),
                 user_uuid=user_uuid,
-                execution_order=genie_sequence_number or 0
+                execution_order=genie_sequence_number or 0,
+                nesting_level=genie_nesting_level
             )
 
         # Retrieve the newly created session's full data
@@ -8683,10 +8694,10 @@ async def execute_genie_query(session_id: str):
             if slave_profile:
                 slave_profiles.append(slave_profile)
             else:
-                app_logger.warning(f"Genie profile {profile_id} references missing slave profile {pid}")
+                app_logger.warning(f"Genie profile {profile_id} references missing child profile {pid}")
 
         if not slave_profiles:
-            return jsonify({"error": "No valid slave profiles found for this genie."}), 400
+            return jsonify({"error": "No valid child profiles found for this genie."}), 400
 
         # Get LLM configuration for coordinator
         llm_config_id = profile.get("llmConfigurationId")
@@ -8764,16 +8775,16 @@ async def execute_genie_query(session_id: str):
                     event_callback=genie_event_handler
                 )
 
-                # Load existing slave sessions to preserve context across multiple queries
+                # Load existing child sessions to preserve context across multiple queries
                 existing_slaves = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
                 if existing_slaves:
                     coordinator.load_existing_slave_sessions(existing_slaves)
-                    app_logger.info(f"Loaded {len(existing_slaves)} existing slave sessions for Genie session {session_id}")
+                    app_logger.info(f"Loaded {len(existing_slaves)} existing child sessions for Genie session {session_id}")
 
                 result = await coordinator.execute(query)
 
                 # --- SESSION LOGGING: Log the Genie conversation to session files ---
-                # This ensures the master session has a proper conversation history
+                # This ensures the parent session has a proper conversation history
                 try:
                     profile_tag = profile.get('tag', 'GENIE')
 
@@ -8930,8 +8941,8 @@ async def get_genie_slave_sessions(session_id: str):
         }), 200
 
     except Exception as e:
-        app_logger.error(f"Failed to get slave sessions for {session_id}: {e}", exc_info=True)
-        return jsonify({"error": "Failed to retrieve slave sessions."}), 500
+        app_logger.error(f"Failed to get child sessions for {session_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to retrieve child sessions."}), 500
 
 
 @rest_api_bp.route("/v1/sessions/<session_id>/genie-parent", methods=["GET"])

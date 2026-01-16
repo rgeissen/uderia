@@ -2,9 +2,9 @@
 -- Uderia Prompt Management System - Global Settings
 -- ============================================================================
 -- Description: Schema for global settings with admin locks (three-tier configuration)
--- Version: 1.1
+-- Version: 1.2
 -- Created: 2026-01-15
--- Updated: 2026-01-15 - Added knowledge settings
+-- Updated: 2026-01-16 - Added maxNestingDepth for nested Genie coordination
 -- Note: Enables three-tier configuration: Global defaults -> Profile overrides -> Admin locks
 -- ============================================================================
 
@@ -17,7 +17,7 @@
 --   - Enforced globally (if is_locked = TRUE)
 --
 -- Setting key prefixes:
---   - temperature, queryTimeout, maxIterations: Genie coordination
+--   - temperature, queryTimeout, maxIterations, maxNestingDepth: Genie coordination
 --   - knowledge_*: Knowledge repository settings
 -- ============================================================================
 
@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS genie_global_settings (
 INSERT OR IGNORE INTO genie_global_settings (setting_key, setting_value, is_locked) VALUES
     ('temperature', '0.7', 0),
     ('queryTimeout', '300', 0),
-    ('maxIterations', '10', 0);
+    ('maxIterations', '10', 0),
+    ('maxNestingDepth', '3', 0);
 
 -- Default values for Knowledge settings
 INSERT OR IGNORE INTO genie_global_settings (setting_key, setting_value, is_locked) VALUES

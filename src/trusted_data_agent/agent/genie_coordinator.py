@@ -3,19 +3,19 @@ Genie Profile Coordinator
 ==========================
 
 Provides LangChain-based coordination for Genie profiles.
-Genie profiles orchestrate multiple slave profiles (sessions) to answer complex queries.
+Genie profiles orchestrate multiple child profiles (sessions) to answer complex queries.
 
 Architecture:
 - GenieCoordinator: Main class that builds and executes a LangChain agent
-- SlaveSessionTool: LangChain tool wrapper for slave session REST calls
-- Session context is reused when the same slave profile is called multiple times
+- SlaveSessionTool: LangChain tool wrapper for child session REST calls
+- Session context is reused when the same child profile is called multiple times
 
 Usage:
     from trusted_data_agent.agent.genie_coordinator import GenieCoordinator
 
     coordinator = GenieCoordinator(
         genie_profile=profile,
-        slave_profiles=slave_profiles,
+        slave_profiles=slave_profiles,  # Variable name preserved for API compatibility
         user_uuid=user_uuid,
         parent_session_id=session_id,
         auth_token=token,
@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level session cache (shared across all SlaveSessionTool instances)
 # Using module-level dict avoids Pydantic treating it as a private attribute
+# Note: Variable name 'slave_session_cache' preserved for API compatibility
 _slave_session_cache: Dict[str, str] = {}
 
 # Module-level event callbacks (keyed by parent_session_id)
@@ -51,21 +52,24 @@ _event_callbacks: Dict[str, Callable[[str, Dict], None]] = {}
 
 class SlaveSessionTool(BaseTool):
     """
-    LangChain tool that wraps REST calls to a slave session.
+    LangChain tool that wraps REST calls to a child session.
 
-    Each slave profile becomes a separate tool instance. When invoked,
-    it creates or reuses a slave session and executes the query through
+    Each child profile becomes a separate tool instance. When invoked,
+    it creates or reuses a child session and executes the query through
     the existing Uderia REST API.
+
+    Note: Class name 'SlaveSessionTool' preserved for API compatibility.
     """
     name: str = Field(description="Tool name like invoke_CHAT")
     description: str = Field(description="Description of what this profile does")
-    profile_id: str = Field(description="Profile ID for this slave")
+    profile_id: str = Field(description="Profile ID for this child profile")
     profile_tag: str = Field(description="Profile tag (e.g., CHAT, RAG)")
     user_uuid: str = Field(description="User UUID who owns the sessions")
     parent_session_id: str = Field(description="Parent Genie session ID")
     base_url: str = Field(default="http://localhost:5050", description="API base URL")
     auth_token: str = Field(description="Authentication token for API calls")
     query_timeout: float = Field(default=300.0, description="Timeout for query execution in seconds")
+    current_nesting_level: int = Field(default=0, description="Current nesting depth in Genie hierarchy")
 
     class Config:
         arbitrary_types_allowed = True
@@ -84,15 +88,49 @@ class SlaveSessionTool(BaseTool):
         raise NotImplementedError("Use async _arun instead")
 
     async def _arun(self, query: str) -> str:
-        """Execute query via slave session with context reuse."""
+        """Execute query via child session with context reuse."""
         start_time = time.time()
 
-        # Emit slave invoked event with full query for UI display
+        # Check if child is a Genie profile (nested coordination)
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        slave_profile = config_manager.get_profile(self.profile_id, self.user_uuid)
+        is_nested_genie = slave_profile and slave_profile.get("profile_type") == "genie"
+
+        if is_nested_genie:
+            # Verify we won't exceed depth limit
+            global_settings = config_manager.get_genie_global_settings()
+            max_depth = int(global_settings.get('maxNestingDepth', {}).get('value', 3))
+            next_level = self.current_nesting_level + 1
+
+            if next_level >= max_depth:
+                error_msg = f"Cannot invoke nested Genie @{self.profile_tag} - would exceed max depth ({max_depth})"
+                logger.warning(error_msg)
+
+                # Emit completion event with error
+                self._emit_event("genie_slave_completed", {
+                    "profile_tag": self.profile_tag,
+                    "success": False,
+                    "error": error_msg,
+                    "nesting_level": next_level,
+                    "max_depth": max_depth,
+                    "session_id": self.parent_session_id
+                })
+
+                return f"Error: {error_msg}"
+
+            # Log nested Genie invocation
+            logger.info(f"🔮 Invoking nested Genie @{self.profile_tag} at level {next_level}")
+
+        # Emit child invoked event with full query for UI display
         self._emit_event("genie_slave_invoked", {
             "profile_tag": self.profile_tag,
             "profile_id": self.profile_id,
             "query": query or "",  # Full query for UI display
             "query_preview": query[:100] if query else "",  # Short preview for logs
+            "nesting_level": self.current_nesting_level,
+            "is_nested_genie": is_nested_genie,
             "session_id": self.parent_session_id
         })
 
@@ -139,14 +177,14 @@ class SlaveSessionTool(BaseTool):
             return f"Error invoking @{self.profile_tag}: {str(e)}"
 
     async def _get_or_create_slave_session(self) -> str:
-        """Reuse existing session or create new one."""
+        """Reuse existing child session or create new one."""
         cache_key = f"{self.parent_session_id}:{self.profile_id}"
 
         if cache_key in _slave_session_cache:
-            logger.debug(f"Reusing existing slave session for @{self.profile_tag}")
+            logger.debug(f"Reusing existing child session for @{self.profile_tag}")
             return _slave_session_cache[cache_key]
 
-        logger.info(f"Creating new slave session for @{self.profile_tag}")
+        logger.info(f"Creating new child session for @{self.profile_tag}")
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
@@ -160,7 +198,7 @@ class SlaveSessionTool(BaseTool):
             )
 
             if response.status_code != 201:
-                raise Exception(f"Failed to create slave session: {response.status_code} - {response.text}")
+                raise Exception(f"Failed to create child session: {response.status_code} - {response.text}")
 
             data = response.json()
             session_id = data.get("session_id")
@@ -169,7 +207,7 @@ class SlaveSessionTool(BaseTool):
                 raise Exception(f"No session_id in response: {data}")
 
             _slave_session_cache[cache_key] = session_id
-            logger.info(f"Created slave session {session_id} for @{self.profile_tag}")
+            logger.info(f"Created child session {session_id} for @{self.profile_tag}")
 
             return session_id
 
@@ -240,14 +278,16 @@ class SlaveSessionTool(BaseTool):
 
 class GenieCoordinator:
     """
-    Builds and executes a LangChain agent that coordinates slave sessions.
+    Builds and executes a LangChain agent that coordinates child sessions.
 
     The coordinator:
-    1. Creates tools from slave profiles
+    1. Creates tools from child profiles
     2. Loads the coordinator system prompt (with profile-level overrides)
     3. Builds a LangChain agent executor
     4. Executes queries and synthesizes results
     5. Emits real-time events for UI feedback (if event_callback provided)
+
+    Note: Parameter names like 'slave_profiles' preserved for API compatibility.
     """
 
     def __init__(
@@ -260,14 +300,15 @@ class GenieCoordinator:
         llm_instance: Any,  # LangChain-compatible LLM
         base_url: str = "http://localhost:5050",
         event_callback: Optional[Callable[[str, Dict], None]] = None,
-        genie_config: Optional[Dict[str, Any]] = None
+        genie_config: Optional[Dict[str, Any]] = None,
+        current_nesting_level: int = 0
     ):
         """
         Initialize the Genie Coordinator.
 
         Args:
             genie_profile: The Genie profile configuration
-            slave_profiles: List of slave profile configurations
+            slave_profiles: List of child profile configurations (parameter name preserved for API compatibility)
             user_uuid: User UUID who owns the sessions
             parent_session_id: The parent Genie session ID
             auth_token: Authentication token for REST API calls
@@ -279,6 +320,7 @@ class GenieCoordinator:
                          - temperature: LLM temperature (0.0-1.0)
                          - queryTimeout: Query timeout in seconds (60-900)
                          - maxIterations: Max agent iterations (1-25)
+            current_nesting_level: Current depth in nested Genie hierarchy (0 = top-level)
         """
         self.genie_profile = genie_profile
         self.slave_profiles = slave_profiles
@@ -288,11 +330,16 @@ class GenieCoordinator:
         self.llm_instance = llm_instance
         self.base_url = base_url
         self.event_callback = event_callback
+        self.current_nesting_level = current_nesting_level
 
         # Extract effective config values with defaults
         genie_config = genie_config or {}
         self.query_timeout = float(genie_config.get('queryTimeout', 300))
         self.max_iterations = int(genie_config.get('maxIterations', 10))
+
+        # Log nesting level for debugging
+        if current_nesting_level > 0:
+            logger.info(f"🔮 GenieCoordinator initialized at nesting level {current_nesting_level}")
 
         # Collect events during execution for plan reload
         self.collected_events = []
@@ -306,7 +353,7 @@ class GenieCoordinator:
         self.invoked_profiles = []
 
         # Register event callback for this parent session
-        # Wrap the callback to also collect events from slave tools
+        # Wrap the callback to also collect events from child tools
         if event_callback:
             def collecting_callback(event_type: str, payload: dict):
                 # Collect event for plan reload
@@ -343,7 +390,7 @@ class GenieCoordinator:
         self.tools = self._build_tools()
         self.agent_executor = self._build_agent()
 
-        logger.info(f"GenieCoordinator initialized with {len(self.tools)} slave tools")
+        logger.info(f"GenieCoordinator initialized with {len(self.tools)} child profile tools")
 
     def _emit_event(self, event_type: str, payload: dict):
         """Emit event via callback if configured. Events are collected via the registered callback."""
@@ -357,7 +404,7 @@ class GenieCoordinator:
                 logger.warning(f"GenieCoordinator event callback error: {e}")
 
     def _build_tools(self) -> List[SlaveSessionTool]:
-        """Create a LangChain tool for each slave profile."""
+        """Create a LangChain tool for each child profile."""
         tools = []
 
         for profile in self.slave_profiles:
@@ -379,7 +426,8 @@ class GenieCoordinator:
                 parent_session_id=self.parent_session_id,
                 base_url=self.base_url,
                 auth_token=self.auth_token,
-                query_timeout=self.query_timeout
+                query_timeout=self.query_timeout,
+                current_nesting_level=self.current_nesting_level
             )
 
             tools.append(tool)

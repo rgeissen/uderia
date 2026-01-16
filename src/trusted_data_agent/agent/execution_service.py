@@ -226,7 +226,8 @@ async def _run_genie_execution(
     event_handler,
     genie_profile: dict,
     task_id: str = None,
-    disabled_history: bool = False
+    disabled_history: bool = False,
+    current_nesting_level: int = 0
 ):
     """
     Execute a query using Genie coordination for SSE streaming.
@@ -235,6 +236,9 @@ async def _run_genie_execution(
     1. Building the GenieCoordinator with slave profiles
     2. Executing the coordination
     3. Streaming events back via SSE
+
+    Args:
+        current_nesting_level: Current depth in nested Genie hierarchy (0 = top-level)
     """
     from trusted_data_agent.core.config_manager import get_config_manager
     from trusted_data_agent.llm.langchain_adapter import create_langchain_llm
@@ -245,12 +249,24 @@ async def _run_genie_execution(
     profile_tag = genie_profile.get("tag", "GENIE")
 
     try:
+        # Check depth limit at runtime
+        global_settings = config_manager.get_genie_global_settings()
+        max_depth = int(global_settings.get('maxNestingDepth', {}).get('value', 3))
+
+        if current_nesting_level >= max_depth:
+            await event_handler({
+                "error": f"Maximum Genie nesting depth ({max_depth}) exceeded. Cannot execute nested Genie at level {current_nesting_level}."
+            }, "error")
+            app_logger.warning(f"Genie execution blocked: nesting level {current_nesting_level} >= max depth {max_depth}")
+            return None
+
         # Send initial coordination start event
         await event_handler({
             "message": f"🔮 Genie Coordinator activated ({profile_tag})",
             "profile_tag": profile_tag,
             "profile_type": "genie",
-            "session_id": session_id
+            "session_id": session_id,
+            "nesting_level": current_nesting_level
         }, "genie_start")
 
         # Validate genie configuration
@@ -270,11 +286,11 @@ async def _run_genie_execution(
             if slave_profile:
                 slave_profiles.append(slave_profile)
             else:
-                app_logger.warning(f"Genie profile {profile_id} references missing slave profile {pid}")
+                app_logger.warning(f"Genie profile {profile_id} references missing child profile {pid}")
 
         if not slave_profiles:
             await event_handler({
-                "error": "No valid slave profiles found for this genie."
+                "error": "No valid child profiles found for this genie."
             }, "error")
             return None
 
@@ -332,14 +348,15 @@ async def _run_genie_execution(
             llm_instance=llm_instance,
             base_url=base_url,
             event_callback=lambda t, p: asyncio.create_task(genie_sse_event_handler(t, p)),
-            genie_config=effective_genie_config
+            genie_config=effective_genie_config,
+            current_nesting_level=current_nesting_level
         )
 
-        # Load existing slave sessions to preserve context across multiple queries
+        # Load existing child sessions to preserve context across multiple queries
         existing_slaves = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
         if existing_slaves:
             coordinator.load_existing_slave_sessions(existing_slaves)
-            app_logger.info(f"Loaded {len(existing_slaves)} existing slave sessions for Genie session {session_id}")
+            app_logger.info(f"Loaded {len(existing_slaves)} existing child sessions for Genie session {session_id}")
 
         # Build conversation history from session's chat_object
         # This provides multi-turn context to the Genie coordinator

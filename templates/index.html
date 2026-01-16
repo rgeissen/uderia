@@ -3681,7 +3681,7 @@
                                                     </div>
                                                 </div>
                                                 <input type="number" id="genie-query-timeout" min="60" max="900" value="300" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
-                                                <p class="text-xs text-gray-500 mt-2">Maximum time for slave profile query execution (60-900s). Lock to enforce globally.</p>
+                                                <p class="text-xs text-gray-500 mt-2">Maximum time for child profile query execution (60-900s). Lock to enforce globally.</p>
                                             </div>
 
                                             <!-- Max Iterations -->
@@ -3695,6 +3695,19 @@
                                                 </div>
                                                 <input type="number" id="genie-max-iterations" min="1" max="25" value="10" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
                                                 <p class="text-xs text-gray-500 mt-2">Maximum agent reasoning loops before stopping (1-25). Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Max Nesting Depth -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="genie-max-nesting-depth" class="block text-sm font-medium text-gray-300">Max Nesting Depth</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="genie-max-nesting-depth-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <label for="genie-max-nesting-depth-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <input type="number" id="genie-max-nesting-depth" min="1" max="10" value="3" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">Maximum depth for nested Genie coordination (1-10). Controls how many levels deep Genies can coordinate other Genies. Lock to enforce globally.</p>
                                             </div>
 
                                         </div>
@@ -5668,17 +5681,17 @@
                     </div>
                 </div>
 
-                <!-- Genie Slave Profiles Section (only shown for genie profile type) -->
+                <!-- Genie Child Profiles Section (only shown for genie profile type) -->
                 <div id="genie-slave-profiles-section" class="bg-gradient-to-br from-amber-900/10 to-orange-900/10 rounded-xl p-6 border border-amber-700/20" style="display: none;">
                     <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
                         <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                         </svg>
-                        Available Slave Profiles
+                        Available Child Profiles
                     </h4>
                     <p class="text-xs text-gray-400 mb-4">Select profiles this Genie can coordinate. The coordinator will route questions to these profiles as needed.</p>
                     <div id="genie-slave-profiles-list" class="space-y-2 max-h-48 overflow-y-auto bg-gray-800/40 rounded-lg p-3 custom-scrollbar">
-                        <!-- Populated dynamically with checkboxes for each non-genie profile -->
+                        <!-- Populated dynamically with checkboxes for available profiles -->
                         <p class="text-gray-500 text-sm italic">Loading available profiles...</p>
                     </div>
                     <p class="text-xs text-gray-500 mt-2">Tip: Select at least two profiles with different capabilities for best coordination results.</p>
@@ -6056,7 +6069,7 @@
                                     </svg>
                                     <h4 class="text-sm font-bold text-white uppercase tracking-wide">Genie Coordinator Prompt</h4>
                                 </div>
-                                <p class="text-xs text-gray-400 mb-3">Configure the system prompt that guides how the Genie coordinates between slave profiles</p>
+                                <p class="text-xs text-gray-400 mb-3">Configure the system prompt that guides how the Genie coordinates between child profiles</p>
                                 <div id="profile-modal-genie-prompts" class="space-y-2"></div>
                             </div>
                         </div>

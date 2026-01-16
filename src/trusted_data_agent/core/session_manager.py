@@ -400,7 +400,7 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
             final_sessions.extend(slaves)
 
     session_summaries = final_sessions
-    app_logger.debug(f"Returning {len(session_summaries)} session summaries for user '{user_uuid}' (template sessions filtered out, slaves grouped with parents).")
+    app_logger.debug(f"Returning {len(session_summaries)} session summaries for user '{user_uuid}' (template sessions filtered out, children grouped with parents).")
     return session_summaries
 
 async def delete_session(user_uuid: str, session_id: str) -> bool:
@@ -1033,7 +1033,7 @@ async def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, cas
 
 # --- GENIE SESSION MANAGEMENT FUNCTIONS ---
 
-async def record_genie_session_link(parent_session_id: str, slave_session_id: str, slave_profile_id: str, slave_profile_tag: str, user_uuid: str, execution_order: int = 0) -> bool:
+async def record_genie_session_link(parent_session_id: str, slave_session_id: str, slave_profile_id: str, slave_profile_tag: str, user_uuid: str, execution_order: int = 0, nesting_level: int = 0) -> bool:
     """
     Record a link between a Genie parent session and a slave session.
 
@@ -1044,6 +1044,7 @@ async def record_genie_session_link(parent_session_id: str, slave_session_id: st
         slave_profile_tag: The profile tag (e.g., @CHAT, @RAG)
         user_uuid: The user who owns both sessions
         execution_order: The order in which the slave was invoked
+        nesting_level: Depth in nested Genie hierarchy (0 = direct slave, 1 = slave of slave, etc.)
 
     Returns:
         True if successful, False otherwise
@@ -1059,14 +1060,14 @@ async def record_genie_session_link(parent_session_id: str, slave_session_id: st
 
         cursor.execute("""
             INSERT OR REPLACE INTO genie_session_links
-            (parent_session_id, slave_session_id, slave_profile_id, slave_profile_tag, user_uuid, execution_order)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (parent_session_id, slave_session_id, slave_profile_id, slave_profile_tag, user_uuid, execution_order))
+            (parent_session_id, slave_session_id, slave_profile_id, slave_profile_tag, user_uuid, execution_order, nesting_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (parent_session_id, slave_session_id, slave_profile_id, slave_profile_tag, user_uuid, execution_order, nesting_level))
 
         conn.commit()
         conn.close()
 
-        app_logger.info(f"Recorded genie session link: {parent_session_id} -> {slave_session_id} (@{slave_profile_tag})")
+        app_logger.info(f"Recorded genie session link: {parent_session_id} -> child {slave_session_id} (@{slave_profile_tag})")
         return True
 
     except Exception as e:
@@ -1107,7 +1108,7 @@ async def get_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> li
         return [dict(row) for row in rows]
 
     except Exception as e:
-        app_logger.error(f"Failed to get genie slave sessions: {e}", exc_info=True)
+        app_logger.error(f"Failed to get genie child sessions: {e}", exc_info=True)
         return []
 
 
@@ -1170,7 +1171,7 @@ async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -
             slave_session_id = slave.get('slave_session_id')
             if slave_session_id:
                 await delete_session(user_uuid, slave_session_id)
-                app_logger.info(f"Deleted genie slave session: {slave_session_id}")
+                app_logger.info(f"Deleted genie child session: {slave_session_id}")
 
         # Remove links from database
         db_path = str(get_project_root() / "tda_auth.db")
@@ -1202,20 +1203,20 @@ async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -
         except Exception as cache_err:
             app_logger.warning(f"Failed to clear genie session cache: {cache_err}")
 
-        app_logger.info(f"Cleaned up {len(slaves)} genie slave sessions for parent {parent_session_id}")
+        app_logger.info(f"Cleaned up {len(slaves)} genie child sessions for parent {parent_session_id}")
         return True
 
     except Exception as e:
-        app_logger.error(f"Failed to cleanup genie slave sessions: {e}", exc_info=True)
+        app_logger.error(f"Failed to cleanup genie child sessions: {e}", exc_info=True)
         return False
 
 
 async def update_genie_slave_status(slave_session_id: str, user_uuid: str, status: str) -> bool:
     """
-    Update the status of a genie slave session link.
+    Update the status of a genie child session link.
 
     Args:
-        slave_session_id: The slave session ID
+        slave_session_id: The child session ID (parameter name preserved for API compatibility)
         user_uuid: The user who owns the sessions
         status: New status ('active', 'completed', 'failed')
 
@@ -1239,9 +1240,9 @@ async def update_genie_slave_status(slave_session_id: str, user_uuid: str, statu
         conn.commit()
         conn.close()
 
-        app_logger.debug(f"Updated genie slave session {slave_session_id} status to {status}")
+        app_logger.debug(f"Updated genie child session {slave_session_id} status to {status}")
         return True
 
     except Exception as e:
-        app_logger.error(f"Failed to update genie slave status: {e}", exc_info=True)
+        app_logger.error(f"Failed to update genie child status: {e}", exc_info=True)
         return False

@@ -1381,15 +1381,15 @@ async def purge_memory(current_user, session_id: str):
     success = await session_manager.purge_session_memory(user_uuid, session_id)
 
     if success:
-        # Also purge memory for any Genie slave sessions
+        # Also purge memory for any Genie child sessions
         slave_sessions = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
         if slave_sessions:
-            app_logger.info(f"Purging memory for {len(slave_sessions)} Genie slave sessions")
+            app_logger.info(f"Purging memory for {len(slave_sessions)} Genie child sessions")
             for slave in slave_sessions:
                 slave_id = slave.get('slave_session_id')
                 if slave_id:
                     await session_manager.purge_session_memory(user_uuid, slave_id)
-                    app_logger.debug(f"Purged memory for slave session: {slave_id}")
+                    app_logger.debug(f"Purged memory for child session: {slave_id}")
 
         app_logger.info(f"Agent memory purged successfully for session {session_id}, user {user_uuid}.")
         return jsonify({"status": "success", "message": "Agent memory purged."}), 200

@@ -2477,6 +2477,14 @@ const AdminManager = {
                 if (iterLocked) iterLocked.checked = settings.maxIterations.is_locked;
             }
 
+            // Populate max nesting depth
+            if (settings.maxNestingDepth) {
+                const depthInput = document.getElementById('genie-max-nesting-depth');
+                const depthLocked = document.getElementById('genie-max-nesting-depth-locked');
+                if (depthInput) depthInput.value = settings.maxNestingDepth.value || 3;
+                if (depthLocked) depthLocked.checked = settings.maxNestingDepth.is_locked || false;
+            }
+
         } catch (error) {
             console.error('[AdminManager] Error loading genie settings:', error);
         }
@@ -2497,6 +2505,7 @@ const AdminManager = {
             const genieTemp = parseFloat(this.getFieldValue('genie-temperature'));
             const genieTimeout = parseInt(this.getFieldValue('genie-query-timeout'));
             const genieIter = parseInt(this.getFieldValue('genie-max-iterations'));
+            const genieDepth = parseInt(this.getFieldValue('genie-max-nesting-depth'));
 
             if (genieTemp < 0 || genieTemp > 1) {
                 window.showNotification('error', 'Temperature must be between 0.0 and 1.0');
@@ -2508,6 +2517,10 @@ const AdminManager = {
             }
             if (genieIter < 1 || genieIter > 25) {
                 window.showNotification('error', 'Max iterations must be between 1 and 25');
+                return;
+            }
+            if (genieDepth < 1 || genieDepth > 10) {
+                window.showNotification('error', 'Max nesting depth must be between 1 and 10');
                 return;
             }
 
@@ -2561,6 +2574,10 @@ const AdminManager = {
                 maxIterations: {
                     value: genieIter,
                     is_locked: document.getElementById('genie-max-iterations-locked')?.checked || false
+                },
+                maxNestingDepth: {
+                    value: genieDepth,
+                    is_locked: document.getElementById('genie-max-nesting-depth-locked')?.checked || false
                 }
             };
 
@@ -4762,6 +4779,14 @@ const AdminManager = {
                 if (iterLocked) iterLocked.checked = settings.maxIterations.is_locked;
             }
 
+            // Populate max nesting depth
+            if (settings.maxNestingDepth) {
+                const depthInput = document.getElementById('genie-max-nesting-depth');
+                const depthLocked = document.getElementById('genie-max-nesting-depth-locked');
+                if (depthInput) depthInput.value = settings.maxNestingDepth.value || 3;
+                if (depthLocked) depthLocked.checked = settings.maxNestingDepth.is_locked || false;
+            }
+
             console.log('[AdminManager] Genie settings loaded:', settings);
 
         } catch (error) {
@@ -4793,6 +4818,10 @@ const AdminManager = {
                 maxIterations: {
                     value: parseInt(document.getElementById('genie-max-iterations')?.value || 10),
                     is_locked: document.getElementById('genie-max-iterations-locked')?.checked || false
+                },
+                maxNestingDepth: {
+                    value: parseInt(document.getElementById('genie-max-nesting-depth')?.value || 3),
+                    is_locked: document.getElementById('genie-max-nesting-depth-locked')?.checked || false
                 }
             };
 
@@ -4807,6 +4836,10 @@ const AdminManager = {
             }
             if (settings.maxIterations.value < 1 || settings.maxIterations.value > 25) {
                 window.showAppBanner('Max iterations must be between 1 and 25', 'error', 3000);
+                return;
+            }
+            if (settings.maxNestingDepth.value < 1 || settings.maxNestingDepth.value > 10) {
+                window.showAppBanner('Max nesting depth must be between 1 and 10', 'error', 3000);
                 return;
             }
 

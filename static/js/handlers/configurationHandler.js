@@ -2464,7 +2464,7 @@ function renderProfileCard(profile) {
                             </span></p>
                             ` : ''}
                             ${profile.profile_type === 'genie' ? `
-                            <p><span class="font-medium">Slave Profiles:</span> ${(() => {
+                            <p><span class="font-medium">Child Profiles:</span> ${(() => {
                                 const slaveProfiles = profile.genieConfig?.slaveProfiles || [];
                                 if (slaveProfiles.length === 0) {
                                     return '<span class="text-yellow-400">None configured</span>';
@@ -3722,7 +3722,7 @@ async function populateSystemPrompts(modal, profile) {
         if (masterSystemSection) masterSystemSection.classList.add('hidden');
         if (toolEnabledSection) toolEnabledSection.style.display = 'none';
         if (systemPromptsDescription) {
-            systemPromptsDescription.textContent = 'Configure the coordinator prompt that guides how this Genie orchestrates between slave profiles.';
+            systemPromptsDescription.textContent = 'Configure the coordinator prompt that guides how this Genie orchestrates between child profiles.';
         }
     } else {
         // Tool enabled: show all sections
@@ -4040,7 +4040,7 @@ async function showProfileModal(profileId = null) {
         const systemPromptsTab = modal.querySelector('#profile-tab-system-prompts');
         const systemPromptsContent = modal.querySelector('#profile-content-system-prompts');
 
-        // Get Genie slave profiles section reference (used in all profile types)
+        // Get Genie child profiles section reference (used in all profile types)
         const genieSlaveProfilesSection = modal.querySelector('#genie-slave-profiles-section');
 
         // Get Conversation Capabilities section (only for llm_only)
@@ -4187,10 +4187,10 @@ async function showProfileModal(profileId = null) {
             if (intelligenceTab) intelligenceTab.style.display = 'none';
             if (intelligenceContent) intelligenceContent.style.display = 'none';
 
-            // SHOW Genie slave profiles section
+            // SHOW Genie child profiles section
             if (genieSlaveProfilesSection) {
                 genieSlaveProfilesSection.style.display = '';
-                // Populate slave profiles list
+                // Populate child profiles list
                 populateGenieSlaveProfilesList(modal, profile);
             }
 
@@ -4254,20 +4254,19 @@ async function showProfileModal(profileId = null) {
         console.log('[Profile Modal] updateSectionVisibility completed');
     };
 
-    // Helper function to populate Genie slave profiles list
+    // Helper function to populate Genie child profiles list
     function populateGenieSlaveProfilesList(modal, currentGenieProfile) {
         const container = modal.querySelector('#genie-slave-profiles-list');
         if (!container) return;
 
         container.innerHTML = '';
 
-        // Get all non-genie profiles
+        // Get all profiles except self (allow nested Genies)
         const availableProfiles = configState.profiles.filter(p =>
-            p.profile_type !== 'genie' &&
-            p.id !== currentGenieProfile?.id
+            p.id !== currentGenieProfile?.id  // Only exclude self-reference
         );
 
-        // Get currently selected slaves (if editing)
+        // Get currently selected children (if editing)
         const selectedSlaves = currentGenieProfile?.genieConfig?.slaveProfiles || [];
 
         if (availableProfiles.length === 0) {
@@ -4277,20 +4276,24 @@ async function showProfileModal(profileId = null) {
 
         availableProfiles.forEach(profile => {
             const isSelected = selectedSlaves.includes(profile.id);
+            const isGenieType = profile.profile_type === 'genie';
+
             const profileTypeLabel = {
                 'llm_only': 'Conversation',
                 'tool_enabled': 'Tool-Enabled',
-                'rag_focused': 'RAG Focused'
+                'rag_focused': 'RAG Focused',
+                'genie': 'Nested Genie'
             }[profile.profile_type] || profile.profile_type;
 
             const profileTypeColor = {
                 'llm_only': 'text-green-400',
                 'tool_enabled': 'text-orange-400',
-                'rag_focused': 'text-purple-400'
+                'rag_focused': 'text-purple-400',
+                'genie': 'text-purple-600'
             }[profile.profile_type] || 'text-gray-400';
 
             const div = document.createElement('div');
-            div.className = 'flex items-center space-x-3 py-2 px-2 rounded hover:bg-gray-700/30 transition-colors';
+            div.className = `flex items-center space-x-3 py-2 px-2 rounded hover:bg-gray-700/30 transition-colors ${isGenieType ? 'bg-purple-900/20 border border-purple-700/30' : ''}`;
             div.innerHTML = `
                 <input type="checkbox"
                        id="slave-${profile.id}"
@@ -4298,13 +4301,39 @@ async function showProfileModal(profileId = null) {
                        ${isSelected ? 'checked' : ''}
                        class="genie-slave-checkbox form-checkbox text-amber-500 rounded border-gray-600 bg-gray-700 focus:ring-amber-500 focus:ring-offset-gray-900">
                 <label for="slave-${profile.id}" class="flex-1 cursor-pointer">
+                    ${isGenieType ? '<span class="text-purple-400 mr-1" title="Nested Genie Coordination">🔮</span>' : ''}
                     <span class="font-semibold text-sm text-white">@${profile.tag || 'UNKNOWN'}</span>
                     <span class="text-gray-400 text-sm ml-2">${profile.name || ''}</span>
-                    <span class="text-xs ${profileTypeColor} ml-2">(${profileTypeLabel})</span>
+                    <span class="text-xs ${profileTypeColor} ml-2 ${isGenieType ? 'font-semibold' : ''}">(${profileTypeLabel})</span>
+                    ${isGenieType ? '<span class="ml-2 text-xs bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">Nested</span>' : ''}
                 </label>
             `;
             container.appendChild(div);
         });
+
+        // Add warning banner if any selected children are Genies
+        const hasNestedGenies = selectedSlaves.some(slaveId => {
+            const slaveProfile = configState.profiles.find(p => p.id === slaveId);
+            return slaveProfile && slaveProfile.profile_type === 'genie';
+        });
+
+        if (hasNestedGenies) {
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'mt-4 p-3 bg-yellow-900/30 border border-yellow-600/50 rounded-lg';
+            warningDiv.innerHTML = `
+                <div class="flex items-start space-x-2">
+                    <span class="text-yellow-400 text-lg">⚠️</span>
+                    <div class="flex-1">
+                        <p class="text-sm font-semibold text-yellow-300 mb-1">Nested Genie Coordination Active</p>
+                        <p class="text-xs text-yellow-200/80">
+                            This Genie will coordinate other Genie profiles, significantly increasing token usage.
+                            Maximum nesting depth is controlled in <span class="font-mono text-yellow-300">Administration → Expert Settings → Genie Coordination</span>.
+                        </p>
+                    </div>
+                </div>
+            `;
+            container.appendChild(warningDiv);
+        }
     }
 
     // Helper function to load Genie profile settings (temperature, timeout, max iterations)
@@ -5186,14 +5215,14 @@ async function showProfileModal(profileId = null) {
             }
         }
 
-        // Collect Genie slave profiles and settings if this is a genie profile
+        // Collect Genie child profiles and settings if this is a genie profile
         let genieConfig = null;
         if (selectedProfileType === 'genie') {
             const slaveCheckboxes = modal.querySelectorAll('.genie-slave-checkbox:checked');
             const selectedSlaveProfiles = Array.from(slaveCheckboxes).map(cb => cb.value);
 
             if (selectedSlaveProfiles.length === 0) {
-                showNotification('error', 'Genie profiles require at least 1 slave profile.');
+                showNotification('error', 'Genie profiles require at least 1 child profile.');
                 return;  // Prevent save
             }
 

@@ -97,13 +97,15 @@ Eliminate the friction between conversational exploration and production automat
   - Async polling pattern for reliable long-running executions
   - Complete example DAG (`tda_00_execute_questions.py`) included
 
-* **Profile System for Modular Configuration**: Separate infrastructure from usage patterns:
-  - Combine LLM Providers + MCP Servers into named profiles
-  - Profile tags (e.g., "PROD", "COST") for quick identification
-  - Default profile for standard operations
-  - Temporary overrides via `@TAG` syntax for single queries
-  - Active for consumption toggle for available alternatives
-  - Classification modes: Light (tool/prompt filtering) vs. Full (LLM-assisted categorization)
+* **Four Profile Classes - Composable AI Architecture**: Build specialized AI experts and orchestrate them into autonomous organizations:
+  - **🛠️ Efficiency Focused (Optimizer)**: The powerhouse—Fusion Optimizer engine executing database queries, API calls, and complex operations with strategic planning, self-correction, and proactive optimization
+  - **💬 Conversation Focused (LLM)**: Pure intelligence for learning, prototyping, and risk-free exploration (zero data exposure)
+  - **🔍 Knowledge Focused (RAG)**: Verified intelligence with zero-hallucination guarantee—every answer grounded in your documents
+  - **🧞 Genie (Multi-Profile)**: Multi-level autonomous coordination where Genies coordinate other Genies, creating hierarchical AI organizations
+  - Profile tags (e.g., `@OPTIMIZER`, `@CHAT`, `@POLICY`, `@EXECUTIVE`) for instant switching via single command
+  - Temporary overrides via `@TAG` syntax for single queries without changing defaults
+  - Nested coordination support: Build 3-level AI hierarchies (Master → Coordinators → Specialists)
+  - Complete safeguards: Circular dependency detection, depth limits, cost visibility at every level
 
 * **MCP Server Import with Dual Format Support**: Seamless integration of community MCP servers:
   - Import from official MCP Registry format (io.example/server-name specifications)
@@ -205,17 +207,17 @@ Build trust through complete visibility into every decision, action, and data po
 
 ### ⚡ Efficient: Intelligent Optimization Engine
 
-The Fusion Optimizer and self-improving RAG system deliver enterprise-grade performance, cost efficiency, and reliability. See the dedicated section below (**[The Heart of the Application - The Engine & its Fusion Optimizer](#the-heart-of-the-application---the-engine-its-fusion-optimizer)**) for comprehensive details on:
+The Fusion Optimizer delivers enterprise-grade performance, cost efficiency, and reliability. See the dedicated section below (**[The Heart of the Application - The Engine & its Fusion Optimizer](#the-heart-of-the-application---the-engine-its-fusion-optimizer)**) for comprehensive details on:
 
 * Multi-layered strategic and tactical planning
 * Proactive optimization (Plan Hydration, Tactical Fast Path, Specialized Orchestrators)
 * Autonomous self-correction and healing
-* RAG-powered continuous improvement
+* Context-aware learning from execution history
 * Deterministic plan validation and hallucination prevention
 
 **Key efficiency highlights:**
 
-* **Self-Improving RAG System**: Closed-loop learning from past successes:
+* **Self-Improving Learning System**: Closed-loop learning from past successes:
   - Automatic capture and archiving of all successful interactions
   - Token-based efficiency analysis to identify "champion" strategies
   - Few-shot learning through injection of best-in-class examples
@@ -309,7 +311,7 @@ Transparent, real-time cost tracking with fine-grained control over spending at 
 
 * **Database-Backed Cost Persistence**: Complete financial audit trail:
   - `llm_model_costs` table with versioned pricing
-  - `efficiency_metrics` table tracking token usage and RAG savings
+  - `efficiency_metrics` table tracking token usage and learning system savings
   - `user_sessions` table with per-session cost summaries
   - `long_lived_access_tokens` with usage tracking
   - Exportable cost reports for budgeting and forecasting
@@ -320,8 +322,8 @@ Transparent, real-time cost tracking with fine-grained control over spending at 
   - Profile override via `@TAG` syntax for cost-conscious queries
   - REST API profile selection for automated cost optimization
 
-* **Efficiency Attribution**: Quantify RAG system savings:
-  - Before/after token comparison for RAG-guided planning
+* **Efficiency Attribution**: Quantify learning system savings:
+  - Before/after token comparison for champion case-guided planning
   - Estimated cost savings from few-shot learning
   - Per-user attribution of efficiency gains
   - Efficiency leaderboard for gamification
@@ -330,7 +332,7 @@ Transparent, real-time cost tracking with fine-grained control over spending at 
 * **Cost Optimization Recommendations**: Actionable insights:
   - Model selection guidance based on task complexity
   - Context pruning opportunities for token reduction
-  - RAG case population priorities for maximum savings
+  - Champion case population priorities for maximum savings
   - Profile configuration suggestions for workload patterns
 
 * **Consumption Profile Enforcement**: Granular usage controls and quotas:
@@ -489,7 +491,7 @@ The marketplace transforms the Uderia Platform from a single-user tool into a **
 
 * **Token Usage Visibility**: Transparent token consumption tracking displayed for every LLM interaction, enabling users to understand the cost implications of their queries and optimize their usage patterns.
 
-* **RAG Efficiency Tracking**: Cost savings metrics from RAG system reuse, showing cumulative cost saved through champion case retrieval and per-user cost savings attribution.
+* **Learning System Efficiency Tracking**: Cost savings metrics from champion case reuse, showing cumulative cost saved through proven strategy retrieval and per-user cost savings attribution.
 
 * **Multi-Provider Cost Comparison**: Compare actual spending across different LLM providers with identical workloads, enabling data-driven decisions for cost optimization and provider selection strategies.
 
@@ -501,224 +503,349 @@ The cost management system stores all pricing data locally in SQLite (`llm_model
 
 ## 🎭 Profile Classes: Four Execution Modes
 
-The Uderia Platform implements a sophisticated multi-mode architecture through **profile classes**, enabling seamless transitions between conversational intelligence, operational tool execution, knowledge base synthesis, and multi-profile coordination. Understanding these profile classes is essential for maximizing the agent's capabilities and efficiency.
+The Uderia Platform reimagines AI orchestration through **profile classes**—four distinct execution modes that unlock unprecedented flexibility and power. From conversational intelligence to multi-layered autonomous coordination, these modes transform how organizations leverage AI to solve complex challenges.
 
 ### Overview: Four Fundamental Modes
 
-Every profile in the system belongs to one of four classes that determine how the agent processes user requests:
+Every profile belongs to one of four classes, each designed to excel at specific types of work. Together, they create a composable AI architecture that adapts to any challenge.
 
-#### 1. Conversation Focused (LLM) Profiles
+---
 
-**Characteristics:**
-- Pure conversational interaction with the LLM
-- Optional knowledge repository access for context injection
-- No MCP tools or operational capabilities
-- Agent provides information, analysis, and guidance based on its training
-- Ideal for conceptual questions, explanations, and general knowledge queries
+#### 2. 💬 Conversation Focused (LLM) - Pure Intelligence
 
-**When to Use:**
-- "How do I write a SQL query to join two tables?"
-- "What is the difference between INNER JOIN and LEFT JOIN?"
-- "Explain database indexing strategies"
-- Draft SQL queries for review before execution
+```
+┌─────────────────────────────────────────┐
+│  User Question                          │
+│  "How do I optimize this query?"        │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+         ┌──────────┐
+         │   LLM    │  ← No tools, no data access
+         │ Analysis │  ← Pure reasoning & guidance
+         └─────┬────┘
+               │
+               ▼
+┌──────────────────────────────────────────┐
+│  Expert Advice + Code Examples           │
+│  Ready for review before execution       │
+└──────────────────────────────────────────┘
+```
 
-**Example Profiles:**
-- `@CHAT` - Conversational profile for knowledge queries
-- `@EXPLAIN` - Detailed explanations and documentation
-- `@REVIEW` - Code review and analysis without execution
+**The Value:**
+Transform your LLM into a trusted advisor. Get instant insights, draft solutions, and explore possibilities—all without touching live data. Perfect for learning, brainstorming, and planning before execution.
 
-**Technical Behavior:**
-- `profile_type: "llm_only"` in session metadata
-- Strategic planner operates without tool context
-- Responses stored in `final_summary_text` as plain text
-- No `execution_trace` generated (no tools executed)
-- SQL queries mentioned appear in conversation text, not structured actions
-- Knowledge collections are optional for additional context
+**Breakthrough Potential:**
+- **Zero-Cost Exploration**: Learn complex concepts without expensive tool invocations
+- **Rapid Prototyping**: Draft SQL, APIs, and workflows before committing resources
+- **Risk-Free Testing**: Validate approaches before touching production systems
+- **Training Ground**: Onboard new team members without data exposure
 
-#### 2. Tool Focused (MCP) Profiles
-
-**Characteristics:**
-- Full access to MCP server capabilities (tools, prompts, resources)
-- Agent can execute database queries, API calls, and data operations
-- Real-time data retrieval and manipulation
-- Complete transparency via execution traces
-- Optional knowledge repository and planner repository access
-
-**When to Use:**
-- "Show me all tables in the sales_db database"
-- "Execute this query: SELECT * FROM customers WHERE status = 'active'"
-- "Generate a quality report for the inventory table"
-- Any request requiring live data or system operations
+**Real-World Examples:**
+- "Explain our data architecture and suggest optimization strategies"
+- "Draft a SQL query to calculate customer lifetime value"
+- "What are best practices for handling PII in our analytics pipeline?"
+- "Review this query logic before I run it in production"
 
 **Example Profiles:**
-- `@GOGET` - Production database operations (Teradata MCP)
-- `@PROD` - Production workloads with enterprise LLM
-- `@DEV` - Development environment testing
+- `@CHAT` - Your AI thought partner for any question
+- `@ARCHITECT` - System design and architecture guidance
+- `@MENTOR` - Code review and technical mentoring
 
-**Technical Behavior:**
-- `profile_type: "tool_enabled"` in session metadata
-- Strategic planner includes full tool/prompt/resource context
-- Tool executions stored in `execution_trace` with structured arguments
-- Complete audit trail of all actions taken
-- Supports self-correction and error recovery
+---
 
-#### 3. Knowledge Focused (RAG) Profiles
+#### 1. 🛠️ Efficiency Focused (Optimizer) - The Powerhouse
 
-**Characteristics:**
-- **Mandatory** knowledge repository retrieval before every response
-- LLM synthesis of retrieved documents ONLY (no general knowledge)
-- No MCP tools or operational capabilities
-- Strict anti-hallucination safeguards prevent answers without knowledge context
-- Ideal for document Q&A, knowledge base search, and reference-only queries
+```
+┌──────────────────────────────────────────┐
+│  User Request                            │
+│  "Show Q4 revenue by region"             │
+└───────────────┬──────────────────────────┘
+                │
+                ▼
+      ┌─────────────────────┐
+      │ FUSION OPTIMIZER    │
+      │ Strategic Planning  │ ← Multi-phase meta-plan
+      └────────┬────────────┘
+               │
+               ▼
+      ┌─────────────────────┐
+      │ Tactical Execution  │ ← Per-phase tool selection
+      │ + Self-Correction   │ ← Autonomous error recovery
+      └────────┬────────────┘
+               │
+               ▼
+    ┌───────────────────────┐
+    │  Execute Operations   │ ← Database queries, APIs, tools
+    │  via MCP Server       │ ← Real-time data access
+    └───────┬───────────────┘
+            │
+            ▼
+┌───────────────────────────────────────────┐
+│  Results + Visualizations                 │
+│  Strategic plans + Self-healing execution │
+│  Full transparency + audit trail          │
+└───────────────────────────────────────────┘
+```
 
-**When to Use:**
-- "What does our employee handbook say about remote work policies?"
-- "Search our technical documentation for API rate limits"
-- "What are the safety procedures in the facility manual?"
-- Any query that must be answered exclusively from verified documents
+**The Value:**
+This is **where the magic happens**. The Efficiency Focused (Optimizer) profile is powered by the revolutionary **Fusion Optimizer**—a multi-layered AI architecture that doesn't just execute tasks, it *thinks strategically*, *learns from experience*, and *heals itself*. Your words become intelligent operations that get smarter with every execution.
+
+**Breakthrough Potential:**
+- **Strategic Intelligence**: Creates multi-phase plans, not just single-shot responses
+- **Autonomous Self-Correction**: Detects and fixes errors without human intervention
+- **Cost Optimization**: 40% token reduction through plan hydration and tactical fast-path
+- **Proactive Optimization**: Learns from context to skip redundant operations
+- **Democratize Expertise**: Non-technical users execute complex operations through conversation
+- **Complete Transparency**: See every decision, every tool call, every self-correction in real-time
+
+**Real-World Transformation:**
+- **Before**: Write SQL → Debug errors → Retry → Export → Format → Email (30 minutes)
+- **After**: "Analyze Q4 sales trends and email the exec team" (2 minutes, auto-corrects, learns for next time)
+
+**Example Queries:**
+- "Show me yesterday's failed transactions and their error patterns"
+- "Calculate inventory turnover by warehouse for Q4, flag anomalies, and generate executive summary"
+- "Find all customers who haven't purchased in 90 days, segment by lifetime value, export to CSV"
+- "Monitor our API health metrics in real-time and alert if error rate exceeds threshold"
 
 **Example Profiles:**
-- `@RAG` - Knowledge base search with document synthesis
-- `@DOCS` - Technical documentation lookup
-- `@POLICY` - Policy and procedure reference
+- `@OPTIMIZER` - Full Fusion Optimizer with all features enabled
+- `@PROD` - Production database operations with enterprise LLM
+- `@ANALYTICS` - Business intelligence and self-service reporting
+- `@DEVOPS` - Infrastructure monitoring and intelligent automation
 
-**Technical Behavior:**
-- `profile_type: "rag_focused"` in session metadata
-- Knowledge retrieval is **MANDATORY** - queries fail gracefully if no documents found
-- LLM forbidden from using general training knowledge (enforced via system prompt)
-- Responses include summary + expandable source documents with similarity scores
-- Each source shows collection name, relevance score, and full content
-- No `execution_trace` (no tools), only `knowledge_retrieval_event`
-- **Three-layer safety net:**
-  1. Executor level: No retrieval = immediate error (no LLM synthesis)
-  2. System prompt level: Explicitly states if documents don't contain answer
-  3. UI level: Clear messaging about knowledge requirements
+---
 
-#### 4. Genie Profiles (Multi-Profile Coordination) - Beta
+#### 3. 🔍 Knowledge Focused (RAG) - Verified Intelligence
 
-**Characteristics:**
-- Orchestrates multiple other profiles to answer complex queries
-- Automatically routes questions to the most appropriate expert profiles
-- Synthesizes responses from multiple sources into coherent answers
-- Creates child "slave" sessions that preserve individual profile context
-- Uses LangChain for intelligent coordination and tool selection
+```
+┌─────────────────────────────────────────┐
+│  User Question                          │
+│  "What's our remote work policy?"       │
+└───────────────┬─────────────────────────┘
+                │
+                ▼
+    ┌───────────────────────┐
+    │  Semantic Search      │
+    │  Your Document Store  │ ← Policies, SOPs, Manuals
+    └───────┬───────────────┘
+            │
+            ▼
+      ┌──────────┐
+      │   LLM    │
+      │ Synthesis│ ← ONLY uses retrieved docs
+      └─────┬────┘  NO general knowledge allowed
+            │
+            ▼
+┌───────────────────────────────────────────┐
+│  Answer + Source Citations                │
+│  "Per HR Policy 3.2, page 7..."          │
+│  [View Source Document]                   │
+└───────────────────────────────────────────┘
+```
 
-**When to Use:**
-- Complex questions requiring expertise from multiple domains
-- "Analyze my database schema and check our documentation for best practices"
-- Queries that benefit from both tool execution AND knowledge retrieval
-- Workloads that span different data sources or capabilities
+**The Value:**
+Eliminate hallucinations entirely. Every answer grounded in your verified documents, policies, and institutional knowledge. The AI becomes a perfect librarian with instant recall across your entire knowledge base.
+
+**Breakthrough Potential:**
+- **Zero Hallucination Guarantee**: Answers only from your verified documents
+- **Institutional Memory**: Never lose domain expertise when people leave
+- **Compliance Confidence**: All responses traceable to source documents
+- **Instant Expertise**: New hires access decades of knowledge immediately
+
+**Real-World Examples:**
+- "What does our security policy say about third-party data sharing?"
+- "Find all mentions of GDPR compliance requirements in our SOPs"
+- "How do we handle customer data retention per our legal agreements?"
+- "What are the approved vendors for cloud infrastructure?"
 
 **Example Profiles:**
-- `@GENIE` - Default multi-expert coordinator
-- `@EXPERT` - Custom coordinator with selected slave profiles
-- `@ORCHESTRATOR` - Enterprise-wide query router
+- `@POLICY` - Corporate policies and procedures
+- `@LEGAL` - Contracts, compliance, and regulations
+- `@TECHNICAL` - Engineering documentation and runbooks
 
-**Technical Behavior:**
-- `profile_type: "genie"` in session metadata
-- Creates real slave sessions visible in session history (marked with "Genie Slave" badge)
-- Slave sessions maintain conversation context across multiple genie turns
-- Coordinator LLM decides which profiles to invoke per query
-- Inline progress cards show real-time coordination status
-- Session history groups slave sessions under their parent genie session
+---
 
-**Genie Profile Configuration:**
+#### 4. 🧞 Genie (Multi-Profile) - Autonomous Orchestration
+
+**The Value:**
+**This is the breakthrough.** Genie profiles don't just coordinate multiple experts—they create **autonomous AI organizations** where specialized agents collaborate intelligently. One question triggers a cascade of expert consultations, data retrievals, and synthesis—all happening automatically.
+
+**Breakthrough Potential:**
+- **Multi-Level Intelligence**: Genies can coordinate other Genies, creating hierarchical AI organizations that mirror your team structure
+- **Compound Expertise**: Combine database operations + knowledge retrieval + analysis in a single, coherent workflow
+- **Adaptive Problem Solving**: The system decides which experts to consult based on the specific question
+- **Conversational State**: Each expert maintains context across the entire conversation, not just single turns
+- **Scalable Architecture**: Build AI "departments" with master coordinators managing specialized teams
+
+**The Game-Changer: Nested Coordination**
+Unlike simple AI assistants, Genie profiles can orchestrate *other Genie profiles*, enabling unprecedented organizational depth:
+
+```
+                         ┌─────────────────────────────────────┐
+                         │  User: "@CEO, analyze Q4 and       │
+                         │   recommend strategy"               │
+                         └────────────────┬────────────────────┘
+                                          │
+                                          ▼
+                              ╔═══════════════════════╗
+                              ║   @CEO (Level 0)      ║  ← Master Coordinator
+                              ║   Strategic Genie     ║
+                              ╚═══════════╤═══════════╝
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+         ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+         │ @CFO (Level 1)   │  │ @CTO (Level 1)   │  │ @LEGAL (Level 1) │
+         │ Financial Genie  │  │ Technical Genie  │  │ Policy Knowledge │
+         └────────┬─────────┘  └────────┬─────────┘  └──────────────────┘
+                  │                     │
+         ┌────────┴────────┐   ┌───────┴────────┐
+         │                 │   │                │
+         ▼                 ▼   ▼                ▼
+    ┌─────────┐      ┌─────────┐  ┌─────────┐  ┌─────────┐
+    │ @ACCT   │      │ @AUDIT  │  │ @DB_ADM │  │ @SECURE │
+    │ DB Ops  │      │ Checks  │  │ Schema  │  │ Analysis│
+    │(Level 2)│      │(Level 2)│  │(Level 2)│  │(Level 2)│
+    └─────────┘      └─────────┘  └─────────┘  └─────────┘
+```
+
+**How It Works:**
+1. `@CEO` receives question, delegates to financial, technical, and legal experts
+2. `@CFO` (itself a Genie) autonomously coordinates `@ACCT` and `@AUDIT`
+3. `@CTO` (itself a Genie) autonomously coordinates `@DB_ADM` and `@SECURE`
+4. Each specialist executes its task (queries, document retrieval, analysis)
+5. Results cascade back up: specialists → coordinators → master
+6. `@CEO` synthesizes comprehensive strategic recommendation
+
+**All of this happens automatically from a single user question.**
+
+**Real-World Transformation:**
+
+*Before Genie Profiles:*
+- User manually runs 5 separate queries
+- Copies results between tools
+- Synthesizes insights manually
+- 30 minutes of repetitive work
+
+*With Genie Profiles:*
+- User: "@CEO, analyze Q4 performance, check compliance, and recommend next quarter strategy"
+- Genie autonomously: Queries financial database → Retrieves policy docs → Analyzes trends → Cross-checks regulations → Synthesizes strategic recommendations
+- Result delivered in 2 minutes, fully documented with audit trail
+
+**Example Profiles:**
+- `@EXECUTIVE` - C-level strategic intelligence coordinator
+- `@ANALYST` - Coordinates data retrieval, policy checks, and reporting
+- `@AUDITOR` - Multi-source compliance verification
+- `@RESEARCHER` - Deep-dive investigations across systems and knowledge bases
+
+**Safeguards & Control:**
+- **Circular Dependency Prevention**: Automatic detection prevents infinite loops
+- **Depth Limits**: Configurable maximum nesting (default: 3 levels)
+- **Cost Visibility**: Real-time token tracking across all coordination levels
+- **Transparent Execution**: See exactly which experts are consulted and why
+- **Context Preservation**: Each expert maintains conversation history across turns
+
+**Configuration Example:**
 ```json
 {
-  "id": "profile-genie-xxx",
-  "name": "Multi-Expert Coordinator",
-  "tag": "GENIE",
+  "tag": "CEO",
   "profile_type": "genie",
-  "llmConfigurationId": "llm-config-id",
   "genieConfig": {
-    "slaveProfiles": ["profile-id-1", "profile-id-2"],
+    "slaveProfiles": ["CFO_GENIE", "CTO_GENIE", "LEGAL_POLICY"],
     "maxConcurrentSlaves": 3
   }
 }
 ```
 
-**Key Features:**
-- **Dynamic Routing:** Coordinator decides at runtime which profile(s) are best suited for each query
-- **Context Preservation:** Slave sessions retain conversation history for follow-up questions
-- **Transparent Execution:** Real-time progress cards show which experts are being consulted
-- **Collapsible Session Groups:** Click genie master badge to collapse/expand slave sessions in history
-- **Split View Access:** Click slave cards to view slave session details alongside main conversation
+Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate their own specialist teams—creating true organizational intelligence.
 
-**Restrictions:**
-- Genie profiles cannot include other genie profiles as slaves (no nested coordination)
-- Each genie profile requires an LLM configuration for the coordinator
-- Slave profiles must exist and be accessible to the user
+---
 
-### The Value of Profile Classes
-
-#### 1. **Cost Optimization**
-
-**Conversation Focused (LLM) Mode:**
-- Minimal token usage (no tool descriptions in context)
-- Fast responses without tool execution overhead
-- Ideal for exploratory conversations and learning
-
-**Tool Focused (MCP) Mode:**
-- Higher token cost (includes tool context)
-- Necessary for data access and operations
-- Justified by business value of live data
-
-**Knowledge Focused (RAG) Mode:**
-- Moderate token usage (knowledge context + synthesis prompt)
-- Cost proportional to number of retrieved documents
-- Efficient for document-based Q&A vs full web search
-
-**Genie (Multi-Profile) Mode:**
-- Variable cost based on slave profiles invoked
-- Coordinator LLM adds overhead for routing decisions
-- Optimal for complex queries requiring multiple data sources
-- Slave session context reuse reduces redundant operations
-
-**Best Practice:** Use `@CHAT` for learning SQL syntax, `@RAG` for policy lookups, `@GOGET` for execution, or `@GENIE` when you need multiple experts working together.
-
-#### 2. **Workflow Flexibility**
-
-Profile classes enable sophisticated multi-turn workflows:
+### Profile Selection Guide: Choose the Right Tool for the Job
 
 ```
-Turn 1 (@CHAT - Conversation Focused):
-  User: "What is the SQL to get all active users?"
-  Agent: "Here's the SQL: SELECT UserName FROM DBC.SessionsV WHERE SessionID <> 0..."
-
-Turn 2 (@GOGET - Tool Focused):
-  User: "execute this query"
-  Agent: [Executes SQL against database, returns real data]
-
-Turn 3 (@RAG - Knowledge Focused):
-  User: "What does our data governance policy say about user data retention?"
-  Agent: [Retrieves from policy documents, synthesizes answer with sources]
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                              PROFILE SELECTION MATRIX                                    │
+├──────────────┬────────────────┬───────────────┬──────────────┬─────────────────────────┤
+│              │🛠️ Efficiency  │💬 Conversation│🔍 Knowledge  │🧞 Genie                 │
+│              │   Focused      │   Focused     │   Focused    │   (Multi-Profile)       │
+│              │  (Optimizer)   │     (LLM)     │    (RAG)     │                         │
+├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
+│ BEST FOR     │ Operations     │ Learning      │ Compliance   │ Complex Multi-Domain    │
+│              │ Live Data      │ Prototyping   │ Reference    │ Orchestration           │
+│              │ Strategic AI   │ Risk-Free     │ Verified     │                         │
+├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
+│ DATA ACCESS  │ Full           │ None          │ Documents    │ All Sources (Adaptive)  │
+│              │ (MCP Tools)    │               │ Only         │                         │
+├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
+│ SAFETY       │ Governed       │ 100% Safe     │ Zero         │ Composite (Inherits)    │
+│              │ Audit Trail    │ No Actions    │ Hallucinate  │                         │
+├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
+│ COST         │ Moderate       │ Lowest        │ Low-Moderate │ Variable (Scales with   │
+│              │ (~15K tokens)  │ (~2K tokens)  │ (~5K tokens) │ complexity & depth)     │
+├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
+│ SPEED        │ Fast + Smart   │ Fastest       │ Fast         │ Comprehensive           │
+│              │ (Self-heals)   │               │              │ (Auto-parallel)         │
+├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
+│ USE WHEN     │ "Show me Q4    │ "How do I     │ "What does   │ "Analyze Q4, check      │
+│              │  results"      │  optimize?"   │  policy say?"│  compliance, recommend" │
+└──────────────┴────────────────┴───────────────┴──────────────┴─────────────────────────┘
 ```
 
-This pattern separates **knowledge retrieval** (cheap), **document synthesis** (moderate), and **data execution** (necessary cost).
+### Intelligent Workflow Patterns
 
-#### 3. **Safety and Governance**
+**Pattern 1: Draft → Execute → Verify**
+```
+1. @CHAT    "Draft a query to find inactive customers"
+            → Get SQL without execution (safe, cheap)
 
-**Conversation Focused (LLM) Profiles:**
-- Cannot modify data or execute destructive operations
-- Safe for junior users exploring the system
-- Audit trail shows no actual database access
+2. @PROD    "Execute the query I just drafted"
+            → Run against live database (controlled)
 
-**Tool Focused (MCP) Profiles:**
-- Full operational capabilities require appropriate permissions
-- Complete execution trace for compliance and audit
-- Can be restricted by user tier or role
+3. @POLICY  "What's our customer data retention policy?"
+            → Verify compliance from documents
+```
 
-**Knowledge Focused (RAG) Profiles:**
-- Answers constrained to verified documents only
-- Eliminates hallucination risk for policy/compliance queries
-- Complete source traceability with document citations
-- Knowledge repository access can be controlled by user tier
+**Pattern 2: Strategic Orchestration**
+```
+@EXECUTIVE  "Prepare board presentation on Q4 performance"
 
-**Genie (Multi-Profile) Profiles:**
-- Inherits safety constraints from slave profiles
-- Coordinator cannot bypass individual profile restrictions
-- Complete audit trail across all invoked slave sessions
-- Slave session isolation ensures data governance compliance
+Automatically triggers:
+  → @CFO      (Financial analysis + database queries)
+  → @LEGAL    (Compliance checks from policies)
+  → @ANALYST  (Trend analysis + visualizations)
+  → Synthesis (Coordinated strategic narrative)
+
+Result: Complete board deck in minutes, not days
+```
+
+**Pattern 3: Learn → Apply → Teach**
+```
+1. @MENTOR   "Explain CTEs in SQL"        ← Learning mode
+2. @CHAT     "Draft a CTE for X"          ← Practice mode
+3. @DEV      "Test this CTE"              ← Safe execution
+4. @PROD     "Deploy to production"       ← Controlled rollout
+```
+
+### Why This Architecture Matters
+
+**Traditional AI Assistants:**
+- One-size-fits-all approach
+- High token costs on every query
+- No separation of concerns
+- Limited to single LLM's capabilities
+
+**Uderia's Profile Architecture:**
+- **Right-sized responses**: Pay only for capabilities you need
+- **Composable intelligence**: Combine specialists for compound expertise
+- **Governed execution**: Clear boundaries for safety and compliance
+- **Organizational scale**: Mirror your team structure in AI coordination
+
+**The Bottom Line:**
+Stop treating AI as a single assistant. Build an AI organization where specialized experts collaborate intelligently. From simple conversations to multi-level autonomous coordination, Uderia's profile system gives you the architecture to scale AI from individual productivity to enterprise transformation.
 
 #### 5. **Strategic Planner Intelligence**
 
@@ -761,7 +888,7 @@ Every turn in a session records:
 - `sql_mentioned_in_conversation` - Extracted SQL from llm_only responses
 - `execution_trace` - Structured tool calls (only in tool_enabled)
 - `knowledge_retrieval_event` - Document retrieval details (only in rag_focused)
-- `genie_metadata` - Coordination details and slave sessions (only in genie)
+- `genie_metadata` - Coordination details and child sessions (only in genie)
 
 #### Profile Classification Modes
 
@@ -932,7 +1059,7 @@ Before and during execution, the Optimizer actively seeks to enhance performance
 
 * **Context Distillation**: To prevent context window overflow with large datasets, the agent automatically distills large tool outputs into concise metadata summaries before passing them to the LLM for planning, ensuring robust performance even with enterprise-scale data.
 
-### 📚 RAG-Powered Continuous Improvement
+### 📚 Continuous Improvement through Champion Case Learning
 
 The agent learns from every successful interaction, building an ever-growing repository of "champion" strategies that guide future planning. This closed-loop learning system transforms individual successes into organizational knowledge.
 
@@ -950,7 +1077,7 @@ The agent learns from every successful interaction, building an ever-growing rep
   - Context management efficiency (e.g., Turn Summaries vs. Full Context)
   - Before/after cost comparison for savings attribution
 
-* **Champion Strategy Selection**: The RAG system identifies best-in-class examples:
+* **Champion Strategy Selection**: The learning system identifies best-in-class examples:
   - Lowest token count for similar query patterns
   - Fastest execution time for interactive workloads
   - Highest success rate for complex multi-step tasks
@@ -966,9 +1093,9 @@ The agent learns from every successful interaction, building an ever-growing rep
 
 * **Asynchronous Processing**: Zero user-facing latency:
   - Case archiving happens in background threads
-  - RAG retrieval during planning overlaps with user response rendering
+  - Champion case retrieval during planning overlaps with user response rendering
   - No blocking operations on critical path
-  - Graceful degradation if RAG system unavailable
+  - Graceful degradation if learning system unavailable
 
 ### 📊 Performance Metrics and Resource Limits
 
@@ -1014,7 +1141,7 @@ When errors occur, the Optimizer initiates a sophisticated, multi-tiered recover
 
 3. **Generic Recovery & Replanning**: If the error is novel, the agent falls back to a generic error-handling mechanism or, in the case of persistent failure, can escalate to generating an entirely new strategic plan to achieve the user's goal via an alternative route.
 
-4. **Strategic Correction with RAG**: The integrated **Retrieval-Augmented Generation (RAG)** system provides the highest level of self-healing. By retrieving "champion" strategies from past successes, the agent can discard a flawed or inefficient plan entirely and adopt a proven, optimal approach, learning from its own history to correct its course.
+4. **Strategic Correction with Learning System**: The integrated **champion case learning system** provides the highest level of self-healing. By retrieving proven strategies from past successes, the agent can discard a flawed or inefficient plan entirely and adopt a proven, optimal approach, learning from its own history to correct its course.
 
 ### 🛡️ Robust Safeguards
 
@@ -2424,7 +2551,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
 *   **12-Jan-2026:** Genie Profile Type (Beta) - Multi-profile coordination with LangChain orchestration
-*   **12-Jan-2026:** Genie UI Features - Inline progress cards, collapsible slave sessions, split view access
+*   **12-Jan-2026:** Genie UI Features - Inline progress cards, collapsible child sessions, split view access
 *   **09-Jan-2026:** Knowledge Focused (RAG) Profile Type - Mandatory knowledge retrieval with anti-hallucination safeguards
 *   **08-Jan-2026:** Profile Classes - Four Execution Modes (Conversation, Tool, Knowledge, Genie)
 *   **06-Jan-2026:** Export/Import Knowledge Repositories
