@@ -27,7 +27,13 @@
       "Bash(pkill:*)",
       "Bash(kill:*)",
       "Bash(ps:*)",
-      "Bash(TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZjBiNmRmMWQtMDdlZS00ZTkyLWE3ZDAtMDAzNDUzOGNhZGRhIiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc2ODY3MDQ0NCwiaWF0IjoxNzY4NTg0MDQ0LCJqdGkiOiJiOUVvQVRpWHpfcV9uMy1fZXBoaTNuZlk0R1p3Y0VQTW1DWHA3SmUyRU5zIn0.OEEAjvNK17dJzF1yzSiDJeTP-2bRYtmJT1FtymmaA28')"
+      "Bash(TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZjBiNmRmMWQtMDdlZS00ZTkyLWE3ZDAtMDAzNDUzOGNhZGRhIiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc2ODY3MDQ0NCwiaWF0IjoxNzY4NTg0MDQ0LCJqdGkiOiJiOUVvQVRpWHpfcV9uMy1fZXBoaTNuZlk0R1p3Y0VQTW1DWHA3SmUyRU5zIn0.OEEAjvNK17dJzF1yzSiDJeTP-2bRYtmJT1FtymmaA28')",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYjU3NTBiZjYtM2VkZC00ZGJhLThiMTktNjU3NjBjNmJiODY0IiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc2ODczNzc5NiwiaWF0IjoxNzY4NjUxMzk2LCJqdGkiOiI3ZXh4OTBoSW45TUo0ZHI4RHlMaFNxRXVXZHZNZkMwcEtFZl9OSzR0NDJjIn0.XmpiJ6Eb1OKbtNLHK6t3JMw8J4jfT4qmaKJlUjDB4rQ\")",
+      "Bash(TASK_ID=\"task-0b813a21-c99d-4f8f-ac17-97b22f3e6dda\")",
+      "Bash(__NEW_LINE_820ab99b9af1c7da__ curl -s -X GET \"http://localhost:5050/api/v1/tasks/$TASK_ID\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(TASK_ID=\"task-2f931a12-2c95-4f7b-9f43-1a32fcb2322c\":*)",
+      "Bash(__NEW_LINE_57d6e24dd486cd35__ curl -s -X GET \"http://localhost:5050/api/v1/tasks/$TASK_ID\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(__NEW_LINE_489e8e44bbf938dd__ curl -s -X GET \"http://localhost:5050/api/v1/tasks/$TASK_ID\" -H \"Authorization: Bearer $TOKEN\")"
     ]
   }
 }

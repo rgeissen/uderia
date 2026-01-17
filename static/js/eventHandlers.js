@@ -895,7 +895,11 @@ async function handleReloadPlanClick(element) {
                     [], // No execution trace for non-tool profiles
                     turnId,
                     turnData.user_query || 'N/A',
-                    knowledgeEventWithChunks // Pass the knowledge event with chunks
+                    knowledgeEventWithChunks, // Pass the knowledge event with chunks
+                    {  // Pass turn tokens for display
+                        turn_input_tokens: turnData.turn_input_tokens || 0,
+                        turn_output_tokens: turnData.turn_output_tokens || 0
+                    }
                 );
 
                 // Add profile info after knowledge details
@@ -973,7 +977,11 @@ async function handleReloadPlanClick(element) {
             turnData.execution_trace || [],
             turnId,
             turnData.user_query,
-            turnData.knowledge_retrieval_event || null  // Pass knowledge event for proper ordering
+            turnData.knowledge_retrieval_event || null,  // Pass knowledge event for proper ordering
+            {  // Pass turn tokens for display
+                turn_input_tokens: turnData.turn_input_tokens || 0,
+                turn_output_tokens: turnData.turn_output_tokens || 0
+            }
         );
 
         // --- MODIFICATION START: Update task ID display for reloaded turn ---

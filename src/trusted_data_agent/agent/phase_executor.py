@@ -78,6 +78,7 @@ class CorrectionStrategy(ABC):
         if updated_session:
             events.append( ({
                 "statement_input": input_tokens, "statement_output": output_tokens,
+                "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens,
                 "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0),
                 "call_id": call_id
             }, "token_update") )
@@ -1026,7 +1027,7 @@ class PhaseExecutor:
             updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
             # --- MODIFICATION END ---
             if updated_session:
-                yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id }, "token_update")
+                yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id }, "token_update")
 
             if isinstance(next_action, str) and next_action == "SYSTEM_ACTION_COMPLETE":
                 app_logger.info("Tactical LLM decided phase is complete.")
@@ -1294,7 +1295,7 @@ class PhaseExecutor:
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
         try:
             json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_text, re.DOTALL)
@@ -1462,6 +1463,10 @@ class PhaseExecutor:
             yield self.executor._format_sse({"target": status_target, "state": "idle"}, "status_indicator_update")
 
             if input_tokens > 0 or output_tokens > 0:
+                # Accumulate turn tokens for client-side tool LLM calls
+                self.executor.turn_input_tokens += input_tokens
+                self.executor.turn_output_tokens += output_tokens
+
                 # --- MODIFICATION START: Pass user_uuid to get_session ---
                 updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                 # --- MODIFICATION END ---
@@ -1470,6 +1475,8 @@ class PhaseExecutor:
                     yield self.executor._format_sse({
                         "statement_input": input_tokens,
                         "statement_output": output_tokens,
+                        "turn_input": self.executor.turn_input_tokens,
+                        "turn_output": self.executor.turn_output_tokens,
                         "total_input": updated_session.get("input_tokens", 0),
                         "total_output": updated_session.get("output_tokens", 0),
                         "call_id": final_call_id
@@ -1871,7 +1878,7 @@ class PhaseExecutor:
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
         try:
             json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_str, re.DOTALL)
             if not json_match: raise json.JSONDecodeError("No JSON found in LLM response", response_str, 0)
@@ -1931,7 +1938,7 @@ class PhaseExecutor:
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({"statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id}, "token_update")
+            yield self.executor._format_sse({"statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id}, "token_update")
 
         try:
             json_match = re.search(r"```json\s*\n(.*?)```|(\[.*?\]|\{.*?\})", response_text, re.DOTALL)

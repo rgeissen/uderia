@@ -735,7 +735,7 @@ class Planner:
                         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                         # --- MODIFICATION END ---
                         if updated_session:
-                            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+                            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
                         yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
@@ -934,11 +934,13 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                         yield self.executor._format_sse({
                             "statement_input": input_tokens,
                             "statement_output": output_tokens,
+                            "turn_input": self.executor.turn_input_tokens,
+                            "turn_output": self.executor.turn_output_tokens,
                             "total_input": updated_session.get("input_tokens", 0),
                             "total_output": updated_session.get("output_tokens", 0),
                             "call_id": call_id
                         }, "token_update")
-                    
+
                     # Inject the synthesized answer into the phase arguments
                     original_phase = copy.deepcopy(phase)
                     phase["arguments"]["answer_from_context"] = response_text.strip()
@@ -1057,7 +1059,7 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                 updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                 # --- MODIFICATION END ---
                 if updated_session:
-                    yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+                    yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
                 try:
                     json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
@@ -1893,7 +1895,7 @@ Ranking:"""
         updated_session = await session_manager.get_session(user_uuid, session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
         try:
             # Check for empty or invalid response from LLM

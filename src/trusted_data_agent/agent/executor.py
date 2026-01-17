@@ -490,6 +490,8 @@ class PlanExecutor:
                 events.append(self._format_sse({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
+                    "turn_input": self.turn_input_tokens,
+                    "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
                     "total_output": updated_session.get("output_tokens", 0),
                     "call_id": call_id
@@ -1222,6 +1224,8 @@ class PlanExecutor:
                 yield self._format_sse({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
+                    "turn_input": self.turn_input_tokens,
+                    "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
                     "total_output": updated_session.get("output_tokens", 0),
                     "call_id": str(uuid.uuid4())
@@ -1813,6 +1817,8 @@ The following domain knowledge may be relevant to this conversation:
                 yield self._format_sse({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
+                    "turn_input": self.turn_input_tokens,
+                    "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
                     "total_output": updated_session.get("output_tokens", 0),
                     "call_id": str(uuid.uuid4())
@@ -2220,6 +2226,8 @@ The following domain knowledge may be relevant to this conversation:
                 yield self._format_sse({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
+                    "turn_input": self.turn_input_tokens,
+                    "turn_output": self.turn_output_tokens,
                     "total_input": session_data.get("input_tokens", 0),
                     "total_output": session_data.get("output_tokens", 0),
                     "call_id": call_id
@@ -3257,6 +3265,8 @@ The following domain knowledge may be relevant to this conversation:
                 if updated_session:
                     yield self._format_sse({
                         "statement_input": input_tokens, "statement_output": output_tokens,
+                        "turn_input": self.turn_input_tokens,
+                        "turn_output": self.turn_output_tokens,
                         "total_input": updated_session.get("input_tokens", 0),
                         "total_output": updated_session.get("output_tokens", 0),
                         "call_id": call_id
@@ -3434,6 +3444,10 @@ The following domain knowledge may be relevant to this conversation:
         sub_executor.workflow_state = self.workflow_state
         sub_executor.structured_collected_data = self.structured_collected_data
 
+        # Inherit parent's turn token counts so nested execution accumulates correctly
+        sub_executor.turn_input_tokens = self.turn_input_tokens
+        sub_executor.turn_output_tokens = self.turn_output_tokens
+
 
 
         async for event in sub_executor.run():
@@ -3441,13 +3455,17 @@ The following domain knowledge may be relevant to this conversation:
 
         self.structured_collected_data = sub_executor.structured_collected_data
         self.workflow_state = sub_executor.workflow_state
-        
+
         # --- MODIFICATION START: Append sub-trace, don't overwrite ---
         if sub_executor.turn_action_history:
             self.turn_action_history.extend(sub_executor.turn_action_history)
         # --- MODIFICATION END ---
-            
+
         self.last_tool_output = sub_executor.last_tool_output
+
+        # Copy sub_executor's turn tokens back to parent (they now include parent's original + sub's additions)
+        self.turn_input_tokens = sub_executor.turn_input_tokens
+        self.turn_output_tokens = sub_executor.turn_output_tokens
         
 
 

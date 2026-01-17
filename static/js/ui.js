@@ -362,8 +362,9 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} executionTrace - The execution trace array (action/result pairs).
  * @param {string|number} turnId - The ID of the turn being displayed.
  * @param {string} userQuery - The original user query for this turn.
+ * @param {Object} turnTokens - Optional turn token data { turn_input_tokens, turn_output_tokens }.
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -452,6 +453,18 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         if (!finalStepElement.classList.contains('error') && !finalStepElement.classList.contains('cancelled')) {
             finalStepElement.classList.add('completed');
         }
+    }
+
+    // Display turn tokens in the token counter if available
+    if (turnTokens) {
+        updateTokenDisplay({
+            statement_input: 0,  // No single statement for historical view
+            statement_output: 0,
+            turn_input: turnTokens.turn_input_tokens || 0,
+            turn_output: turnTokens.turn_output_tokens || 0,
+            total_input: 0,  // Session totals not shown for historical turn
+            total_output: 0
+        });
     }
 
     // Auto-scroll logic
@@ -2542,12 +2555,13 @@ export function updateTokenDisplay(data) {
     const awsMessage = document.getElementById('token-aws-message');
 
     // Check if we have token data (for any provider including Amazon)
-    const hasTokenData = (data.statement_input > 0 || data.statement_output > 0 || 
+    const hasTokenData = (data.statement_input > 0 || data.statement_output > 0 ||
+                         data.turn_input > 0 || data.turn_output > 0 ||
                          data.total_input > 0 || data.total_output > 0);
 
     // Check if this is an AWS model that doesn't support token counting
     // Only Cohere, Mistral, and AI21 don't provide token counts
-    const isUnsupportedAwsModel = state.currentProvider === 'Amazon' && 
+    const isUnsupportedAwsModel = state.currentProvider === 'Amazon' &&
         state.currentModel && (
             state.currentModel.toLowerCase().includes('cohere') ||
             state.currentModel.toLowerCase().includes('mistral') ||
@@ -2565,8 +2579,11 @@ export function updateTokenDisplay(data) {
     normalDisplay.classList.remove('hidden');
     awsMessage.classList.add('hidden');
 
+    // Update all six token display elements (statement, turn, and session total)
     document.getElementById('statement-input-tokens').textContent = (data.statement_input || 0).toLocaleString();
     document.getElementById('statement-output-tokens').textContent = (data.statement_output || 0).toLocaleString();
+    document.getElementById('turn-input-tokens').textContent = (data.turn_input || 0).toLocaleString();
+    document.getElementById('turn-output-tokens').textContent = (data.turn_output || 0).toLocaleString();
     document.getElementById('total-input-tokens').textContent = (data.total_input || 0).toLocaleString();
     document.getElementById('total-output-tokens').textContent = (data.total_output || 0).toLocaleString();
 }
