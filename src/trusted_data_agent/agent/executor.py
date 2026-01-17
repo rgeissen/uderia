@@ -3004,11 +3004,25 @@ The following domain knowledge may be relevant to this conversation:
         except asyncio.CancelledError:
             # Handle cancellation specifically
             app_logger.info(f"PlanExecutor execution cancelled for user {self.user_uuid}, session {self.session_id}.")
-            self.state = self.AgentState.ERROR # Mark as error to prevent history update
-            # Yield a specific event to the frontend
-            event_data = {"step": "Execution Stopped", "details": "The process was stopped by the user.", "type": "cancelled"}
+            self.state = self.AgentState.ERROR  # Mark as error to prevent normal history update
+            # Yield a specific event to the frontend - include turn_id for badge creation
+            event_data = {
+                "step": "Execution Stopped",
+                "details": "The process was stopped by the user.",
+                "type": "cancelled",
+                "turn_id": self.current_turn_number,
+                "session_id": self.session_id
+            }
             self._log_system_event(event_data, "cancelled")
             yield self._format_sse(event_data, "cancelled")
+
+            # Save partial turn data before re-raising
+            await self._save_partial_turn_data(
+                status="cancelled",
+                error_message="Execution stopped by user",
+                error_details="The user cancelled the execution before completion."
+            )
+
             # Re-raise so the caller (routes.py) knows it was cancelled
             raise
 
@@ -3017,9 +3031,23 @@ The following domain knowledge may be relevant to this conversation:
             root_exception = unwrap_exception(e)
             app_logger.error(f"Error in state {self.state.name} for user {self.user_uuid}, session {self.session_id}: {root_exception}", exc_info=True)
             self.state = self.AgentState.ERROR
-            event_data = {"error": "Execution stopped due to an unrecoverable error.", "details": str(root_exception), "step": "Unrecoverable Error", "type": "error"}
+            event_data = {
+                "error": "Execution stopped due to an unrecoverable error.",
+                "details": str(root_exception),
+                "step": "Unrecoverable Error",
+                "type": "error",
+                "turn_id": self.current_turn_number,
+                "session_id": self.session_id
+            }
             self._log_system_event(event_data, "error")
             yield self._format_sse(event_data, "error")
+
+            # Save partial turn data for error case
+            await self._save_partial_turn_data(
+                status="error",
+                error_message="Execution stopped due to an unrecoverable error.",
+                error_details=str(root_exception)
+            )
 
         finally:
             # --- MODIFICATION START: Restore original MCP/LLM state if profile was overridden ---
@@ -3143,8 +3171,11 @@ The following domain knowledge may be relevant to this conversation:
                     # --- MODIFICATION END ---
                     # --- PHASE 2: Add knowledge repository tracking ---
                     "knowledge_accessed": self.knowledge_accessed,  # List of knowledge collections used
-                    "knowledge_retrieval_event": self.knowledge_retrieval_event  # Full event for replay on reload
+                    "knowledge_retrieval_event": self.knowledge_retrieval_event,  # Full event for replay on reload
                     # --- PHASE 2 END ---
+                    # Status fields for consistency with partial turn data
+                    "status": "success",
+                    "is_partial": False,
                 }
                 # --- MODIFICATION END ---
                 await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -3199,6 +3230,75 @@ The following domain knowledge may be relevant to this conversation:
                  # --- MODIFICATION END ---
     # --- END of run method ---
 
+    async def _save_partial_turn_data(self, status: str, error_message: str = None, error_details: str = None):
+        """
+        Saves partial turn data for cancelled/error turns.
+
+        This ensures that even failed turns have retrievable data for the UI,
+        including accumulated tokens and any execution trace up to the failure point.
+
+        Args:
+            status: One of "cancelled", "error"
+            error_message: Human-readable error message (optional)
+            error_details: Technical error details (optional)
+        """
+        # Only save for top-level executor
+        if self.execution_depth != 0:
+            app_logger.debug(f"Skipping partial turn save for nested executor (depth={self.execution_depth})")
+            return
+
+        try:
+            profile_tag = self._get_current_profile_tag()
+
+            turn_summary = {
+                "turn": self.current_turn_number,
+                "user_query": self.original_user_input,
+                "original_plan": self.original_plan_for_history,  # May be None if error before planning
+                "execution_trace": self.turn_action_history,  # Partial trace up to failure
+                "final_summary": None,  # No final summary for failed turns
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "provider": self.current_provider,
+                "model": self.current_model,
+                "profile_tag": profile_tag,
+                "task_id": self.task_id,
+                "turn_input_tokens": self.turn_input_tokens,  # Accumulated tokens up to failure
+                "turn_output_tokens": self.turn_output_tokens,
+                "session_id": self.session_id,
+                "mcp_server_id": self.effective_mcp_server_id or APP_CONFIG.CURRENT_MCP_SERVER_ID,
+                "user_uuid": self.user_uuid,
+                "rag_source_collection_id": getattr(self, 'rag_source_collection_id', None),
+                "case_id": getattr(self, 'rag_source_case_id', None),
+                "knowledge_accessed": getattr(self, 'knowledge_accessed', []),
+                "knowledge_retrieval_event": getattr(self, 'knowledge_retrieval_event', None),
+                # Status fields for partial data
+                "status": status,  # "cancelled" or "error"
+                "error_message": error_message,
+                "error_details": error_details,
+                "is_partial": True,  # Flag to indicate incomplete execution
+            }
+
+            await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+            app_logger.info(f"Saved partial turn data (status={status}) for turn {self.current_turn_number}")
+
+            # Save the cancelled/error message to conversation history so it appears on session reload
+            status_tag = "CANCELLED" if status == "cancelled" else "ERROR"
+            assistant_message = f'<span class="{status}-tag">{status_tag}</span> {error_message or "Execution did not complete."}'
+            await session_manager.add_message_to_histories(
+                self.user_uuid,
+                self.session_id,
+                role='assistant',
+                content=error_message or "Execution did not complete.",  # Plain text for LLM
+                html_content=assistant_message,  # HTML with tag for UI
+                profile_tag=profile_tag
+            )
+            app_logger.info(f"Saved {status} message to conversation history for turn {self.current_turn_number}")
+
+            # NOTE: Do NOT add to RAG processing queue for failed turns
+            # Failed turns should not be used as champion cases
+
+        except Exception as e:
+            app_logger.error(f"Failed to save partial turn data: {e}", exc_info=True)
+            # Don't re-raise - this is best-effort cleanup
 
     async def _handle_single_prompt_plan(self, planner: Planner):
         """Orchestrates the logic for expanding a single-prompt plan."""

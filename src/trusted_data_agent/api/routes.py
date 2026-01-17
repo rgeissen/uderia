@@ -1450,6 +1450,10 @@ async def get_turn_details(current_user, session_id: str, turn_id: int):
     if "model" not in turn_data_copy:
         turn_data_copy["model"] = session_data.get("model")
 
+    # Add session-level token totals for display
+    turn_data_copy["session_input_tokens"] = session_data.get("input_tokens", 0)
+    turn_data_copy["session_output_tokens"] = session_data.get("output_tokens", 0)
+
     # Return the copy with ensured model/provider info
     return jsonify(turn_data_copy)
     # --- MODIFICATION END ---
@@ -2246,7 +2250,7 @@ async def cancel_stream(session_id: str):
         queue = active_queues.get(active_tasks_key)
         if queue:
             try:
-                from .executor import PlanExecutor
+                from trusted_data_agent.agent.executor import PlanExecutor
                 sse_event = PlanExecutor._format_sse(
                     {"message": "Cancellation requested by user", "session_id": session_id},
                     "cancelled"

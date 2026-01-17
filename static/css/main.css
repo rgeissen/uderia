@@ -1434,6 +1434,48 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
     box-shadow: none !important;
 }
 
+/* Cancelled turn badge - amber/yellow color */
+.turn-badge.turn-cancelled {
+    background-color: #d97706 !important; /* amber-600 */
+    border-color: #92400e !important; /* amber-800 for contrast */
+}
+
+/* Error turn badge - red color */
+.turn-badge.turn-error {
+    background-color: #dc2626 !important; /* red-600 */
+    border-color: #991b1b !important; /* red-800 for contrast */
+}
+
+/* Cancelled message tag in conversation */
+.cancelled-tag {
+    background-color: #d97706; /* amber-600 */
+    color: white;
+    font-size: 0.65rem;
+    font-weight: bold;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    margin-right: 0.5rem;
+    display: inline-block;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Error message tag in conversation */
+.error-tag {
+    background-color: #dc2626; /* red-600 */
+    color: white;
+    font-size: 0.65rem;
+    font-weight: bold;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    margin-right: 0.5rem;
+    display: inline-block;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
 /* Ensure avatar hover effects still work even if context is invalid */
 .clickable-avatar:hover {
     transform: scale(1.1);

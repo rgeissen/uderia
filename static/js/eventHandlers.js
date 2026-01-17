@@ -356,6 +356,16 @@ async function processStream(responseBody) {
                             lastStep.classList.add('cancelled');
                         }
                         UI.updateStatusWindow({ step: "Execution Stopped", details: eventData.message || "Process cancelled by user.", type: 'cancelled'}, true);
+
+                        // Create a cancelled message in the chat so the turn badge is clickable
+                        if (eventData.turn_id) {
+                            // Only add if this is for the current session
+                            if (!eventData.session_id || eventData.session_id === state.currentSessionId) {
+                                const cancelledMessage = `<span class="cancelled-tag">CANCELLED</span> Execution was stopped by user.`;
+                                UI.addMessage('assistant', cancelledMessage, eventData.turn_id, true);
+                            }
+                        }
+
                         UI.setExecutionState(false);
                     } else if (eventName === 'final_answer') {
                         // Check if this event is for the current session (prevents cross-session message leakage during Genie execution)
@@ -442,7 +452,13 @@ async function processStream(responseBody) {
 
 
                     } else if (eventName === 'error') {
-                        UI.addMessage('assistant', `Sorry, an error occurred: ${eventData.error || 'Unknown error'}`);
+                        // Include turn_id so badge is created and clickable
+                        const errorTurnId = eventData.turn_id || null;
+                        // Only add if this is for the current session
+                        if (!eventData.session_id || eventData.session_id === state.currentSessionId) {
+                            const errorMessage = `<span class="error-tag">ERROR</span> ${eventData.error || 'Unknown error'}`;
+                            UI.addMessage('assistant', errorMessage, errorTurnId, true);
+                        }
                         UI.updateStatusWindow({ step: "Error", details: eventData.details || eventData.error, type: 'error' }, true);
                         UI.setExecutionState(false);
                     } else if (eventName === 'rest_task_update') {
@@ -686,6 +702,74 @@ async function handleReloadPlanClick(element) {
         // Fetch the full turn details (plan + trace)
         const turnData = await API.fetchTurnDetails(sessionId, turnId);
 
+        // Handle cancelled or error turns FIRST (before profile-specific handling)
+        // These turns have partial data and need special display regardless of profile type
+        if (turnData && (turnData.status === 'cancelled' || turnData.status === 'error')) {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // Update status title
+            const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+            if (statusTitle) {
+                const statusLabel = turnData.status === 'cancelled' ? 'Cancelled' : 'Error';
+                statusTitle.textContent = `${statusLabel} Turn ${turnId} (Partial)`;
+            }
+
+            // Create header with status indicator
+            const headerEl = document.createElement('div');
+            headerEl.className = `p-4 status-step ${turnData.status}`;
+
+            const statusIcon = turnData.status === 'cancelled' ?
+                '<svg class="w-5 h-5 text-yellow-400 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>' :
+                '<svg class="w-5 h-5 text-red-400 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+
+            const title = turnData.status === 'cancelled' ? 'Execution Cancelled' : 'Execution Error';
+
+            headerEl.innerHTML = `
+                <h4 class="font-bold text-sm text-white mb-2">${statusIcon}${title}</h4>
+                <p class="text-xs text-gray-300 mb-2">${turnData.error_message || 'Turn did not complete.'}</p>
+                ${turnData.error_details ? `<p class="text-xs text-gray-500 mt-1"><em>${turnData.error_details}</em></p>` : ''}
+                <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                    <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                    <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                    <p class="text-xs text-gray-400"><strong>Input Tokens:</strong> ${(turnData.turn_input_tokens || 0).toLocaleString()}</p>
+                    <p class="text-xs text-gray-400"><strong>Output Tokens:</strong> ${(turnData.turn_output_tokens || 0).toLocaleString()}</p>
+                </div>
+            `;
+            DOM.statusWindowContent.appendChild(headerEl);
+
+            // Render the plan and partial execution trace using the standard historical trace renderer
+            // This properly shows Plan Steps and execution progress
+            if (turnData.original_plan || turnData.execution_trace) {
+                UI.renderHistoricalTrace(
+                    turnData.original_plan || [],
+                    turnData.execution_trace || [],
+                    turnId,
+                    turnData.user_query,
+                    turnData.knowledge_retrieval_event || null,
+                    {
+                        turn_input_tokens: turnData.turn_input_tokens || 0,
+                        turn_output_tokens: turnData.turn_output_tokens || 0
+                    }
+                );
+            }
+
+            // Update token display with partial data (isHistorical = true for plan reloads)
+            UI.updateTokenDisplay({
+                statement_input: turnData.turn_input_tokens || 0,
+                statement_output: turnData.turn_output_tokens || 0,
+                turn_input: turnData.turn_input_tokens || 0,
+                turn_output: turnData.turn_output_tokens || 0,
+                total_input: turnData.session_input_tokens || 0,
+                total_output: turnData.session_output_tokens || 0
+            }, true);
+
+            // Hide replay buttons for partial turns
+            if (DOM.headerReplayPlannedButton) DOM.headerReplayPlannedButton.classList.add('hidden');
+            if (DOM.headerReplayOptimizedButton) DOM.headerReplayOptimizedButton.classList.add('hidden');
+
+            return;
+        }
+
         // Check if this is a genie profile (coordination profile)
         if (turnData && (turnData.genie_coordination || turnData.profile_type === 'genie')) {
             DOM.statusWindowContent.innerHTML = '';
@@ -711,16 +795,17 @@ async function handleReloadPlanClick(element) {
                     UI.renderGenieStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
-                // Update Last Statement token count from historical turn data
-                // Backend stores as turn_input_tokens/turn_output_tokens
+                // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
                 UI.updateTokenDisplay({
                     statement_input: inputTokens,
                     statement_output: outputTokens,
-                    total_input: turnData.total_input_tokens || inputTokens,  // Use session total if available
-                    total_output: turnData.total_output_tokens || outputTokens
-                });
+                    turn_input: inputTokens,
+                    turn_output: outputTokens,
+                    total_input: turnData.session_input_tokens || 0,
+                    total_output: turnData.session_output_tokens || 0
+                }, true);
             } else {
                 // Fallback: Show simple summary if no detailed events available
                 const genieInfoEl = document.createElement('div');
@@ -794,16 +879,17 @@ async function handleReloadPlanClick(element) {
                     UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
-                // Update Last Statement token count from historical turn data
-                // Backend stores as turn_input_tokens/turn_output_tokens
+                // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
                 UI.updateTokenDisplay({
                     statement_input: inputTokens,
                     statement_output: outputTokens,
-                    total_input: turnData.total_input_tokens || inputTokens,
-                    total_output: turnData.total_output_tokens || outputTokens
-                });
+                    turn_input: inputTokens,
+                    turn_output: outputTokens,
+                    total_input: turnData.session_input_tokens || 0,
+                    total_output: turnData.session_output_tokens || 0
+                }, true);
             } else {
                 // Fallback: Show simple summary if no detailed events available
                 const agentInfoEl = document.createElement('div');
@@ -943,16 +1029,17 @@ async function handleReloadPlanClick(element) {
                     </div>`;
             }
 
-            // Update Last Statement token count from historical turn data
-            // Backend stores as turn_input_tokens/turn_output_tokens
+            // Update token counts from historical turn data (isHistorical = true)
             const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
             const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
             UI.updateTokenDisplay({
                 statement_input: inputTokens,
                 statement_output: outputTokens,
-                total_input: turnData.total_input_tokens || inputTokens,
-                total_output: turnData.total_output_tokens || outputTokens
-            });
+                turn_input: inputTokens,
+                turn_output: outputTokens,
+                total_input: turnData.session_input_tokens || 0,
+                total_output: turnData.session_output_tokens || 0
+            }, true);
 
             // Hide replay buttons for non-tool profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -997,6 +1084,18 @@ async function handleReloadPlanClick(element) {
             UI.updateStatusPromptName(turnData.provider, turnData.model, true);
         }
         // --- MODIFICATION END ---
+
+        // Update token counts for tool-enabled profile reloads (isHistorical = true)
+        const inputTokens = turnData.turn_input_tokens || 0;
+        const outputTokens = turnData.turn_output_tokens || 0;
+        UI.updateTokenDisplay({
+            statement_input: inputTokens,
+            statement_output: outputTokens,
+            turn_input: inputTokens,
+            turn_output: outputTokens,
+            total_input: turnData.session_input_tokens || 0,
+            total_output: turnData.session_output_tokens || 0
+        }, true);
 
         // --- MODIFICATION START: Synchronize header buttons ---
         // After successfully rendering the trace, update the header buttons

@@ -2550,9 +2550,15 @@ export function moveSessionToTop(sessionId) {
 }
 
 
-export function updateTokenDisplay(data) {
+export function updateTokenDisplay(data, isHistorical = false) {
     const normalDisplay = document.getElementById('token-normal-display');
     const awsMessage = document.getElementById('token-aws-message');
+
+    // Update turn label based on whether this is a historical view
+    const turnLabel = document.getElementById('turn-token-label');
+    if (turnLabel) {
+        turnLabel.textContent = isHistorical ? 'Reloaded Turn' : 'Last Turn';
+    }
 
     // Check if we have token data (for any provider including Amazon)
     const hasTokenData = (data.statement_input > 0 || data.statement_output > 0 ||
