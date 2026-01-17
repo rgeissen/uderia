@@ -516,6 +516,7 @@ async def _run_genie_execution(
             "html_response": coordinator_response,
             "raw_response": coordinator_response,
             "turn_id": turn_number,  # Required for turn numbering in UI
+            "session_id": session_id,  # Include session_id for filtering when switching sessions
             "profile_tag": profile_tag,
             "genie_coordination": True,
             "slave_sessions_used": result.get('slave_sessions', {})

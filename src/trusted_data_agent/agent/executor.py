@@ -1277,6 +1277,7 @@ class PlanExecutor:
                 "final_answer": final_html,  # Send formatted HTML
                 "final_answer_text": response_text,  # Also include clean text
                 "turn_id": self.current_turn_number,
+                "session_id": self.session_id,  # Include session_id for filtering when switching sessions
                 "tts_payload": tts_payload,
                 "is_session_primer": self.is_session_primer
             }, "final_answer")
@@ -1837,6 +1838,7 @@ The following domain knowledge may be relevant to this conversation:
                 "final_answer": final_html,  # Send formatted HTML
                 "final_answer_text": response_text,  # Also include clean text
                 "turn_id": self.current_turn_number,
+                "session_id": self.session_id,  # Include session_id for filtering when switching sessions
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "tts_payload": tts_payload,
@@ -2295,6 +2297,7 @@ The following domain knowledge may be relevant to this conversation:
                 "step": "Finished",
                 "final_answer": final_html,
                 "turn_id": self.current_turn_number,  # Include turn_id for frontend badge rendering
+                "session_id": self.session_id,  # Include session_id for filtering when switching sessions
                 "knowledge_sources": [{"collection_id": r.get("collection_id"),
                                        "similarity_score": r.get("similarity_score")}
                                       for r in final_results],
@@ -3579,6 +3582,7 @@ The following domain knowledge may be relevant to this conversation:
             "tts_payload": tts_payload,
             "source": self.source,
             "turn_id": self.current_turn_number, # Use the authoritative instance variable
+            "session_id": self.session_id,  # Include session_id for filtering when switching sessions
             # Raw execution data for API consumers
             "execution_trace": self.turn_action_history,
             "collected_data": self.structured_collected_data,

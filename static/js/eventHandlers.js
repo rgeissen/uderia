@@ -358,6 +358,13 @@ async function processStream(responseBody) {
                         UI.updateStatusWindow({ step: "Execution Stopped", details: eventData.message || "Process cancelled by user.", type: 'cancelled'}, true);
                         UI.setExecutionState(false);
                     } else if (eventName === 'final_answer') {
+                        // Check if this event is for the current session (prevents cross-session message leakage during Genie execution)
+                        if (eventData.session_id && eventData.session_id !== state.currentSessionId) {
+                            console.log('[final_answer] Ignoring event for different session:', eventData.session_id, 'current:', state.currentSessionId);
+                            // Don't add message to UI, but still reset execution state
+                            UI.setExecutionState(false);
+                            continue; // Skip to next event
+                        }
                         // All new messages are valid by default, so we don't need to pass `true`
                         // Pass is_session_primer flag for Primer badge display
                         UI.addMessage('assistant', eventData.final_answer, eventData.turn_id, true, null, null, eventData.is_session_primer || false);

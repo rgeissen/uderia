@@ -1003,16 +1003,20 @@ class OutputFormatter:
             '  border-radius: 4px !important; ',
             '}',
             '.rag-sources-section button:hover { background: #4B5563 !important; }',
+            '.rag-sources-header { cursor: pointer; user-select: none; }',
+            '.rag-sources-header:hover { opacity: 0.8; }',
+            '.rag-sources-header .toggle-icon { transition: transform 0.2s; }',
+            '.rag-sources-header.expanded .toggle-icon { transform: rotate(90deg); }',
             '</style>',
             '<div class="rag-sources-section mt-6">',
-            '<button ',
+            '<h3 class="rag-sources-header text-lg font-bold text-white mb-3 flex items-center gap-2" ',
             'onclick="const container = this.closest(\'.rag-sources-section\').querySelector(\'.rag-sources-container\'); ',
             'container.classList.toggle(\'hidden\'); ',
-            'this.textContent = container.classList.contains(\'hidden\') ? \'Show Sources\' : \'Hide Sources\';">',
-            'Show Sources',
-            '</button>',
-            '<div class="rag-sources-container hidden space-y-3 mt-3">',
-            '<h3 class="text-lg font-bold text-white mb-3">Source Documents</h3>'
+            'this.classList.toggle(\'expanded\');">',
+            '<span class="toggle-icon">▶</span>',
+            'Source Documents',
+            '</h3>',
+            '<div class="rag-sources-container hidden space-y-3">'
         ]
 
         for idx, doc in enumerate(sources):

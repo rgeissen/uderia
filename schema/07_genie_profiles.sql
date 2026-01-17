@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS genie_session_links (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status TEXT DEFAULT 'active',          -- active, completed, failed
     execution_order INTEGER DEFAULT 0,     -- Order in which child was invoked
+    nesting_level INTEGER DEFAULT 0,       -- Depth in nested Genie hierarchy (0=direct child, 1=grandchild, etc.)
 
     -- Ensure unique parent-child relationship
     UNIQUE(parent_session_id, slave_session_id)
@@ -46,3 +47,7 @@ ON genie_session_links(slave_session_id);
 -- Index for user-based queries
 CREATE INDEX IF NOT EXISTS idx_genie_user
 ON genie_session_links(user_uuid);
+
+-- Index for nesting level queries
+CREATE INDEX IF NOT EXISTS idx_genie_nesting_level
+ON genie_session_links(nesting_level);

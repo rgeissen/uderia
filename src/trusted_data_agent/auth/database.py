@@ -661,7 +661,22 @@ def _bootstrap_prompt_system():
                     sql = f.read()
                     cursor.executescript(sql)
                 logger.info(f"Applied schema: {schema_file}")
-        
+
+        # 1b. Run schema migrations (for existing installations that need column additions)
+        migrations_dir = schema_dir / "migrations"
+        if migrations_dir.exists():
+            migration_files = sorted(migrations_dir.glob("*.sql"))
+            for migration_file in migration_files:
+                try:
+                    with open(migration_file, 'r') as f:
+                        sql = f.read()
+                        cursor.executescript(sql)
+                    logger.info(f"Applied migration: {migration_file.name}")
+                except Exception as migration_error:
+                    # Migrations may fail if already applied (e.g., column already exists)
+                    # This is expected and safe to ignore
+                    logger.debug(f"Migration {migration_file.name} skipped (likely already applied): {migration_error}")
+
         # 2. Run migration data (creates skeleton with placeholder content)
         migration_sql = schema_dir / "migration_data.sql"
         if migration_sql.exists():

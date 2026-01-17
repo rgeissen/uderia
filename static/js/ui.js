@@ -571,7 +571,16 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
 
     const messageContent = document.createElement('div');
     // Render markdown for assistant messages if marked.js is available
-    if (role === 'assistant' && typeof marked !== 'undefined') {
+    // Skip markdown parsing for content that is already HTML (e.g., RAG responses, formatted tool outputs)
+    const isAlreadyHtml = content && (
+        content.trim().startsWith('<div') ||
+        content.trim().startsWith('<p') ||
+        content.includes('class="rag-') ||
+        content.includes('class="sql-') ||
+        content.includes('class="tool-')
+    );
+
+    if (role === 'assistant' && typeof marked !== 'undefined' && !isAlreadyHtml) {
         try {
             messageContent.innerHTML = marked.parse(content);
         } catch (e) {
