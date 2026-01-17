@@ -4889,6 +4889,26 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     profileTagInput.value = profile ? (profile.tag || '').replace('@', '') : '';
     profileDescInput.value = profile ? profile.description : '';
 
+    // Set session primer fields
+    const sessionPrimerCheckbox = modal.querySelector('#profile-modal-enable-primer');
+    const sessionPrimerContainer = modal.querySelector('#profile-modal-primer-container');
+    const sessionPrimerTextarea = modal.querySelector('#profile-modal-primer');
+
+    if (sessionPrimerCheckbox && sessionPrimerContainer && sessionPrimerTextarea) {
+        const hasPrimer = profile && profile.session_primer;
+        sessionPrimerCheckbox.checked = hasPrimer;
+        sessionPrimerContainer.classList.toggle('hidden', !hasPrimer);
+        sessionPrimerTextarea.value = hasPrimer ? profile.session_primer : '';
+
+        // Add change handler for checkbox (remove old handler first to avoid duplicates)
+        sessionPrimerCheckbox.onchange = () => {
+            sessionPrimerContainer.classList.toggle('hidden', !sessionPrimerCheckbox.checked);
+            if (!sessionPrimerCheckbox.checked) {
+                sessionPrimerTextarea.value = '';
+            }
+        };
+    }
+
     // Set advanced knowledge configuration fields
     const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
     const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
@@ -5284,6 +5304,13 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const useMcpTools = selectedProfileType === 'llm_only' && useMcpToolsCheckbox?.checked || false;
         const useKnowledgeCollections = selectedProfileType === 'llm_only' && useKnowledgeCheckbox?.checked || false;
 
+        // Get session primer value (only if checkbox is checked and textarea has content)
+        const sessionPrimerCheckbox = modal.querySelector('#profile-modal-enable-primer');
+        const sessionPrimerTextarea = modal.querySelector('#profile-modal-primer');
+        const sessionPrimerValue = (sessionPrimerCheckbox?.checked && sessionPrimerTextarea?.value.trim())
+            ? sessionPrimerTextarea.value.trim()
+            : null;
+
         const profileData = {
             id: profile ? profile.id : `profile-${generateId()}`,
             name,
@@ -5301,7 +5328,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             genieConfig: genieConfig,  // Will be null for non-genie profiles
             // Conversation capability flags (only relevant for llm_only profiles)
             useMcpTools: useMcpTools,
-            useKnowledgeCollections: useKnowledgeCollections
+            useKnowledgeCollections: useKnowledgeCollections,
+            // Session primer - auto-execute question when starting a new session
+            session_primer: sessionPrimerValue
         };
         
         // For new profiles: if a default profile exists, enable inherit_classification by default

@@ -2235,7 +2235,14 @@ async def create_session():
         else:
             app_logger.warning(f"REST API: Could not retrieve full session data for new session {session_id} for user {user_uuid}.")
 
-        return jsonify({"session_id": session_id}), 201
+        # Build response with session_primer if profile has one configured
+        response_data = {"session_id": session_id}
+        session_primer = target_profile.get("session_primer") if target_profile else None
+        if session_primer:
+            response_data["session_primer"] = session_primer
+            app_logger.info(f"REST API: Session {session_id} has session primer configured")
+
+        return jsonify(response_data), 201
     except Exception as e:
         app_logger.error(f"Failed to create REST session for user {user_uuid}: {e}", exc_info=True)
         return jsonify({"error": "Failed to create session."}), 500
@@ -2267,6 +2274,8 @@ async def execute_query(session_id: str):
     # Allow optional profile_id parameter; defaults to user's default profile
     profile_id_override = data.get("profile_id")
     profile_id_to_use = profile_id_override or config_manager.get_default_profile_id(user_uuid)
+    # Session primer flag - marks messages as initialization
+    is_session_primer = data.get("is_session_primer", False)
     
     if profile_id_to_use:
         # Activate profile context to ensure correct LLM and profile badges are associated
@@ -2365,7 +2374,8 @@ async def execute_query(session_id: str):
                 event_handler=event_handler,
                 source='rest', # Identify source as REST
                 task_id=task_id, # Pass the task_id here
-                profile_override_id=profile_id_override # Pass profile override for per-message tracking
+                profile_override_id=profile_id_override, # Pass profile override for per-message tracking
+                is_session_primer=is_session_primer # Pass session primer flag
             )
 
             if task_status_dict:

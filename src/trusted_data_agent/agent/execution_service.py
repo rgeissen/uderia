@@ -85,7 +85,8 @@ async def run_agent_execution(
     is_replay: bool = False, # Added replay flag
     display_message: str = None, # Added optional display message for replays
     task_id: str = None, # Add task_id parameter here
-    profile_override_id: str = None # Add profile override parameter
+    profile_override_id: str = None, # Add profile override parameter
+    is_session_primer: bool = False # Session primer flag - marks messages as initialization
 ):
 # --- MODIFICATION END ---
     """
@@ -138,9 +139,10 @@ async def run_agent_execution(
                 message_to_save,
                 html_content=None, # User input is plain text
                 source=source,
-                profile_tag=profile_tag
+                profile_tag=profile_tag,
+                is_session_primer=is_session_primer
             )
-            app_logger.debug(f"Added user message to session_history for {session_id}: '{message_to_save}' with profile_tag: {profile_tag}")
+            app_logger.debug(f"Added user message to session_history for {session_id}: '{message_to_save}' with profile_tag: {profile_tag}, is_session_primer: {is_session_primer}")
         # --- MODIFICATION END ---
 
         previous_turn_data = session_data.get("last_turn_data", {})
@@ -180,7 +182,8 @@ async def run_agent_execution(
                 event_handler=event_handler,
                 genie_profile=active_profile,
                 task_id=task_id,
-                disabled_history=disabled_history  # Pass history context flag
+                disabled_history=disabled_history,  # Pass history context flag
+                is_session_primer=is_session_primer  # Pass session primer flag
             )
             return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
@@ -200,7 +203,8 @@ async def run_agent_execution(
             is_replay=is_replay, # Pass the flag
             task_id=task_id, # Pass the task_id here
             profile_override_id=profile_override_id, # Pass the profile override
-            event_handler=event_handler
+            event_handler=event_handler,
+            is_session_primer=is_session_primer # Pass the session primer flag
         )
         # --- MODIFICATION END ---
 
@@ -227,7 +231,8 @@ async def _run_genie_execution(
     genie_profile: dict,
     task_id: str = None,
     disabled_history: bool = False,
-    current_nesting_level: int = 0
+    current_nesting_level: int = 0,
+    is_session_primer: bool = False
 ):
     """
     Execute a query using Genie coordination for SSE streaming.
@@ -421,7 +426,8 @@ async def _run_genie_execution(
                 session_id=session_id,
                 role='assistant',
                 content=coordinator_response,
-                profile_tag=profile_tag
+                profile_tag=profile_tag,
+                is_session_primer=is_session_primer
             )
 
             # Add turn data to workflow_history

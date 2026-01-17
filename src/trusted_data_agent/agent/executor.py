@@ -153,10 +153,11 @@ class PlanExecutor:
         return None
 
     # --- MODIFICATION START: Add plan_to_execute and is_replay ---
-    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None):
+    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False):
         self.session_id = session_id
         self.user_uuid = user_uuid
         self.event_handler = event_handler
+        self.is_session_primer = is_session_primer  # Track if this is a session primer execution
         # --- MODIFICATION END ---
         self.original_user_input = original_user_input
         self.dependencies = dependencies
@@ -1244,7 +1245,8 @@ class PlanExecutor:
                 role='assistant',
                 content=response_text,  # Clean text for LLM consumption
                 html_content=final_html,  # Formatted HTML for UI display
-                profile_tag=profile_tag
+                profile_tag=profile_tag,
+                is_session_primer=self.is_session_primer
             )
 
             # Update session metadata
@@ -1847,7 +1849,8 @@ The following domain knowledge may be relevant to this conversation:
                 self.session_id,
                 'assistant',
                 content=response_text,  # Clean text for LLM consumption
-                html_content=final_html  # Formatted HTML for UI display
+                html_content=final_html,  # Formatted HTML for UI display
+                is_session_primer=self.is_session_primer
             )
 
             # Cost tracking for llm_only profiles
@@ -2298,7 +2301,8 @@ The following domain knowledge may be relevant to this conversation:
             # Save to session
             await session_manager.add_message_to_histories(
                 self.user_uuid, self.session_id, 'assistant',
-                content=response_text, html_content=final_html
+                content=response_text, html_content=final_html,
+                is_session_primer=self.is_session_primer
             )
 
             # Create workflow_history entry for turn reload consistency
@@ -3554,7 +3558,8 @@ The following domain knowledge may be relevant to this conversation:
             self.session_id,
             'assistant',
             content=self.final_summary_text, # Clean text for LLM's chat_object
-            html_content=final_html          # Rich HTML for UI's session_history
+            html_content=final_html,         # Rich HTML for UI's session_history
+            is_session_primer=self.is_session_primer
         )
         # --- MODIFICATION END ---
 

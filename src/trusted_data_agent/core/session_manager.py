@@ -513,13 +513,14 @@ async def delete_session(user_uuid: str, session_id: str) -> bool:
         return False # Indicate failure due to error
 
 # --- MODIFICATION START: Rename and refactor add_to_history ---
-async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None):
+async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False):
     """
     Adds a message to the appropriate histories, decoupling UI from LLM context.
     - `content` (plain text) is *always* added to the LLM's chat_object.
     - `html_content` (if provided) is added to the UI's session_history.
     - If `html_content` is not provided, `content` is used for the UI.
     - `profile_tag` (if provided) stores which profile was used for this message.
+    - `is_session_primer` (if True) marks this message as part of session initialization.
     """
     session_data = await _load_session(user_uuid, session_id)
     if session_data:
@@ -550,9 +551,12 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
 
         if source:
              message_to_append['source'] = source
-        
+
         if profile_tag:
              message_to_append['profile_tag'] = profile_tag
+
+        if is_session_primer:
+             message_to_append['is_session_primer'] = True
         
         session_history.append(message_to_append)
         # --- MODIFICATION END ---

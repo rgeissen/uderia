@@ -5524,6 +5524,28 @@
                     </div>
                 </div>
 
+                <!-- Session Primer Section -->
+                <div class="bg-gradient-to-br from-cyan-900/10 to-blue-900/10 rounded-xl p-4 border border-cyan-700/20">
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" id="profile-modal-enable-primer"
+                               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500/50 focus:ring-offset-gray-900">
+                        <div>
+                            <span class="text-sm font-bold text-gray-100 group-hover:text-white">Enable Session Primer</span>
+                            <p class="text-xs text-gray-400 group-hover:text-gray-300">Auto-execute a question when starting a new session with this profile</p>
+                        </div>
+                    </label>
+
+                    <!-- Hidden textarea, revealed when checkbox checked -->
+                    <div id="profile-modal-primer-container" class="hidden mt-4 ml-7">
+                        <textarea id="profile-modal-primer" rows="3"
+                            placeholder="Enter a question to initialize context (e.g., 'Describe the database schema and available tables')"
+                            class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg
+                                   focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none transition-all
+                                   placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50 resize-none"></textarea>
+                        <p class="text-xs text-gray-500 mt-2">This question will run automatically before any user input when a new session is created.</p>
+                    </div>
+                </div>
+
                 <!-- Profile Type Selection -->
                 <div class="bg-gradient-to-br from-blue-900/10 to-purple-900/10 rounded-xl p-6 border border-blue-700/20">
                     <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">

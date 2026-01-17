@@ -461,7 +461,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 }
 
 
-export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null) { // eslint-disable-line no-unused-vars
+export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false) { // eslint-disable-line no-unused-vars
     // Hide welcome screen when adding a message
     if (window.hideWelcomeScreen) {
         window.hideWelcomeScreen();
@@ -555,6 +555,18 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         restTag.className = 'rest-call-tag';
         restTag.textContent = 'Rest Call';
         author.appendChild(restTag);
+    }
+
+    // Add Session Primer badge for primer messages (both user and assistant)
+    if (isSessionPrimer) {
+        const primerTag = document.createElement('span');
+        primerTag.className = 'primer-tag text-xs px-2 py-0.5 rounded ml-2';
+        primerTag.style.background = 'rgba(6, 182, 212, 0.3)';
+        primerTag.style.color = 'rgb(103, 232, 249)';
+        primerTag.style.border = '1px solid rgba(6, 182, 212, 0.4)';
+        primerTag.textContent = 'Primer';
+        primerTag.title = 'Session initialization message';
+        author.appendChild(primerTag);
     }
 
     const messageContent = document.createElement('div');

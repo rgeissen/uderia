@@ -65,6 +65,18 @@ export async function handleStartNewSession() {
         const sessionItem = UI.addSessionToList(data, true);
         DOM.sessionList.prepend(sessionItem);
         await handleLoadSession(data.id, true);
+
+        // Check if session has a primer configured - execute it automatically
+        if (data.session_primer) {
+            console.log('[Session Primer] Executing session primer:', data.session_primer.substring(0, 50) + '...');
+            // Import and use handleStreamRequest to execute the primer
+            const { handleStreamRequest } = await import('../eventHandlers.js');
+            handleStreamRequest('/ask_stream', {
+                message: data.session_primer,
+                session_id: data.id,
+                is_session_primer: true
+            });
+        }
     } catch (error) {
         UI.addMessage('assistant', `Failed to start a new session: ${error.message}`);
     } finally {
@@ -137,14 +149,16 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
                 const isValid = msg.isValid === undefined ? true : msg.isValid;
                 // Get profile_tag from message (for user messages)
                 const profileTag = msg.profile_tag || null;
+                // Get is_session_primer flag (defaults to false for older sessions)
+                const isSessionPrimer = msg.is_session_primer || false;
 
                 if (msg.role === 'assistant') {
-                    // Pass the calculated turn ID and validity for assistant messages
-                    UI.addMessage(msg.role, msg.content, currentTurnId, isValid, msg.source, null);
+                    // Pass the calculated turn ID, validity, and primer flag for assistant messages
+                    UI.addMessage(msg.role, msg.content, currentTurnId, isValid, msg.source, null, isSessionPrimer);
                     currentTurnId++; // Increment turn ID after an assistant message
                 } else {
-                    // User messages don't need a turn ID, but pass validity and profile tag
-                    UI.addMessage(msg.role, msg.content, null, isValid, msg.source, profileTag);
+                    // User messages don't need a turn ID, but pass validity, profile tag, and primer flag
+                    UI.addMessage(msg.role, msg.content, null, isValid, msg.source, profileTag, isSessionPrimer);
                 }
             }
             // --- MODIFICATION END ---

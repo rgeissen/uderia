@@ -1612,12 +1612,26 @@ async def new_session():
             profile_tag=profile_tag
         )
         app_logger.info(f"Created new session: {session_id} for user {user_uuid} with profile_tag {profile_tag}.")
-        return jsonify({
-            "id": session_id, 
-            "name": "New Chat", 
+
+        # Check if the profile has a session primer
+        session_primer = None
+        if default_profile:
+            session_primer = default_profile.get('session_primer')
+            if session_primer:
+                app_logger.info(f"Session {session_id} has session primer configured, will execute on frontend init")
+
+        response_data = {
+            "id": session_id,
+            "name": "New Chat",
             "profile_tags_used": [],
             "models_used": []
-        })
+        }
+
+        # Include session_primer if configured - frontend will auto-execute it
+        if session_primer:
+            response_data["session_primer"] = session_primer
+
+        return jsonify(response_data)
     except Exception as e:
         app_logger.error(f"Failed to create new session for user {user_uuid}: {e}", exc_info=True)
         return jsonify({"error": f"Failed to initialize a new chat session: {e}"}), 500
@@ -1868,6 +1882,9 @@ async def ask_stream():
     # --- MODIFICATION START: Receive optional profile override ---
     profile_override_id = data.get("profile_override_id") # Profile ID for temporary override
     # --- MODIFICATION END ---
+    # --- MODIFICATION START: Receive session primer flag ---
+    is_session_primer = data.get("is_session_primer", False) # True if this is a session primer execution
+    # --- MODIFICATION END ---
 
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
@@ -1989,7 +2006,8 @@ async def ask_stream():
                         is_replay=is_replay, # Pass the flag
                         display_message=display_message, # Pass the display message
                         task_id=task_id, # Pass the generated task_id
-                        profile_override_id=profile_override_id # Pass the profile override
+                        profile_override_id=profile_override_id, # Pass the profile override
+                        is_session_primer=is_session_primer # Pass the session primer flag
                     )
                 )
                 # --- MODIFICATION END ---
