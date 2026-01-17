@@ -1896,6 +1896,10 @@ Ranking:"""
             yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
         try:
+            # Check for empty or invalid response from LLM
+            if not response_text or len(response_text.strip()) < 3:
+                raise ValueError(f"LLM returned an empty or invalid response: '{response_text}'. The model may be overloaded or the query may not be suitable for planning.")
+
             json_str = response_text
 
             # Look for ```json block ANYWHERE in the response (not just at start)
@@ -1909,6 +1913,10 @@ Ranking:"""
                 match = re.search(r"```\s*\n?(.*?)\n?\s*```", response_text, re.DOTALL)
                 if match:
                     json_str = match.group(1).strip()
+
+            # Validate json_str before parsing
+            if not json_str or len(json_str.strip()) < 2:
+                raise ValueError(f"Could not extract valid JSON from LLM response. Raw response: '{response_text[:200]}'")
 
             plan_object = json.loads(json_str)
 

@@ -588,7 +588,7 @@ async def get_tools():
 
         if active_profile_ids:
             profile_id_to_load = active_profile_ids[0]  # Primary active profile
-            app_logger.info(f"Auto-loading active profile {profile_id_to_load} for /tools endpoint")
+            app_logger.debug(f"Auto-loading active profile {profile_id_to_load} for /tools endpoint")
         else:
             # Fallback to default if no active profiles
             default_profile_id = config_manager.get_default_profile_id(user_uuid)
@@ -626,7 +626,7 @@ async def get_prompts():
 
         if active_profile_ids:
             profile_id_to_load = active_profile_ids[0]  # Primary active profile
-            app_logger.info(f"Auto-loading active profile {profile_id_to_load} for /prompts endpoint")
+            app_logger.debug(f"Auto-loading active profile {profile_id_to_load} for /prompts endpoint")
         else:
             # Fallback to default if no active profiles
             default_profile_id = config_manager.get_default_profile_id(user_uuid)
@@ -684,7 +684,7 @@ async def get_resources():
 
         if active_profile_ids:
             profile_id_to_load = active_profile_ids[0]  # Primary active profile
-            app_logger.info(f"Auto-loading active profile {profile_id_to_load} for /resources endpoint")
+            app_logger.debug(f"Auto-loading active profile {profile_id_to_load} for /resources endpoint")
         else:
             # Fallback to default if no active profiles
             default_profile_id = config_manager.get_default_profile_id(user_uuid)
@@ -862,7 +862,7 @@ async def subscribe_notifications():
                     # If timeout, send a heartbeat comment to keep the connection alive
                     yield ": ping\n\n"
         except asyncio.CancelledError:
-            app_logger.info(f"Notification subscription cancelled for user {user_uuid}.")
+            app_logger.debug(f"Notification subscription cancelled for user {user_uuid}.")
         finally:
             queues_for_user.remove(queue)
             # Clean up user entry if no more queues are associated with them
@@ -1551,6 +1551,7 @@ async def new_session():
     data = await request.get_json()
     charting_intensity = data.get("charting_intensity", APP_CONFIG.DEFAULT_CHARTING_INTENSITY) if APP_CONFIG.CHARTING_ENABLED else "none"
     system_prompt_template = data.get("system_prompt")
+    profile_override_id = data.get("profile_override_id")  # For session primer to use overridden profile
 
     # Get profile tag and LLM config from DEFAULT profile (not first active)
     from trusted_data_agent.core.config_manager import get_config_manager
@@ -1560,11 +1561,23 @@ async def new_session():
     profile_tag = None
     profile_provider = APP_CONFIG.CURRENT_PROVIDER  # Fallback to global config
 
+    # Always fetch profiles - needed for default profile and potential profile override
+    profiles = config_manager.get_profiles(user_uuid)
+
+    # Check for profile override FIRST - use override profile's tag if present
+    override_profile = None
+    if profile_override_id:
+        override_profile = next((p for p in profiles if p.get("id") == profile_override_id), None)
+        if override_profile:
+            profile_tag = override_profile.get("tag")
+            app_logger.info(f"Using overridden profile tag for session: @{profile_tag} (from profile override)")
+
     if default_profile_id:
-        profiles = config_manager.get_profiles(user_uuid)
         default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
         if default_profile:
-            profile_tag = default_profile.get("tag")
+            # Only use default profile tag if no override is active
+            if not override_profile:
+                profile_tag = default_profile.get("tag")
 
             # CRITICAL: Initialize MCP server ID AND CLIENT from profile for deterministic behavior
             # This ensures new sessions always use the profile's configured MCP server,
@@ -1614,22 +1627,33 @@ async def new_session():
         app_logger.info(f"Created new session: {session_id} for user {user_uuid} with profile_tag {profile_tag}.")
 
         # Check if the profile has a session primer
+        # Use overridden profile if provided (profile override awareness), otherwise use default
         session_primer = None
-        if default_profile:
-            session_primer = default_profile.get('session_primer')
+        # override_profile was already looked up earlier (before session creation)
+        primer_profile = override_profile if override_profile else default_profile
+
+        if override_profile:
+            app_logger.info(f"Using overridden profile for session primer: {override_profile.get('name')} (id: {profile_override_id})")
+
+        if primer_profile:
+            session_primer = primer_profile.get('session_primer')
             if session_primer:
-                app_logger.info(f"Session {session_id} has session primer configured, will execute on frontend init")
+                app_logger.info(f"Session {session_id} has session primer configured from profile '{primer_profile.get('name')}', will execute on frontend init")
 
         response_data = {
             "id": session_id,
             "name": "New Chat",
-            "profile_tags_used": [],
+            "profile_tags_used": [profile_tag] if profile_tag else [],
+            "profile_tag": profile_tag,  # Current profile tag for display
             "models_used": []
         }
 
         # Include session_primer if configured - frontend will auto-execute it
         if session_primer:
             response_data["session_primer"] = session_primer
+            # Also include the profile override ID so frontend can pass it to primer execution
+            if profile_override_id:
+                response_data["profile_override_id"] = profile_override_id
 
         return jsonify(response_data)
     except Exception as e:

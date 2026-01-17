@@ -197,10 +197,15 @@ export async function loadResources(type) {
     return data;
 }
 
-export async function startNewSession() {
+export async function startNewSession(profileOverrideId = null) {
     const payload = {
         charting_intensity: DOM.chartingIntensitySelect.value
     };
+
+    // Include profile override if provided (for session primer to use correct profile)
+    if (profileOverrideId) {
+        payload.profile_override_id = profileOverrideId;
+    }
 
     if (isPrivilegedUser()) {
         let activePrompt = getSystemPromptForModel(state.currentProvider, state.currentModel);

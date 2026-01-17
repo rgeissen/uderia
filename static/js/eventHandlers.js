@@ -359,7 +359,8 @@ async function processStream(responseBody) {
                         UI.setExecutionState(false);
                     } else if (eventName === 'final_answer') {
                         // All new messages are valid by default, so we don't need to pass `true`
-                        UI.addMessage('assistant', eventData.final_answer, eventData.turn_id); // Pass turn_id here
+                        // Pass is_session_primer flag for Primer badge display
+                        UI.addMessage('assistant', eventData.final_answer, eventData.turn_id, true, null, null, eventData.is_session_primer || false);
                         UI.updateStatusWindow({ step: "Finished", details: "Response sent to chat." }, true);
                         UI.setExecutionState(false);
 
@@ -488,7 +489,7 @@ export async function handleStreamRequest(endpoint, body) {
                 const defaultProfile = window.configState.profiles.find(p => p.id === window.configState.defaultProfileId);
                 profileTag = defaultProfile?.tag || null;
             }
-            UI.addMessage('user', body.message, null, true, 'text', profileTag);
+            UI.addMessage('user', body.message, null, true, 'text', profileTag, body.is_session_primer || false);
         } else {
         }
     } else {

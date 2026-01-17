@@ -191,7 +191,7 @@ async def create_session(user_uuid: str, provider: str, llm_instance: any, chart
         "model": APP_CONFIG.CURRENT_MODEL, # --- Store the model used for this session (for backwards compatibility)
         "profile_tag": profile_tag, # --- Store the profile tag used for this session
         "profile_id": profile_id, # --- Store the profile ID used for this session (for badge/color info)
-        "profile_tags_used": [], # --- Initialize as empty for a new session
+        "profile_tags_used": [profile_tag] if profile_tag else [], # --- Initialize with profile_tag if provided
         "models_used": [], # --- Keep for backwards compatibility
         "session_history": [], # UI history (messages added via add_message_to_histories)
         "chat_object": chat_history_for_file, # Store serializable history for LLM context
@@ -375,19 +375,19 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
 
 
     # Filter out template generation sessions
-    app_logger.info(f"[Session Scan Complete] Found {len(session_summaries)} total sessions before filtering")
+    app_logger.debug(f"[Session Scan Complete] Found {len(session_summaries)} total sessions before filtering")
     for session in session_summaries:
         session_id = session.get("id", "unknown")[:12]
         is_slave = session.get("genie_metadata", {}).get("is_genie_slave", False)
         nesting_level = session.get("genie_metadata", {}).get("nesting_level", "N/A")
-        app_logger.info(f"[Session Scan] {session_id}... (slave={is_slave}, level={nesting_level})")
+        app_logger.debug(f"[Session Scan] {session_id}... (slave={is_slave}, level={nesting_level})")
 
     session_summaries = [
         session for session in session_summaries
         if session.get("id") != RAGTemplateGenerator.TEMPLATE_SESSION_ID
     ]
 
-    app_logger.info(f"[After Template Filter] {len(session_summaries)} sessions remain")
+    app_logger.debug(f"[After Template Filter] {len(session_summaries)} sessions remain")
 
     # Sort sessions with genie child sessions appearing directly after their parent
     # Build a lookup map for quick access
@@ -397,7 +397,7 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
     parent_sessions = []
     slave_sessions_by_parent = {}  # parent_id -> list of slaves
 
-    app_logger.info(f"[Session Hierarchy] Processing {len(session_summaries)} total sessions")
+    app_logger.debug(f"[Session Hierarchy] Processing {len(session_summaries)} total sessions")
     for session in session_summaries:
         genie_metadata = session.get("genie_metadata", {})
         parent_id = genie_metadata.get("parent_session_id")
@@ -409,11 +409,11 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
             if parent_id not in slave_sessions_by_parent:
                 slave_sessions_by_parent[parent_id] = []
             slave_sessions_by_parent[parent_id].append(session)
-            app_logger.info(f"[Session Hierarchy] Child: {session_id} (L{nesting_level}) -> parent: {parent_id}")
+            app_logger.debug(f"[Session Hierarchy] Child: {session_id} (L{nesting_level}) -> parent: {parent_id}")
         else:
             # This is a parent/normal session
             parent_sessions.append(session)
-            app_logger.info(f"[Session Hierarchy] Parent/Normal: {session_id}")
+            app_logger.debug(f"[Session Hierarchy] Parent/Normal: {session_id}")
 
     # Sort parent sessions by last_updated (most recent first)
     def sort_key(session):
@@ -434,32 +434,32 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
         indent = "  " * depth
 
         if session_id in added_ids:
-            app_logger.info(f"{indent}[Recursive Build] Skipping {session_id} (already added)")
+            app_logger.debug(f"{indent}[Recursive Build] Skipping {session_id} (already added)")
             return  # Already added (prevent duplicates)
 
         if session_id not in sessions_dict:
-            app_logger.warning(f"{indent}[Recursive Build] Session {session_id} not found in sessions_dict")
+            app_logger.debug(f"{indent}[Recursive Build] Session {session_id} not found in sessions_dict")
             return  # Session not found
 
         session = sessions_dict[session_id]
         final_sessions.append(session)
         added_ids.add(session_id)
-        app_logger.info(f"{indent}[Recursive Build] Added session {session_id} (depth={depth})")
+        app_logger.debug(f"{indent}[Recursive Build] Added session {session_id} (depth={depth})")
 
         # Recursively add children
         if session_id in slave_sessions_by_parent:
             children = slave_sessions_by_parent[session_id]
-            app_logger.info(f"{indent}[Recursive Build] Session {session_id} has {len(children)} children")
+            app_logger.debug(f"{indent}[Recursive Build] Session {session_id} has {len(children)} children")
             for child in children:
                 add_session_with_children(child.get("id"), sessions_dict, added_ids, depth + 1)
         else:
-            app_logger.info(f"{indent}[Recursive Build] Session {session_id} has no children")
+            app_logger.debug(f"{indent}[Recursive Build] Session {session_id} has no children")
 
     final_sessions = []
     added_ids = set()
 
     # Add all parent sessions with their nested children
-    app_logger.info(f"[Recursive Build] Starting with {len(parent_sessions)} top-level sessions")
+    app_logger.debug(f"[Recursive Build] Starting with {len(parent_sessions)} top-level sessions")
     for parent in parent_sessions:
         add_session_with_children(parent.get("id"), session_by_id, added_ids, depth=0)
 
@@ -469,13 +469,13 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
             final_sessions.extend(slaves)
 
     session_summaries = final_sessions
-    app_logger.info(f"[FINAL RESULT] Returning {len(session_summaries)} sessions")
+    app_logger.debug(f"[FINAL RESULT] Returning {len(session_summaries)} sessions")
     for i, session in enumerate(session_summaries[:10], 1):
         session_id = session.get("id", "unknown")[:12]
         is_slave = session.get("genie_metadata", {}).get("is_genie_slave", False)
         nesting_level = session.get("genie_metadata", {}).get("nesting_level", "N/A")
         name = session.get("name", "Unnamed")[:30]
-        app_logger.info(f"[FINAL] {i}. {session_id}... - {name} (slave={is_slave}, level={nesting_level})")
+        app_logger.debug(f"[FINAL] {i}. {session_id}... - {name} (slave={is_slave}, level={nesting_level})")
 
     return session_summaries
 

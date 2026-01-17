@@ -5372,7 +5372,7 @@ async def get_profile_resources(profile_id: str):
                 app_logger.error(error_msg)
                 return jsonify({"status": "error", "message": error_msg}), 500
 
-            app_logger.info(
+            app_logger.debug(
                 f"✓ Profile {profile_id} inherits classification from per-server master {master_profile_id} "
                 f"(MCP server: {current_mcp_server_id})"
             )
@@ -7416,7 +7416,7 @@ async def get_sessions_list():
         parent_sessions = []
         slave_sessions_by_parent = {}  # parent_id -> list of children
 
-        app_logger.info(f"[REST API Session Hierarchy] Processing {len(sessions)} total sessions")
+        app_logger.debug(f"[REST API Session Hierarchy] Processing {len(sessions)} total sessions")
         for session in sessions:
             genie_metadata = session.get("genie_metadata", {})
             parent_id = genie_metadata.get("parent_session_id")
@@ -7428,11 +7428,11 @@ async def get_sessions_list():
                 if parent_id not in slave_sessions_by_parent:
                     slave_sessions_by_parent[parent_id] = []
                 slave_sessions_by_parent[parent_id].append(session)
-                app_logger.info(f"[REST API Session Hierarchy] Child: {session_id} (L{nesting_level}) -> parent: {parent_id}")
+                app_logger.debug(f"[REST API Session Hierarchy] Child: {session_id} (L{nesting_level}) -> parent: {parent_id}")
             else:
                 # This is a parent/normal session
                 parent_sessions.append(session)
-                app_logger.info(f"[REST API Session Hierarchy] Parent/Normal: {session_id}")
+                app_logger.debug(f"[REST API Session Hierarchy] Parent/Normal: {session_id}")
 
         # Sort parent sessions ONLY (not children - they stay with parents)
         if sort_by == 'recent':
@@ -7454,7 +7454,7 @@ async def get_sessions_list():
             indent = "  " * depth
 
             if session_id in added_ids:
-                app_logger.info(f"{indent}[REST API Recursive Build] Skipping {session_id} (already added)")
+                app_logger.debug(f"{indent}[REST API Recursive Build] Skipping {session_id} (already added)")
                 return  # Already added (prevent duplicates)
 
             if session_id not in sessions_dict:
@@ -7464,16 +7464,16 @@ async def get_sessions_list():
             session = sessions_dict[session_id]
             final_sessions.append(session)
             added_ids.add(session_id)
-            app_logger.info(f"{indent}[REST API Recursive Build] Added session {session_id} (depth={depth})")
+            app_logger.debug(f"{indent}[REST API Recursive Build] Added session {session_id} (depth={depth})")
 
             # Recursively add children
             if session_id in slave_sessions_by_parent:
                 children = slave_sessions_by_parent[session_id]
-                app_logger.info(f"{indent}[REST API Recursive Build] Session {session_id} has {len(children)} children")
+                app_logger.debug(f"{indent}[REST API Recursive Build] Session {session_id} has {len(children)} children")
                 for child in children:
                     add_session_with_children(child.get("id"), sessions_dict, added_ids, depth + 1)
             else:
-                app_logger.info(f"{indent}[REST API Recursive Build] Session {session_id} has no children")
+                app_logger.debug(f"{indent}[REST API Recursive Build] Session {session_id} has no children")
 
         final_sessions = []
         added_ids = set()
@@ -7482,7 +7482,7 @@ async def get_sessions_list():
         for parent in parent_sessions:
             add_session_with_children(parent.get("id"), session_by_id, added_ids)
 
-        app_logger.info(f"[REST API Session Hierarchy] Final session list: {len(final_sessions)} sessions (from {len(sessions)} total)")
+        app_logger.debug(f"[REST API Session Hierarchy] Final session list: {len(final_sessions)} sessions (from {len(sessions)} total)")
 
         # Paginate the final hierarchical list
         total = len(final_sessions)

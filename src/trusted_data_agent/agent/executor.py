@@ -1277,7 +1277,8 @@ class PlanExecutor:
                 "final_answer": final_html,  # Send formatted HTML
                 "final_answer_text": response_text,  # Also include clean text
                 "turn_id": self.current_turn_number,
-                "tts_payload": tts_payload
+                "tts_payload": tts_payload,
+                "is_session_primer": self.is_session_primer
             }, "final_answer")
 
             # Save turn data to workflow_history for session reload
@@ -1838,7 +1839,8 @@ The following domain knowledge may be relevant to this conversation:
                 "turn_id": self.current_turn_number,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
-                "tts_payload": tts_payload
+                "tts_payload": tts_payload,
+                "is_session_primer": self.is_session_primer
             }
             self._log_system_event(event_data)
             yield self._format_sse(event_data, "final_answer")
@@ -2295,7 +2297,8 @@ The following domain knowledge may be relevant to this conversation:
                 "turn_id": self.current_turn_number,  # Include turn_id for frontend badge rendering
                 "knowledge_sources": [{"collection_id": r.get("collection_id"),
                                        "similarity_score": r.get("similarity_score")}
-                                      for r in final_results]
+                                      for r in final_results],
+                "is_session_primer": self.is_session_primer
             }, "final_answer")
 
             # Save to session
@@ -2451,7 +2454,8 @@ The following domain knowledge may be relevant to this conversation:
                     # Get override profile's LLM configuration
                     override_llm_config_id = override_profile.get('llmConfigurationId')
                     if override_llm_config_id:
-                        llm_configs = config_manager.get_llm_configurations()
+                        # CRITICAL: Pass user_uuid to get user's updated LLM configs (not bootstrap defaults)
+                        llm_configs = config_manager.get_llm_configurations(self.user_uuid)
                         override_llm_config = next((cfg for cfg in llm_configs if cfg['id'] == override_llm_config_id), None)
                         
                         if override_llm_config:
@@ -3579,6 +3583,7 @@ The following domain knowledge may be relevant to this conversation:
             "execution_trace": self.turn_action_history,
             "collected_data": self.structured_collected_data,
             "turn_input_tokens": self.turn_input_tokens,
-            "turn_output_tokens": self.turn_output_tokens
+            "turn_output_tokens": self.turn_output_tokens,
+            "is_session_primer": self.is_session_primer
         }, "final_answer")
         # --- MODIFICATION END ---

@@ -35,6 +35,20 @@ export async function handleStartNewSession() {
     if (profileWarningBanner) {
         profileWarningBanner.classList.add('hidden');
     }
+    // Capture the active profile override BEFORE clearing it - needed for session primer
+    // Check both activeProfileOverrideId (set on query execution) and activeTagPrefix (set on autocomplete selection)
+    let activeProfileOverrideId = window.activeProfileOverrideId || null;
+
+    // If no activeProfileOverrideId but activeTagPrefix is set, resolve the tag to a profile ID
+    if (!activeProfileOverrideId && window.activeTagPrefix && window.configState?.profiles) {
+        const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
+        const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
+        if (overrideProfile) {
+            activeProfileOverrideId = overrideProfile.id;
+            console.log(`[Session Primer] Resolved activeTagPrefix @${tag} to profile ID: ${activeProfileOverrideId}`);
+        }
+    }
+
     // Clear the active profile override for autocomplete when starting a new session
     if (window.activeProfileOverrideId) {
         delete window.activeProfileOverrideId;
@@ -61,7 +75,9 @@ export async function handleStartNewSession() {
     state.sessionLoaded = false;
 
     try {
-        const data = await API.startNewSession();
+        console.log('[Session Primer] Starting new session with profile override ID:', activeProfileOverrideId);
+        const data = await API.startNewSession(activeProfileOverrideId);
+        console.log('[Session Primer] Session created, response:', { id: data.id, has_primer: !!data.session_primer });
         const sessionItem = UI.addSessionToList(data, true);
         DOM.sessionList.prepend(sessionItem);
         await handleLoadSession(data.id, true);
@@ -71,11 +87,17 @@ export async function handleStartNewSession() {
             console.log('[Session Primer] Executing session primer:', data.session_primer.substring(0, 50) + '...');
             // Import and use handleStreamRequest to execute the primer
             const { handleStreamRequest } = await import('../eventHandlers.js');
-            handleStreamRequest('/ask_stream', {
+            const primerRequest = {
                 message: data.session_primer,
                 session_id: data.id,
                 is_session_primer: true
-            });
+            };
+            // Pass profile_override_id if present (ensures executor uses correct profile)
+            if (data.profile_override_id) {
+                primerRequest.profile_override_id = data.profile_override_id;
+                console.log('[Session Primer] Using profile override:', data.profile_override_id);
+            }
+            handleStreamRequest('/ask_stream', primerRequest);
         }
     } catch (error) {
         UI.addMessage('assistant', `Failed to start a new session: ${error.message}`);

@@ -215,8 +215,8 @@ def _regenerate_contexts():
     in the global STATE based on the current disabled lists and prints the
     current status to the console for debugging.
     """
-    print("\n--- Regenerating Agent Capability Contexts ---")
-    
+    app_logger.debug("Regenerating Agent Capability Contexts")
+
     disabled_tools_list = APP_STATE.get("disabled_tools", [])
     disabled_prompts_list = APP_STATE.get("disabled_prompts", [])
     
@@ -226,10 +226,8 @@ def _regenerate_contexts():
                 tool_info['disabled'] = tool_info['name'] in disabled_tools_list
         
         enabled_count = sum(1 for category in APP_STATE['structured_tools'].values() for t in category if not t['disabled'])
-        
-        print(f"\n[ Tools Status ]")
-        print(f"  - Active: {enabled_count}")
-        print(f"  - Inactive: {len(disabled_tools_list)}")
+
+        app_logger.debug(f"Tools Status: Active={enabled_count}, Inactive={len(disabled_tools_list)}")
 
         tool_context_parts = ["--- Available Tools ---"]
         for category, tools in sorted(APP_STATE['structured_tools'].items()):
@@ -267,10 +265,8 @@ def _regenerate_contexts():
                 prompt_info['disabled'] = prompt_info['name'] in disabled_prompts_list
 
         enabled_count = sum(1 for category in APP_STATE['structured_prompts'].values() for p in category if not p['disabled'])
-        
-        print(f"\n[ Prompts Status ]")
-        print(f"  - Active: {enabled_count}")
-        print(f"  - Inactive: {len(disabled_prompts_list)}")
+
+        app_logger.debug(f"Prompts Status: Active={enabled_count}, Inactive={len(disabled_prompts_list)}")
         
         prompt_context_parts = ["--- Available Prompts ---"]
         for category, prompts in sorted(APP_STATE['structured_prompts'].items()):
@@ -318,6 +314,4 @@ def _regenerate_contexts():
     else:
         APP_STATE['constraints_context'] = "" 
         app_logger.info("Regenerated LLM constraints context. No capabilities are currently forbidden.")
-    
-    print("\n" + "-"*44)
 

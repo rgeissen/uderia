@@ -906,6 +906,81 @@ Profiles can be classified as:
 
 **Note:** Classification only applies to Tool Focused (MCP) profiles with multiple tools/prompts available.
 
+#### Session Primer - Automatic Context Initialization
+
+**The Value:**
+Session Primer allows each profile to automatically execute an initialization question when a new session starts, pre-populating the context window with domain-specific knowledge. This transforms generic AI agents into **instantly educated specialists**.
+
+**Why This Matters:**
+Instead of manually explaining your database schema, business rules, or domain terminology at the start of every conversation, the Session Primer does it automatically. The agent starts every session already understanding your context.
+
+**Configuration:**
+In profile settings, enable "Session Primer" and provide an initialization question:
+- `"Describe the database schema and explain the business meaning of each table"`
+- `"What KPIs are tracked in this system and how are they calculated?"`
+- `"Educate yourself on the API endpoints and their authentication requirements"`
+
+**The Game-Changer: Specialized Expert Teams**
+
+Session Primer becomes transformational with Genie profiles. Build teams of pre-educated specialists:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                    BUILDING AN AI EXPERT ORGANIZATION                          │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│   @ANALYST (Genie Coordinator)                                                 │
+│   └─ Primer: "You coordinate business analysis. Understand the team below."   │
+│                                                                                │
+│       ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐     │
+│       │  @KPI_EXPERT      │  │  @SCHEMA_EXPERT   │  │  @SQL_EXECUTOR    │     │
+│       │                   │  │                   │  │                   │     │
+│       │  Primer:          │  │  Primer:          │  │  Primer:          │     │
+│       │  "Learn all KPI   │  │  "Learn the DB    │  │  "Learn the       │     │
+│       │   definitions,    │  │   schema and the  │  │   available SQL   │     │
+│       │   formulas, and   │  │   business context│  │   tools and       │     │
+│       │   business        │  │   of each table   │  │   execution       │     │
+│       │   thresholds"     │  │   and column"     │  │   patterns"       │     │
+│       │                   │  │                   │  │                   │     │
+│       │  → Knows: Revenue │  │  → Knows: Orders  │  │  → Knows: How to  │     │
+│       │    targets, churn │  │    = transactions,│  │    write safe,    │     │
+│       │    definitions,   │  │    Customers =    │  │    optimized      │     │
+│       │    seasonality    │  │    B2B accounts   │  │    queries        │     │
+│       └───────────────────┘  └───────────────────┘  └───────────────────┘     │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Single Question, Compound Intelligence:**
+
+```
+User: "@ANALYST, why did Q4 revenue drop?"
+
+Execution Flow:
+1. @KPI_EXPERT (already knows KPI definitions from primer)
+   → "Revenue = sum(order_total) where status='completed'. Q4 target was $2M."
+
+2. @SCHEMA_EXPERT (already knows table relationships from primer)
+   → "Revenue data lives in orders table. Check order_status and created_at."
+
+3. @SQL_EXECUTOR (already knows query patterns from primer)
+   → Executes: SELECT month, SUM(order_total) FROM orders WHERE...
+   → Returns: October $580K, November $420K, December $310K
+
+4. @ANALYST synthesizes: "Q4 revenue was $1.31M vs $2M target (-34.5%).
+   December showed steepest decline. Recommend investigating..."
+```
+
+**Without Session Primer:** Each expert starts blank. User must explain schemas, KPIs, and context repeatedly.
+
+**With Session Primer:** Each expert is pre-educated. They collaborate immediately with full domain understanding.
+
+**Best Practices:**
+- **Tool Focused profiles**: Prime with schema descriptions, API documentation
+- **Knowledge Focused profiles**: Prime with "summarize the key topics in the knowledge base"
+- **Genie profiles**: Prime with team structure and delegation guidelines
+- **Conversation profiles**: Prime with domain terminology and business rules
+
 ### Real-World Usage Patterns
 
 #### Pattern 1: Learn, Then Execute

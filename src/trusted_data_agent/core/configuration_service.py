@@ -166,7 +166,7 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
             )
             return False
 
-        app_logger.info(
+        app_logger.debug(
             f"✓ Profile {profile_id} inherits classification from per-server master {master_profile_id} "
             f"(MCP server: {current_mcp_server_id})"
         )
@@ -237,10 +237,10 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
             )
     APP_STATE['mcp_prompts'] = mcp_prompts_dict
     
-    app_logger.info(f"Loaded cached classification for profile {profile_id} (mode: {classification_mode})")
-    app_logger.info(f"  - {len(APP_STATE['structured_tools'])} tool categories, {len(mcp_tools_dict)} total tools")
-    app_logger.info(f"  - {len(APP_STATE['structured_prompts'])} prompt categories, {len(mcp_prompts_dict)} total prompts")
-    app_logger.info(f"  - {len(APP_STATE['structured_resources'])} resource categories")
+    app_logger.debug(f"Loaded cached classification for profile {profile_id} (mode: {classification_mode})")
+    app_logger.debug(f"  - {len(APP_STATE['structured_tools'])} tool categories, {len(mcp_tools_dict)} total tools")
+    app_logger.debug(f"  - {len(APP_STATE['structured_prompts'])} prompt categories, {len(mcp_prompts_dict)} total prompts")
+    app_logger.debug(f"  - {len(APP_STATE['structured_resources'])} resource categories")
     
     return True
 
@@ -283,7 +283,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
 
         APP_CONFIG.CURRENT_PROFILE_CLASSIFICATION_MODE = classification_mode
 
-        app_logger.info(f"Switching to profile {profile_id} (classification mode: {classification_mode}, validate_llm: {validate_llm})")
+        app_logger.debug(f"Switching to profile {profile_id} (classification mode: {classification_mode}, validate_llm: {validate_llm})")
         
         # Load LLM configuration from profile
         llm_config_id = profile.get('llmConfigurationId')
@@ -306,7 +306,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
         model = llm_config.get('model')
         credentials = llm_config.get('credentials', {})
         
-        app_logger.info(f"Initializing LLM client for profile {profile_id}: {provider}/{model}")
+        app_logger.debug(f"Initializing LLM client for profile {profile_id}: {provider}/{model}")
         
         # Load stored credentials if available - use user_uuid to look up user_id for encrypted credentials
         if ENCRYPTION_AVAILABLE and user_uuid:
@@ -318,11 +318,11 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                 with get_db_session() as session:
                     user = session.query(User).filter_by(id=user_uuid).first()
                     if user:
-                        app_logger.info(f"Loading credentials for user {user.id}, provider {provider}")
+                        app_logger.debug(f"Loading credentials for user {user.id}, provider {provider}")
                         stored_result = await retrieve_credentials_for_provider(user.id, provider)
                         if stored_result.get("credentials"):
                             credentials = {**stored_result["credentials"], **credentials}
-                            app_logger.info(f"✓ Successfully loaded stored credentials for {provider}")
+                            app_logger.debug(f"✓ Successfully loaded stored credentials for {provider}")
                         else:
                             app_logger.warning(f"No stored credentials found for {provider} (status: {stored_result.get('status')})")
                     else:
@@ -382,7 +382,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
 
             if pool_key in llm_pool and not validate_llm:
                 temp_llm_instance = llm_pool[pool_key]
-                app_logger.info(f"✓ POOL HIT: Reusing pooled LLM instance for {provider}/{model} (saved ~2s)")
+                app_logger.debug(f"✓ POOL HIT: Reusing pooled LLM instance for {provider}/{model} (saved ~2s)")
             else:
                 # Create LLM client (with optional validation test)
                 should_add_to_pool = True  # Track if we should pool this instance
@@ -563,15 +563,15 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
 
                 if pool_key in client_pool:
                     temp_mcp_client = client_pool[pool_key]
-                    app_logger.info(f"✓ POOL HIT: Reusing pooled MCP client for server {server_name} (ID: {mcp_server_id}, saved ~3s)")
+                    app_logger.debug(f"✓ POOL HIT: Reusing pooled MCP client for server {server_name} (ID: {mcp_server_id}, saved ~3s)")
                 else:
                     # Create new MCP client with the config
                     temp_mcp_client = MultiServerMCPClient(server_configs)
                     client_pool[pool_key] = temp_mcp_client
-                    app_logger.info(f"✓ Created new MCP client for server {server_name} (ID: {mcp_server_id}, added to pool)")
+                    app_logger.debug(f"✓ Created new MCP client for server {server_name} (ID: {mcp_server_id}, added to pool)")
 
                 # Test MCP connection with 10 second timeout (even for pooled clients - health check)
-                app_logger.info(f"Testing MCP connection to {server_name} (ID: {mcp_server_id})...")
+                app_logger.debug(f"Testing MCP connection to {server_name} (ID: {mcp_server_id})...")
                 async def test_mcp():
                     # Use server ID for session, not name
                     async with temp_mcp_client.session(mcp_server_id) as temp_session:
@@ -579,7 +579,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
 
                 try:
                     await asyncio.wait_for(test_mcp(), timeout=10.0)
-                    app_logger.info(f"MCP server connection validated successfully: {server_name} (ID: {mcp_server_id})")
+                    app_logger.debug(f"MCP server connection validated successfully: {server_name} (ID: {mcp_server_id})")
                 except asyncio.TimeoutError:
                     # Health check failed - remove from pool and raise
                     if pool_key in client_pool:
@@ -609,12 +609,12 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             APP_CONFIG.MCP_SERVER_CONNECTED = True
             APP_CONFIG.SERVICES_CONFIGURED = True
 
-            app_logger.info(f"Profile {profile_id} fully initialized and validated")
+            app_logger.debug(f"Profile {profile_id} fully initialized and validated")
 
             # Try to load cached classification
-            app_logger.info(f"Checking for cached classification for profile {profile_id}...")
+            app_logger.debug(f"Checking for cached classification for profile {profile_id}...")
             cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
-            app_logger.info(f"Cached classification loaded: {cached_loaded}")
+            app_logger.debug(f"Cached classification loaded: {cached_loaded}")
 
             # If no cache, run classification
             if not cached_loaded:
@@ -642,7 +642,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             else:
                 # For cached classification, also ensure profile has tools/prompts initialized
                 # This fixes the bug where cached profiles had all resources deactivated
-                app_logger.info(f"Using cached classification for profile {profile_id}, checking profile initialization...")
+                app_logger.debug(f"Using cached classification for profile {profile_id}, checking profile initialization...")
                 profile = config_manager.get_profile(profile_id, user_uuid)
                 if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
                     # Profile doesn't have tools list yet - initialize with all discovered tools from cache
@@ -671,7 +671,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             APP_STATE["disabled_tools"] = config_manager.get_profile_disabled_tools(profile_id, user_uuid)
             APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
 
-            app_logger.info(f"Loaded profile {profile_id}: {len(APP_STATE['disabled_tools'])} disabled tools, {len(APP_STATE['disabled_prompts'])} disabled prompts")
+            app_logger.debug(f"Loaded profile {profile_id}: {len(APP_STATE['disabled_tools'])} disabled tools, {len(APP_STATE['disabled_prompts'])} disabled prompts")
 
             # Regenerate contexts with new classification
             _regenerate_contexts()

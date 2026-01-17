@@ -200,7 +200,7 @@ def create_app():
         # Allow connections to unpkg for G2Plot if needed, adjust connect-src
         csp_policy = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com", # Allow inline scripts for auth pages
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net", # Allow inline scripts for auth pages + marked.js
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", # Allow inline styles for G2Plot tooltips etc.
             "font-src 'self' https://fonts.gstatic.com",
             "connect-src 'self' *.googleapis.com https://*.withgoogle.com https://unpkg.com https://api.github.com", # Added unpkg and GitHub API
