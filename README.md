@@ -2625,10 +2625,12 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **17-Jan-2026:** Genie Profiles - Hierarchical AI Organizations with multi-level autonomous coordination (Parent → Child agents)
+*   **14-Jan-2026:** Session Primer - Auto-initialize sessions with domain knowledge, transforming generic LLMs into pre-educated specialists
 *   **12-Jan-2026:** Genie Profile Type (Beta) - Multi-profile coordination with LangChain orchestration
 *   **12-Jan-2026:** Genie UI Features - Inline progress cards, collapsible child sessions, split view access
 *   **09-Jan-2026:** Knowledge Focused (RAG) Profile Type - Mandatory knowledge retrieval with anti-hallucination safeguards
-*   **08-Jan-2026:** Profile Classes - Four Execution Modes (Conversation, Tool, Knowledge, Genie)
+*   **08-Jan-2026:** Profile Classes - Four Execution Modes (Conversation, Efficiency, Knowledge, Genie)
 *   **06-Jan-2026:** Export/Import Knowledge Repositories
 *   **05-Jan-2026:** Export/Import Planner Repositories
 *   **02-Jan-2026:** OAuth Implementation - Google, Github
