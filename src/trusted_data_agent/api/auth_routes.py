@@ -152,11 +152,99 @@ def _ensure_user_default_collection(user_id: str, mcp_servers: list):
                             logger.info(f"Loaded new default collection (ID: {collection_id}) into RAG retriever")
                     except Exception as load_err:
                         logger.error(f"Failed to load default collection {collection_id} into RAG retriever: {load_err}", exc_info=True)
+
+            # Build mapping of mcp_server_id -> collection_id for profile updates
+            collection_ids_by_server = {}
+            for collection_id in collections_created:
+                collection = collection_db.get_collection_by_id(collection_id)
+                if collection:
+                    server_id = collection.get('mcp_server_id')
+                    if server_id:
+                        collection_ids_by_server[server_id] = collection_id
+
+            # Update profiles to enable autocomplete for default collections
+            if collection_ids_by_server:
+                logger.info(f"Updating profiles with {len(collection_ids_by_server)} default collection(s) for autocomplete")
+                _update_profiles_with_default_collections(user_id, collection_ids_by_server)
         else:
             logger.debug(f"No new default collections needed for user {user_id} - all MCP servers already have collections")
             
     except Exception as e:
         logger.error(f"Error creating Default Collection for user {user_id}: {e}", exc_info=True)
+
+
+def _update_profiles_with_default_collections(user_id: str, collection_ids_by_server: dict) -> bool:
+    """
+    Update all user profiles to enable autocomplete for their default collections.
+
+    This function is called during user bootstrap (first login) after default
+    planner collections are created. It ensures that each profile's
+    autocompleteCollections array contains the collection ID for its associated
+    MCP server's default collection.
+
+    Mapping Logic:
+        - For each profile with mcpServerId != null:
+            - Find the default collection for that MCP server
+            - Add collection ID to profile.autocompleteCollections
+        - Profiles with mcpServerId == null (e.g., @CHAT) are skipped
+
+    Args:
+        user_id: User UUID
+        collection_ids_by_server: Mapping of {mcp_server_id: collection_id}
+                                 Example: {"1763483266562-a6kulj4xc": 123}
+
+    Returns:
+        True if profiles were updated successfully, False on error
+
+    Example:
+        >>> collection_ids_by_server = {"server-123": 456}
+        >>> _update_profiles_with_default_collections("user-789", collection_ids_by_server)
+        True
+
+        Result: Profile with mcpServerId="server-123" now has autocompleteCollections=[456]
+    """
+    from trusted_data_agent.core.config_manager import get_config_manager
+
+    try:
+        config_manager = get_config_manager()
+        profiles = config_manager.get_profiles(user_id)
+
+        updated_count = 0
+        for profile in profiles:
+            mcp_server_id = profile.get("mcpServerId")
+
+            # Skip profiles without MCP server (e.g., @CHAT llm-only)
+            if not mcp_server_id:
+                logger.debug(f"Skipping profile @{profile.get('tag')} - no mcpServerId")
+                continue
+
+            # Check if this MCP server has a default collection
+            if mcp_server_id in collection_ids_by_server:
+                collection_id = collection_ids_by_server[mcp_server_id]
+                autocomplete_colls = profile.get("autocompleteCollections", [])
+
+                # Add if not already present (idempotent)
+                if collection_id not in autocomplete_colls:
+                    autocomplete_colls.append(collection_id)
+                    profile["autocompleteCollections"] = autocomplete_colls
+                    updated_count += 1
+                    logger.info(f"✅ Enabled autocomplete for profile @{profile.get('tag')} → Collection {collection_id}")
+
+        if updated_count > 0:
+            success = config_manager.save_profiles(profiles, user_id)
+            if success:
+                logger.info(f"Updated {updated_count} profiles with default collections for user {user_id}")
+                return True
+            else:
+                logger.error(f"Failed to save profile updates for user {user_id}")
+                return False
+        else:
+            logger.debug(f"No profiles needed autocomplete updates for user {user_id}")
+            return True
+
+    except Exception as e:
+        logger.error(f"Error updating profiles with default collections for user {user_id}: {e}", exc_info=True)
+        return False
 
 
 def ensure_user_default_profile(user_id: str):
