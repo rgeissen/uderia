@@ -308,6 +308,21 @@ async function processStream(responseBody) {
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full RAG case data
                         UI.blinkRagDot();
+                    } else if (eventName === 'session_name_generation_start' ||
+                               eventName === 'session_name_generation_complete') {
+                        // Route session name generation events to status window with proper rendering
+                        const { details, step, type } = eventData;
+
+                        console.log(`[${eventName}] Received:`, details);
+
+                        // Update status window with formatted rendering (existing renderers in ui.js will be called)
+                        UI.updateStatusWindow({
+                            step: step || (eventName === 'session_name_generation_start'
+                                            ? 'Generating Session Name'
+                                            : 'Session Name Generated'),
+                            details: details || {},
+                            type: type || eventName
+                        }, eventName === 'session_name_generation_complete', 'session_name');
                     } else if (eventName === 'session_name_update') {
                         const { session_id, newName } = eventData;
                         UI.updateSessionListItemName(session_id, newName);
@@ -789,12 +804,20 @@ async function handleReloadPlanClick(element) {
                 // Replay each event using the same renderer as live execution
                 genieEvents.forEach((event, index) => {
                     const isFinal = index === genieEvents.length - 1;
-                    // Build eventData in the format expected by _renderGenieStep
-                    const eventData = {
-                        step: _getGenieStepTitle(event.type, event.payload),
-                        details: event.payload,
-                        type: event.type
-                    };
+                    // Check if payload is already a complete event (has 'step' field)
+                    // or if it's just details that need to be wrapped
+                    let eventData;
+                    if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                        // Payload is complete event_dict (session name events)
+                        eventData = event.payload;
+                    } else {
+                        // Payload is just details (coordinator events) - reconstruct eventData
+                        eventData = {
+                            step: _getGenieStepTitle(event.type, event.payload),
+                            details: event.payload,
+                            type: event.type
+                        };
+                    }
                     UI.renderGenieStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
@@ -873,12 +896,20 @@ async function handleReloadPlanClick(element) {
                 // Replay each event using the same renderer as live execution
                 agentEvents.forEach((event, index) => {
                     const isFinal = index === agentEvents.length - 1;
-                    // Build eventData in the format expected by _renderConversationAgentStep
-                    const eventData = {
-                        step: _getConversationAgentStepTitle(event.type, event.payload),
-                        details: event.payload,
-                        type: event.type
-                    };
+                    // Check if payload is already a complete event (has 'step' field)
+                    // or if it's just details that need to be wrapped
+                    let eventData;
+                    if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                        // Payload is complete event_dict (session name events)
+                        eventData = event.payload;
+                    } else {
+                        // Payload is just details (agent events) - reconstruct eventData
+                        eventData = {
+                            step: _getConversationAgentStepTitle(event.type, event.payload),
+                            details: event.payload,
+                            type: event.type
+                        };
+                    }
                     UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
@@ -1071,7 +1102,8 @@ async function handleReloadPlanClick(element) {
             {  // Pass turn tokens for display
                 turn_input_tokens: turnData.turn_input_tokens || 0,
                 turn_output_tokens: turnData.turn_output_tokens || 0
-            }
+            },
+            turnData.system_events || []  // Pass system events (session name generation, etc.)
         );
 
         // --- MODIFICATION START: Update task ID display for reloaded turn ---

@@ -364,8 +364,9 @@ export function updateGenieMasterBadges() {
  * @param {string} userQuery - The original user query for this turn.
  * @param {Object} knowledgeRetrievalEvent - Optional knowledge retrieval event data.
  * @param {Object} turnTokens - Optional turn token data { turn_input_tokens, turn_output_tokens }.
+ * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = []) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -446,6 +447,17 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 
         updateStatusWindow(eventData, false);
     });
+
+    // Render system events (session name generation, etc.) after execution trace
+    if (systemEvents && systemEvents.length > 0) {
+        systemEvents.forEach((event, index) => {
+            const isFinal = index === systemEvents.length - 1;
+            // Payload now contains the complete event_dict (step, details, type)
+            const eventData = event.payload;
+            // Use standard renderer for system events
+            _renderStandardStep(eventData, DOM.statusWindowContent, isFinal);
+        });
+    }
 
     // Finalize the last step
     const finalStepElement = document.getElementById(`status-step-${state.currentStatusId}`);
@@ -1372,6 +1384,32 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     </div>
                     ${profilesHtml}
                     ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'session_name_generation_start': {
+                const summary = details.summary || 'Generating session name...';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">In Progress...</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'session_name_generation_complete': {
+                const sessionName = details.session_name || 'Unknown';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Name</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                    </div>
                 `;
                 break;
             }
@@ -2310,7 +2348,12 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
     if (source === 'rest' && taskId) {
         // Check if this is the first event for a new or different REST task
         if (!state.isRestTaskActive || taskId !== state.activeRestTaskId) {
-            resetStatusWindowForNewTask(); // Use the centralized reset function
+            // Don't clear if there are existing steps (e.g., session name generation) UNLESS switching tasks
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            const isSwitchingTasks = state.isRestTaskActive && taskId !== state.activeRestTaskId;
+            if (!hasExistingSteps || isSwitchingTasks) {
+                resetStatusWindowForNewTask(); // Use the centralized reset function
+            }
             state.isRestTaskActive = true; // Set REST-specific state after reset
             state.activeRestTaskId = taskId;
             updateTaskIdDisplay(taskId); // Display the task ID
@@ -2319,7 +2362,12 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
     } else if (source === 'genie') {
         // Genie coordination events
         if (!state.isGenieCoordinationActive) {
-            resetStatusWindowForNewTask();
+            // Don't clear status window if there are already steps (e.g., session name generation)
+            // Only reset if window is empty or has placeholder text
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!hasExistingSteps) {
+                resetStatusWindowForNewTask();
+            }
             state.isGenieCoordinationActive = true;
             state.isRestTaskActive = false;
             updateTaskIdDisplay(null);
@@ -2334,9 +2382,10 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
     } else if (source === 'conversation_agent') {
         // Conversation agent tool execution events
         if (!state.isConversationAgentActive) {
-            // Only reset if there's no pending knowledge retrieval event
+            // Only reset if there's no pending knowledge retrieval event AND no existing steps (e.g., session name generation)
             // (knowledge_retrieval arrives before conversation_agent_start for conversation_with_tools)
-            if (!state.pendingKnowledgeRetrievalEvent) {
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!state.pendingKnowledgeRetrievalEvent && !hasExistingSteps) {
                 resetStatusWindowForNewTask();
             }
             state.isConversationAgentActive = true;
@@ -2353,14 +2402,25 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         return;
     } else if (source === 'knowledge_retrieval') {
         // Knowledge retrieval events (arrives before conversation_agent_start for conversation_with_tools)
-        // Reset the status window if no agent execution is active yet
+        // Reset the status window if no agent execution is active yet AND no existing steps (e.g., session name generation)
         if (!state.isConversationAgentActive && !state.isGenieCoordinationActive && !state.isRestTaskActive) {
-            resetStatusWindowForNewTask();
-            updateTaskIdDisplay(null);
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!hasExistingSteps) {
+                resetStatusWindowForNewTask();
+                updateTaskIdDisplay(null);
+            }
         }
         statusTitle.textContent = 'Live Status - Knowledge Retrieval';
         // Render knowledge retrieval using the conversation agent renderer (same styling)
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, false);
+        if (!state.isMouseOverStatus) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'session_name') {
+        // Session name generation events - route to conversation agent renderer
+        statusTitle.textContent = 'Live Status - Session Name';
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }

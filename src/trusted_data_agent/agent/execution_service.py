@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from trusted_data_agent.agent.executor import PlanExecutor
+from trusted_data_agent.agent.session_name_generator import generate_session_name_with_events
 from trusted_data_agent.core.config import APP_STATE
 from trusted_data_agent.core import session_manager
 
@@ -38,38 +39,6 @@ def _parse_sse_event(event_str: str) -> tuple[dict, str]:
             event_type = line[6:].strip()
     return data, event_type
 
-
-async def _generate_genie_session_name(query: str, llm_instance) -> str:
-    """
-    Generate a session name for Genie coordination sessions using the LLM.
-
-    Args:
-        query: The user's initial query
-        llm_instance: The LangChain LLM instance to use
-
-    Returns:
-        A short descriptive name for the session
-    """
-    try:
-        from langchain_core.messages import HumanMessage, SystemMessage
-
-        system_msg = SystemMessage(content="You generate short, descriptive titles (3-5 words). Only respond with the title text, no punctuation or quotes.")
-        human_msg = HumanMessage(content=f"Generate a concise session name for this query: \"{query[:200]}\"")
-
-        response = await llm_instance.ainvoke([system_msg, human_msg])
-
-        # Extract text from response
-        name_text = response.content if hasattr(response, 'content') else str(response)
-        cleaned_name = name_text.strip().strip('"\'')
-
-        if cleaned_name and len(cleaned_name) < 100:
-            app_logger.info(f"Generated genie session name: '{cleaned_name}'")
-            return cleaned_name
-        else:
-            return "New Chat"
-    except Exception as e:
-        app_logger.warning(f"Failed to generate genie session name: {e}")
-        return "New Chat"
 
 # --- MODIFICATION START: Add plan_to_execute and is_replay parameters ---
 async def run_agent_execution(
@@ -418,6 +387,43 @@ async def _run_genie_execution(
         coordinator_response = result.get('coordinator_response', '')
         success = result.get('success', False)
 
+        # Extract token counts from coordination result IMMEDIATELY (before any other processing)
+        input_tokens = result.get('input_tokens', 0) or 0
+        output_tokens = result.get('output_tokens', 0) or 0
+
+        # Update session token counts and emit token_update event IMMEDIATELY
+        # This ensures the status window shows correct tokens during live execution
+        if input_tokens > 0 or output_tokens > 0:
+            await session_manager.update_token_count(
+                user_uuid,
+                session_id,
+                input_tokens,
+                output_tokens
+            )
+
+            # Get updated session totals and turn number for token_update event
+            current_session = await session_manager.get_session(user_uuid, session_id)
+            if current_session:
+                workflow_history = current_session.get('last_turn_data', {}).get('workflow_history', [])
+                turn_number = len(workflow_history) + 1
+                session_input_tokens = current_session.get("input_tokens", 0)
+                session_output_tokens = current_session.get("output_tokens", 0)
+
+                # Emit token_update event IMMEDIATELY (before session name generation)
+                # For genie, turn tokens = statement tokens (single coordination per turn)
+                await event_handler({
+                    "statement_input": input_tokens,
+                    "statement_output": output_tokens,
+                    "turn_input": input_tokens,
+                    "turn_output": output_tokens,
+                    "total_input": session_input_tokens,
+                    "total_output": session_output_tokens,
+                    "call_id": f"genie_{turn_number}"
+                }, "token_update")
+
+                app_logger.info(f"[Genie] Token update emitted: {input_tokens} in / {output_tokens} out "
+                              f"(session total: {session_input_tokens} in / {session_output_tokens} out)")
+
         # Log the Genie conversation to session files
         try:
             # Add coordinator response to session history (user message was already saved by caller)
@@ -435,20 +441,75 @@ async def _run_genie_execution(
             workflow_history = current_session.get('last_turn_data', {}).get('workflow_history', [])
             turn_number = len(workflow_history) + 1
 
+            # Get session token totals (after updating them above)
+            session_input_tokens = current_session.get("input_tokens", 0)
+            session_output_tokens = current_session.get("output_tokens", 0)
+
+            # Collect session name generation events (before creating turn_data)
+            session_name_events = []
+            if turn_number == 1:
+                current_session_check = await session_manager.get_session(user_uuid, session_id)
+                if current_session_check and current_session_check.get("name") == "New Chat":
+                    try:
+                        app_logger.info(f"[Genie] Generating session name for turn 1 (collecting events for history)")
+
+                        from trusted_data_agent.agent.session_name_generator import generate_session_name_with_events
+
+                        async for event_dict, event_type, in_tok, out_tok in generate_session_name_with_events(
+                            user_query=user_input,
+                            session_id=session_id,
+                            llm_interface="langchain",
+                            llm_instance=llm_instance,
+                            emit_events=False  # Don't emit yet, we'll emit after saving to history
+                        ):
+                            if event_dict is None:
+                                # Final yield: session name
+                                session_name = event_type
+                                session_name_input_tokens = in_tok
+                                session_name_output_tokens = out_tok
+                            else:
+                                # Collect event for history (store complete event_data)
+                                session_name_events.append({
+                                    "type": event_type,
+                                    "payload": event_dict  # Full event data, not just details
+                                })
+
+                    except Exception as name_error:
+                        app_logger.warning(f"Failed to generate genie session name: {name_error}")
+                        session_name = None
+                        session_name_input_tokens = 0
+                        session_name_output_tokens = 0
+                else:
+                    session_name = None
+                    session_name_input_tokens = 0
+                    session_name_output_tokens = 0
+            else:
+                session_name = None
+                session_name_input_tokens = 0
+                session_name_output_tokens = 0
+
+            # Combine coordinator events with session name events
+            combined_genie_events = result.get('genie_events', []) + session_name_events
+
             turn_data = {
                 'turn': turn_number,
                 'user_query': user_input,
                 'genie_coordination': True,
                 'tools_used': result.get('tools_used', []),
                 'slave_sessions': result.get('slave_sessions', {}),
-                'genie_events': result.get('genie_events', []),  # For plan reload UI (excluded from LLM context)
+                'genie_events': combined_genie_events,  # Include session name events
                 'success': success,
                 'final_response': coordinator_response[:500] if coordinator_response else '',
                 'status': 'success' if success else 'failed',
                 'provider': provider,
                 'model': model,
                 'profile_tag': profile_tag,
-                'profile_type': 'genie'  # Mark as genie for session gallery status detection
+                'profile_type': 'genie',  # Mark as genie for session gallery status detection
+                # Token tracking (consistent with other execution paths)
+                'turn_input_tokens': input_tokens,  # Cumulative turn total
+                'turn_output_tokens': output_tokens,  # Cumulative turn total
+                'session_input_tokens': session_input_tokens,  # Session totals at time of this turn
+                'session_output_tokens': session_output_tokens  # Session totals at time of this turn
             }
 
             await session_manager.update_last_turn_data(
@@ -465,50 +526,11 @@ async def _run_genie_execution(
                 model=model,
                 profile_tag=profile_tag
             )
-
-            # Generate session name if this is the first turn
-            if turn_number == 1:
-                try:
-                    new_name = await _generate_genie_session_name(user_input, llm_instance)
-                    if new_name and new_name != "New Chat":
-                        await session_manager.update_session_name(user_uuid, session_id, new_name)
-                        # Send name update event
-                        await event_handler({
-                            "session_id": session_id,
-                            "newName": new_name
-                        }, "session_name_update")
-                except Exception as name_error:
-                    app_logger.warning(f"Failed to generate genie session name: {name_error}")
+            # Note: Token update event emitted immediately after coordination (line 413)
+            # Note: Session name generation happens after final_answer (see below after line 506)
 
         except Exception as log_error:
             app_logger.error(f"Failed to log Genie session data: {log_error}")
-
-        # Extract token counts from coordination result
-        input_tokens = result.get('input_tokens', 0) or 0
-        output_tokens = result.get('output_tokens', 0) or 0
-
-        # Update session token counts
-        if input_tokens > 0 or output_tokens > 0:
-            # Update the token counts in session
-            await session_manager.update_token_count(
-                user_uuid,
-                session_id,
-                input_tokens,
-                output_tokens
-            )
-
-            # Fetch updated session to get totals
-            updated_session = await session_manager.get_session(user_uuid, session_id)
-
-            # Send token update event to UI
-            if updated_session:
-                await event_handler({
-                    "statement_input": input_tokens,
-                    "statement_output": output_tokens,
-                    "total_input": updated_session.get("input_tokens", 0),
-                    "total_output": updated_session.get("output_tokens", 0),
-                    "call_id": f"genie_{turn_number}"
-                }, "token_update")
 
         # Send final answer event with proper fields for frontend
         final_payload = {
@@ -522,6 +544,24 @@ async def _run_genie_execution(
             "slave_sessions_used": result.get('slave_sessions', {})
         }
         await event_handler(final_payload, "final_answer")
+
+        # Emit session name events AFTER final answer (events already collected and saved to history)
+        if turn_number == 1 and session_name_events:
+            # Emit the collected session name events via SSE
+            # Payload now contains the complete event_dict (step, details, type)
+            for event in session_name_events:
+                await event_handler(event['payload'], event['type'])
+
+            # Update session name in database
+            if session_name and session_name != "New Chat":
+                await session_manager.update_session_name(user_uuid, session_id, session_name)
+                await event_handler({
+                    "session_id": session_id,
+                    "newName": session_name
+                }, "session_name_update")
+
+                app_logger.info(f"[Genie] Session name updated to '{session_name}' "
+                              f"({session_name_input_tokens} in / {session_name_output_tokens} out)")
 
         return final_payload
 

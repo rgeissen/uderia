@@ -31,6 +31,7 @@ from trusted_data_agent.mcp_adapter import adapter as mcp_adapter
 # Refactored components
 from trusted_data_agent.agent.planner import Planner
 from trusted_data_agent.agent.phase_executor import PhaseExecutor
+from trusted_data_agent.agent.session_name_generator import generate_session_name_with_events
 
 
 app_logger = logging.getLogger("quart.app")
@@ -796,42 +797,48 @@ class PlanExecutor:
 
         return resolved_args
 
-    async def _generate_session_name(self, query: str) -> tuple[str, int, int]:
+    async def _generate_and_emit_session_name(self):
         """
-        Uses the LLM to generate a concise name for the session based on the initial query.
+        Generate session name using unified generator and emit SSE events.
+        Collects events for system_events array (plan reload).
 
-        Returns:
-            tuple: (session_name, input_tokens, output_tokens)
+        Yields:
+            - SSE formatted events (strings) for live streaming
+            - Final tuple: (session_name, input_tokens, output_tokens, collected_events)
         """
-        prompt = (
-            f"Based on the following user query, generate a concise and descriptive name (3-5 words) "
-            f"suitable for a chat session history list. Do not include any punctuation or extra text.\n\n"
-            f"User Query: \"{query}\"\n\n"
-            f"Session Name:"
-        )
-        reason = "Generating session name from initial query."
-        system_prompt = "You generate short, descriptive titles. Only respond with the title text."
+        collected_events = []
+        session_name = "New Chat"
+        name_input_tokens = 0
+        name_output_tokens = 0
 
-        try:
-            name_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
-                prompt=prompt,
-                reason=reason,
-                system_prompt_override=system_prompt,
-                raise_on_error=True,
-                disabled_history=True, # Don't need history for naming
-                source="system" # Indicate system-initiated call
-            )
-            # Basic cleaning: remove extra quotes, trim whitespace
-            cleaned_name = name_text.strip().strip('"\'')
-            if cleaned_name:
-                app_logger.info(f"Generated session name: '{cleaned_name}' (tokens: {input_tokens} in / {output_tokens} out)")
-                return cleaned_name, input_tokens, output_tokens
+        async for event_data, event_type, in_tokens, out_tokens in generate_session_name_with_events(
+            user_query=self.original_user_input,
+            session_id=self.session_id,
+            llm_interface="executor",
+            llm_dependencies=self.dependencies,
+            user_uuid=self.user_uuid,
+            active_profile_id=self.active_profile_id,
+            current_provider=self.current_provider,
+            emit_events=True
+        ):
+            if event_data is None:
+                # Final yield: (None, session_name, input_tokens, output_tokens)
+                session_name = event_type  # event_type contains name in final yield
+                name_input_tokens = in_tokens
+                name_output_tokens = out_tokens
             else:
-                app_logger.warning("LLM returned an empty session name.")
-                return "New Chat", input_tokens, output_tokens  # Fallback with token counts
-        except Exception as e:
-            app_logger.error(f"Failed to generate session name: {e}", exc_info=True)
-            return "New Chat", 0, 0  # Fallback on error
+                # SSE event: yield to frontend
+                yield self._format_sse(event_data, event_type)
+
+                # Collect for system_events (plan reload)
+                # Store complete event_data including 'step', 'details', and 'type'
+                collected_events.append({
+                    "type": event_type,
+                    "payload": event_data  # Full event data, not just details
+                })
+
+        # Final yield: return the collected data as a tuple
+        yield (session_name, name_input_tokens, name_output_tokens, collected_events)
 
 
     def _detect_profile_type(self) -> str:
@@ -1264,52 +1271,23 @@ class PlanExecutor:
             # Collect system events for plan reload (like session name generation)
             system_events = []
 
-            # Generate session name if first turn
+            # Generate session name if first turn (using unified generator)
             if self.current_turn_number == 1:
-                # Emit and collect start event
-                start_event = {
-                    "type": "session_name_generation_start",
-                    "payload": {
-                        "summary": "Using LLM to generate descriptive session title",
-                        "session_id": self.session_id
-                    }
-                }
-                system_events.append(start_event)
-                yield self._format_sse({
-                    "step": "Generating Session Name",
-                    "type": "session_name_generation_start",
-                    "details": start_event["payload"]
-                })
+                async for result in self._generate_and_emit_session_name():
+                    if isinstance(result, str):
+                        # SSE event - yield to frontend
+                        yield result
+                    else:
+                        # Final result tuple: (name, input_tokens, output_tokens, collected_events)
+                        new_name, name_input_tokens, name_output_tokens, name_events = result
+                        system_events.extend(name_events)
 
-                new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
-
-                # Emit and collect completion event
-                complete_event = {
-                    "type": "session_name_generation_complete",
-                    "payload": {
-                        "session_name": new_name,
-                        "input_tokens": name_input_tokens,
-                        "output_tokens": name_output_tokens,
-                        "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
-                        "session_id": self.session_id
-                    }
-                }
-                system_events.append(complete_event)
-                yield self._format_sse({
-                    "step": "Session Name Generated",
-                    "type": "session_name_generation_complete",
-                    "details": complete_event["payload"]
-                })
-
-                if new_name and new_name != "New Chat":
-                    await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                    yield self._format_sse({
-                        "type": "session_name_update",
-                        "payload": {
-                            "session_id": self.session_id,
-                            "name": new_name
-                        }
-                    }, event="notification")
+                        if new_name and new_name != "New Chat":
+                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                            yield self._format_sse({
+                                "session_id": self.session_id,
+                                "newName": new_name
+                            }, "session_name_update")
 
             # Emit final answer with formatted HTML
             yield self._format_sse({
@@ -1916,53 +1894,27 @@ The following domain knowledge may be relevant to this conversation:
             # Collect system events for plan reload (like session name generation)
             system_events = []
 
-            # Generate session name for first turn
+            # Generate session name for first turn (using unified generator)
             if self.current_turn_number == 1:
                 session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                 if session_data and session_data.get("name") == "New Chat":
                     app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
 
-                    # Emit and collect start event
-                    start_event = {
-                        "type": "session_name_generation_start",
-                        "payload": {
-                            "summary": "Using LLM to generate descriptive session title",
-                            "session_id": self.session_id
-                        }
-                    }
-                    system_events.append(start_event)
-                    yield self._format_sse({
-                        "step": "Generating Session Name",
-                        "type": "session_name_generation_start",
-                        "details": start_event["payload"]
-                    })
+                    async for result in self._generate_and_emit_session_name():
+                        if isinstance(result, str):
+                            # SSE event - yield to frontend
+                            yield result
+                        else:
+                            # Final result tuple: (name, input_tokens, output_tokens, collected_events)
+                            new_name, name_input_tokens, name_output_tokens, name_events = result
+                            system_events.extend(name_events)
 
-                    new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
-
-                    # Emit and collect completion event
-                    complete_event = {
-                        "type": "session_name_generation_complete",
-                        "payload": {
-                            "session_name": new_name,
-                            "input_tokens": name_input_tokens,
-                            "output_tokens": name_output_tokens,
-                            "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
-                            "session_id": self.session_id
-                        }
-                    }
-                    system_events.append(complete_event)
-                    yield self._format_sse({
-                        "step": "Session Name Generated",
-                        "type": "session_name_generation_complete",
-                        "details": complete_event["payload"]
-                    })
-
-                    if new_name != "New Chat":
-                        try:
-                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                            app_logger.info(f"Session name updated to: '{new_name}'")
-                        except Exception as e:
-                            app_logger.error(f"Failed to update session name: {e}")
+                            if new_name != "New Chat":
+                                try:
+                                    await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                                    app_logger.info(f"Session name updated to: '{new_name}'")
+                                except Exception as e:
+                                    app_logger.error(f"Failed to update session name: {e}")
 
             # Create dummy workflow_history entry for consistency
             # This ensures turn reload, analytics, and cost tracking work the same for all profile types
@@ -2455,57 +2407,31 @@ The following domain knowledge may be relevant to this conversation:
             # Collect system events for plan reload (like session name generation)
             system_events = []
 
-            # Generate session name for first turn
+            # Generate session name for first turn (using unified generator)
             if self.current_turn_number == 1:
                 session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                 if session_data and session_data.get("name") == "New Chat":
                     app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
 
-                    # Emit and collect start event
-                    start_event = {
-                        "type": "session_name_generation_start",
-                        "payload": {
-                            "summary": "Using LLM to generate descriptive session title",
-                            "session_id": self.session_id
-                        }
-                    }
-                    system_events.append(start_event)
-                    yield self._format_sse({
-                        "step": "Generating Session Name",
-                        "type": "session_name_generation_start",
-                        "details": start_event["payload"]
-                    })
+                    async for result in self._generate_and_emit_session_name():
+                        if isinstance(result, str):
+                            # SSE event - yield to frontend
+                            yield result
+                        else:
+                            # Final result tuple: (name, input_tokens, output_tokens, collected_events)
+                            new_name, name_input_tokens, name_output_tokens, name_events = result
+                            system_events.extend(name_events)
 
-                    new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
-
-                    # Emit and collect completion event
-                    complete_event = {
-                        "type": "session_name_generation_complete",
-                        "payload": {
-                            "session_name": new_name,
-                            "input_tokens": name_input_tokens,
-                            "output_tokens": name_output_tokens,
-                            "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
-                            "session_id": self.session_id
-                        }
-                    }
-                    system_events.append(complete_event)
-                    yield self._format_sse({
-                        "step": "Session Name Generated",
-                        "type": "session_name_generation_complete",
-                        "details": complete_event["payload"]
-                    })
-
-                    if new_name != "New Chat":
-                        try:
-                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                            yield self._format_sse({
-                                "session_id": self.session_id,
-                                "newName": new_name
-                            }, "session_name_update")
-                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
-                        except Exception as name_e:
-                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+                            if new_name != "New Chat":
+                                try:
+                                    await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                                    yield self._format_sse({
+                                        "session_id": self.session_id,
+                                        "newName": new_name
+                                    }, "session_name_update")
+                                    app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
+                                except Exception as name_e:
+                                    app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
 
             turn_summary = {
                 "turn": self.current_turn_number,
@@ -3294,59 +3220,38 @@ The following domain knowledge may be relevant to this conversation:
 
                 # Collect system events for plan reload (like session name generation)
                 # CRITICAL: Must collect BEFORE creating turn_summary to avoid duplicate entries
+                # NOTE: Session name generation has already been emitted before summarization (line 3141)
+                # Here we just collect the events for workflow history storage
                 system_events = []
 
-                # Session Naming Logic
-                # --- MODIFICATION START: Use self.current_turn_number for check ---
-                if self.current_turn_number == 1 and session_data and session_data.get("name") == "New Chat":
-                # --- MODIFICATION END ---
-                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
+                # If session name was generated (first turn, name is no longer "New Chat"),
+                # recreate the events for storage in workflow_history
+                if self.current_turn_number == 1 and session_data:
+                    current_name = session_data.get("name")
+                    if current_name != "New Chat":
+                        # Session name was generated, recreate events for storage
+                        app_logger.debug(f"Collecting session name generation events for workflow history: '{current_name}'")
 
-                    # Emit and collect start event
-                    start_event = {
-                        "type": "session_name_generation_start",
-                        "payload": {
-                            "summary": "Using LLM to generate descriptive session title",
-                            "session_id": self.session_id
+                        start_event = {
+                            "type": "session_name_generation_start",
+                            "payload": {
+                                "summary": "Using LLM to generate descriptive session title",
+                                "session_id": self.session_id
+                            }
                         }
-                    }
-                    system_events.append(start_event)
-                    yield self._format_sse({
-                        "step": "Generating Session Name",
-                        "type": "session_name_generation_start",
-                        "details": start_event["payload"]
-                    })
+                        system_events.append(start_event)
 
-                    new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
-
-                    # Emit and collect completion event
-                    complete_event = {
-                        "type": "session_name_generation_complete",
-                        "payload": {
-                            "session_name": new_name,
-                            "input_tokens": name_input_tokens,
-                            "output_tokens": name_output_tokens,
-                            "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
-                            "session_id": self.session_id
+                        complete_event = {
+                            "type": "session_name_generation_complete",
+                            "payload": {
+                                "session_name": current_name,
+                                "input_tokens": 0,  # Tokens already counted, just storing for replay
+                                "output_tokens": 0,
+                                "summary": f"Generated name: '{current_name}'",
+                                "session_id": self.session_id
+                            }
                         }
-                    }
-                    system_events.append(complete_event)
-                    yield self._format_sse({
-                        "step": "Session Name Generated",
-                        "type": "session_name_generation_complete",
-                        "details": complete_event["payload"]
-                    })
-
-                    if new_name != "New Chat":
-                        try:
-                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                            yield self._format_sse({
-                                "session_id": self.session_id,
-                                "newName": new_name
-                            }, "session_name_update")
-                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
-                        except Exception as name_e:
-                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+                        system_events.append(complete_event)
 
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
@@ -3904,3 +3809,48 @@ The following domain knowledge may be relevant to this conversation:
             "is_session_primer": self.is_session_primer
         }, "final_answer")
         # --- MODIFICATION END ---
+
+        # --- Session Name Generation (AFTER final answer) ---
+        # Generate session name for first turn AFTER final answer (consolidation requirement)
+        # Only for top-level executor (depth==0) to avoid duplicate generation from sub-executors
+        if (self.current_turn_number == 1 and
+            self.execution_depth == 0 and
+            not self.is_delegated_task):
+            try:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                current_name = session_data.get("name", "") if session_data else ""
+
+                if session_data and current_name == "New Chat":
+                    app_logger.info(f"[SessionName] ✅ GENERATING name for session {self.session_id} (AFTER final answer)")
+
+                    # Generate and emit events using unified generator
+                    async for event_dict, event_type, in_tok, out_tok in generate_session_name_with_events(
+                        user_query=self.original_user_input,
+                        session_id=self.session_id,
+                        llm_interface="executor",
+                        llm_dependencies=self.dependencies,
+                        user_uuid=self.user_uuid,
+                        active_profile_id=self.active_profile_id,
+                        current_provider=self.current_provider,
+                        emit_events=True
+                    ):
+                        if event_dict is None:
+                            # Final yield: update session name
+                            new_name = event_type
+                            if new_name and new_name != "New Chat":
+                                try:
+                                    await session_manager.update_session_name(
+                                        self.user_uuid, self.session_id, new_name
+                                    )
+                                    yield self._format_sse({
+                                        "session_id": self.session_id,
+                                        "newName": new_name
+                                    }, "session_name_update")
+                                    app_logger.info(f"[SessionName] ✅ Updated session name to '{new_name}'")
+                                except Exception as name_e:
+                                    app_logger.error(f"[SessionName] ❌ Failed to update: {name_e}", exc_info=True)
+                        else:
+                            # Emit SSE event
+                            yield self._format_sse(event_dict, event_type)
+            except Exception as e:
+                app_logger.error(f"[SessionName] ❌ Error during generation: {e}", exc_info=True)
