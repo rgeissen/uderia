@@ -3923,25 +3923,23 @@ export function blinkRagDot() {
 }
 
 /**
- * Provides brief visual feedback on the Knowledge status dot by making it blink purple.
+ * Provides brief visual feedback on the Knowledge status dot by making it blink yellow.
  */
 export function blinkKnowledgeDot() {
     const knowledgeDot = document.getElementById('knowledge-status-dot');
     if (!knowledgeDot) return;
 
-    // Switch to 'knowledge-active' (purple) state during active use
-    if (!knowledgeDot.classList.contains('knowledge-active')) {
-        knowledgeDot.classList.remove('knowledge-idle', 'knowledge-configured');
-        knowledgeDot.classList.add('knowledge-active');
+    // Ensure it's in the 'knowledge-configured' state before blinking
+    if (!knowledgeDot.classList.contains('knowledge-configured')) {
+        knowledgeDot.classList.remove('knowledge-idle', 'knowledge-active');
+        knowledgeDot.classList.add('knowledge-configured');
     }
 
-    knowledgeDot.classList.add('blinking-purple');
+    knowledgeDot.classList.add('blinking-yellow');
 
     // The animation runs for 1.5s (0.5s * 3 iterations)
     setTimeout(() => {
-        knowledgeDot.classList.remove('blinking-purple');
-        // After blinking, return to configured state if appropriate
-        // (The profile update will handle setting it back to configured/idle)
+        knowledgeDot.classList.remove('blinking-yellow');
     }, 1500);
 }
 
