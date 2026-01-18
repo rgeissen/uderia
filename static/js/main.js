@@ -242,10 +242,13 @@ async function initializeRAGAutoCompletion() {
         if (defaultProfileId && window.configState?.profiles) {
             const defaultProfile = window.configState.profiles.find(p => p.id === defaultProfileId);
             updateSessionHeaderProfile(defaultProfile, null);
-        }
 
-        // Restore default profile resources in resource panel
-        updateResourcePanelForProfile(null);
+            // Restore default profile resources in resource panel
+            updateResourcePanelForProfile(defaultProfileId);
+        } else {
+            // Fallback to generic resources if no default profile
+            updateResourcePanelForProfile(null);
+        }
     }
 
     async function updateResourcePanelForProfile(profileId) {
@@ -282,6 +285,7 @@ async function initializeRAGAutoCompletion() {
                         slaveProfiles: data.slave_profiles || []
                     };
                     state.activeRagProfile = null;
+                    state.activeLlmOnlyProfile = null;
                     console.log(`🧞 Genie coordinator profile active: @${data.profile_tag}`);
                 } else if (data.profile_type === 'rag_focused') {
                     // Store RAG-focused profile info in state for rendering
@@ -290,11 +294,22 @@ async function initializeRAGAutoCompletion() {
                         knowledgeCollections: data.knowledge_collections || []
                     };
                     state.activeGenieProfile = null;
+                    state.activeLlmOnlyProfile = null;
                     console.log(`📚 RAG-focused profile active: @${data.profile_tag}`);
+                } else if (data.profile_type === 'llm_only') {
+                    // Store LLM-only profile info in state for rendering
+                    state.activeLlmOnlyProfile = {
+                        tag: data.profile_tag,
+                        knowledgeCollections: data.knowledge_collections || []
+                    };
+                    state.activeGenieProfile = null;
+                    state.activeRagProfile = null;
+                    console.log(`💬 Conversation-focused profile active: @${data.profile_tag}`);
                 } else {
                     // Clear special profile info if switching away
                     state.activeGenieProfile = null;
                     state.activeRagProfile = null;
+                    state.activeLlmOnlyProfile = null;
                     console.log(`🔍 Resource panel updated for profile: @${data.profile_tag}`);
                 }
             } else {
@@ -307,7 +322,7 @@ async function initializeRAGAutoCompletion() {
                 const toolsData = toolsResponse.ok ? await toolsResponse.json() : {};
                 const promptsData = promptsResponse.ok ? await promptsResponse.json() : {};
 
-                // Check if response includes profile metadata (for rag_focused/genie profiles)
+                // Check if response includes profile metadata (for rag_focused/genie/llm_only profiles)
                 // The backend returns { tools: {}, profile_type: '...', ... } for special profiles
                 if (toolsData.profile_type === 'rag_focused') {
                     tools = toolsData.tools || {};
@@ -317,6 +332,7 @@ async function initializeRAGAutoCompletion() {
                         knowledgeCollections: toolsData.knowledge_collections || []
                     };
                     state.activeGenieProfile = null;
+                    state.activeLlmOnlyProfile = null;
                     console.log(`📚 Default profile is RAG-focused: @${toolsData.profile_tag}`);
                 } else if (toolsData.profile_type === 'genie') {
                     tools = toolsData.tools || {};
@@ -326,13 +342,25 @@ async function initializeRAGAutoCompletion() {
                         slaveProfiles: toolsData.slave_profiles || []
                     };
                     state.activeRagProfile = null;
+                    state.activeLlmOnlyProfile = null;
                     console.log(`🧞 Default profile is Genie coordinator: @${toolsData.profile_tag}`);
+                } else if (toolsData.profile_type === 'llm_only') {
+                    tools = toolsData.tools || {};
+                    prompts = promptsData.prompts || {};
+                    state.activeLlmOnlyProfile = {
+                        tag: toolsData.profile_tag,
+                        knowledgeCollections: toolsData.knowledge_collections || []
+                    };
+                    state.activeGenieProfile = null;
+                    state.activeRagProfile = null;
+                    console.log(`💬 Default profile is Conversation-focused: @${toolsData.profile_tag}`);
                 } else {
                     // Normal profile - response is tools/prompts directly
                     tools = toolsData;
                     prompts = promptsData;
                     state.activeGenieProfile = null;
                     state.activeRagProfile = null;
+                    state.activeLlmOnlyProfile = null;
                     console.log('🔄 Resource panel restored to default profile');
                 }
             }
@@ -1023,6 +1051,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize new configuration UI (async - loads MCP servers from backend)
     await initializeConfigurationUI();
+
+    // Update resource panel with default profile after configuration loads
+    if (window.configState?.defaultProfileId) {
+        await updateResourcePanelForProfile(window.configState.defaultProfileId);
+        console.log('[Startup] Resource panel initialized with default profile:', window.configState.defaultProfileId);
+    }
 
     const promptEditorMenuItem = DOM.promptEditorButton.parentElement;
     promptEditorMenuItem.style.display = 'none';

@@ -5246,13 +5246,37 @@ async def get_profile_resources(profile_id: str):
         # Only return empty resources for pure llm_only profiles (without MCP tools)
         # Conversation profiles with useMcpTools=true should have classified resources
         if profile.get("profile_type") == "llm_only" and not profile.get("useMcpTools", False):
-            # Pure LLM-only profile: no tools/prompts
+            # LLM-only profile: may have knowledge collections but no MCP tools/prompts
+            knowledge_config = profile.get("knowledgeConfig", {})
+            collection_entries = knowledge_config.get("collections", [])
+
+            # Get collection details for display
+            knowledge_collections = []
+            if collection_entries:
+                from trusted_data_agent.core.collection_db import CollectionDatabase
+                collection_db = CollectionDatabase()
+                for entry in collection_entries:
+                    # Handle both object format {"id": X} and plain ID format
+                    coll_id = entry.get("id") if isinstance(entry, dict) else entry
+                    try:
+                        coll_data = collection_db.get_collection_by_id(coll_id)
+                        if coll_data:
+                            knowledge_collections.append({
+                                "id": coll_id,
+                                "name": coll_data.get("name", f"Collection {coll_id}")
+                            })
+                        else:
+                            knowledge_collections.append({"id": coll_id, "name": f"Collection {coll_id}"})
+                    except Exception:
+                        knowledge_collections.append({"id": coll_id, "name": f"Collection {coll_id}"})
+
             return jsonify({
                 "status": "success",
                 "tools": {},
                 "prompts": {},
                 "profile_type": "llm_only",
-                "profile_tag": profile.get("tag")
+                "profile_tag": profile.get("tag"),
+                "knowledge_collections": knowledge_collections
             })
 
         # Genie profiles coordinate child profiles and don't have direct MCP tools

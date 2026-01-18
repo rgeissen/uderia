@@ -434,8 +434,15 @@ class ConfigurationState {
         }
 
         // Update resource panel to reflect new default profile's tools/prompts
+        // BUT only if there's no active @TAG override (don't disrupt user's current selection)
         if (typeof window.updateResourcePanelForProfile === 'function') {
-            window.updateResourcePanelForProfile(profileId);
+            const hasActiveOverride = window.activeTagPrefix && window.activeTagPrefix.trim().length > 0;
+            if (!hasActiveOverride) {
+                window.updateResourcePanelForProfile(profileId);
+                console.log('[ConfigState] Resource panel updated to new default profile:', profileId);
+            } else {
+                console.log('[ConfigState] Skipping resource panel update - user has active @TAG override');
+            }
         }
 
         // Reset initialization state when default profile changes
@@ -2085,13 +2092,25 @@ export async function reconnectAndLoad() {
             if (topButtonsContainer) {
                 topButtonsContainer.classList.remove('hidden');
             }
-            
-            // Load MCP resources (tools, prompts, resources)
-            await Promise.all([
-                handleLoadResources('tools'),
-                handleLoadResources('prompts'),
-                handleLoadResources('resources')
-            ]);
+
+            // Load resources based on profile type
+            // For Genie and RAG profiles, use profile-specific resource panel
+            // For other profiles (tool_enabled, llm_only, conversation_with_tools), load generic MCP resources
+            if (profileType === 'genie' || profileType === 'rag_focused') {
+                // Load profile-specific resources for special profile types
+                if (typeof window.updateResourcePanelForProfile === 'function') {
+                    await window.updateResourcePanelForProfile(defaultProfile.id);
+                    console.log('[Initialization] Loaded profile-specific resources for', profileType, 'profile:', defaultProfile.id);
+                }
+            } else {
+                // Load generic MCP resources for standard profiles
+                await Promise.all([
+                    handleLoadResources('tools'),
+                    handleLoadResources('prompts'),
+                    handleLoadResources('resources')
+                ]);
+                console.log('[Initialization] Loaded generic MCP resources for', profileType, 'profile');
+            }
             
             // Enable chat input
             DOM.chatModalButton.disabled = false;

@@ -137,6 +137,85 @@ export function renderResourcePanel(type) {
         // Use data from state instead of fetching
         const data = state.resourceData[type] || {};
 
+        // Special handling for LLM-only/Conversation-focused profiles WITHOUT tools
+        // Note: LLM-only profiles CAN have MCP tools/prompts and knowledge collections
+        // Show exception message when they have no MCP tools (with or without knowledge)
+        const hasNoData = !data || Object.keys(data).length === 0;
+        if (state.activeLlmOnlyProfile && type === 'tools' && hasNoData) {
+            const knowledgeCollections = state.activeLlmOnlyProfile.knowledgeCollections || [];
+            const hasKnowledge = knowledgeCollections.length > 0;
+
+            if (tabButton) {
+                tabButton.style.display = 'inline-block';
+                tabButton.textContent = hasKnowledge ? `Tools (Knowledge)` : `Tools (Conversation)`;
+            }
+
+            // Hide Resources tab for LLM-only profiles without MCP tools
+            const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
+            if (resourcesTab) {
+                resourcesTab.style.display = 'none';
+            }
+
+            // Hide categories container to avoid double border
+            categoriesContainer.innerHTML = '';
+            categoriesContainer.style.display = 'none';
+
+            if (hasKnowledge) {
+                // Show knowledge-focused message for LLM-only profiles with knowledge collections
+                // Clean book/document icon representing knowledge
+                panelsContainer.innerHTML = `
+                    <div class="p-6 text-center space-y-3">
+                        <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <!-- Open book -->
+                            <path d="M4 19.5 C4 18.1 5.1 17 6.5 17 L12 17 L12 6.5 C12 5.7 11.3 5 10.5 5 L6.5 5 C5.1 5 4 6.1 4 7.5 Z" stroke-width="2" stroke-linejoin="round"/>
+                            <path d="M20 19.5 C20 18.1 18.9 17 17.5 17 L12 17 L12 6.5 C12 5.7 12.7 5 13.5 5 L17.5 5 C18.9 5 20 6.1 20 7.5 Z" stroke-width="2" stroke-linejoin="round"/>
+                            <!-- Page lines -->
+                            <line x1="7" y1="9" x2="10" y2="9" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="7" y1="12" x2="10" y2="12" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="14" y1="9" x2="17" y2="9" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="14" y1="12" x2="17" y2="12" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                        <div class="text-lg font-semibold text-gray-200">Knowledge-Enhanced Conversation</div>
+                        <div class="text-sm text-gray-400 max-w-md mx-auto">
+                            This profile uses LLM conversation enhanced with knowledge retrieval from document repositories.
+                            It doesn't use MCP tools - instead, it searches configured knowledge collections.
+                        </div>
+                        ${knowledgeCollections.length > 0 ? `
+                            <div class="mt-4 text-sm text-gray-300">
+                                <div class="font-semibold mb-2">Knowledge Collections:</div>
+                                <div class="flex flex-wrap gap-2 justify-center">
+                                    ${knowledgeCollections.map(collection => {
+                                        const name = collection.name || collection.collection_name || 'Unknown';
+                                        return `<span class="px-3 py-1 bg-gray-700 rounded-md">${name}</span>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            } else {
+                // Show pure conversation message for LLM-only profiles without any external resources
+                panelsContainer.innerHTML = `
+                    <div class="p-6 text-center space-y-3">
+                        <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <!-- Message square with dialogue waves -->
+                            <rect x="4" y="6" width="16" height="12" rx="2" stroke-width="2"/>
+                            <!-- Dialogue wave lines -->
+                            <path d="M8 10 Q9 9 10 10 T12 10" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                            <path d="M8 13 Q10 12 12 13 T16 13" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                            <path d="M8 16 Q9 15 10 16 T12 16" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                        </svg>
+                        <div class="text-lg font-semibold text-gray-200">Conversation-Focused Profile</div>
+                        <div class="text-sm text-gray-400 max-w-md mx-auto">
+                            This profile uses direct LLM conversation without external tools or data sources.
+                            It focuses on natural language understanding and generation for general-purpose dialogue.
+                        </div>
+                    </div>
+                `;
+            }
+            return;
+        }
+
         // Special handling for Genie coordinator profiles
         if (state.activeGenieProfile && type === 'tools') {
             // Show Genie coordinator info instead of hiding the tab
@@ -145,10 +224,28 @@ export function renderResourcePanel(type) {
                 tabButton.textContent = `Tools (Coordinator)`;
             }
 
+            // Hide Resources tab for Genie profiles
+            const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
+            if (resourcesTab) {
+                resourcesTab.style.display = 'none';
+            }
+
+            // Hide categories container to avoid double border
             categoriesContainer.innerHTML = '';
+            categoriesContainer.style.display = 'none';
             panelsContainer.innerHTML = `
                 <div class="p-6 text-center space-y-3">
-                    <div class="text-2xl">🧞</div>
+                    <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3" stroke-width="2"/>
+                        <circle cx="6" cy="6" r="2" stroke-width="2"/>
+                        <circle cx="18" cy="6" r="2" stroke-width="2"/>
+                        <circle cx="6" cy="18" r="2" stroke-width="2"/>
+                        <circle cx="18" cy="18" r="2" stroke-width="2"/>
+                        <line x1="9.5" y1="10.5" x2="6.8" y2="7.8" stroke-width="2"/>
+                        <line x1="14.5" y1="10.5" x2="17.2" y2="7.8" stroke-width="2"/>
+                        <line x1="9.5" y1="13.5" x2="6.8" y2="16.2" stroke-width="2"/>
+                        <line x1="14.5" y1="13.5" x2="17.2" y2="16.2" stroke-width="2"/>
+                    </svg>
                     <div class="text-lg font-semibold text-gray-200">Genie Coordinator Profile</div>
                     <div class="text-sm text-gray-400 max-w-md mx-auto">
                         This profile coordinates multiple specialized profiles to answer complex questions.
@@ -178,10 +275,27 @@ export function renderResourcePanel(type) {
                 tabButton.textContent = `Tools (Knowledge)`;
             }
 
+            // Hide Resources tab for RAG profiles
+            const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
+            if (resourcesTab) {
+                resourcesTab.style.display = 'none';
+            }
+
+            // Hide categories container to avoid double border
             categoriesContainer.innerHTML = '';
+            categoriesContainer.style.display = 'none';
             panelsContainer.innerHTML = `
                 <div class="p-6 text-center space-y-3">
-                    <div class="text-2xl">📚</div>
+                    <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <!-- Filing cabinet / archive -->
+                        <rect x="5" y="4" width="14" height="5" rx="1" stroke-width="2"/>
+                        <rect x="5" y="10" width="14" height="5" rx="1" stroke-width="2"/>
+                        <rect x="5" y="16" width="14" height="4" rx="1" stroke-width="2"/>
+                        <!-- Drawer handles -->
+                        <line x1="10" y1="6.5" x2="14" y2="6.5" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="10" y1="12.5" x2="14" y2="12.5" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="10" y1="18" x2="14" y2="18" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
                     <div class="text-lg font-semibold text-gray-200">Knowledge-Focused Profile</div>
                     <div class="text-sm text-gray-400 max-w-md mx-auto">
                         This profile retrieves knowledge from document repositories to answer questions.
@@ -211,6 +325,16 @@ export function renderResourcePanel(type) {
         }
 
         tabButton.style.display = 'inline-block';
+
+        // Restore Resources tab and categories container for normal profiles (not special types)
+        if (!state.activeGenieProfile && !state.activeRagProfile && !state.activeLlmOnlyProfile) {
+            const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
+            if (resourcesTab) {
+                resourcesTab.style.display = 'inline-block';
+            }
+            // Restore categories container display
+            categoriesContainer.style.display = 'flex';
+        }
 
         if (type === 'prompts') {
             UI.updatePromptsTabCounter();

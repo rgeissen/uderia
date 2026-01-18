@@ -2078,12 +2078,28 @@ async def ask_stream():
 
     # Only validate MCP tools for tool-enabled profiles
     # LLM-only profiles bypass planner/tools and execute directly
-    if active_profile_type == "tool_enabled" and not APP_STATE.get('mcp_tools'):
-        async def error_gen():
-            yield PlanExecutor._format_sse({
-                "error": "The agent is not fully configured. Please ensure the LLM and MCP server details are set correctly in the 'Config' tab before starting a chat."
-            }, "error")
-        return Response(error_gen(), mimetype="text/event-stream")
+    if active_profile_type == "tool_enabled":
+        # For profile overrides, check if the profile itself has MCP configured
+        # For default profiles, check if MCP tools are loaded in APP_STATE
+        if profile_override_id:
+            # Profile override: check if profile has mcpServerId configured
+            # The executor will load the MCP tools for this profile later
+            mcp_server_id = active_profile.get("mcpServerId") if active_profile else None
+            if not mcp_server_id:
+                app_logger.error(f"Profile override {profile_override_id} is tool_enabled but has no MCP server configured")
+                async def error_gen():
+                    yield PlanExecutor._format_sse({
+                        "error": "The selected profile requires MCP tools but has no MCP server configured. Please configure an MCP server in the profile settings."
+                    }, "error")
+                return Response(error_gen(), mimetype="text/event-stream")
+        else:
+            # Default profile: check if MCP tools are loaded in APP_STATE
+            if not APP_STATE.get('mcp_tools'):
+                async def error_gen():
+                    yield PlanExecutor._format_sse({
+                        "error": "The agent is not fully configured. Please ensure the LLM and MCP server details are set correctly in the 'Config' tab before starting a chat."
+                    }, "error")
+                return Response(error_gen(), mimetype="text/event-stream")
 
     # Validate knowledge collections for RAG focused profiles
     if active_profile_type == "rag_focused":

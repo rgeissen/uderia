@@ -110,11 +110,38 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         DOM.promptEditorButton.disabled = true;
     }
 
-    await Promise.all([
-        handleLoadResources('tools'),
-        handleLoadResources('prompts'),
-        handleLoadResources('resources')
-    ]);
+    // Load resources based on default profile type
+    // For Genie and RAG profiles, use profile-specific resource panel
+    // For other profiles, load generic MCP resources
+    const defaultProfileId = window.configState?.defaultProfileId;
+    if (defaultProfileId) {
+        const defaultProfile = window.configState?.profiles?.find(p => p.id === defaultProfileId);
+        const profileType = defaultProfile?.profile_type;
+
+        if (profileType === 'genie' || profileType === 'rag_focused') {
+            // Load profile-specific resources for special profile types
+            if (typeof window.updateResourcePanelForProfile === 'function') {
+                await window.updateResourcePanelForProfile(defaultProfileId);
+                console.log('[FinalizeConfig] Loaded profile-specific resources for', profileType, 'profile:', defaultProfileId);
+            }
+        } else {
+            // Load generic MCP resources for standard profiles
+            await Promise.all([
+                handleLoadResources('tools'),
+                handleLoadResources('prompts'),
+                handleLoadResources('resources')
+            ]);
+            console.log('[FinalizeConfig] Loaded generic MCP resources for', profileType || 'unknown', 'profile');
+        }
+    } else {
+        // Fallback: load generic resources if no default profile
+        await Promise.all([
+            handleLoadResources('tools'),
+            handleLoadResources('prompts'),
+            handleLoadResources('resources')
+        ]);
+        console.log('[FinalizeConfig] Loaded generic MCP resources (no default profile)');
+    }
 
     const currentSessionId = state.currentSessionId;
 
