@@ -986,6 +986,29 @@ async function handleReloadPlanClick(element) {
                     UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
+                // Render system events (session name generation, etc.) after knowledge events
+                const systemEvents = turnData.system_events || [];
+                if (systemEvents.length > 0) {
+                    systemEvents.forEach((event, index) => {
+                        const isFinal = index === systemEvents.length - 1;
+                        // Check if payload is already a complete event (has 'step' field)
+                        // or if it's just details that need to be wrapped
+                        let eventData;
+                        if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                            // Payload is complete event_dict (session name events)
+                            eventData = event.payload;
+                        } else {
+                            // Payload is just details - reconstruct eventData
+                            eventData = {
+                                step: _getConversationAgentStepTitle(event.type, event.payload),
+                                details: event.payload,
+                                type: event.type
+                            };
+                        }
+                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                    });
+                }
+
                 // Add profile info after knowledge events
                 const profileInfoEl = document.createElement('div');
                 profileInfoEl.className = 'p-4 status-step info mt-4';
