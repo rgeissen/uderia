@@ -235,22 +235,29 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
 
     # Get classification mode from profile if provided
     classification_mode = 'light'  # default
-    is_conversation_profile = False  # Track if this is a conversation profile
+    skip_classification_profile = False  # Track if this profile type should skip classification
     if profile_id:
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
         profile = config_manager.get_profile(profile_id, user_uuid)
         if profile:
             classification_mode = profile.get('classification_mode', 'light')
-            # Check if this is a conversation profile (llm_only with useMcpTools)
-            is_conversation_profile = (profile.get('profile_type') == 'llm_only' and
-                                      profile.get('useMcpTools', False))
-            # CRITICAL: Force 'light' mode for conversation profiles - they use LangChain
-            # for tool selection, not the planner, so LLM classification is unnecessary
-            if is_conversation_profile and classification_mode != 'light':
-                app_logger.info(f"Forcing 'light' classification mode for conversation profile {profile_id} (was: {classification_mode})")
+            profile_type = profile.get('profile_type', 'tool_enabled')
+            use_mcp_tools = profile.get('useMcpTools', False)
+
+            # Check if this profile type should skip LLM classification:
+            # - llm_only with useMcpTools: Uses LangChain for tool selection, not the planner
+            # - rag_focused: Uses knowledge retrieval, not MCP tool classification
+            skip_classification_profile = (
+                (profile_type == 'llm_only' and use_mcp_tools) or
+                profile_type == 'rag_focused'
+            )
+
+            # CRITICAL: Force 'light' mode for profiles that don't need LLM classification
+            if skip_classification_profile and classification_mode != 'light':
+                app_logger.info(f"Forcing 'light' classification mode for {profile_type} profile {profile_id} (was: {classification_mode})")
                 classification_mode = 'light'
-            app_logger.info(f"Using classification mode '{classification_mode}' from profile {profile_id} (conversation profile: {is_conversation_profile})")
+            app_logger.info(f"Using classification mode '{classification_mode}' from profile {profile_id} (skip classification: {skip_classification_profile})")
         else:
             app_logger.warning(f"Profile {profile_id} not found, using default classification mode 'full'")
     else:
