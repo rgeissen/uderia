@@ -107,11 +107,21 @@ class Planner:
                 "status",
                 "conversation_agent_events",
                 "knowledge_events",  # Event stream for RAG/knowledge profiles (UI replay only)
-                "knowledge_chunks_ui"  # Document chunks for UI display (extracted from knowledge_retrieval_event)
+                "system_events",  # System operations like session name generation (UI replay only)
+                "knowledge_chunks_ui",  # Document chunks for UI display (extracted from knowledge_retrieval_event)
+                "session_input_tokens",  # Session totals for UI display only
+                "session_output_tokens",  # Session totals for UI display only
+                "final_summary_html",  # HTML formatted output (UI only, LLM uses final_summary_text)
+                "tts_payload"  # Text-to-speech data (UI only)
             ]
             for field in ui_only_fields:
                 if field in new_turn:
                     del new_turn[field]
+
+            # Remove heavy chunks array from knowledge_retrieval_event (already in knowledge_chunks_ui)
+            if "knowledge_retrieval_event" in new_turn and isinstance(new_turn["knowledge_retrieval_event"], dict):
+                if "chunks" in new_turn["knowledge_retrieval_event"]:
+                    del new_turn["knowledge_retrieval_event"]["chunks"]
 
             if "execution_trace" in new_turn and isinstance(new_turn["execution_trace"], list):
                 scrubbed_trace = []

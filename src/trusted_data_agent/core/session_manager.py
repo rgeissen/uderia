@@ -191,7 +191,7 @@ async def create_session(user_uuid: str, provider: str, llm_instance: any, chart
         "model": APP_CONFIG.CURRENT_MODEL, # --- Store the model used for this session (for backwards compatibility)
         "profile_tag": profile_tag, # --- Store the profile tag used for this session
         "profile_id": profile_id, # --- Store the profile ID used for this session (for badge/color info)
-        "profile_tags_used": [profile_tag] if profile_tag else [], # --- Initialize with profile_tag if provided
+        "profile_tags_used": [], # --- Will be populated on first turn execution, not on session creation
         "models_used": [], # --- Keep for backwards compatibility
         "session_history": [], # UI history (messages added via add_message_to_histories)
         "chat_object": chat_history_for_file, # Store serializable history for LLM context

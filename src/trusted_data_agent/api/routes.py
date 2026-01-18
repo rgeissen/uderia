@@ -1762,8 +1762,8 @@ async def new_session():
         response_data = {
             "id": session_id,
             "name": "New Chat",
-            "profile_tags_used": [profile_tag] if profile_tag else [],
-            "profile_tag": profile_tag,  # Current profile tag for display
+            "profile_tags_used": [],  # Will be populated on first turn execution, not on session creation
+            "profile_tag": profile_tag,  # Current profile tag for display (not yet in history)
             "models_used": []
         }
 

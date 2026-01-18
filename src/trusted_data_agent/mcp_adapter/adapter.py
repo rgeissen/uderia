@@ -236,6 +236,7 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     # Get classification mode from profile if provided
     classification_mode = 'light'  # default
     skip_classification_profile = False  # Track if this profile type should skip classification
+    is_conversation_profile = False  # Track if this is a conversation profile (LangChain-based)
     if profile_id:
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
@@ -244,6 +245,9 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
             classification_mode = profile.get('classification_mode', 'light')
             profile_type = profile.get('profile_type', 'tool_enabled')
             use_mcp_tools = profile.get('useMcpTools', False)
+
+            # Determine if this is a conversation profile (llm_only with MCP tools enabled)
+            is_conversation_profile = (profile_type == 'llm_only' and use_mcp_tools)
 
             # Check if this profile type should skip LLM classification:
             # - llm_only with useMcpTools: Uses LangChain for tool selection, not the planner

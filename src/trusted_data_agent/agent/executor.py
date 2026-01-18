@@ -796,9 +796,12 @@ class PlanExecutor:
 
         return resolved_args
 
-    async def _generate_session_name(self, query: str) -> str:
+    async def _generate_session_name(self, query: str) -> tuple[str, int, int]:
         """
         Uses the LLM to generate a concise name for the session based on the initial query.
+
+        Returns:
+            tuple: (session_name, input_tokens, output_tokens)
         """
         prompt = (
             f"Based on the following user query, generate a concise and descriptive name (3-5 words) "
@@ -810,7 +813,7 @@ class PlanExecutor:
         system_prompt = "You generate short, descriptive titles. Only respond with the title text."
 
         try:
-            name_text, _, _ = await self._call_llm_and_update_tokens(
+            name_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
                 prompt=prompt,
                 reason=reason,
                 system_prompt_override=system_prompt,
@@ -821,14 +824,14 @@ class PlanExecutor:
             # Basic cleaning: remove extra quotes, trim whitespace
             cleaned_name = name_text.strip().strip('"\'')
             if cleaned_name:
-                app_logger.info(f"Generated session name: '{cleaned_name}'")
-                return cleaned_name
+                app_logger.info(f"Generated session name: '{cleaned_name}' (tokens: {input_tokens} in / {output_tokens} out)")
+                return cleaned_name, input_tokens, output_tokens
             else:
                 app_logger.warning("LLM returned an empty session name.")
-                return "New Chat" # Fallback
+                return "New Chat", input_tokens, output_tokens  # Fallback with token counts
         except Exception as e:
             app_logger.error(f"Failed to generate session name: {e}", exc_info=True)
-            return "New Chat" # Fallback on error
+            return "New Chat", 0, 0  # Fallback on error
 
 
     def _detect_profile_type(self) -> str:
@@ -1157,12 +1160,13 @@ class PlanExecutor:
                             retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
 
                             # Store event data for SSE emission and turn summary
-                            # Note: Chunks stored separately in knowledge_chunks_ui for UI-only use
+                            # Include chunks for live status window display
                             knowledge_retrieval_event_data = {
                                 "collections": list(collection_names),
                                 "document_count": len(final_results),
                                 "duration_ms": retrieval_duration_ms,
-                                "summary": f"Retrieved {len(final_results)} documents from {len(collection_names)} collection(s)"
+                                "summary": f"Retrieved {len(final_results)} documents from {len(collection_names)} collection(s)",
+                                "chunks": knowledge_chunks  # Include full chunks for UI display
                             }
 
                             # Emit completion event for Live Status panel (replaces old single event)
@@ -1210,13 +1214,8 @@ class PlanExecutor:
             self.turn_input_tokens += input_tokens
             self.turn_output_tokens += output_tokens
 
-            # Update session token counters
-            await session_manager.update_token_count(
-                self.user_uuid,
-                self.session_id,
-                input_tokens,
-                output_tokens
-            )
+            # Note: Session token counters are already updated by llm_handler.call_llm_api()
+            # No need to update again here to avoid double-counting
 
             # Emit token update event
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
@@ -1262,9 +1261,46 @@ class PlanExecutor:
                 profile_tag
             )
 
+            # Collect system events for plan reload (like session name generation)
+            system_events = []
+
             # Generate session name if first turn
             if self.current_turn_number == 1:
-                new_name = await self._generate_session_name(self.original_user_input)
+                # Emit and collect start event
+                start_event = {
+                    "type": "session_name_generation_start",
+                    "payload": {
+                        "summary": "Using LLM to generate descriptive session title",
+                        "session_id": self.session_id
+                    }
+                }
+                system_events.append(start_event)
+                yield self._format_sse({
+                    "step": "Generating Session Name",
+                    "type": "session_name_generation_start",
+                    "details": start_event["payload"]
+                })
+
+                new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
+
+                # Emit and collect completion event
+                complete_event = {
+                    "type": "session_name_generation_complete",
+                    "payload": {
+                        "session_name": new_name,
+                        "input_tokens": name_input_tokens,
+                        "output_tokens": name_output_tokens,
+                        "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
+                        "session_id": self.session_id
+                    }
+                }
+                system_events.append(complete_event)
+                yield self._format_sse({
+                    "step": "Session Name Generated",
+                    "type": "session_name_generation_complete",
+                    "details": complete_event["payload"]
+                })
+
                 if new_name and new_name != "New Chat":
                     await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
                     yield self._format_sse({
@@ -1286,6 +1322,11 @@ class PlanExecutor:
                 "is_session_primer": self.is_session_primer
             }, "final_answer")
 
+            # Get session data for session token totals (needed for plan reload display)
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
+            session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
+
             # Save turn data to workflow_history for session reload
             turn_summary = {
                 "turn": self.current_turn_number,
@@ -1296,6 +1337,7 @@ class PlanExecutor:
                 "execution_trace": [],
                 "tools_used": tools_used,
                 "conversation_agent_events": result.get("collected_events", []),
+                "system_events": system_events,  # Session name generation and other system operations (UI replay only)
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "provider": self.current_provider,
                 "model": self.current_model,
@@ -1303,8 +1345,11 @@ class PlanExecutor:
                 "profile_type": "conversation_with_tools",
                 "duration_ms": duration_ms,
                 "session_id": self.session_id,
-                "turn_input_tokens": input_tokens,
-                "turn_output_tokens": output_tokens,
+                "turn_input_tokens": self.turn_input_tokens,  # Cumulative turn total (includes all LLM calls like reranking)
+                "turn_output_tokens": self.turn_output_tokens,  # Cumulative turn total
+                # Session totals at the time of this turn (for plan reload)
+                "session_input_tokens": session_input_tokens,
+                "session_output_tokens": session_output_tokens,
                 # Knowledge retrieval tracking for session reload
                 "knowledge_accessed": knowledge_accessed,
                 "knowledge_retrieval_event": knowledge_retrieval_event_data,
@@ -1868,12 +1913,50 @@ The following domain knowledge may be relevant to this conversation:
             # Cost is already calculated and logged via _call_llm_and_update_tokens
             # No additional logging needed here
 
+            # Collect system events for plan reload (like session name generation)
+            system_events = []
+
             # Generate session name for first turn
             if self.current_turn_number == 1:
                 session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                 if session_data and session_data.get("name") == "New Chat":
                     app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
-                    new_name = await self._generate_session_name(self.original_user_input)
+
+                    # Emit and collect start event
+                    start_event = {
+                        "type": "session_name_generation_start",
+                        "payload": {
+                            "summary": "Using LLM to generate descriptive session title",
+                            "session_id": self.session_id
+                        }
+                    }
+                    system_events.append(start_event)
+                    yield self._format_sse({
+                        "step": "Generating Session Name",
+                        "type": "session_name_generation_start",
+                        "details": start_event["payload"]
+                    })
+
+                    new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
+
+                    # Emit and collect completion event
+                    complete_event = {
+                        "type": "session_name_generation_complete",
+                        "payload": {
+                            "session_name": new_name,
+                            "input_tokens": name_input_tokens,
+                            "output_tokens": name_output_tokens,
+                            "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
+                            "session_id": self.session_id
+                        }
+                    }
+                    system_events.append(complete_event)
+                    yield self._format_sse({
+                        "step": "Session Name Generated",
+                        "type": "session_name_generation_complete",
+                        "details": complete_event["payload"]
+                    })
+
                     if new_name != "New Chat":
                         try:
                             await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
@@ -1913,6 +1996,10 @@ The following domain knowledge may be relevant to this conversation:
                     "payload": notification_payload
                 }, event="notification")
 
+            # Get session token totals (needed for plan reload display)
+            session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
+            session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -1920,15 +2007,19 @@ The following domain knowledge may be relevant to this conversation:
                 "status": "success",
                 "execution_trace": [],  # No tool executions for llm_only
                 "original_plan": None,  # No plan for llm_only
+                "system_events": system_events,  # Session name generation and other system operations (UI replay only)
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "provider": self.current_provider,
                 "model": self.current_model,
                 "profile_tag": profile_tag,
                 "profile_type": "llm_only",  # Mark as llm_only for turn reload
                 "task_id": self.task_id if hasattr(self, 'task_id') else None,
-                "turn_input_tokens": input_tokens,
-                "turn_output_tokens": output_tokens,
+                "turn_input_tokens": self.turn_input_tokens,  # Cumulative turn total (includes all LLM calls like reranking)
+                "turn_output_tokens": self.turn_output_tokens,  # Cumulative turn total
                 "session_id": self.session_id,
+                # Session totals at the time of this turn (for plan reload)
+                "session_input_tokens": session_input_tokens,
+                "session_output_tokens": session_output_tokens,
                 "rag_source_collection_id": None,  # LLM-only doesn't use RAG
                 "case_id": None,
                 "knowledge_accessed": knowledge_accessed,  # Track knowledge collections accessed
@@ -2161,12 +2252,13 @@ The following domain knowledge may be relevant to this conversation:
             retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
 
             # Emit completion event for Live Status panel (replaces old single event)
-            # Note: Chunks not included in event to keep SSE payload lean
+            # Include chunks for live status window display
             event_details = {
                 "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)",
                 "collections": list(collection_names),
                 "document_count": len(final_results),
-                "duration_ms": retrieval_duration_ms
+                "duration_ms": retrieval_duration_ms,
+                "chunks": knowledge_chunks  # Include full chunks for UI display
             }
 
             knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": event_details})
@@ -2355,6 +2447,66 @@ The following domain knowledge may be relevant to this conversation:
 
             # Note: retrieval_duration_ms already calculated earlier (line ~1991)
 
+            # Get session data for session token totals (needed for plan reload display)
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
+            session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
+
+            # Collect system events for plan reload (like session name generation)
+            system_events = []
+
+            # Generate session name for first turn
+            if self.current_turn_number == 1:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                if session_data and session_data.get("name") == "New Chat":
+                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
+
+                    # Emit and collect start event
+                    start_event = {
+                        "type": "session_name_generation_start",
+                        "payload": {
+                            "summary": "Using LLM to generate descriptive session title",
+                            "session_id": self.session_id
+                        }
+                    }
+                    system_events.append(start_event)
+                    yield self._format_sse({
+                        "step": "Generating Session Name",
+                        "type": "session_name_generation_start",
+                        "details": start_event["payload"]
+                    })
+
+                    new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
+
+                    # Emit and collect completion event
+                    complete_event = {
+                        "type": "session_name_generation_complete",
+                        "payload": {
+                            "session_name": new_name,
+                            "input_tokens": name_input_tokens,
+                            "output_tokens": name_output_tokens,
+                            "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
+                            "session_id": self.session_id
+                        }
+                    }
+                    system_events.append(complete_event)
+                    yield self._format_sse({
+                        "step": "Session Name Generated",
+                        "type": "session_name_generation_complete",
+                        "details": complete_event["payload"]
+                    })
+
+                    if new_name != "New Chat":
+                        try:
+                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                            yield self._format_sse({
+                                "session_id": self.session_id,
+                                "newName": new_name
+                            }, "session_name_update")
+                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
+                        except Exception as name_e:
+                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -2368,9 +2520,12 @@ The following domain knowledge may be relevant to this conversation:
                 "profile_tag": profile_tag,
                 "profile_type": "rag_focused",  # Mark as rag_focused for turn reload
                 "task_id": self.task_id if hasattr(self, 'task_id') else None,
-                "turn_input_tokens": input_tokens,
-                "turn_output_tokens": output_tokens,
+                "turn_input_tokens": self.turn_input_tokens,  # Cumulative turn total (includes all LLM calls like reranking)
+                "turn_output_tokens": self.turn_output_tokens,  # Cumulative turn total
                 "session_id": self.session_id,
+                # Session totals at the time of this turn (for plan reload)
+                "session_input_tokens": session_input_tokens,
+                "session_output_tokens": session_output_tokens,
                 "rag_source_collection_id": knowledge_accessed[0] if knowledge_accessed else None,
                 "case_id": None,
                 "knowledge_accessed": knowledge_accessed,  # Track knowledge collections accessed
@@ -2381,31 +2536,16 @@ The following domain knowledge may be relevant to this conversation:
                     "document_count": len(final_results),
                     "collections": list(collection_names),  # Include collection names
                     "duration_ms": retrieval_duration_ms,  # Add duration for plan reload
-                    "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)"
+                    "summary": f"Retrieved {len(final_results)} relevant document(s) from {len(collection_names)} knowledge collection(s)",
+                    "chunks": knowledge_chunks  # Include full chunks for UI display
                 },
                 # UI-only: Full document chunks for plan reload display (not sent to LLM)
-                "knowledge_chunks_ui": knowledge_chunks
+                "knowledge_chunks_ui": knowledge_chunks,
+                "system_events": system_events
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved rag_focused turn data to workflow_history for turn {self.current_turn_number}")
-
-            # Generate session name for first turn
-            if self.current_turn_number == 1:
-                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
-                if session_data and session_data.get("name") == "New Chat":
-                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
-                    new_name = await self._generate_session_name(self.original_user_input)
-                    if new_name != "New Chat":
-                        try:
-                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                            yield self._format_sse({
-                                "session_id": self.session_id,
-                                "newName": new_name
-                            }, "session_name_update")
-                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
-                        except Exception as name_e:
-                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
 
             app_logger.info("✅ RAG-focused execution completed successfully")
             return
@@ -3146,13 +3286,75 @@ The following domain knowledge may be relevant to this conversation:
                 # --- MODIFICATION START: Include model/provider and use self.current_turn_number ---
                 # Get profile tag from default profile (or override if active)
                 profile_tag = self._get_current_profile_tag()
-                
+
+                # Get session data for session token totals (needed for plan reload display)
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
+                session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
+
+                # Collect system events for plan reload (like session name generation)
+                # CRITICAL: Must collect BEFORE creating turn_summary to avoid duplicate entries
+                system_events = []
+
+                # Session Naming Logic
+                # --- MODIFICATION START: Use self.current_turn_number for check ---
+                if self.current_turn_number == 1 and session_data and session_data.get("name") == "New Chat":
+                # --- MODIFICATION END ---
+                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
+
+                    # Emit and collect start event
+                    start_event = {
+                        "type": "session_name_generation_start",
+                        "payload": {
+                            "summary": "Using LLM to generate descriptive session title",
+                            "session_id": self.session_id
+                        }
+                    }
+                    system_events.append(start_event)
+                    yield self._format_sse({
+                        "step": "Generating Session Name",
+                        "type": "session_name_generation_start",
+                        "details": start_event["payload"]
+                    })
+
+                    new_name, name_input_tokens, name_output_tokens = await self._generate_session_name(self.original_user_input)
+
+                    # Emit and collect completion event
+                    complete_event = {
+                        "type": "session_name_generation_complete",
+                        "payload": {
+                            "session_name": new_name,
+                            "input_tokens": name_input_tokens,
+                            "output_tokens": name_output_tokens,
+                            "summary": f"Generated name: '{new_name}' ({name_input_tokens} in / {name_output_tokens} out)",
+                            "session_id": self.session_id
+                        }
+                    }
+                    system_events.append(complete_event)
+                    yield self._format_sse({
+                        "step": "Session Name Generated",
+                        "type": "session_name_generation_complete",
+                        "details": complete_event["payload"]
+                    })
+
+                    if new_name != "New Chat":
+                        try:
+                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                            yield self._format_sse({
+                                "session_id": self.session_id,
+                                "newName": new_name
+                            }, "session_name_update")
+                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
+                        except Exception as name_e:
+                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
                     "user_query": self.original_user_input, # Store the original query
                     "original_plan": self.original_plan_for_history, # Store the actual plan used
                     "execution_trace": self.turn_action_history,
                     "final_summary": self.final_summary_text,
+                    "system_events": system_events,  # Session name generation and other system operations (UI replay only)
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "provider": self.current_provider, # Add snapshot of provider (for backwards compatibility)
                     "model": self.current_model,       # Add snapshot of model (for backwards compatibility)
@@ -3160,6 +3362,9 @@ The following domain knowledge may be relevant to this conversation:
                     "task_id": self.task_id,            # Add the task_id
                     "turn_input_tokens": self.turn_input_tokens,
                     "turn_output_tokens": self.turn_output_tokens,
+                    # Session totals at the time of this turn (for plan reload)
+                    "session_input_tokens": session_input_tokens,
+                    "session_output_tokens": session_output_tokens,
                     # --- MODIFICATION START: Add session_id and mcp_server_id for RAG worker ---
                     "session_id": self.session_id,
                     "mcp_server_id": self.effective_mcp_server_id or APP_CONFIG.CURRENT_MCP_SERVER_ID,  # Use effective MCP ID (override aware)
@@ -3188,7 +3393,7 @@ The following domain knowledge may be relevant to this conversation:
                     "prompt_library_raw",
                     "question_generator"
                 ]
-                
+
                 if APP_CONFIG.RAG_ENABLED and APP_STATE.get('rag_processing_queue') and self.rag_retriever and not skip_rag_for_temp_sessions:
                     try:
                         app_logger.debug(f"Adding turn {self.current_turn_number} to RAG processing queue.")
@@ -3202,24 +3407,6 @@ The following domain knowledge may be relevant to this conversation:
                 elif skip_rag_for_temp_sessions:
                     app_logger.debug(f"Skipping RAG processing for temporary execution with source: {self.source}")
                 # --- MODIFICATION END ---
-
-
-                # Session Naming Logic (remains unchanged)
-                # --- MODIFICATION START: Use self.current_turn_number for check ---
-                if self.current_turn_number == 1 and session_data and session_data.get("name") == "New Chat":
-                # --- MODIFICATION END ---
-                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
-                    new_name = await self._generate_session_name(self.original_user_input)
-                    if new_name != "New Chat":
-                        try:
-                            await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                            yield self._format_sse({
-                                "session_id": self.session_id,
-                                "newName": new_name
-                            }, "session_name_update")
-                            app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
-                        except Exception as name_e:
-                            app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
 
             else:
                  # --- MODIFICATION START: Update log message to include depth ---
@@ -3250,6 +3437,11 @@ The following domain knowledge may be relevant to this conversation:
         try:
             profile_tag = self._get_current_profile_tag()
 
+            # Get session data for session token totals (needed for plan reload display)
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
+            session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -3263,6 +3455,9 @@ The following domain knowledge may be relevant to this conversation:
                 "task_id": self.task_id,
                 "turn_input_tokens": self.turn_input_tokens,  # Accumulated tokens up to failure
                 "turn_output_tokens": self.turn_output_tokens,
+                # Session totals at the time of this turn (for plan reload)
+                "session_input_tokens": session_input_tokens,
+                "session_output_tokens": session_output_tokens,
                 "session_id": self.session_id,
                 "mcp_server_id": self.effective_mcp_server_id or APP_CONFIG.CURRENT_MCP_SERVER_ID,
                 "user_uuid": self.user_uuid,

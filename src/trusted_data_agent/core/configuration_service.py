@@ -2,6 +2,8 @@
 import logging
 import httpx
 import os
+import asyncio
+from collections import defaultdict
 # --- MODIFICATION START: Import Path ---
 from pathlib import Path
 # --- MODIFICATION END ---
@@ -35,6 +37,9 @@ ENCRYPTION_AVAILABLE = True
 # --- MODIFICATION END ---
 
 app_logger = logging.getLogger("quart.app")
+
+# Per-profile locks to prevent concurrent classification runs
+_profile_classification_locks = defaultdict(asyncio.Lock)
 
 
 def build_mcp_server_config(server_id: str, server_data: dict) -> dict:
@@ -174,15 +179,21 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
         profile = master_profile
     
     classification_results = config_manager.get_profile_classification(target_profile_id, user_uuid)
-    
+
     # Check if we have cached results with actual content
     tools_dict = classification_results.get('tools', {}) if classification_results else {}
     prompts_dict = classification_results.get('prompts', {}) if classification_results else {}
-    
+
     # Count actual tools/prompts in the classification
     total_tools = sum(len(tools) for tools in tools_dict.values()) if tools_dict else 0
     total_prompts = sum(len(prompts) for prompts in prompts_dict.values()) if prompts_dict else 0
-    
+
+    # DEBUG: Log classification load attempt
+    app_logger.debug(f"Classification load for profile {target_profile_id}: "
+                    f"results={'present' if classification_results else 'NONE'}, "
+                    f"tools={total_tools}, prompts={total_prompts}, "
+                    f"tool_categories={len(tools_dict)}, prompt_categories={len(prompts_dict)}")
+
     if not classification_results or (total_tools == 0 and total_prompts == 0):
         app_logger.info(f"No cached classification for profile {target_profile_id} (empty or missing), will run classification")
         return False
@@ -611,50 +622,55 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
 
             app_logger.debug(f"Profile {profile_id} fully initialized and validated")
 
-            # Try to load cached classification
-            app_logger.debug(f"Checking for cached classification for profile {profile_id}...")
-            cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
-            app_logger.debug(f"Cached classification loaded: {cached_loaded}")
+            # CRITICAL: Use per-profile lock to prevent concurrent classification runs
+            # This prevents race conditions where multiple simultaneous activations
+            # overwrite each other's classification results in the database
+            async with _profile_classification_locks[profile_id]:
+                app_logger.debug(f"Acquired classification lock for profile {profile_id}")
+                # Try to load cached classification
+                app_logger.debug(f"Checking for cached classification for profile {profile_id}...")
+                cached_loaded = load_profile_classification_into_state(profile_id, user_uuid)
+                app_logger.debug(f"Cached classification loaded: {cached_loaded}")
 
-            # If no cache, run classification
-            if not cached_loaded:
-                app_logger.info(f"No cached classification, running classification for profile {profile_id}")
-                await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
+                # If no cache, run classification
+                if not cached_loaded:
+                    app_logger.info(f"No cached classification, running classification for profile {profile_id}")
+                    await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
 
-                # After first classification, initialize profile's enabled tools/prompts with ALL discovered capabilities
-                # This makes all capabilities enabled by default, simplifying the selection process
-                profile = config_manager.get_profile(profile_id, user_uuid)
-                if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
-                    # Get all discovered tools from APP_STATE
-                    all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
-                    all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
+                    # After first classification, initialize profile's enabled tools/prompts with ALL discovered capabilities
+                    # This makes all capabilities enabled by default, simplifying the selection process
+                    profile = config_manager.get_profile(profile_id, user_uuid)
+                    if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                        # Get all discovered tools from APP_STATE
+                        all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
+                        all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
 
-                    if all_tools or all_prompts:
-                        app_logger.info(f"Initializing profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
-                        config_manager.update_profile(profile_id, {
-                            "tools": all_tools,
-                            "prompts": all_prompts
-                        }, user_uuid)
+                        if all_tools or all_prompts:
+                            app_logger.info(f"Initializing profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
+                            config_manager.update_profile(profile_id, {
+                                "tools": all_tools,
+                                "prompts": all_prompts
+                            }, user_uuid)
 
-                # Clear needs_reclassification flag after successful classification
-                config_manager.update_profile(profile_id, {"needs_reclassification": False}, user_uuid)
-                app_logger.info(f"Cleared needs_reclassification flag for profile {profile_id} after classification")
-            else:
-                # For cached classification, also ensure profile has tools/prompts initialized
-                # This fixes the bug where cached profiles had all resources deactivated
-                app_logger.debug(f"Using cached classification for profile {profile_id}, checking profile initialization...")
-                profile = config_manager.get_profile(profile_id, user_uuid)
-                if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
-                    # Profile doesn't have tools list yet - initialize with all discovered tools from cache
-                    all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
-                    all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
+                    # Clear needs_reclassification flag after successful classification
+                    config_manager.update_profile(profile_id, {"needs_reclassification": False}, user_uuid)
+                    app_logger.info(f"Cleared needs_reclassification flag for profile {profile_id} after classification")
+                else:
+                    # For cached classification, also ensure profile has tools/prompts initialized
+                    # This fixes the bug where cached profiles had all resources deactivated
+                    app_logger.debug(f"Using cached classification for profile {profile_id}, checking profile initialization...")
+                    profile = config_manager.get_profile(profile_id, user_uuid)
+                    if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                        # Profile doesn't have tools list yet - initialize with all discovered tools from cache
+                        all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
+                        all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
 
-                    if all_tools or all_prompts:
-                        app_logger.info(f"Initializing cached profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
-                        config_manager.update_profile(profile_id, {
-                            "tools": all_tools,
-                            "prompts": all_prompts
-                        }, user_uuid)
+                        if all_tools or all_prompts:
+                            app_logger.info(f"Initializing cached profile {profile_id} with all discovered capabilities: {len(all_tools)} tools, {len(all_prompts)} prompts")
+                            config_manager.update_profile(profile_id, {
+                                "tools": all_tools,
+                                "prompts": all_prompts
+                            }, user_uuid)
         else:
             # Pure LLM-only profile (without MCP tools) - skip MCP setup
             app_logger.info(f"Profile {profile_id} is pure llm_only (useMcpTools=false) - skipping MCP server initialization")

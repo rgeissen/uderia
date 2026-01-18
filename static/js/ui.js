@@ -362,9 +362,11 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} executionTrace - The execution trace array (action/result pairs).
  * @param {string|number} turnId - The ID of the turn being displayed.
  * @param {string} userQuery - The original user query for this turn.
+ * @param {Object} knowledgeRetrievalEvent - Optional knowledge retrieval event data.
  * @param {Object} turnTokens - Optional turn token data { turn_input_tokens, turn_output_tokens }.
+ * @param {Array} systemEvents - Optional system events like session name generation.
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = []) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -393,6 +395,24 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         }, false, 'knowledge_retrieval');
     }
     // --- PHASE 2 END ---
+
+    // --- PHASE 2.5: Render system events (session name generation, etc.) ---
+    console.log('[HistoricalTrace] System events received:', systemEvents);
+    if (systemEvents && systemEvents.length > 0) {
+        console.log('[HistoricalTrace] Rendering', systemEvents.length, 'system events');
+        systemEvents.forEach(sysEvent => {
+            console.log('[HistoricalTrace] Rendering event:', sysEvent.type, sysEvent);
+            // Render each system event with conversation_agent renderer
+            updateStatusWindow({
+                step: sysEvent.type === 'session_name_generation_start' ? 'Generating Session Name' : 'Session Name Generated',
+                details: sysEvent.payload || {},
+                type: sysEvent.type
+            }, sysEvent.type === 'session_name_generation_complete', 'conversation_agent');
+        });
+    } else {
+        console.log('[HistoricalTrace] No system events to render');
+    }
+    // --- PHASE 2.5 END ---
 
     // 2. Iterate through the new, rich execution trace
     executionTrace.forEach(traceEntry => {
@@ -1426,6 +1446,56 @@ export function renderGenieStepForReload(eventData, parentContainer, isFinal = f
 function _renderConversationAgentStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
+    // CRITICAL FIX: For session name generation complete, UPDATE the existing "Generating..." step
+    if (type === 'session_name_generation_complete') {
+        const lastStep = parentContainer.querySelector('.status-step.active');
+
+        if (lastStep) {
+            // Update the existing step's icon and content
+            lastStep.classList.remove('active');
+            lastStep.classList.add('completed');
+
+            // Stop spinning animation
+            const iconGlow = lastStep.querySelector('.status-icon-glow.active');
+            if (iconGlow) {
+                iconGlow.classList.remove('active');
+            }
+
+            // Update icon to show success
+            const stepHeader = lastStep.querySelector('.flex.items-center');
+            if (stepHeader) {
+                const iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                const iconContainer = stepHeader.firstElementChild;
+                if (iconContainer) {
+                    iconContainer.innerHTML = iconSvg;
+                }
+            }
+
+            // Update details section with session name and tokens
+            // Session name events use .text-xs instead of .status-details
+            const detailsEl = lastStep.querySelector('.text-xs') || lastStep.querySelector('.status-details');
+
+            if (detailsEl) {
+                const sessionName = details.session_name || details.name || 'Unknown';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Name</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                    </div>
+                `;
+            }
+
+            // Scroll to updated step
+            lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return; // Exit early - we updated existing step, no need to create new one
+        }
+    }
+
     // CRITICAL FIX: For tool completion, UPDATE the existing "Executing..." step instead of creating a new one
     if (type === 'conversation_tool_completed') {
         const lastStep = parentContainer.querySelector('.status-step.active');
@@ -1572,6 +1642,12 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
             break;
         case 'knowledge_search_complete':
+            iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+            break;
+        case 'session_name_generation_start':
+            iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+            break;
+        case 'session_name_generation_complete':
             iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
             break;
         default:
@@ -1773,7 +1849,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                 let chunksHtml = '';
                 if (chunks.length > 0) {
-                    const chunkPreviews = chunks.slice(0, 3).map((chunk, idx) => {
+                    const chunkPreviews = chunks.map((chunk, idx) => {
                         const similarity = chunk.similarity_score ? (chunk.similarity_score * 100).toFixed(1) : 'N/A';
                         const content = chunk.content || '';
                         const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
@@ -1796,7 +1872,6 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                                 View Retrieved Chunks (${chunks.length})
                             </summary>
                             <div class="space-y-2 mt-2">${chunkPreviews}</div>
-                            ${chunks.length > 3 ? `<div class="text-gray-500 mt-1">+${chunks.length - 3} more chunks</div>` : ''}
                         </details>
                     `;
                 }
@@ -1879,7 +1954,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                 let chunksHtml = '';
                 if (chunks.length > 0) {
-                    const chunkPreviews = chunks.slice(0, 3).map((chunk, idx) => {
+                    const chunkPreviews = chunks.map((chunk, idx) => {
                         const similarity = chunk.similarity_score ? (chunk.similarity_score * 100).toFixed(1) : 'N/A';
                         const content = chunk.content || '';
                         const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
@@ -1902,7 +1977,6 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                                 View Retrieved Chunks (${chunks.length})
                             </summary>
                             <div class="space-y-2 mt-2">${chunkPreviews}</div>
-                            ${chunks.length > 3 ? `<div class="text-gray-500 mt-1">+${chunks.length - 3} more chunks</div>` : ''}
                         </details>
                     `;
                 }
@@ -1985,6 +2059,32 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                             <div class="status-kv-value">${synthesisTimeMs}ms</div>
                         </div>
                     </details>
+                `;
+                break;
+            }
+
+            case 'session_name_generation_start': {
+                const summary = details.summary || 'Generating session name...';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">In Progress...</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'session_name_generation_complete': {
+                const sessionName = details.session_name || 'Unknown';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Name</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                    </div>
                 `;
                 break;
             }

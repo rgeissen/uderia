@@ -1533,17 +1533,21 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
 }
 
 .blinking-yellow {
+    background: radial-gradient(circle, #facc15 0%, #f59e0b 100%) !important;
+    color: #facc15 !important;
     animation: blink-yellow 0.5s 3;
 }
 
 @keyframes blink-yellow {
-  50% {
-    background: #facc15 !important; /* yellow-400 - use background to override gradients */
-    box-shadow: 0 0 12px #facc15;
+  0%, 100% {
     opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2), 0 0 16px rgba(250, 204, 21, 0.8);
   }
-  75% {
-    opacity: 0.5;
+  50% {
+    opacity: 0.6;
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2), 0 0 12px rgba(250, 204, 21, 0.6);
   }
 }
 
