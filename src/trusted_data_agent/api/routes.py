@@ -604,6 +604,62 @@ async def get_tools():
         if result["status"] != "success":
             return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
 
+    # CRITICAL: Check for special profile types that need metadata in response
+    # RAG-focused and Genie profiles need metadata for the frontend to show appropriate UI
+    from trusted_data_agent.core.config_manager import get_config_manager
+    config_manager = get_config_manager()
+    user_uuid = _get_user_uuid_from_request()
+
+    profile_id_loaded = APP_STATE.get('active_profile_id')
+    if profile_id_loaded:
+        profile = config_manager.get_profile(profile_id_loaded, user_uuid)
+        if profile:
+            profile_type = profile.get('profile_type')
+
+            # RAG-focused profiles: return empty tools with metadata for frontend
+            if profile_type == 'rag_focused':
+                knowledge_config = profile.get('knowledgeConfig', {})
+                knowledge_collection_ids = knowledge_config.get('collections', [])
+
+                # Resolve collection names
+                from trusted_data_agent.core.collection_db import get_user_collections
+                user_collections = get_user_collections(user_uuid)
+                knowledge_collections = []
+                for coll in user_collections:
+                    if coll.get('collection_id') in knowledge_collection_ids:
+                        knowledge_collections.append({
+                            'collection_id': coll.get('collection_id'),
+                            'name': coll.get('name', coll.get('collection_id'))
+                        })
+
+                app_logger.info(f"Returning empty tools with metadata for rag_focused profile {profile_id_loaded}")
+                return jsonify({
+                    "tools": {},
+                    "profile_type": "rag_focused",
+                    "profile_tag": profile.get('tag'),
+                    "knowledge_collections": knowledge_collections
+                })
+
+            # Genie profiles: return empty tools with metadata for frontend
+            if profile_type == 'genie':
+                slave_profile_ids = profile.get('slaveProfiles', [])
+                slave_profiles = []
+                for slave_id in slave_profile_ids:
+                    slave = config_manager.get_profile(slave_id, user_uuid)
+                    if slave:
+                        slave_profiles.append({
+                            'id': slave_id,
+                            'tag': slave.get('tag', slave_id)
+                        })
+
+                app_logger.info(f"Returning empty tools with metadata for genie profile {profile_id_loaded}")
+                return jsonify({
+                    "tools": {},
+                    "profile_type": "genie",
+                    "profile_tag": profile.get('tag'),
+                    "slave_profiles": slave_profiles
+                })
+
     # Return structured tools (disabled flags already set by _regenerate_contexts)
     return jsonify(APP_STATE.get("structured_tools", {}))
 
@@ -648,21 +704,67 @@ async def get_prompts():
     config_manager = get_config_manager()
     user_uuid = _get_user_uuid_from_request()
 
-    # Get the loaded profile from the state to check if it's a conversation profile
+    # Get the loaded profile from the state to check if it's a profile that doesn't use MCP prompts
     profile_id_loaded = APP_STATE.get('active_profile_id')
-    is_conversation_profile = False
 
     if profile_id_loaded:
         profile = config_manager.get_profile(profile_id_loaded, user_uuid)
         if profile:
-            is_conversation_profile = (profile.get('profile_type') == 'llm_only' and
+            profile_type = profile.get('profile_type')
+
+            # RAG-focused profiles: return empty prompts with metadata for frontend
+            if profile_type == 'rag_focused':
+                knowledge_config = profile.get('knowledgeConfig', {})
+                knowledge_collection_ids = knowledge_config.get('collections', [])
+
+                # Resolve collection names
+                from trusted_data_agent.core.collection_db import get_user_collections
+                user_collections = get_user_collections(user_uuid)
+                knowledge_collections = []
+                for coll in user_collections:
+                    if coll.get('collection_id') in knowledge_collection_ids:
+                        knowledge_collections.append({
+                            'collection_id': coll.get('collection_id'),
+                            'name': coll.get('name', coll.get('collection_id'))
+                        })
+
+                app_logger.info(f"Returning empty prompts with metadata for rag_focused profile {profile_id_loaded}")
+                return jsonify({
+                    "prompts": {},
+                    "profile_type": "rag_focused",
+                    "profile_tag": profile.get('tag'),
+                    "knowledge_collections": knowledge_collections
+                })
+
+            # Genie profiles: return empty prompts with metadata for frontend
+            if profile_type == 'genie':
+                slave_profile_ids = profile.get('slaveProfiles', [])
+                slave_profiles = []
+                for slave_id in slave_profile_ids:
+                    slave = config_manager.get_profile(slave_id, user_uuid)
+                    if slave:
+                        slave_profiles.append({
+                            'id': slave_id,
+                            'tag': slave.get('tag', slave_id)
+                        })
+
+                app_logger.info(f"Returning empty prompts with metadata for genie profile {profile_id_loaded}")
+                return jsonify({
+                    "prompts": {},
+                    "profile_type": "genie",
+                    "profile_tag": profile.get('tag'),
+                    "slave_profiles": slave_profiles
+                })
+
+            # Conversation profiles (LangChain) don't support MCP prompts
+            is_conversation_profile = (profile_type == 'llm_only' and
                                       profile.get('useMcpTools', False))
             if is_conversation_profile:
                 app_logger.info(f"Returning empty prompts for conversation profile {profile_id_loaded} (LangChain incompatible)")
+                return jsonify({})
 
-    # Return structured prompts (empty for conversation profiles, normal for tool_enabled)
-    structured_prompts = {} if is_conversation_profile else APP_STATE.get("structured_prompts", {})
-    return jsonify(structured_prompts)
+    # Return structured prompts for normal tool-enabled profiles
+    return jsonify(APP_STATE.get("structured_prompts", {}))
 
 @api_bp.route("/resources")
 async def get_resources():
@@ -699,6 +801,19 @@ async def get_resources():
         result = await configuration_service.switch_profile_context(profile_id_to_load, user_uuid, validate_llm=False)
         if result["status"] != "success":
             return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
+
+    # CRITICAL: RAG-focused profiles don't have MCP resources - return empty
+    # These profiles use knowledge repositories, not MCP servers
+    from trusted_data_agent.core.config_manager import get_config_manager
+    config_manager = get_config_manager()
+    user_uuid = _get_user_uuid_from_request()
+
+    profile_id_loaded = APP_STATE.get('active_profile_id')
+    if profile_id_loaded:
+        profile = config_manager.get_profile(profile_id_loaded, user_uuid)
+        if profile and profile.get('profile_type') == 'rag_focused':
+            app_logger.info(f"Returning empty resources for rag_focused profile {profile_id_loaded}")
+            return jsonify({})
 
     # Placeholder: Return empty dict until implemented
     return jsonify({})

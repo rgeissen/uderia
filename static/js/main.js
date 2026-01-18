@@ -304,14 +304,37 @@ async function initializeRAGAutoCompletion() {
                     fetch('/prompts', { headers: { 'Authorization': `Bearer ${authToken}` } })
                 ]);
 
-                tools = toolsResponse.ok ? await toolsResponse.json() : {};
-                prompts = promptsResponse.ok ? await promptsResponse.json() : {};
+                const toolsData = toolsResponse.ok ? await toolsResponse.json() : {};
+                const promptsData = promptsResponse.ok ? await promptsResponse.json() : {};
 
-                // Clear special profile info when restoring default
-                state.activeGenieProfile = null;
-                state.activeRagProfile = null;
-
-                console.log('🔄 Resource panel restored to default profile');
+                // Check if response includes profile metadata (for rag_focused/genie profiles)
+                // The backend returns { tools: {}, profile_type: '...', ... } for special profiles
+                if (toolsData.profile_type === 'rag_focused') {
+                    tools = toolsData.tools || {};
+                    prompts = promptsData.prompts || {};
+                    state.activeRagProfile = {
+                        tag: toolsData.profile_tag,
+                        knowledgeCollections: toolsData.knowledge_collections || []
+                    };
+                    state.activeGenieProfile = null;
+                    console.log(`📚 Default profile is RAG-focused: @${toolsData.profile_tag}`);
+                } else if (toolsData.profile_type === 'genie') {
+                    tools = toolsData.tools || {};
+                    prompts = promptsData.prompts || {};
+                    state.activeGenieProfile = {
+                        tag: toolsData.profile_tag,
+                        slaveProfiles: toolsData.slave_profiles || []
+                    };
+                    state.activeRagProfile = null;
+                    console.log(`🧞 Default profile is Genie coordinator: @${toolsData.profile_tag}`);
+                } else {
+                    // Normal profile - response is tools/prompts directly
+                    tools = toolsData;
+                    prompts = promptsData;
+                    state.activeGenieProfile = null;
+                    state.activeRagProfile = null;
+                    console.log('🔄 Resource panel restored to default profile');
+                }
             }
 
             // Update the resource panel with new data
