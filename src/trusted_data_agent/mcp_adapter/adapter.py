@@ -245,6 +245,11 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
             # Check if this is a conversation profile (llm_only with useMcpTools)
             is_conversation_profile = (profile.get('profile_type') == 'llm_only' and
                                       profile.get('useMcpTools', False))
+            # CRITICAL: Force 'light' mode for conversation profiles - they use LangChain
+            # for tool selection, not the planner, so LLM classification is unnecessary
+            if is_conversation_profile and classification_mode != 'light':
+                app_logger.info(f"Forcing 'light' classification mode for conversation profile {profile_id} (was: {classification_mode})")
+                classification_mode = 'light'
             app_logger.info(f"Using classification mode '{classification_mode}' from profile {profile_id} (conversation profile: {is_conversation_profile})")
         else:
             app_logger.warning(f"Profile {profile_id} not found, using default classification mode 'full'")
