@@ -55,7 +55,7 @@ function _getGenieStepTitle(eventType, payload) {
             return 'Coordinating Response';
         case 'genie_llm_step': {
             const stepName = payload.step_name || 'LLM Processing';
-            return `🧠 ${stepName}`;
+            return stepName;
         }
         case 'genie_routing_decision': {
             const profileCount = payload.selected_profiles?.length || 0;
