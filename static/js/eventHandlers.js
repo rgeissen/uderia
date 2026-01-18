@@ -1263,11 +1263,42 @@ export async function handleLoadResources(type) {
     const typeCapitalized = type.charAt(0).toUpperCase() + type.slice(1);
 
     try {
-        const data = await API.loadResources(type);
+        let data = await API.loadResources(type);
+
+        // Handle new response format with profile metadata for special profiles
+        // Backend returns { tools: {}, profile_type: 'rag_focused', ... } for rag_focused/genie profiles
+        if (data && data.profile_type) {
+            const profileType = data.profile_type;
+
+            if (profileType === 'rag_focused') {
+                state.activeRagProfile = {
+                    tag: data.profile_tag,
+                    knowledgeCollections: data.knowledge_collections || []
+                };
+                state.activeGenieProfile = null;
+                console.log(`📚 Default profile is RAG-focused: @${data.profile_tag}`);
+            } else if (profileType === 'genie') {
+                state.activeGenieProfile = {
+                    tag: data.profile_tag,
+                    slaveProfiles: data.slave_profiles || []
+                };
+                state.activeRagProfile = null;
+                console.log(`🧞 Default profile is Genie coordinator: @${data.profile_tag}`);
+            }
+
+            // Extract the actual tools/prompts from the wrapper
+            data = data[type] || {};
+        }
 
         if (!data || Object.keys(data).length === 0) {
             if(tabButton) {
                 tabButton.style.display = 'none';
+            }
+            // Still render the panel for special profiles to show the message
+            if (state.activeRagProfile || state.activeGenieProfile) {
+                if (window.capabilitiesModule) {
+                    window.capabilitiesModule.renderResourcePanel(type);
+                }
             }
             return;
         }
