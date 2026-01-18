@@ -1425,6 +1425,16 @@ async def get_session_history(current_user, session_id):
                 feedback_by_turn[turn_num] = feedback
         # --- MODIFICATION END ---
         
+        # Get profile_type from profile if available
+        profile_id = session_data.get("profile_id")
+        profile_type = None
+        if profile_id:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            profile = config_manager.get_profile(profile_id, user_uuid)
+            if profile:
+                profile_type = profile.get("profile_type", "tool_enabled")
+
         response_data = {
             "history": session_data.get("session_history", []),
             "input_tokens": session_data.get("input_tokens", 0),
@@ -1435,6 +1445,8 @@ async def get_session_history(current_user, session_id):
             "model": session_data.get("model"),
             "feedback_by_turn": feedback_by_turn,  # Add feedback data
             "profile_tag": session_data.get("profile_tag"),  # Current profile tag
+            "profile_id": profile_id,  # Profile ID for resource panel updates
+            "profile_type": profile_type,  # Profile type for resource panel updates
             "workflow_history": workflow_history  # For genie card rendering
         }
         return jsonify(response_data)
@@ -1764,7 +1776,10 @@ async def new_session():
             "name": "New Chat",
             "profile_tags_used": [],  # Will be populated on first turn execution, not on session creation
             "profile_tag": profile_tag,  # Current profile tag for display (not yet in history)
-            "models_used": []
+            "models_used": [],
+            # Include profile metadata for resource panel updates
+            "profile_id": profile_override_id if profile_override_id else default_profile_id,
+            "profile_type": primer_profile.get("profile_type") if primer_profile else "tool_enabled"
         }
 
         # Include session_primer if configured - frontend will auto-execute it

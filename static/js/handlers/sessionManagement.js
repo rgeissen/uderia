@@ -77,9 +77,21 @@ export async function handleStartNewSession() {
     try {
         console.log('[Session Primer] Starting new session with profile override ID:', activeProfileOverrideId);
         const data = await API.startNewSession(activeProfileOverrideId);
-        console.log('[Session Primer] Session created, response:', { id: data.id, has_primer: !!data.session_primer });
+        console.log('[Session Primer] Session created, response:', {
+            id: data.id,
+            has_primer: !!data.session_primer,
+            profile_id: data.profile_id,
+            profile_type: data.profile_type
+        });
         const sessionItem = UI.addSessionToList(data, true);
         DOM.sessionList.prepend(sessionItem);
+
+        // Update resource panel for new session's profile (handles rag_focused, llm_only, genie)
+        if (data.profile_id && window.updateResourcePanelForProfile) {
+            console.log('[New Session] Updating resource panel for profile:', data.profile_id, 'type:', data.profile_type);
+            await window.updateResourcePanelForProfile(data.profile_id);
+        }
+
         await handleLoadSession(data.id, true);
 
         // Check if session has a primer configured - execute it automatically
@@ -210,7 +222,14 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // This will reset the status display to the globally configured model
         UI.updateStatusPromptName(data.provider, data.model);
         // --- MODIFICATION END ---
-        
+
+        // --- NEW: Update resource panel if session has profile info (handles rag_focused, llm_only, genie) ---
+        if (data.profile_id && window.updateResourcePanelForProfile) {
+            console.log('[Load Session] Updating resource panel for profile:', data.profile_id, 'type:', data.profile_type);
+            await window.updateResourcePanelForProfile(data.profile_id);
+        }
+        // --- END ---
+
         // Mark conversation as initialized after successful session load
         if (window.__conversationInitState) {
             window.__conversationInitState.initialized = true;
