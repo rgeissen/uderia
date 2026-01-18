@@ -1538,7 +1538,7 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
 
 @keyframes blink-yellow {
   50% {
-    background-color: #facc15; /* yellow-400 */
+    background: #facc15 !important; /* yellow-400 - use background to override gradients */
     box-shadow: 0 0 12px #facc15;
     opacity: 1;
   }
