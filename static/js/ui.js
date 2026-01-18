@@ -2132,6 +2132,98 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 break;
             }
 
+            case 'llm_execution': {
+                const profileTag = details.profile_tag || 'CHAT';
+                const profileName = details.profile_name || 'Conversation';
+                const turnNumber = details.turn_number || 1;
+                const historyLength = details.history_length || 0;
+                const knowledgeEnabled = details.knowledge_enabled || false;
+                const knowledgeCollections = details.knowledge_collections || [];
+                const model = details.model || 'Unknown';
+                const userMessage = details.user_message || '';
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">@${profileTag}</code></div>
+
+                        <div class="status-kv-key">Mode</div>
+                        <div class="status-kv-value">Direct LLM Execution</div>
+
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${model}</code></div>
+
+                        <div class="status-kv-key">Turn</div>
+                        <div class="status-kv-value">${turnNumber} (${historyLength} messages in history)</div>
+
+                        ${knowledgeEnabled ? `
+                            <div class="status-kv-key">Knowledge</div>
+                            <div class="status-kv-value">Enabled (${knowledgeCollections.length} ${knowledgeCollections.length === 1 ? 'collection' : 'collections'})</div>
+                        ` : ''}
+                    </div>
+
+                    ${knowledgeEnabled && knowledgeCollections.length > 0 ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Knowledge Collections</summary>
+                            <div class="conv-agent-tool-tags mt-2 flex flex-wrap gap-1">
+                                ${knowledgeCollections.map(c => `<span class="conv-agent-tag">${c}</span>`).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+
+                    ${userMessage ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Context Sent to LLM</summary>
+                            <pre class="mt-2 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap overflow-x-auto text-sm">${userMessage}</pre>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'llm_execution_complete': {
+                const summary = details.summary || 'LLM execution completed';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const provider = details.provider || 'Unknown';
+                const modelName = details.model_name || 'Unknown';
+                const responseLength = details.response_length || 0;
+                const knowledgeUsed = details.knowledge_used || 0;
+                const responseText = details.response_text || '';
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Provider</div>
+                        <div class="status-kv-value"><code class="status-code text-blue-300">${provider}</code></div>
+
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${modelName}</code></div>
+
+                        <div class="status-kv-key">Input Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()}</div>
+
+                        <div class="status-kv-key">Output Tokens</div>
+                        <div class="status-kv-value">${outputTokens.toLocaleString()}</div>
+
+                        <div class="status-kv-key">Response</div>
+                        <div class="status-kv-value">${responseLength} characters</div>
+
+                        ${knowledgeUsed > 0 ? `
+                            <div class="status-kv-key">Knowledge Used</div>
+                            <div class="status-kv-value">${knowledgeUsed} document(s)</div>
+                        ` : ''}
+                    </div>
+
+                    ${responseText ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Response Text</summary>
+                            <pre class="mt-2 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap overflow-x-auto text-sm">${responseText}</pre>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
             default:
                 // Generic fallback with JSON display
                 try {

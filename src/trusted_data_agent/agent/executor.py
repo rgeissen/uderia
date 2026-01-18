@@ -1622,23 +1622,31 @@ Response:"""
             # DIRECT EXECUTION PATH - Bypass planner entirely
             app_logger.info("🗨️ LLM-only profile detected - direct execution mode")
 
-            # Emit status event
-            event_data = {
-                "step": "Calling LLM for Execution",
-                "type": "llm_execution",
-                "metadata": {"profile_type": "llm_only"}
-            }
-            self._log_system_event(event_data)
-            yield self._format_sse(event_data)
+            # Initialize event collection for plan reload (similar to rag_focused)
+            llm_execution_events = []
+
+            # Get profile configuration early for event details
+            profile_config = self._get_profile_config()
+            profile_tag = profile_config.get("tag", "CHAT")
+            profile_name = profile_config.get("name", "Conversation")
+
+            # Get conversation context stats
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+            history_length = len(session_data.get("session_history", [])) if session_data else 0
+            turn_number = self.current_turn_number
+
+            # Get knowledge config
+            knowledge_config = profile_config.get("knowledgeConfig", {})
+            knowledge_enabled = knowledge_config.get("enabled", False)
+            knowledge_collections = knowledge_config.get("collections", [])
+            knowledge_collection_names = [c.get("name", "Unknown") for c in knowledge_collections] if knowledge_enabled else []
+
+            # NOTE: Don't emit llm_execution event yet - wait until we have the actual prompts
+            # Store metadata for now, will emit after loading prompts
 
             # --- NEW: Knowledge Retrieval for LLM-Only ---
             knowledge_context_str = None
             knowledge_accessed = []
-
-            # Get profile configuration
-            profile_config = self._get_profile_config()
-            knowledge_config = profile_config.get("knowledgeConfig", {})
-            knowledge_enabled = knowledge_config.get("enabled", False)
 
             if knowledge_enabled and self.rag_retriever:
                 app_logger.info("🔍 Knowledge retrieval enabled for llm_only profile")
@@ -1777,14 +1785,20 @@ The following domain knowledge may be relevant to this conversation:
                                     "chunks": knowledge_chunks
                                 }
 
-                                # Emit SSE event with details (matching planner.py)
+                                # Emit SSE event with specific event type (like genie does)
                                 event_data = {
                                     "step": "Knowledge Retrieved",
                                     "type": "knowledge_retrieval",
                                     "details": event_details
                                 }
                                 self._log_system_event(event_data)
-                                yield self._format_sse(event_data)
+                                yield self._format_sse(event_data, "knowledge_retrieval")
+
+                                # Collect event for plan reload
+                                llm_execution_events.append({
+                                    "type": "knowledge_retrieval",
+                                    "payload": event_details  # Store just details for knowledge events
+                                })
 
                 except Exception as e:
                     app_logger.error(f"Error during knowledge retrieval for llm_only: {e}", exc_info=True)
@@ -1804,6 +1818,41 @@ The following domain knowledge may be relevant to this conversation:
             user_message = await self._build_user_message_for_conversation(
                 knowledge_context=knowledge_context_str
             )
+
+            # NOW emit llm_execution event with complete information
+            event_data = {
+                "step": "Calling LLM for Execution",
+                "type": "llm_execution",
+                "details": {
+                    "profile_tag": profile_tag,
+                    "profile_name": profile_name,
+                    "turn_number": turn_number,
+                    "history_length": history_length,
+                    "knowledge_enabled": knowledge_enabled,
+                    "knowledge_collections": knowledge_collection_names,
+                    "model": f"{self.current_provider}/{self.current_model}",
+                    "session_id": self.session_id,
+                    "user_message": user_message
+                }
+            }
+            self._log_system_event(event_data)
+            yield self._format_sse(event_data, "llm_execution")
+
+            # Collect event for plan reload (without system prompt to save space)
+            llm_execution_events.append({
+                "type": "llm_execution",
+                "payload": {
+                    "profile_tag": profile_tag,
+                    "profile_name": profile_name,
+                    "turn_number": turn_number,
+                    "history_length": history_length,
+                    "knowledge_enabled": knowledge_enabled,
+                    "knowledge_collections": knowledge_collection_names,
+                    "model": f"{self.current_provider}/{self.current_model}",
+                    "session_id": self.session_id,
+                    "user_message": user_message
+                }
+            })
 
             # CRITICAL: Create clean dependencies without tools/prompts for llm_only
             # This prevents the LLM from seeing tool definitions and trying to use them
@@ -1833,6 +1882,43 @@ The following domain knowledge may be relevant to this conversation:
             finally:
                 # Restore original dependencies
                 self.dependencies = original_dependencies
+
+            # Emit LLM execution complete event (like RAG's rag_llm_step)
+            llm_complete_event = {
+                "step": "LLM Execution Complete",
+                "type": "llm_execution_complete",
+                "details": {
+                    "summary": f"Generated response using {self.current_provider}/{self.current_model}",
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "model": f"{self.current_provider}/{self.current_model}",
+                    "provider": self.current_provider,
+                    "model_name": self.current_model,
+                    "response_length": len(response_text),
+                    "knowledge_used": len(knowledge_accessed) if knowledge_accessed else 0,
+                    "session_id": self.session_id,
+                    "response_text": response_text  # Include actual response for expandable view
+                }
+            }
+            self._log_system_event(llm_complete_event)
+            yield self._format_sse(llm_complete_event, "llm_execution_complete")
+
+            # Collect event for plan reload
+            llm_execution_events.append({
+                "type": "llm_execution_complete",
+                "payload": {
+                    "summary": f"Generated response using {self.current_provider}/{self.current_model}",
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "model": f"{self.current_provider}/{self.current_model}",
+                    "provider": self.current_provider,
+                    "model_name": self.current_model,
+                    "response_length": len(response_text),
+                    "knowledge_used": len(knowledge_accessed) if knowledge_accessed else 0,
+                    "session_id": self.session_id,
+                    "response_text": response_text  # Include actual response for expandable view
+                }
+            })
 
             # Emit token update event for UI
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
@@ -1960,6 +2046,7 @@ The following domain knowledge may be relevant to this conversation:
                 "execution_trace": [],  # No tool executions for llm_only
                 "original_plan": None,  # No plan for llm_only
                 "system_events": system_events,  # Session name generation and other system operations (UI replay only)
+                "knowledge_events": llm_execution_events,  # Intermediate execution events for plan reload (matching rag_focused)
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "provider": self.current_provider,
                 "model": self.current_model,

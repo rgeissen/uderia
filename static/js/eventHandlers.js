@@ -84,6 +84,13 @@ function _getGenieStepTitle(eventType, payload) {
  */
 function _getConversationAgentStepTitle(eventType, payload) {
     switch (eventType) {
+        case 'llm_execution':
+            return 'Calling LLM for Execution';
+        case 'llm_execution_complete': {
+            const inputTokens = payload.input_tokens || 0;
+            const outputTokens = payload.output_tokens || 0;
+            return `LLM Execution Complete (${inputTokens} in / ${outputTokens} out)`;
+        }
         case 'conversation_agent_start': {
             const toolCount = payload.available_tools?.length || 0;
             return `Using Tools (${toolCount} available)`;
@@ -97,7 +104,7 @@ function _getConversationAgentStepTitle(eventType, payload) {
         }
         case 'conversation_agent_complete': {
             const toolCount = payload.tools_used?.length || 0;
-            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s` : '';
+            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s)` : '';
             return payload.success
                 ? `Tools Complete (${toolCount} executed${duration})`
                 : 'Execution Failed';
@@ -275,12 +282,14 @@ async function processStream(responseBody) {
                                 // Delegate to conversation agent handler for state tracking (after UI update)
                                 handleConversationAgentEvent(eventData.type, payload);
                             }
-                        } else if (eventData.type === 'knowledge_retrieval' ||
+                        } else if (eventData.type === 'llm_execution' ||
+                                   eventData.type === 'llm_execution_complete' ||
+                                   eventData.type === 'knowledge_retrieval' ||
                                    eventData.type === 'knowledge_retrieval_start' ||
                                    eventData.type === 'knowledge_reranking_start' ||
                                    eventData.type === 'knowledge_reranking_complete' ||
                                    eventData.type === 'knowledge_retrieval_complete') {
-                            // Handle all knowledge retrieval events during execution
+                            // Handle all LLM execution and knowledge retrieval events during execution
                             const payload = eventData.payload || {};
                             const stepTitle = _getConversationAgentStepTitle(eventData.type, payload);
 
@@ -296,18 +305,56 @@ async function processStream(responseBody) {
                                 state.pendingKnowledgeRetrievalEvent = payload;
                             }
 
-                            // Always update status window for knowledge retrieval events
+                            // Always update status window for these events
                             // For conversation_with_tools, these arrive BEFORE conversation_agent_start
                             // so we render them directly without checking isConversationAgentActive
                             UI.updateStatusWindow({
                                 step: stepTitle,
                                 details: payload,
                                 type: eventData.type
-                            }, false, 'knowledge_retrieval');
+                            }, false, 'knowledge_retrieval');  // Use existing knowledge_retrieval rendering for all
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full RAG case data
                         UI.blinkRagDot();
+                    } else if (eventName === 'llm_execution') {
+                        // LLM execution event for llm_only profile (emitted with specific event name like genie)
+                        const { details, step, type } = eventData;
+                        console.log(`[${eventName}] Received:`, details);
+
+                        UI.updateStatusWindow({
+                            step: step || 'Calling LLM for Execution',
+                            details: details || {},
+                            type: type || eventName
+                        }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
+                    } else if (eventName === 'llm_execution_complete') {
+                        // LLM execution complete event (shows token counts like RAG's rag_llm_step)
+                        const { details, step, type } = eventData;
+                        console.log(`[${eventName}] Received:`, details);
+
+                        UI.updateStatusWindow({
+                            step: step || _getConversationAgentStepTitle('llm_execution_complete', details),
+                            details: details || {},
+                            type: type || eventName
+                        }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
+                    } else if (eventName === 'knowledge_retrieval') {
+                        // Knowledge retrieval event (emitted with specific event name like genie)
+                        const { details, step, type } = eventData;
+                        console.log(`[${eventName}] Received:`, details);
+
+                        // Update knowledge indicator if we have collection info
+                        if (details && details.collections) {
+                            const collections = details.collections || [];
+                            const documentCount = details.document_count || 0;
+                            UI.blinkKnowledgeDot();
+                            UI.updateKnowledgeIndicator(collections, documentCount);
+                        }
+
+                        UI.updateStatusWindow({
+                            step: step || 'Knowledge Retrieved',
+                            details: details || {},
+                            type: type || eventName
+                        }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
                     } else if (eventName === 'session_name_generation_start' ||
                                eventName === 'session_name_generation_complete') {
                         // Route session name generation events to status window with proper rendering
