@@ -466,17 +466,6 @@ async function processStream(responseBody) {
                         UI.updateStatusWindow(event, false, 'rest', task_id);
                     } else if (eventName === 'task_start') { // Handle the new task_start event
                         UI.updateTaskIdDisplay(eventData.task_id);
-                    } else if (eventName === 'message' && eventData.type &&
-                               (eventData.type === 'session_name_generation_start' ||
-                                eventData.type === 'session_name_generation_complete')) {
-                        // Handle session name generation events (system events)
-                        // Route to conversation_agent renderer for proper formatting
-                        const payload = eventData.details || {};
-                        UI.updateStatusWindow({
-                            step: eventData.step || 'Session Name Generation',
-                            details: payload,
-                            type: eventData.type
-                        }, eventData.type === 'session_name_generation_complete', 'conversation_agent');
                     } else {
                         UI.updateStatusWindow(eventData);
                     }
@@ -763,8 +752,7 @@ async function handleReloadPlanClick(element) {
                     {
                         turn_input_tokens: turnData.turn_input_tokens || 0,
                         turn_output_tokens: turnData.turn_output_tokens || 0
-                    },
-                    turnData.system_events || []  // Pass system events for replay
+                    }
                 );
             }
 
@@ -967,21 +955,6 @@ async function handleReloadPlanClick(element) {
                     UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
-                // Render system events (session name generation, etc.)
-                const systemEvents = turnData.system_events || [];
-                console.log('[RAG Reload] System events:', systemEvents);
-                if (systemEvents.length > 0) {
-                    console.log('[RAG Reload] Rendering', systemEvents.length, 'system events');
-                    systemEvents.forEach(sysEvent => {
-                        console.log('[RAG Reload] Rendering event:', sysEvent.type, sysEvent);
-                        UI.updateStatusWindow({
-                            step: sysEvent.type === 'session_name_generation_start' ? 'Generating Session Name' : 'Session Name Generated',
-                            details: sysEvent.payload || {},
-                            type: sysEvent.type
-                        }, sysEvent.type === 'session_name_generation_complete', 'conversation_agent');
-                    });
-                }
-
                 // Add profile info after knowledge events
                 const profileInfoEl = document.createElement('div');
                 profileInfoEl.className = 'p-4 status-step info mt-4';
@@ -1015,8 +988,7 @@ async function handleReloadPlanClick(element) {
                     {  // Pass turn tokens for display
                         turn_input_tokens: turnData.turn_input_tokens || 0,
                         turn_output_tokens: turnData.turn_output_tokens || 0
-                    },
-                    turnData.system_events || []  // Pass system events for replay
+                    }
                 );
 
                 // Add profile info after knowledge details
@@ -1058,21 +1030,6 @@ async function handleReloadPlanClick(element) {
                             <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${note}</p>
                         </div>
                     </div>`;
-
-                // Render system events (session name generation, etc.) for fallback path
-                const systemEvents = turnData.system_events || [];
-                console.log('[RAG Reload Fallback] System events:', systemEvents);
-                if (systemEvents.length > 0) {
-                    console.log('[RAG Reload Fallback] Rendering', systemEvents.length, 'system events');
-                    systemEvents.forEach(sysEvent => {
-                        console.log('[RAG Reload Fallback] Rendering event:', sysEvent.type, sysEvent);
-                        UI.updateStatusWindow({
-                            step: sysEvent.type === 'session_name_generation_start' ? 'Generating Session Name' : 'Session Name Generated',
-                            details: sysEvent.payload || {},
-                            type: sysEvent.type
-                        }, sysEvent.type === 'session_name_generation_complete', 'conversation_agent');
-                    });
-                }
             }
 
             // Update token counts from historical turn data (isHistorical = true)
@@ -1114,8 +1071,7 @@ async function handleReloadPlanClick(element) {
             {  // Pass turn tokens for display
                 turn_input_tokens: turnData.turn_input_tokens || 0,
                 turn_output_tokens: turnData.turn_output_tokens || 0
-            },
-            turnData.system_events || []  // Pass system events for replay
+            }
         );
 
         // --- MODIFICATION START: Update task ID display for reloaded turn ---

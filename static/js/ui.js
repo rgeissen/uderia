@@ -364,9 +364,8 @@ export function updateGenieMasterBadges() {
  * @param {string} userQuery - The original user query for this turn.
  * @param {Object} knowledgeRetrievalEvent - Optional knowledge retrieval event data.
  * @param {Object} turnTokens - Optional turn token data { turn_input_tokens, turn_output_tokens }.
- * @param {Array} systemEvents - Optional system events like session name generation.
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = []) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -395,24 +394,6 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         }, false, 'knowledge_retrieval');
     }
     // --- PHASE 2 END ---
-
-    // --- PHASE 2.5: Render system events (session name generation, etc.) ---
-    console.log('[HistoricalTrace] System events received:', systemEvents);
-    if (systemEvents && systemEvents.length > 0) {
-        console.log('[HistoricalTrace] Rendering', systemEvents.length, 'system events');
-        systemEvents.forEach(sysEvent => {
-            console.log('[HistoricalTrace] Rendering event:', sysEvent.type, sysEvent);
-            // Render each system event with conversation_agent renderer
-            updateStatusWindow({
-                step: sysEvent.type === 'session_name_generation_start' ? 'Generating Session Name' : 'Session Name Generated',
-                details: sysEvent.payload || {},
-                type: sysEvent.type
-            }, sysEvent.type === 'session_name_generation_complete', 'conversation_agent');
-        });
-    } else {
-        console.log('[HistoricalTrace] No system events to render');
-    }
-    // --- PHASE 2.5 END ---
 
     // 2. Iterate through the new, rich execution trace
     executionTrace.forEach(traceEntry => {
