@@ -767,7 +767,8 @@ async function handleReloadPlanClick(element) {
                     {
                         turn_input_tokens: turnData.turn_input_tokens || 0,
                         turn_output_tokens: turnData.turn_output_tokens || 0
-                    }
+                    },
+                    turnData.system_events || []  // Pass system events (session name generation, etc.)
                 );
             }
 

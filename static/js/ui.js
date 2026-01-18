@@ -947,6 +947,30 @@ function _renderKnowledgeRetrievalDetails(details) {
     return html;
 }
 
+function _renderSessionNameStartDetails(details) {
+    const summary = details.summary || 'Generating session name...';
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Status</div>
+            <div class="status-kv-value text-amber-400">In Progress...</div>
+        </div>
+    `;
+}
+
+function _renderSessionNameCompleteDetails(details) {
+    const sessionName = details.session_name || 'Unknown';
+    const inputTokens = details.input_tokens || 0;
+    const outputTokens = details.output_tokens || 0;
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Name</div>
+            <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+            <div class="status-kv-key">Tokens</div>
+            <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+        </div>
+    `;
+}
+
 function _renderPlanningDetails(details) {
     if (!details.summary || !details.full_text) return null;
 
@@ -2227,6 +2251,10 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                     blinkKnowledgeDot();
                     updateKnowledgeIndicator(details.collections, details.document_count || 0);
                 }
+            } else if (type === "session_name_generation_start") {
+                customRenderedHtml = _renderSessionNameStartDetails(details);
+            } else if (type === "session_name_generation_complete") {
+                customRenderedHtml = _renderSessionNameCompleteDetails(details);
             } else {
                 try {
                     const cache = new Set();

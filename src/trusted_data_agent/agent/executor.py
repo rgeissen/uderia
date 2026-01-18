@@ -3219,39 +3219,12 @@ The following domain knowledge may be relevant to this conversation:
                 session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
 
                 # Collect system events for plan reload (like session name generation)
-                # CRITICAL: Must collect BEFORE creating turn_summary to avoid duplicate entries
-                # NOTE: Session name generation has already been emitted before summarization (line 3141)
-                # Here we just collect the events for workflow history storage
-                system_events = []
+                # CRITICAL: Use the collected events from session name generation (stored in self.session_name_events)
+                # These events were collected during the actual generation process and include accurate token counts
+                system_events = self.session_name_events if hasattr(self, 'session_name_events') else []
 
-                # If session name was generated (first turn, name is no longer "New Chat"),
-                # recreate the events for storage in workflow_history
-                if self.current_turn_number == 1 and session_data:
-                    current_name = session_data.get("name")
-                    if current_name != "New Chat":
-                        # Session name was generated, recreate events for storage
-                        app_logger.debug(f"Collecting session name generation events for workflow history: '{current_name}'")
-
-                        start_event = {
-                            "type": "session_name_generation_start",
-                            "payload": {
-                                "summary": "Using LLM to generate descriptive session title",
-                                "session_id": self.session_id
-                            }
-                        }
-                        system_events.append(start_event)
-
-                        complete_event = {
-                            "type": "session_name_generation_complete",
-                            "payload": {
-                                "session_name": current_name,
-                                "input_tokens": 0,  # Tokens already counted, just storing for replay
-                                "output_tokens": 0,
-                                "summary": f"Generated name: '{current_name}'",
-                                "session_id": self.session_id
-                            }
-                        }
-                        system_events.append(complete_event)
+                if system_events:
+                    app_logger.debug(f"Using {len(system_events)} collected session name events for workflow history")
 
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
@@ -3813,6 +3786,10 @@ The following domain knowledge may be relevant to this conversation:
         # --- Session Name Generation (AFTER final answer) ---
         # Generate session name for first turn AFTER final answer (consolidation requirement)
         # Only for top-level executor (depth==0) to avoid duplicate generation from sub-executors
+        # Store collected events in instance variable for workflow history
+        self.session_name_events = []
+        self.session_name_tokens = (0, 0)
+
         if (self.current_turn_number == 1 and
             self.execution_depth == 0 and
             not self.is_delegated_task):
@@ -3837,6 +3814,7 @@ The following domain knowledge may be relevant to this conversation:
                         if event_dict is None:
                             # Final yield: update session name
                             new_name = event_type
+                            self.session_name_tokens = (in_tok, out_tok)
                             if new_name and new_name != "New Chat":
                                 try:
                                     await session_manager.update_session_name(
@@ -3850,7 +3828,11 @@ The following domain knowledge may be relevant to this conversation:
                                 except Exception as name_e:
                                     app_logger.error(f"[SessionName] ❌ Failed to update: {name_e}", exc_info=True)
                         else:
-                            # Emit SSE event
+                            # Emit SSE event and collect for workflow history
                             yield self._format_sse(event_dict, event_type)
+                            self.session_name_events.append({
+                                "type": event_type,
+                                "payload": event_dict  # Full event data including step, type, details
+                            })
             except Exception as e:
                 app_logger.error(f"[SessionName] ❌ Error during generation: {e}", exc_info=True)
