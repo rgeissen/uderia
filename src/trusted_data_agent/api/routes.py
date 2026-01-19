@@ -605,7 +605,7 @@ async def get_tools():
             return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
 
     # CRITICAL: Check for special profile types that need metadata in response
-    # RAG-focused and Genie profiles need metadata for the frontend to show appropriate UI
+    # Knowledge Focused and Genie profiles need metadata for the frontend to show appropriate UI
     from trusted_data_agent.core.config_manager import get_config_manager
     config_manager = get_config_manager()
     user_uuid = _get_user_uuid_from_request()
@@ -616,7 +616,7 @@ async def get_tools():
         if profile:
             profile_type = profile.get('profile_type')
 
-            # RAG-focused profiles: return empty tools with metadata for frontend
+            # Knowledge Focused profiles: return empty tools with metadata for frontend
             if profile_type == 'rag_focused':
                 knowledge_config = profile.get('knowledgeConfig', {})
                 knowledge_collection_ids = knowledge_config.get('collections', [])
@@ -698,8 +698,8 @@ async def get_prompts():
         if result["status"] != "success":
             return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
 
-    # CRITICAL: Conversation profiles (llm_only with useMcpTools) use LangChain
-    # LangChain doesn't support MCP prompts - return empty for conversation profiles
+    # CRITICAL: Conversation Focused profiles (llm_only with useMcpTools) use LangChain
+    # LangChain doesn't support MCP prompts - return empty for Conversation Focused profiles
     from trusted_data_agent.core.config_manager import get_config_manager
     config_manager = get_config_manager()
     user_uuid = _get_user_uuid_from_request()
@@ -712,7 +712,7 @@ async def get_prompts():
         if profile:
             profile_type = profile.get('profile_type')
 
-            # RAG-focused profiles: return empty prompts with metadata for frontend
+            # Knowledge Focused profiles: return empty prompts with metadata for frontend
             if profile_type == 'rag_focused':
                 knowledge_config = profile.get('knowledgeConfig', {})
                 knowledge_collection_ids = knowledge_config.get('collections', [])
@@ -756,14 +756,14 @@ async def get_prompts():
                     "slave_profiles": slave_profiles
                 })
 
-            # Conversation profiles (LangChain) don't support MCP prompts
+            # Conversation Focused profiles (LangChain) don't support MCP prompts
             is_conversation_profile = (profile_type == 'llm_only' and
                                       profile.get('useMcpTools', False))
             if is_conversation_profile:
-                app_logger.info(f"Returning empty prompts for conversation profile {profile_id_loaded} (LangChain incompatible)")
+                app_logger.info(f"Returning empty prompts for Conversation Focused profile {profile_id_loaded} (LangChain incompatible)")
                 return jsonify({})
 
-    # Return structured prompts for normal tool-enabled profiles
+    # Return structured prompts for normal Efficiency Focused profiles
     return jsonify(APP_STATE.get("structured_prompts", {}))
 
 @api_bp.route("/resources")
@@ -802,7 +802,7 @@ async def get_resources():
         if result["status"] != "success":
             return jsonify({"error": f"Failed to load profile: {result['message']}"}), 400
 
-    # CRITICAL: RAG-focused profiles don't have MCP resources - return empty
+    # CRITICAL: Knowledge Focused profiles don't have MCP resources - return empty
     # These profiles use knowledge repositories, not MCP servers
     from trusted_data_agent.core.config_manager import get_config_manager
     config_manager = get_config_manager()
@@ -1634,7 +1634,7 @@ async def new_session():
             profile_type = default_profile.get("profile_type", "tool_enabled")
 
     # Validate based on profile type
-    # LLM is always required, MCP only required for tool-enabled profiles
+    # LLM is always required, MCP only required for Efficiency Focused profiles
     needs_mcp = (profile_type == "tool_enabled")
 
     if not APP_STATE.get('llm') or (needs_mcp and not APP_CONFIG.MCP_SERVER_CONNECTED):
@@ -1651,12 +1651,12 @@ async def new_session():
             return jsonify({"error": "Application not configured. Please set LLM details in Config."}), 400
 
     # Double-check after validation attempt
-    # LLM always required, MCP only for tool-enabled profiles
+    # LLM always required, MCP only for Efficiency Focused profiles
     if not APP_STATE.get('llm'):
         return jsonify({"error": "Application not configured. Please set LLM details in Config."}), 400
 
     if needs_mcp and not APP_CONFIG.MCP_SERVER_CONNECTED:
-        return jsonify({"error": "Tool-enabled profile requires MCP server. Please configure MCP details in Config."}), 400
+        return jsonify({"error": "Efficiency Focused profile requires MCP server. Please configure MCP details in Config."}), 400
 
     try:
         loggers_to_purge = ["llm_conversation", "llm_conversation_history"]

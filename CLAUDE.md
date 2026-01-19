@@ -145,6 +145,32 @@ Files: `src/trusted_data_agent/agent/prompt_encryption.py`, `prompt_loader.py`
 - **Temporary override**: `@TAG` syntax for single-query profile switching
 - **Profile classification**: Light (filter-based) vs Full (LLM-assisted)
 
+**The platform supports 4 profile types:**
+
+1. **Efficiency Focused (Optimizer)** - `tool_enabled`
+   - Runs through Planner/Executor Architecture
+   - Strategic & tactical planning with RAG-powered learning
+   - Token-optimized with plan hydration
+   - Best for: Database queries, complex workflows, multi-step operations
+
+2. **Conversation Focused (LLM)** - `llm_only`
+   - Direct LLM conversation
+   - Optional tool calling via LangChain (useMcpTools flag)
+   - No strategic planning overhead
+   - Best for: Chat, document Q&A, lightweight tasks
+
+3. **Knowledge Focused (RAG)** - `rag_focused`
+   - Semantic search over knowledge repositories
+   - LLM synthesis of retrieved documents
+   - No MCP tools or Planner/Executor
+   - Best for: Documentation search, reference lookups
+
+4. **Genie (Multi-Profile)** - `genie`
+   - Coordinates multiple sub-profiles
+   - Routes queries to specialized experts
+   - Synthesizes results across profiles
+   - Best for: Complex multi-domain questions
+
 Session data tracks:
 - `profile_id` - Current active profile
 - `profile_tag` - Current profile tag

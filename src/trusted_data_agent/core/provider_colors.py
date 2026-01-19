@@ -11,19 +11,19 @@ PROFILE_TYPE_COLORS = {
     "genie": {
         "primary": "#f15f22",     # Uderia Orange (Genie coordination)
         "secondary": "#ff8c5a",   # Lighter orange
-        "name": "Genie Coordinator"
+        "name": "Genie (Multi-Profile)"
     },
     "rag_focused": {
         "primary": "#10b981",     # Emerald green (knowledge/RAG)
         "secondary": "#34d399",   # Lighter green
-        "name": "RAG Focused"
+        "name": "Knowledge Focused (RAG)"
     },
     "llm_only": {
         "primary": "#8b5cf6",     # Purple (conversation only)
         "secondary": "#a78bfa",   # Lighter purple
-        "name": "Conversation"
+        "name": "Conversation Focused (LLM)"
     },
-    "tool_enabled": None  # Use provider color for tool-enabled profiles
+    "tool_enabled": None  # Use provider color for Efficiency Focused profiles
 }
 
 # Provider color schemes: primary color and lighter variant for gradients
@@ -101,8 +101,8 @@ def get_profile_colors(profile_type: str, provider: str = None) -> dict:
     Get color scheme for a profile based on type and provider.
 
     Priority order:
-    1. Profile type color (Genie = orange, RAG = green, LLM-only = purple)
-    2. Provider color (Google = blue, Anthropic = purple, etc.)
+    1. Profile type color (Genie = orange, Knowledge = green, Conversation = purple)
+    2. Provider color (for Efficiency Focused profiles: Google = blue, Anthropic = purple, etc.)
     3. Default gray
 
     Args:
@@ -112,13 +112,13 @@ def get_profile_colors(profile_type: str, provider: str = None) -> dict:
     Returns:
         Dictionary with 'primary', 'secondary', and 'name' keys
     """
-    # Priority 1: Profile type colors (Genie always orange, etc.)
+    # Priority 1: Profile type colors (Genie, Knowledge Focused, Conversation Focused)
     if profile_type and profile_type in PROFILE_TYPE_COLORS:
         type_colors = PROFILE_TYPE_COLORS[profile_type]
         if type_colors is not None:  # tool_enabled returns None (use provider color)
             return type_colors
 
-    # Priority 2: Provider colors (for tool_enabled profiles)
+    # Priority 2: Provider colors (for Efficiency Focused profiles)
     if provider:
         return get_provider_color(provider)
 

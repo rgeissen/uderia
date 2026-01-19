@@ -107,7 +107,7 @@
   "profiles": [
     {
       "id": "profile-default-chat",
-      "name": "Simple Chat",
+      "name": "Conversation Focused",
       "tag": "CHAT",
       "description": "Direct conversation with LLM (no tools)",
       "profile_type": "llm_only",
@@ -131,9 +131,9 @@
     },
     {
       "id": "profile-1763993711628-vvbh23q09",
-      "name": "Google -  Reduced Stack",
+      "name": "Efficiency Focused - Google Flash",
       "tag": "GOGET",
-      "description": "Test",
+      "description": "Optimized execution via Planner/Executor",
       "profile_type": "tool_enabled",
       "llmConfigurationId": "1763819257473-ivpnukbbe",
       "mcpServerId": "1763483266562-a6kulj4xc",
@@ -176,7 +176,7 @@
     },
     {
       "id": "profile-default-rag",
-      "name": "Knowledge Search",
+      "name": "Knowledge Focused",
       "tag": "RAG",
       "description": "Search knowledge base with LLM synthesis (requires knowledge collections)",
       "profile_type": "rag_focused",
