@@ -2129,6 +2129,113 @@ async def ask_stream():
     if not profile_override_id:
         await session_manager.update_models_used(user_uuid=user_uuid, session_id=session_id, provider=APP_CONFIG.CURRENT_PROVIDER, model=APP_CONFIG.CURRENT_MODEL, profile_tag=profile_tag)
 
+    # --- MODIFICATION START: Initialize user's LLM instance for chat route ---
+    # Similar to REST routes, ensure user's LLM instance is created and loaded into APP_STATE
+    # This fixes "LLM is not initialized" errors when using chat UI
+    from trusted_data_agent.core.config import (
+        get_user_llm_instance, get_user_mcp_client,
+        set_user_llm_instance, set_user_mcp_client,
+        set_user_provider, set_user_model
+    )
+    from trusted_data_agent.llm.client_factory import create_llm_client
+    from trusted_data_agent.core.configuration_service import retrieve_credentials_for_provider
+
+    user_llm = get_user_llm_instance(user_uuid)
+    user_mcp = get_user_mcp_client(user_uuid)
+
+    # If no cached LLM instance, create one from user's default profile
+    if not user_llm:
+        try:
+            # Get user's default profile LLM configuration
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profiles = config_manager.get_profiles(user_uuid)
+                default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+
+                if default_profile:
+                    llm_config_id = default_profile.get('llmConfigurationId')
+                    if llm_config_id:
+                        llm_configs = config_manager.get_llm_configurations(user_uuid)
+                        llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
+
+                        if llm_config:
+                            provider = llm_config.get('provider')
+                            model = llm_config.get('model')
+
+                            # Load encrypted credentials from database
+                            credentials_result = await retrieve_credentials_for_provider(user_uuid, provider)
+                            if credentials_result.get('credentials'):
+                                credentials = credentials_result['credentials']
+
+                                # Create LLM instance
+                                user_llm = await create_llm_client(provider, model, credentials)
+                                if user_llm:
+                                    set_user_llm_instance(user_llm, user_uuid)
+                                    APP_STATE['llm'] = user_llm
+
+                                    # CRITICAL: Set provider and model in APP_CONFIG
+                                    # This ensures executor knows which provider/model to use
+                                    set_user_provider(provider, user_uuid)
+                                    set_user_model(model, user_uuid)
+
+                                    app_logger.info(f"✅ Created and cached LLM instance for {user_uuid}: {provider}/{model}")
+                                else:
+                                    app_logger.error(f"Failed to create LLM instance for {user_uuid}")
+                            else:
+                                app_logger.error(f"No credentials found for provider {provider}")
+        except Exception as e:
+            app_logger.error(f"Error creating LLM instance for user {user_uuid}: {e}", exc_info=True)
+    else:
+        APP_STATE['llm'] = user_llm
+
+        # Also load provider/model from user's default profile
+        try:
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            if default_profile_id:
+                profiles = config_manager.get_profiles(user_uuid)
+                default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+
+                if default_profile:
+                    llm_config_id = default_profile.get('llmConfigurationId')
+                    if llm_config_id:
+                        llm_configs = config_manager.get_llm_configurations(user_uuid)
+                        llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
+
+                        if llm_config:
+                            provider = llm_config.get('provider')
+                            model = llm_config.get('model')
+
+                            # Set provider and model in APP_CONFIG
+                            set_user_provider(provider, user_uuid)
+                            set_user_model(model, user_uuid)
+
+                            app_logger.info(f"✅ Loaded cached LLM instance for {user_uuid}: {provider}/{model}")
+                        else:
+                            app_logger.info(f"Loaded cached LLM instance for {user_uuid} (no config found)")
+                    else:
+                        app_logger.info(f"Loaded cached LLM instance for {user_uuid} (no llmConfigurationId)")
+                else:
+                    app_logger.info(f"Loaded cached LLM instance for {user_uuid} (no default profile)")
+            else:
+                app_logger.info(f"Loaded cached LLM instance for {user_uuid} (no default profile ID)")
+        except Exception as e:
+            app_logger.error(f"Error loading provider/model for cached LLM: {e}", exc_info=True)
+            app_logger.info(f"Loaded cached LLM instance for {user_uuid} (failed to load provider/model)")
+
+    if user_mcp:
+        APP_STATE['mcp_client'] = user_mcp
+        app_logger.info(f"Loaded user MCP client for {user_uuid}")
+
+    # Final check - if still no LLM, return error
+    if not APP_STATE.get('llm'):
+        app_logger.error(f"No LLM instance available for user {user_uuid} - check profile configuration")
+        async def error_gen():
+            yield PlanExecutor._format_sse({
+                "error": "LLM is not configured. Please configure your default profile's LLM settings in Setup → Profile Management."
+            }, "error")
+        return Response(error_gen(), mimetype="text/event-stream")
+    # --- MODIFICATION END ---
+
     # --- MODIFICATION START: Generate task_id for interactive sessions ---
     task_id = generate_task_id()
     # --- MODIFICATION END ---

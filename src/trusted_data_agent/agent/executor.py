@@ -2401,6 +2401,16 @@ The following domain knowledge may be relevant to this conversation:
                 "tool_name": "LLM_Synthesis"
             }, "tool_result")
 
+            # Store tool execution result for event reload
+            knowledge_events.append({
+                "type": "tool_result",
+                "payload": {
+                    "step": "Tool Execution Result",
+                    "details": synthesis_result_data,
+                    "tool_name": "LLM_Synthesis"
+                }
+            })
+
             # Calculate total knowledge search time (retrieval + synthesis)
             total_knowledge_search_time_ms = int((time.time() - retrieval_start_time) * 1000)
 
@@ -2882,7 +2892,16 @@ The following domain knowledge may be relevant to this conversation:
 
             except Exception as e:
                 app_logger.error(f"Failed to apply profile override: {e}", exc_info=True)
-                
+
+                # CRITICAL: Restore original LLM instance before continuing
+                # If profile override LLM creation failed, APP_STATE['llm'] may be None
+                # Restore it to the original LLM instance so execution can continue
+                if self.original_llm is not None:
+                    APP_STATE['llm'] = self.original_llm
+                    app_logger.info(f"🔄 Restored original LLM instance after profile override failure")
+                else:
+                    app_logger.error(f"❌ Cannot restore LLM - original LLM was None (default profile may not be configured)")
+
                 # CRITICAL: Restore original provider/model before they get saved to session
                 # The override attempt may have changed self.current_provider and self.current_model
                 # but since it failed, we need to restore them to the original values

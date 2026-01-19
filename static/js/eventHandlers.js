@@ -42,77 +42,61 @@ import {
 
 /**
  * Get human-readable step title for genie coordination events.
+ * @deprecated Use getGenieTitle() from harmonized functions instead
+ * This function now delegates to the harmonized implementation
  */
 function _getGenieStepTitle(eventType, payload) {
-    switch (eventType) {
-        case 'genie_start':
-            return '🔮 Genie Coordinator Activated';
-        case 'genie_routing': {
-            const slaveCount = payload.slave_profiles?.length || 0;
-            return `Consulting ${slaveCount} expert${slaveCount > 1 ? 's' : ''}`;
-        }
-        case 'genie_coordination_start':
-            return 'Coordinating Response';
-        case 'genie_llm_step': {
-            const stepName = payload.step_name || 'LLM Processing';
-            return stepName;
-        }
-        case 'genie_routing_decision': {
-            const profileCount = payload.selected_profiles?.length || 0;
-            return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
-        }
-        case 'genie_slave_invoked':
-            return `Invoking @${payload.profile_tag || 'PROFILE'}`;
-        case 'genie_slave_progress':
-            return `@${payload.profile_tag || 'PROFILE'}: ${payload.message || 'Processing'}`;
-        case 'genie_slave_completed': {
-            const status = payload.success ? 'Completed' : 'Failed';
-            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
-            return `@${payload.profile_tag || 'PROFILE'}: ${status}${duration}`;
-        }
-        case 'genie_synthesis_start':
-            return 'Synthesizing Response';
-        case 'genie_coordination_complete':
-            return payload.success ? 'Coordination Complete' : 'Coordination Failed';
-        default:
-            return eventType;
-    }
+    // Delegate to harmonized function (defined below) for consistent terminology
+    return getGenieTitle(eventType, payload);
 }
 
 /**
  * Get human-readable step title for conversation agent events.
+ * @deprecated Use profile-specific harmonized functions instead
+ * This function now delegates to the harmonized implementation
  */
 function _getConversationAgentStepTitle(eventType, payload) {
+    // Route to appropriate harmonized function based on event type
+    // conversation_* events → llm_only profile
+    if (eventType.startsWith('conversation_') || eventType.startsWith('llm_execution')) {
+        return getLlmOnlyTitle(eventType, payload);
+    }
+
+    // knowledge_* events → rag_focused profile (uses "Stage" terminology)
+    // This is used for rag_focused profiles and knowledge retrieval in other profiles
+    if (eventType.startsWith('knowledge_') || eventType === 'rag_llm_step' || eventType === 'tool_result') {
+        return getRagFocusedTitle(eventType, payload);
+    }
+
+    // Fallback for unknown events
+    return eventType;
+}
+
+// ============================================================================
+// HARMONIZED EVENT TITLE GENERATION (Phase 1: Terminology Harmonization)
+// ============================================================================
+
+/**
+ * Generate harmonized display title for tool_enabled profile events
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getToolEnabledTitle(eventType, payload) {
     switch (eventType) {
-        case 'llm_execution':
-            return 'Calling LLM for Execution';
-        case 'llm_execution_complete': {
-            const inputTokens = payload.input_tokens || 0;
-            const outputTokens = payload.output_tokens || 0;
-            return `LLM Execution Complete (${inputTokens} in / ${outputTokens} out)`;
-        }
-        case 'conversation_agent_start': {
-            const toolCount = payload.available_tools?.length || 0;
-            return `Using Tools (${toolCount} available)`;
-        }
-        case 'conversation_tool_invoked':
-            return `Executing ${payload.tool_name || 'tool'}`;
-        case 'conversation_tool_completed': {
-            const status = payload.success ? 'Completed' : 'Failed';
-            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
-            return `${payload.tool_name || 'Tool'}: ${status}${duration}`;
-        }
-        case 'conversation_agent_complete': {
-            const toolCount = payload.tools_used?.length || 0;
-            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s)` : '';
-            return payload.success
-                ? `Tools Complete (${toolCount} executed${duration})`
-                : 'Execution Failed';
-        }
-        case 'knowledge_retrieval': {
-            const docCount = payload.document_count || 0;
-            return `Knowledge Retrieved (${docCount} chunks)`;
-        }
+        case 'phase_start':
+            return `Phase ${payload.phase_num}/${payload.total_phases}: ${payload.goal}`;
+        case 'phase_end':
+            return `Phase ${payload.phase_num}/${payload.total_phases} Completed`;
+        case 'system_message':
+            if (payload.message?.includes('LLM')) {
+                return `Calling LLM: ${payload.purpose || 'Planning'}`;
+            }
+            return payload.message;
+        case 'plan_generated':
+            return 'Strategic Plan Generated';
+        case 'plan_optimization':
+            return 'Optimizing Plan';
         case 'knowledge_retrieval_start': {
             const collections = payload.collections || [];
             return `Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
@@ -132,10 +116,8 @@ function _getConversationAgentStepTitle(eventType, payload) {
             return `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`;
         }
         case 'rag_llm_step': {
-            const stepName = payload.step_name || 'Knowledge Synthesis';
-            const inputTokens = payload.input_tokens || 0;
-            const outputTokens = payload.output_tokens || 0;
-            return `${stepName} (${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out)`;
+            // Token counts are shown in the Tool Execution Result step, so don't duplicate them here
+            return `Calling LLM: Knowledge Synthesis`;
         }
         case 'knowledge_search_complete': {
             const collections = payload.collections_searched || 0;
@@ -144,10 +126,227 @@ function _getConversationAgentStepTitle(eventType, payload) {
             const timeSeconds = (totalTime / 1000).toFixed(1);
             return `Knowledge Search Complete (${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s)`;
         }
+        case 'workaround':
+            return 'System Correction';
+        case 'error':
+            return payload.error_message || 'Error';
+        case 'cancelled':
+            return 'Planner Execution Stopped';
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
         default:
             return eventType;
     }
 }
+
+/**
+ * Generate harmonized display title for llm_only profile events
+ * Uses "Action" terminology instead of "LLM Step"
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getLlmOnlyTitle(eventType, payload) {
+    switch (eventType) {
+        case 'conversation_agent_start': {
+            const toolCount = payload.available_tools?.length || 0;
+            return `Conversation Started (${toolCount} tools available)`;
+        }
+        case 'conversation_llm_step': {
+            // Change from "LLM Step #N" to "Calling LLM: {purpose}"
+            const stepName = payload.step_name || 'Decision Making';
+            return `Calling LLM: ${stepName}`;
+        }
+        case 'conversation_tool_invoked':
+            return `Executing Tool: ${payload.tool_name || 'tool'}`;
+        case 'conversation_tool_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `Tool Completed: ${payload.tool_name || 'Tool'}${duration}`;
+        }
+        case 'conversation_agent_complete': {
+            const toolCount = payload.tools_used?.length || 0;
+            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s` : '';
+            return payload.success
+                ? `Conversation Complete (${toolCount} tools executed${duration})`
+                : 'Conversation Failed';
+        }
+        case 'llm_execution':
+            return 'Calling LLM: Execution';
+        case 'llm_execution_complete': {
+            const inputTokens = payload.input_tokens || 0;
+            const outputTokens = payload.output_tokens || 0;
+            return `LLM Execution Complete (${inputTokens} in / ${outputTokens} out)`;
+        }
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Generate harmonized display title for rag_focused profile events
+ * Uses "Stage" terminology to reflect pipeline stages
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getRagFocusedTitle(eventType, payload) {
+    switch (eventType) {
+        case 'knowledge_retrieval_start': {
+            const collections = payload.collections || [];
+            return `Stage: Retrieval - Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+        }
+        case 'knowledge_reranking_start': {
+            const collection = payload.collection || 'Unknown';
+            return `Stage: Reranking - Optimizing Results (${collection})`;
+        }
+        case 'knowledge_reranking_complete': {
+            const collection = payload.collection || 'Unknown';
+            const count = payload.reranked_count || 0;
+            return `Stage: Reranking - ${count} documents processed (${collection})`;
+        }
+        case 'knowledge_retrieval_complete': {
+            const docCount = payload.document_count || 0;
+            const duration = payload.duration_ms || 0;
+            return `Stage: Retrieval - ${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} retrieved in ${duration}ms`;
+        }
+        case 'rag_llm_step': {
+            // Token counts are shown in the Tool Execution Result step, so don't duplicate them here
+            return `Stage: Synthesis - Calling LLM`;
+        }
+        case 'knowledge_search_complete': {
+            const collections = payload.collections_searched || 0;
+            const docs = payload.documents_retrieved || 0;
+            const totalTime = payload.total_time_ms || 0;
+            const timeSeconds = (totalTime / 1000).toFixed(1);
+            return `Stage: Complete - ${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s`;
+        }
+        case 'knowledge_retrieval': {
+            const docCount = payload.document_count || 0;
+            return `Knowledge Retrieved (${docCount} chunks)`;
+        }
+        case 'tool_result': {
+            // Tool Execution Result event for RAG synthesis
+            return 'Tool Execution Result';
+        }
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Generate harmonized display title for genie profile events
+ * Uses "Coordination Step" terminology for coordinator steps
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getGenieTitle(eventType, payload) {
+    switch (eventType) {
+        case 'genie_start':
+            return 'Coordinator Activated';
+        case 'genie_routing': {
+            const slaveCount = payload.slave_profiles?.length || 0;
+            return `Consulting ${slaveCount} expert${slaveCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_coordination_start':
+            return 'Coordinator Started';
+        case 'genie_llm_step': {
+            const stepName = payload.step_name || 'LLM Processing';
+            return `Calling LLM: ${stepName}`;
+        }
+        case 'genie_routing_decision': {
+            const profileCount = payload.selected_profiles?.length || 0;
+            return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_slave_invoked':
+            return `Invoking Expert: @${payload.profile_tag || 'PROFILE'}`;
+        case 'genie_slave_progress':
+            return `Expert @${payload.profile_tag || 'PROFILE'}: ${payload.message || 'Processing'}`;
+        case 'genie_slave_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `Expert @${payload.profile_tag || 'PROFILE'} ${status}${duration}`;
+        }
+        case 'genie_synthesis_start':
+            return 'Synthesizing Response';
+        case 'genie_coordination_complete':
+            return payload.success ? 'Coordinator Complete' : 'Coordinator Failed';
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Main harmonized event title generator - routes to profile-specific functions
+ * @param {string} profileType - 'tool_enabled', 'llm_only', 'rag_focused', 'genie'
+ * @param {string} eventType - Backend event type (e.g., 'phase_start', 'conversation_tool_invoked')
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getHarmonizedEventTitle(profileType, eventType, payload) {
+    // Handle universal lifecycle events (Phase 2 - not implemented yet)
+    if (eventType === 'execution_start') {
+        return `${getProfileDisplayName(profileType)} Execution Started`;
+    }
+    if (eventType === 'execution_complete') {
+        return `${getProfileDisplayName(profileType)} Execution Complete`;
+    }
+    if (eventType === 'execution_error') {
+        return `${getProfileDisplayName(profileType)} Execution Failed: ${payload.error_message || 'Unknown error'}`;
+    }
+    if (eventType === 'execution_cancelled') {
+        return `${getProfileDisplayName(profileType)} Execution Stopped`;
+    }
+
+    // Route to profile-specific title functions
+    switch (profileType) {
+        case 'tool_enabled':
+            return getToolEnabledTitle(eventType, payload);
+        case 'llm_only':
+            return getLlmOnlyTitle(eventType, payload);
+        case 'rag_focused':
+            return getRagFocusedTitle(eventType, payload);
+        case 'genie':
+            return getGenieTitle(eventType, payload);
+        default:
+            // Fallback to old functions if profile type unknown
+            return eventType;
+    }
+}
+
+/**
+ * Helper function to get human-readable profile display name
+ * @param {string} profileType - Profile type identifier
+ * @returns {string} Display name
+ */
+function getProfileDisplayName(profileType) {
+    const names = {
+        'tool_enabled': 'Planner',
+        'llm_only': 'Conversation',
+        'rag_focused': 'Knowledge',
+        'genie': 'Coordinator'
+    };
+    return names[profileType] || 'Agent';
+}
+
+// ============================================================================
+// END: Harmonized Event Title Generation
+// ============================================================================
 
 async function processStream(responseBody) {
     const reader = responseBody.getReader();
@@ -288,10 +487,15 @@ async function processStream(responseBody) {
                                    eventData.type === 'knowledge_retrieval_start' ||
                                    eventData.type === 'knowledge_reranking_start' ||
                                    eventData.type === 'knowledge_reranking_complete' ||
-                                   eventData.type === 'knowledge_retrieval_complete') {
+                                   eventData.type === 'knowledge_retrieval_complete' ||
+                                   eventData.type === 'rag_llm_step') {
                             // Handle all LLM execution and knowledge retrieval events during execution
                             const payload = eventData.payload || {};
-                            const stepTitle = _getConversationAgentStepTitle(eventData.type, payload);
+
+                            // HARMONIZE rag_llm_step title
+                            const stepTitle = eventData.type === 'rag_llm_step'
+                                ? getRagFocusedTitle('rag_llm_step', payload)
+                                : _getConversationAgentStepTitle(eventData.type, payload);
 
                             console.log(`[${eventData.type}] Received during execution:`, payload);
 
@@ -323,7 +527,7 @@ async function processStream(responseBody) {
                         console.log(`[${eventName}] Received:`, details);
 
                         UI.updateStatusWindow({
-                            step: step || 'Calling LLM for Execution',
+                            step: getLlmOnlyTitle(type || eventName, details || {}),
                             details: details || {},
                             type: type || eventName
                         }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
@@ -528,6 +732,11 @@ async function processStream(responseBody) {
                         UI.updateStatusWindow(event, false, 'rest', task_id);
                     } else if (eventName === 'task_start') { // Handle the new task_start event
                         UI.updateTaskIdDisplay(eventData.task_id);
+                    } else if (eventData.type === 'system_message' && eventData.details?.summary === 'Synthesizing answer from retrieved knowledge') {
+                        // SKIP this event - it's redundant and fires BEFORE the LLM call (no data)
+                        // The actual rag_llm_step event will follow with correct token/model data
+                        console.log('[RAG Synthesis] Skipping redundant system_message preview event - waiting for rag_llm_step with data');
+                        // Don't call updateStatusWindow - skip this event entirely
                     } else {
                         UI.updateStatusWindow(eventData);
                     }
@@ -2461,3 +2670,13 @@ export function wireRepositoryTabs() {
         });
     }
 }
+
+// --- Export harmonization functions for use in event reload ---
+// These functions are used by ui.js during historical event rendering
+// to regenerate harmonized titles from stored event payloads
+window.EventHandlers = {
+    getToolEnabledTitle,
+    getLlmOnlyTitle,
+    getRagFocusedTitle,
+    getGenieTitle
+};

@@ -454,6 +454,41 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             const isFinal = index === systemEvents.length - 1;
             // Payload now contains the complete event_dict (step, details, type)
             const eventData = event.payload;
+            // Add type from parent event structure (stored as {type: "...", payload: {...}})
+            if (!eventData.type && event.type) {
+                eventData.type = event.type;
+            }
+
+            // --- SKIP REDUNDANT RAG SYNTHESIS PREVIEW EVENT ---
+            // Skip the system_message that fires BEFORE LLM call (no data)
+            // The rag_llm_step event will follow with correct token/model data
+            if (eventData.type === 'system_message' && eventData.details?.summary === 'Synthesizing answer from retrieved knowledge') {
+                console.log('[Event Reload] Skipping redundant system_message preview event');
+                return; // Skip this event
+            }
+            // --- END SKIP ---
+
+            // --- HARMONIZATION: Regenerate title for knowledge events during reload ---
+            // Import harmonization functions from eventHandlers.js
+            if (window.EventHandlers && eventData.type) {
+                let harmonizedTitle = null;
+
+                // Detect profile type from event context (RAG profile uses knowledge events)
+                const isRagProfile = eventData.type.includes('knowledge') || eventData.type === 'rag_llm_step' || eventData.type === 'tool_result';
+
+                if (isRagProfile && typeof window.EventHandlers.getRagFocusedTitle === 'function') {
+                    harmonizedTitle = window.EventHandlers.getRagFocusedTitle(eventData.type, eventData.details || {});
+                } else if (typeof window.EventHandlers.getToolEnabledTitle === 'function') {
+                    harmonizedTitle = window.EventHandlers.getToolEnabledTitle(eventData.type, eventData.details || {});
+                }
+
+                // Override stored title with harmonized version
+                if (harmonizedTitle) {
+                    eventData.step = harmonizedTitle;
+                }
+            }
+            // --- END HARMONIZATION ---
+
             // Use standard renderer for system events
             _renderStandardStep(eventData, DOM.statusWindowContent, isFinal);
         });
@@ -1621,6 +1656,12 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
         if (iconGlow) {
             iconGlow.classList.remove('active');
         }
+
+        // Remove progress indicator when stage completes (Phase 1: Terminology Harmonization)
+        const progressIndicator = lastStep.querySelector('.progress-indicator');
+        if (progressIndicator) {
+            progressIndicator.remove();
+        }
     }
 
     const stepEl = document.createElement('div');
@@ -1707,6 +1748,16 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     const titleEl = document.createElement('h4');
     titleEl.className = 'font-bold text-sm text-white';
     titleEl.textContent = step || 'Tool Execution';
+
+    // Add progress indicator for active rag_focused stages (Phase 1: Terminology Harmonization)
+    if ((type === 'knowledge_retrieval_start' || type === 'rag_llm_step' ||
+         type === 'knowledge_reranking_start') && !isFinal) {
+        const progressLabel = document.createElement('span');
+        progressLabel.className = 'text-amber-400 text-xs ml-2 progress-indicator';
+        progressLabel.textContent = 'Processing...';
+        titleEl.appendChild(progressLabel);
+    }
+
     stepHeader.appendChild(titleEl);
 
     stepEl.appendChild(stepHeader);
@@ -2277,6 +2328,11 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     if (lastStep && lastStep.classList.contains('active') && parentContainer && parentContainer.contains(lastStep)) {
         lastStep.classList.remove('active');
         lastStep.classList.add('completed');
+        // Remove progress indicator when phase completes (Phase 1: Terminology Harmonization)
+        const progressIndicator = lastStep.querySelector('.progress-indicator');
+        if (progressIndicator) {
+            progressIndicator.remove();
+        }
         if (state.isInFastPath && !lastStep.classList.contains('plan-optimization')) {
             lastStep.classList.add('plan-optimization');
         }
@@ -2296,6 +2352,15 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     const stepTitle = document.createElement('h4');
     stepTitle.className = 'font-bold text-sm text-white mb-2';
     stepTitle.textContent = step || (type === 'tool_result' ? 'Result' : (type === 'error' ? 'Error' : 'Details'));
+
+    // Add progress indicator for active phases (Phase 1: Terminology Harmonization)
+    if (type === 'phase_start' && !isFinal) {
+        const progressLabel = document.createElement('span');
+        progressLabel.className = 'text-amber-400 text-xs ml-2 progress-indicator';
+        progressLabel.textContent = 'Processing...';
+        stepTitle.appendChild(progressLabel);
+    }
+
     stepEl.appendChild(stepTitle);
 
     const metricsEl = document.createElement('div');
@@ -2606,7 +2671,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         }
 
         phaseHeader.innerHTML = `
-            <span class="font-bold flex-shrink-0">${depthIndicator}Plan Step ${phase_num}/${total_phases}</span>
+            <span class="font-bold flex-shrink-0">${depthIndicator}Phase ${phase_num}/${total_phases}</span>
             <span class="text-gray-400 text-xs truncate ml-2">${goal}</span>
         `;
 
@@ -2648,11 +2713,11 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             const { phase_num, total_phases, status } = details;
             const phaseFooter = document.createElement('div');
             phaseFooter.className = 'status-phase-header phase-end';
-            phaseFooter.innerHTML = `<span class="font-bold">Plan Step ${phase_num}/${total_phases} Completed</span>`;
+            phaseFooter.innerHTML = `<span class="font-bold">Phase ${phase_num}/${total_phases} Completed</span>`;
 
             if (status === 'skipped') {
                 phaseFooter.classList.add('skipped');
-                phaseFooter.innerHTML = `<span class="font-bold">Plan Step ${phase_num}/${total_phases} Skipped</span>`;
+                phaseFooter.innerHTML = `<span class="font-bold">Phase ${phase_num}/${total_phases} Skipped</span>`;
             } else {
                 containerToEnd.classList.add('completed');
             }
