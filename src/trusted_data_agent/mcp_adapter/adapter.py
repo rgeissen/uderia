@@ -369,253 +369,255 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
         }
         app_logger.info(f"✓ Cached tool schemas for server {server_id} ({len(loaded_tools)} tools, {len(loaded_prompts)} prompts, {len(loaded_resources)} resources)")
 
+    # === Process tools/prompts and save classification (runs for both fresh load AND cache hit) ===
+    # This is outside the cache block because we need to populate STATE and save classification
+    # results even when using cached schemas (schema cache != profile classification cache)
+    STATE['mcp_tools'] = {tool.name: tool for tool in loaded_tools}
+    if loaded_prompts:
+        STATE['mcp_prompts'] = {prompt.name: prompt for prompt in loaded_prompts}
 
-        STATE['mcp_tools'] = {tool.name: tool for tool in loaded_tools}
-        if loaded_prompts:
-            STATE['mcp_prompts'] = {prompt.name: prompt for prompt in loaded_prompts}
+    all_capabilities = []
+    all_capabilities.extend([f"- {tool.name} (tool): {tool.description}" for tool in loaded_tools])
 
-        all_capabilities = []
-        all_capabilities.extend([f"- {tool.name} (tool): {tool.description}" for tool in loaded_tools])
+    for p in loaded_prompts:
+        prompt_str = f"- {p.name} (prompt): {p.description or 'No description available.'}"
+        if hasattr(p, 'arguments') and p.arguments:
+            prompt_str += "\n  - Arguments:"
+            for arg in p.arguments:
+                arg_dict = arg.model_dump()
+                arg_name = arg_dict.get('name', 'unknown_arg')
+                prompt_str += f"\n    - `{arg_name}`"
+        all_capabilities.append(prompt_str)
 
-        for p in loaded_prompts:
-            prompt_str = f"- {p.name} (prompt): {p.description or 'No description available.'}"
-            if hasattr(p, 'arguments') and p.arguments:
-                prompt_str += "\n  - Arguments:"
-                for arg in p.arguments:
-                    arg_dict = arg.model_dump()
-                    arg_name = arg_dict.get('name', 'unknown_arg')
-                    prompt_str += f"\n    - `{arg_name}`"
-            all_capabilities.append(prompt_str)
-
-        # --- MODIFICATION START: Include loaded resources in the capabilities list for classification ---
-        if loaded_resources:
-             all_capabilities.extend([f"- {res.name} (resource): {res.description or 'No description.'}" for res in loaded_resources])
-        # --- MODIFICATION END ---
+    # --- MODIFICATION START: Include loaded resources in the capabilities list for classification ---
+    if loaded_resources:
+        all_capabilities.extend([f"- {res.name} (resource): {res.description or 'No description.'}" for res in loaded_resources])
+    # --- MODIFICATION END ---
 
 
-        capabilities_list_str = "\n".join(all_capabilities)
+    capabilities_list_str = "\n".join(all_capabilities)
 
-        # --- Determine classification behavior based on profile's classification_mode ---
-        # 'light': Single generic category per type ("All Tools", "All Prompts", "All Resources")
-        # 'full': LLM-based semantic categorization
-        
-        if classification_mode == 'light':
-            app_logger.info(f"Classification mode 'light': using generic single-category structure. Processing {len(loaded_tools)} tools, {len(loaded_prompts)} prompts, {len(loaded_resources)} resources")
-            classified_data = {}
-            skip_classification = True
-        elif classification_mode == 'full':
-            skip_classification = False
-            app_logger.info("Classification mode 'full': calling LLM to semantically categorize capabilities...")
-            classification_prompt = (
-                "You are a helpful assistant that analyzes a list of technical capabilities (tools and prompts) and classifies them. "
-                "For each capability, you must determine a single user-friendly 'category' for a UI. "
-                "Example categories might be 'Data Quality', 'Table Management', 'Performance', 'Utilities', 'Database Information', etc. Be concise and consistent.\n\n"
-                "Your response MUST be a single, valid JSON object. The keys of this object must be the capability names, "
-                "and the value for each key must be another JSON object containing only the 'category' you determined.\n\n"
-                "Example format:\n"
-                "{\n"
-                '  "capability_name_1": {"category": "Some Category"},\n'
-                '  "capability_name_2": {"category": "Another Category"}\n'
-                "}\n\n"
-                f"--- Capability List ---\n{capabilities_list_str}"
-            )
-            categorization_system_prompt = "You are an expert assistant that only responds with valid JSON."
+    # --- Determine classification behavior based on profile's classification_mode ---
+    # 'light': Single generic category per type ("All Tools", "All Prompts", "All Resources")
+    # 'full': LLM-based semantic categorization
 
-            classified_capabilities_str, _, _, _, _ = await llm_handler.call_llm_api(
-                llm_instance, classification_prompt, raise_on_error=True,
-                system_prompt_override=categorization_system_prompt
-            )
+    if classification_mode == 'light':
+        app_logger.info(f"Classification mode 'light': using generic single-category structure. Processing {len(loaded_tools)} tools, {len(loaded_prompts)} prompts, {len(loaded_resources)} resources")
+        classified_data = {}
+        skip_classification = True
+    elif classification_mode == 'full':
+        skip_classification = False
+        app_logger.info("Classification mode 'full': calling LLM to semantically categorize capabilities...")
+        classification_prompt = (
+            "You are a helpful assistant that analyzes a list of technical capabilities (tools and prompts) and classifies them. "
+            "For each capability, you must determine a single user-friendly 'category' for a UI. "
+            "Example categories might be 'Data Quality', 'Table Management', 'Performance', 'Utilities', 'Database Information', etc. Be concise and consistent.\n\n"
+            "Your response MUST be a single, valid JSON object. The keys of this object must be the capability names, "
+            "and the value for each key must be another JSON object containing only the 'category' you determined.\n\n"
+            "Example format:\n"
+            "{\n"
+            '  "capability_name_1": {"category": "Some Category"},\n'
+            '  "capability_name_2": {"category": "Another Category"}\n'
+            "}\n\n"
+            f"--- Capability List ---\n{capabilities_list_str}"
+        )
+        categorization_system_prompt = "You are an expert assistant that only responds with valid JSON."
 
-            match = re.search(r'\{.*\}', classified_capabilities_str, re.DOTALL)
-            if match is None:
-                raise ValueError(f"LLM failed to return a valid JSON for capability classification. Response: '{classified_capabilities_str}'")
+        classified_capabilities_str, _, _, _, _ = await llm_handler.call_llm_api(
+            llm_instance, classification_prompt, raise_on_error=True,
+            system_prompt_override=categorization_system_prompt
+        )
 
-            cleaned_str = match.group(0)
-            classified_data = json.loads(cleaned_str)
-        else:
-            app_logger.warning(f"Unknown classification mode '{classification_mode}', defaulting to 'light'")
-            classified_data = {}
-            skip_classification = True
+        match = re.search(r'\{.*\}', classified_capabilities_str, re.DOTALL)
+        if match is None:
+            raise ValueError(f"LLM failed to return a valid JSON for capability classification. Response: '{classified_capabilities_str}'")
 
-        STATE['structured_tools'] = {}
-        disabled_tools_list = STATE.get("disabled_tools", [])
+        cleaned_str = match.group(0)
+        classified_data = json.loads(cleaned_str)
+    else:
+        app_logger.warning(f"Unknown classification mode '{classification_mode}', defaulting to 'light'")
+        classified_data = {}
+        skip_classification = True
 
-        for tool in loaded_tools:
+    STATE['structured_tools'] = {}
+    disabled_tools_list = STATE.get("disabled_tools", [])
+
+    for tool in loaded_tools:
+        if skip_classification:  # 'light' mode
+            category = "All Tools"
+        else:  # 'full' mode
+            classification = classified_data.get(tool.name, {})
+            category = classification.get("category", "Uncategorized")
+
+        if category not in STATE['structured_tools']:
+            STATE['structured_tools'][category] = []
+
+        processed_args = []
+        if hasattr(tool, 'args') and isinstance(tool.args, dict):
+            for arg_name, arg_details in tool.args.items():
+                if isinstance(arg_details, dict):
+                    processed_args.append({
+                        "name": arg_name,
+                        "type": arg_details.get("type", "any"),
+                        "description": arg_details.get("description", "No description available."),
+                        "required": arg_details.get("required", False)
+                    })
+
+        STATE.setdefault('tool_scopes', {})
+        required_args_raw = {arg['name'] for arg in processed_args if arg.get('required')}
+
+        canonical_required_args = set()
+        for arg_name in required_args_raw:
+            found_canonical = False
+            for canonical, synonyms in AppConfig.ARGUMENT_SYNONYM_MAP.items():
+                if arg_name in synonyms:
+                    canonical_required_args.add(canonical)
+                    found_canonical = True
+                    break
+            if not found_canonical:
+                canonical_required_args.add(arg_name)
+
+        for scope, required_set in AppConfig.TOOL_SCOPE_HIERARCHY:
+            if required_set.issubset(canonical_required_args):
+                STATE['tool_scopes'][tool.name] = scope
+                break
+
+        is_disabled = tool.name in disabled_tools_list
+        STATE['structured_tools'][category].append({
+            "name": tool.name,
+            "description": tool.description,
+            "arguments": processed_args,
+            "disabled": is_disabled
+        })
+
+    # --- MODIFICATION START: Remove the generation of the static tools_context ---
+    # STATE['tools_context'] will now be built dynamically in the handler.
+    STATE['tools_context'] = "--- No Tools Available ---"
+    # --- MODIFICATION END ---
+
+    STATE['structured_prompts'] = {}
+    disabled_prompts_list = STATE.get("disabled_prompts", [])
+
+    if loaded_prompts:
+        for prompt_obj in loaded_prompts:
             if skip_classification:  # 'light' mode
-                category = "All Tools"
+                category = "All Prompts"
             else:  # 'full' mode
-                classification = classified_data.get(tool.name, {})
+                classification = classified_data.get(prompt_obj.name, {})
                 category = classification.get("category", "Uncategorized")
 
-            if category not in STATE['structured_tools']:
-                STATE['structured_tools'][category] = []
+            if category not in STATE['structured_prompts']:
+                STATE['structured_prompts'][category] = []
+
+            is_disabled = prompt_obj.name in disabled_prompts_list
+
+            cleaned_prompt_desc, prompt_type = _extract_prompt_type_from_description(prompt_obj.description)
 
             processed_args = []
-            if hasattr(tool, 'args') and isinstance(tool.args, dict):
-                for arg_name, arg_details in tool.args.items():
-                    if isinstance(arg_details, dict):
-                        processed_args.append({
-                            "name": arg_name,
-                            "type": arg_details.get("type", "any"),
-                            "description": arg_details.get("description", "No description available."),
-                            "required": arg_details.get("required", False)
-                        })
+            if hasattr(prompt_obj, 'arguments') and prompt_obj.arguments:
+                for arg in prompt_obj.arguments:
+                    arg_dict = arg.model_dump()
+                    cleaned_arg_desc, arg_type = _extract_and_clean_description(arg_dict.get("description"))
+                    arg_dict['description'] = cleaned_arg_desc
+                    arg_dict['type'] = arg_type
+                    processed_args.append(arg_dict)
 
-            STATE.setdefault('tool_scopes', {})
-            required_args_raw = {arg['name'] for arg in processed_args if arg.get('required')}
-
-            canonical_required_args = set()
-            for arg_name in required_args_raw:
-                found_canonical = False
-                for canonical, synonyms in AppConfig.ARGUMENT_SYNONYM_MAP.items():
-                    if arg_name in synonyms:
-                        canonical_required_args.add(canonical)
-                        found_canonical = True
-                        break
-                if not found_canonical:
-                    canonical_required_args.add(arg_name)
-
-            for scope, required_set in AppConfig.TOOL_SCOPE_HIERARCHY:
-                if required_set.issubset(canonical_required_args):
-                    STATE['tool_scopes'][tool.name] = scope
-                    break
-
-            is_disabled = tool.name in disabled_tools_list
-            STATE['structured_tools'][category].append({
-                "name": tool.name,
-                "description": tool.description,
+            STATE['structured_prompts'][category].append({
+                "name": prompt_obj.name,
+                "description": cleaned_prompt_desc or "No description available.",
                 "arguments": processed_args,
-                "disabled": is_disabled
+                "disabled": is_disabled,
+                "prompt_type": prompt_type
             })
 
-        # --- MODIFICATION START: Remove the generation of the static tools_context ---
-        # STATE['tools_context'] will now be built dynamically in the handler.
-        STATE['tools_context'] = "--- No Tools Available ---"
-        # --- MODIFICATION END ---
+    # --- MODIFICATION START: Process and categorize loaded resources ---
+    STATE['structured_resources'] = {} # Initialize the structure
+    if loaded_resources:
+        for resource_obj in loaded_resources:
+            if skip_classification:  # 'light' mode
+                category = "All Resources"
+            else:  # 'full' mode
+                classification = classified_data.get(resource_obj.name, {})
+                category = classification.get("category", "Uncategorized")
 
-        STATE['structured_prompts'] = {}
-        disabled_prompts_list = STATE.get("disabled_prompts", [])
+            if category not in STATE['structured_resources']:
+                STATE['structured_resources'][category] = []
 
-        if loaded_prompts:
-            for prompt_obj in loaded_prompts:
-                if skip_classification:  # 'light' mode
-                    category = "All Prompts"
-                else:  # 'full' mode
-                    classification = classified_data.get(prompt_obj.name, {})
-                    category = classification.get("category", "Uncategorized")
-
-                if category not in STATE['structured_prompts']:
-                    STATE['structured_prompts'][category] = []
-
-                is_disabled = prompt_obj.name in disabled_prompts_list
-
-                cleaned_prompt_desc, prompt_type = _extract_prompt_type_from_description(prompt_obj.description)
-
-                processed_args = []
-                if hasattr(prompt_obj, 'arguments') and prompt_obj.arguments:
-                    for arg in prompt_obj.arguments:
-                        arg_dict = arg.model_dump()
-                        cleaned_arg_desc, arg_type = _extract_and_clean_description(arg_dict.get("description"))
-                        arg_dict['description'] = cleaned_arg_desc
-                        arg_dict['type'] = arg_type
-                        processed_args.append(arg_dict)
-
-                STATE['structured_prompts'][category].append({
-                    "name": prompt_obj.name,
-                    "description": cleaned_prompt_desc or "No description available.",
-                    "arguments": processed_args,
-                    "disabled": is_disabled,
-                    "prompt_type": prompt_type
-                })
-
-        # --- MODIFICATION START: Process and categorize loaded resources ---
-        STATE['structured_resources'] = {} # Initialize the structure
-        if loaded_resources:
-            for resource_obj in loaded_resources:
-                if skip_classification:  # 'light' mode
-                    category = "All Resources"
-                else:  # 'full' mode
-                    classification = classified_data.get(resource_obj.name, {})
-                    category = classification.get("category", "Uncategorized")
-
-                if category not in STATE['structured_resources']:
-                    STATE['structured_resources'][category] = []
-
-                STATE['structured_resources'][category].append({
-                    "name": resource_obj.name,
-                    "description": resource_obj.description or "No description."
-                })
-        # --- MODIFICATION END ---
+            STATE['structured_resources'][category].append({
+                "name": resource_obj.name,
+                "description": resource_obj.description or "No description."
+            })
+    # --- MODIFICATION END ---
 
 
-        prompt_context_parts = ["--- Available Prompts ---"]
-        for category, prompts in sorted(STATE['structured_prompts'].items()):
-            enabled_prompts_in_category = [p for p in prompts if not p['disabled']]
-            if enabled_prompts_in_category:
-                prompt_context_parts.append(f"--- Category: {category} ---")
-                for prompt_info in enabled_prompts_in_category:
-                    prompt_description = prompt_info.get("description", "No description available.")
-                    prompt_str = f"- `{prompt_info['name']}` (prompt): {prompt_description}"
+    prompt_context_parts = ["--- Available Prompts ---"]
+    for category, prompts in sorted(STATE['structured_prompts'].items()):
+        enabled_prompts_in_category = [p for p in prompts if not p['disabled']]
+        if enabled_prompts_in_category:
+            prompt_context_parts.append(f"--- Category: {category} ---")
+            for prompt_info in enabled_prompts_in_category:
+                prompt_description = prompt_info.get("description", "No description available.")
+                prompt_str = f"- `{prompt_info['name']}` (prompt): {prompt_description}"
 
-                    processed_args = prompt_info.get('arguments', [])
-                    if processed_args:
-                        prompt_str += "\n  - Arguments:"
-                        for arg_details in processed_args:
-                            arg_name = arg_details.get('name', 'unknown')
-                            arg_type = arg_details.get('type', 'any')
-                            is_required = arg_details.get('required', False)
-                            req_str = "required" if is_required else "optional"
-                            arg_desc = arg_details.get('description', 'No description.')
-                            prompt_str += f"\n    - `{arg_name}` ({arg_type}, {req_str}): {arg_desc}"
-                    prompt_context_parts.append(prompt_str)
+                processed_args = prompt_info.get('arguments', [])
+                if processed_args:
+                    prompt_str += "\n  - Arguments:"
+                    for arg_details in processed_args:
+                        arg_name = arg_details.get('name', 'unknown')
+                        arg_type = arg_details.get('type', 'any')
+                        is_required = arg_details.get('required', False)
+                        req_str = "required" if is_required else "optional"
+                        arg_desc = arg_details.get('description', 'No description.')
+                        prompt_str += f"\n    - `{arg_name}` ({arg_type}, {req_str}): {arg_desc}"
+                prompt_context_parts.append(prompt_str)
 
-        if len(prompt_context_parts) > 1:
-            STATE['prompts_context'] = "\n".join(prompt_context_parts)
-        else:
-            STATE['prompts_context'] = "--- No Prompts Available ---"
+    if len(prompt_context_parts) > 1:
+        STATE['prompts_context'] = "\n".join(prompt_context_parts)
+    else:
+        STATE['prompts_context'] = "--- No Prompts Available ---"
 
-        tool_args = set()
-        for tool in STATE['mcp_tools'].values():
-            if hasattr(tool, 'args') and isinstance(tool.args, dict):
-                tool_args.update(tool.args.keys())
+    tool_args = set()
+    for tool in STATE['mcp_tools'].values():
+        if hasattr(tool, 'args') and isinstance(tool.args, dict):
+            tool_args.update(tool.args.keys())
 
-        prompt_args = set()
-        for prompt_list in STATE['structured_prompts'].values():
-            for prompt_info in prompt_list:
-                if 'arguments' in prompt_info and isinstance(prompt_info['arguments'], list):
-                    for arg_details in prompt_info['arguments']:
-                        if 'name' in arg_details:
-                            prompt_args.add(arg_details['name'])
+    prompt_args = set()
+    for prompt_list in STATE['structured_prompts'].values():
+        for prompt_info in prompt_list:
+            if 'arguments' in prompt_info and isinstance(prompt_info['arguments'], list):
+                for arg_details in prompt_info['arguments']:
+                    if 'name' in arg_details:
+                        prompt_args.add(arg_details['name'])
 
-        STATE['all_known_mcp_arguments'] = {
-            "tool": list(tool_args),
-            "prompt": list(prompt_args)
+    STATE['all_known_mcp_arguments'] = {
+        "tool": list(tool_args),
+        "prompt": list(prompt_args)
+    }
+    app_logger.info(f"Dynamically identified {len(tool_args)} tool and {len(prompt_args)} prompt arguments for context enrichment.")
+
+    # Save classification results to profile if profile_id provided
+    if profile_id:
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        # CRITICAL: Conversation profiles use LangChain which doesn't support MCP prompts
+        # Exclude prompts from classification results for conversation profiles
+        classification_results = {
+            'tools': STATE.get('structured_tools', {}),
+            'prompts': {} if is_conversation_profile else STATE.get('structured_prompts', {}),
+            'resources': STATE.get('structured_resources', {}),
+            'classified_with_mode': classification_mode
         }
-        app_logger.info(f"Dynamically identified {len(tool_args)} tool and {len(prompt_args)} prompt arguments for context enrichment.")
-        
-        # Save classification results to profile if profile_id provided
-        if profile_id:
-            from trusted_data_agent.core.config_manager import get_config_manager
-            config_manager = get_config_manager()
 
-            # CRITICAL: Conversation profiles use LangChain which doesn't support MCP prompts
-            # Exclude prompts from classification results for conversation profiles
-            classification_results = {
-                'tools': STATE.get('structured_tools', {}),
-                'prompts': {} if is_conversation_profile else STATE.get('structured_prompts', {}),
-                'resources': STATE.get('structured_resources', {}),
-                'classified_with_mode': classification_mode
-            }
-            
-            config_manager.save_profile_classification(
-                profile_id=profile_id,
-                classification_results=classification_results,
-                user_uuid=user_uuid
-            )
-            tool_count = sum(len(tools) for tools in classification_results['tools'].values())
-            prompt_count = sum(len(prompts) for prompts in classification_results['prompts'].values())
-            resource_count = sum(len(resources) for resources in classification_results['resources'].values())
-            app_logger.info(f"Saved classification results to profile {profile_id} (mode: {classification_mode}): {len(classification_results['tools'])} tool categories with {tool_count} tools, {len(classification_results['prompts'])} prompt categories with {prompt_count} prompts, {len(classification_results['resources'])} resource categories with {resource_count} resources")
+        config_manager.save_profile_classification(
+            profile_id=profile_id,
+            classification_results=classification_results,
+            user_uuid=user_uuid
+        )
+        tool_count = sum(len(tools) for tools in classification_results['tools'].values())
+        prompt_count = sum(len(prompts) for prompts in classification_results['prompts'].values())
+        resource_count = sum(len(resources) for resources in classification_results['resources'].values())
+        app_logger.info(f"Saved classification results to profile {profile_id} (mode: {classification_mode}): {len(classification_results['tools'])} tool categories with {tool_count} tools, {len(classification_results['prompts'])} prompt categories with {prompt_count} prompts, {len(classification_results['resources'])} resource categories with {resource_count} resources")
 
 
 def _transform_chart_data(data: any) -> list[dict]:
