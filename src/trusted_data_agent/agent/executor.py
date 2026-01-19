@@ -2445,6 +2445,7 @@ The following domain knowledge may be relevant to this conversation:
             yield self._format_sse({
                 "step": "Finished",
                 "final_answer": final_html,
+                "final_answer_text": response_text,  # Clean text for parent genie coordinators
                 "turn_id": self.current_turn_number,  # Include turn_id for frontend badge rendering
                 "session_id": self.session_id,  # Include session_id for filtering when switching sessions
                 "knowledge_sources": [{"collection_id": r.get("collection_id"),
