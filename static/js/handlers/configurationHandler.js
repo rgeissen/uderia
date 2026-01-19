@@ -4315,7 +4315,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
 
             const profileTypeLabel = {
                 'llm_only': 'Conversation',
-                'tool_enabled': 'Tool-Enabled',
+                'tool_enabled': 'Efficiency Focused',
                 'rag_focused': 'RAG Focused',
                 'genie': 'Genie'
             }[profile.profile_type] || profile.profile_type;
