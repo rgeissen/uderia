@@ -904,7 +904,7 @@ Profiles can be classified as:
 - Adapts to ambiguous or complex tool selection
 - Higher cost but more flexible
 
-**Note:** Classification only applies to Tool Focused (MCP) profiles with multiple tools/prompts available.
+**Note:** Classification only applies to MCP-enabled profiles with multiple tools/prompts available.
 
 #### Session Primer - Automatic Context Initialization
 
@@ -976,7 +976,7 @@ Execution Flow:
 **With Session Primer:** Each expert is pre-educated. They collaborate immediately with full domain understanding.
 
 **Best Practices:**
-- **Tool Focused profiles**: Prime with schema descriptions, API documentation
+- **Efficiency Focused profiles**: Prime with schema descriptions, API documentation
 - **Knowledge Focused profiles**: Prime with "summarize the key topics in the knowledge base"
 - **Genie profiles**: Prime with team structure and delegation guidelines
 - **Conversation profiles**: Prime with domain terminology and business rules
@@ -990,7 +990,7 @@ Execution Flow:
   → Agent provides SQL template and explanation (Conversation Focused)
 
 @GOGET: "execute this query for the sales_data table"
-  → Agent runs the query against live database (Tool Focused)
+  → Agent runs the query against live database (Efficiency Focused)
 ```
 
 #### Pattern 2: Review Before Production
@@ -1002,7 +1002,7 @@ Execution Flow:
 [User reviews, approves]
 
 @PROD: "execute this query"
-  → Agent executes against production database with audit trail (Tool Focused)
+  → Agent executes against production database with audit trail (Efficiency Focused)
 ```
 
 #### Pattern 3: Document-Driven Decisions
@@ -1015,7 +1015,7 @@ Execution Flow:
   → Agent provides implementation guidance (Conversation Focused)
 
 @GOGET: "Execute a query to identify at-risk customers for the campaign"
-  → Agent runs the query against live database (Tool Focused)
+  → Agent runs the query against live database (Efficiency Focused)
 ```
 
 #### Pattern 4: Compliance and Policy Verification
@@ -1025,7 +1025,7 @@ Execution Flow:
   → Agent retrieves exact policy language with citations (Knowledge Focused)
 
 @GOGET: "Check which API keys in our system are older than 90 days"
-  → Agent queries credential store via MCP tools (Tool Focused)
+  → Agent queries credential store via MCP tools (Efficiency Focused)
 ```
 
 ### Implementation Details
@@ -1038,12 +1038,13 @@ Execution Flow:
 
 **Execution Context:**
 - Conversation Focused (LLM): System prompt + conversation history
-- Tool Focused (MCP): System prompt + conversation + tools + prompts + resources
+- MCP-Enabled Profiles: System prompt + conversation + tools + prompts + resources
 - Knowledge Focused (RAG): RAG synthesis prompt + conversation + retrieved documents
 
 **Cost Implications:**
 - Conversation Focused: ~2,000 input tokens per turn
-- Tool Focused: ~8,000+ input tokens per turn (includes full tool context)
+- Efficiency Focused: ~8,000+ input tokens per turn (includes planner context + full tool context)
+- Conversation Focused (with MCP tools): ~3,000-4,000 input tokens per turn (LangChain agent with tool context)
 - Knowledge Focused: ~3,000-5,000 input tokens per turn (depends on documents retrieved)
 
 **Historical Tracking:**
@@ -1056,10 +1057,10 @@ Execution Flow:
 
 1. **Start Conversational:** Use Conversation Focused profiles to explore, learn, and draft queries
 2. **Verify with Documents:** Use Knowledge Focused profiles for policy, compliance, and reference lookups
-3. **Execute When Needed:** Switch to Tool Focused profiles only when live data operations are required
+3. **Execute When Needed:** Switch to Efficiency Focused profiles only when live data operations are required
 4. **Review Before Execution:** Draft destructive queries in `@CHAT`, review, then execute in `@GOGET`
 5. **Cost Attribution:** Use profile tags to track which workloads drive costs
-6. **Security:** Restrict Tool Focused profiles to authorized users via role-based access
+6. **Security:** Restrict MCP-enabled profiles to authorized users via role-based access
 7. **Knowledge Quality:** Ensure Knowledge Focused profiles have well-curated knowledge collections
 
 [⬆️ Back to Table of Contents](#table-of-contents)
