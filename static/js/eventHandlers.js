@@ -292,6 +292,40 @@ function getGenieTitle(eventType, payload) {
 }
 
 /**
+ * Generate harmonized display title for lifecycle events (Phase 2)
+ * @param {string} eventType - Lifecycle event type ('execution_start', 'execution_complete', etc.)
+ * @param {object} payload - Event payload data
+ * @param {string} profileType - Profile type ('tool_enabled', 'llm_only', 'rag_focused', 'genie')
+ * @returns {string} Harmonized display title
+ */
+function getLifecycleTitle(eventType, payload, profileType) {
+    const profileLabels = {
+        'tool_enabled': 'Efficiency Focused',
+        'llm_only': 'Conversation Focused',
+        'rag_focused': 'Knowledge Focused',
+        'genie': 'Genie Coordinator'
+    };
+    const profileLabel = profileLabels[profileType] || profileType;
+
+    switch (eventType) {
+        case 'execution_start':
+            return `${profileLabel} Started`;
+        case 'execution_complete': {
+            const duration = payload.duration_ms ? Math.round(payload.duration_ms / 1000) : null;
+            return duration ? `${profileLabel} Complete (${duration}s)` : `${profileLabel} Complete`;
+        }
+        case 'execution_error': {
+            const errorType = payload.error_type || 'error';
+            return `${profileLabel} Error: ${errorType}`;
+        }
+        case 'execution_cancelled':
+            return `${profileLabel} Cancelled`;
+        default:
+            return eventType;
+    }
+}
+
+/**
  * Main harmonized event title generator - routes to profile-specific functions
  * @param {string} profileType - 'tool_enabled', 'llm_only', 'rag_focused', 'genie'
  * @param {string} eventType - Backend event type (e.g., 'phase_start', 'conversation_tool_invoked')
@@ -517,6 +551,28 @@ async function processStream(responseBody) {
                                 details: payload,
                                 type: eventData.type
                             }, false, 'knowledge_retrieval');  // Use existing knowledge_retrieval rendering for all
+                        } else if (eventData.type === 'execution_start' ||
+                                   eventData.type === 'execution_complete' ||
+                                   eventData.type === 'execution_error' ||
+                                   eventData.type === 'execution_cancelled') {
+                            // --- PHASE 2: Handle lifecycle events for all profiles ---
+                            const payload = eventData.payload || {};
+                            const profile_type = payload.profile_type || 'unknown';
+
+                            console.log(`[${eventData.type}] Received for ${profile_type} profile:`, payload);
+
+                            // Generate harmonized title
+                            const stepTitle = getLifecycleTitle(eventData.type, payload, profile_type);
+
+                            // Update status window
+                            // Mark as final for completion/error/cancelled events
+                            const isFinal = ['execution_complete', 'execution_error', 'execution_cancelled'].includes(eventData.type);
+
+                            UI.updateStatusWindow({
+                                step: stepTitle,
+                                details: payload,
+                                type: eventData.type
+                            }, isFinal, 'lifecycle');
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full RAG case data

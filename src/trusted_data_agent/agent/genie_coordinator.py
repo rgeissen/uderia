@@ -79,6 +79,7 @@ class SlaveSessionTool(BaseTool):
         callback = _event_callbacks.get(self.parent_session_id)
         if callback:
             try:
+                # Note: genie_event_handler signature is (event_type, payload) - different from other profiles
                 callback(event_type, payload)
             except Exception as e:
                 logger.warning(f"SlaveSessionTool event callback error: {e}")
@@ -255,6 +256,15 @@ class SlaveSessionTool(BaseTool):
 
                 if status in ("completed", "complete"):
                     result = status_data.get("result", {})
+
+                    # Handle case where result might be a string directly (instead of dict)
+                    if isinstance(result, str):
+                        logger.info(f"@{self.profile_tag} completed successfully (text length: {len(result)})")
+                        return result
+                    elif result is None:
+                        logger.warning(f"@{self.profile_tag} completed but result is None")
+                        return "No response received"
+
                     # Prefer clean text (final_answer_text) for LLM consumption
                     # HTML formatting in final_answer adds noise for coordinator reasoning
                     # Fall back to final_answer/final_response if clean text not available
@@ -368,7 +378,7 @@ class GenieCoordinator:
                     if profile_tag and profile_tag not in self.invoked_profiles:
                         self.invoked_profiles.append(profile_tag)
 
-                # Forward to original callback
+                # Forward to original callback (genie_event_handler signature is (event_type, payload))
                 event_callback(event_type, payload)
             _event_callbacks[parent_session_id] = collecting_callback
         else:
@@ -399,6 +409,7 @@ class GenieCoordinator:
         callback = _event_callbacks.get(self.parent_session_id)
         if callback:
             try:
+                # Note: genie_event_handler signature is (event_type, payload) - different from other profiles
                 callback(event_type, payload)
             except Exception as e:
                 logger.warning(f"GenieCoordinator event callback error: {e}")
@@ -537,6 +548,23 @@ After gathering information from profiles, provide a synthesized answer that:
         start_time = time.time()
         logger.info(f"GenieCoordinator executing query: {query[:100]}...")
 
+        # --- PHASE 2: Emit execution_start lifecycle event for genie ---
+        try:
+            from datetime import datetime, timezone
+            self._emit_event("execution_start", {
+                "profile_type": "genie",
+                "session_id": self.parent_session_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "profile_tag": self.genie_profile.get("tag", "GENIE"),
+                "query": query[:200] if query else "",
+                "available_slaves": len(self.slave_profiles)
+            })
+            logger.info("✅ Emitted execution_start event for genie profile")
+        except Exception as e:
+            # Silent failure - don't break execution
+            logger.warning(f"Failed to emit execution_start event: {e}")
+        # --- PHASE 2 END ---
+
         # Emit coordination start event
         self._emit_event("genie_coordination_start", {
             "genie_session_id": self.parent_session_id,
@@ -669,6 +697,27 @@ After gathering information from profiles, provide a synthesized answer that:
                 "output_tokens": self.total_output_tokens
             })
 
+            # --- PHASE 2: Emit execution_complete lifecycle event for genie ---
+            try:
+                from datetime import datetime, timezone
+                self._emit_event("execution_complete", {
+                    "profile_type": "genie",
+                    "session_id": self.parent_session_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "profile_tag": self.genie_profile.get("tag", "GENIE"),
+                    "experts_consulted": len(self.invoked_profiles),
+                    "tools_used": tools_used,
+                    "total_input_tokens": self.total_input_tokens,
+                    "total_output_tokens": self.total_output_tokens,
+                    "duration_ms": total_duration_ms,
+                    "success": True
+                })
+                logger.info("✅ Emitted execution_complete event for genie profile")
+            except Exception as e:
+                # Silent failure - don't break execution
+                logger.warning(f"Failed to emit execution_complete event: {e}")
+            # --- PHASE 2 END ---
+
             logger.info(f"GenieCoordinator completed. Tools used: {tools_used}")
 
             # Filter slave_sessions to only include sessions for tools actually used in this turn
@@ -711,6 +760,39 @@ After gathering information from profiles, provide a synthesized answer that:
                 "error": str(e),
                 "session_id": self.parent_session_id
             })
+
+            # --- PHASE 2: Emit execution_error lifecycle event for genie ---
+            try:
+                from datetime import datetime, timezone
+                # Classify error type
+                error_str = str(e).lower()
+                if "rate limit" in error_str or "429" in error_str:
+                    error_type = "rate_limit"
+                elif "quota" in error_str or "insufficient" in error_str:
+                    error_type = "quota_exceeded"
+                elif "timeout" in error_str:
+                    error_type = "timeout"
+                else:
+                    error_type = "coordination_error"
+
+                self._emit_event("execution_error", {
+                    "profile_type": "genie",
+                    "session_id": self.parent_session_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "profile_tag": self.genie_profile.get("tag", "GENIE"),
+                    "error_message": str(e),
+                    "error_type": error_type,
+                    "experts_consulted": len(self.invoked_profiles),
+                    "partial_input_tokens": self.total_input_tokens,
+                    "partial_output_tokens": self.total_output_tokens,
+                    "duration_ms": total_duration_ms,
+                    "success": False
+                })
+                logger.info(f"✅ Emitted execution_error event for genie profile (error_type: {error_type})")
+            except Exception as emit_error:
+                # Silent failure - don't break error handling flow
+                logger.warning(f"Failed to emit execution_error event: {emit_error}")
+            # --- PHASE 2 END ---
 
             return {
                 "coordinator_response": f"Error during coordination: {str(e)}",

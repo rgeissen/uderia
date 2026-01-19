@@ -1560,6 +1560,67 @@ Response:"""
         return documents[:max_docs]
 
 
+    def _emit_lifecycle_event(self, event_type: str, event_data: dict):
+        """
+        Emit lifecycle event with standardized structure.
+
+        This helper creates lifecycle events (execution_start, execution_complete,
+        execution_error, execution_cancelled) with consistent payload structure across
+        all profile types.
+
+        Args:
+            event_type: Type of lifecycle event ('execution_start', 'execution_complete', etc.)
+            event_data: Event-specific data to include in payload
+
+        Returns:
+            Formatted SSE event dict
+        """
+        # Build base payload with common fields
+        base_payload = {
+            "profile_type": event_data.get("profile_type", "tool_enabled"),
+            "session_id": self.session_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "turn_id": self.current_turn_number,
+            "profile_tag": event_data.get("profile_tag", self.active_profile_id),
+            "provider": self.current_provider,
+            "model": self.current_model,
+        }
+
+        # Merge with event-specific data
+        full_payload = {**base_payload, **event_data}
+
+        # Return formatted SSE event
+        return self._format_sse({"type": event_type, "payload": full_payload}, event="notification")
+
+
+    def _classify_error(self, exception: Exception) -> str:
+        """
+        Classify exception into user-friendly error type.
+
+        This helper categorizes exceptions for better error reporting and tracking.
+
+        Args:
+            exception: The exception to classify
+
+        Returns:
+            String error type ('rate_limit', 'quota_exceeded', 'llm_error', 'tool_error', 'system_error')
+        """
+        error_str = str(exception).lower()
+
+        if "rate limit" in error_str or "429" in error_str:
+            return "rate_limit"
+        elif "quota" in error_str or "insufficient" in error_str:
+            return "quota_exceeded"
+        elif "llm" in error_str or "model" in error_str or "anthropic" in error_str or "openai" in error_str:
+            return "llm_error"
+        elif "tool" in error_str or "mcp" in error_str:
+            return "tool_error"
+        elif "cancelled" in error_str or "canceled" in error_str:
+            return "cancelled"
+        else:
+            return "system_error"
+
+
     async def run(self):
         """The main, unified execution loop for the agent."""
         final_answer_override = None
@@ -1643,6 +1704,23 @@ Response:"""
 
             # NOTE: Don't emit llm_execution event yet - wait until we have the actual prompts
             # Store metadata for now, will emit after loading prompts
+
+            # --- PHASE 2: Emit execution_start lifecycle event for llm_only ---
+            try:
+                start_event = self._emit_lifecycle_event("execution_start", {
+                    "profile_type": "llm_only",
+                    "profile_tag": profile_tag,
+                    "query": self.original_user_input,
+                    "history_length": history_length,
+                    "knowledge_enabled": knowledge_enabled,
+                    "knowledge_collections": len(knowledge_collections) if knowledge_enabled else 0
+                })
+                yield start_event
+                app_logger.info("✅ Emitted execution_start event for llm_only profile")
+            except Exception as e:
+                # Silent failure - don't break execution
+                app_logger.warning(f"Failed to emit execution_start event: {e}")
+            # --- PHASE 2 END ---
 
             # --- NEW: Knowledge Retrieval for LLM-Only ---
             knowledge_context_str = None
@@ -2072,6 +2150,23 @@ The following domain knowledge may be relevant to this conversation:
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved llm_only turn data to workflow_history for turn {self.current_turn_number}")
 
+            # --- PHASE 2: Emit execution_complete lifecycle event for llm_only ---
+            try:
+                complete_event = self._emit_lifecycle_event("execution_complete", {
+                    "profile_type": "llm_only",
+                    "profile_tag": profile_tag,
+                    "total_input_tokens": self.turn_input_tokens,
+                    "total_output_tokens": self.turn_output_tokens,
+                    "knowledge_accessed": len(knowledge_accessed) > 0,
+                    "success": True
+                })
+                yield complete_event
+                app_logger.info("✅ Emitted execution_complete event for llm_only profile")
+            except Exception as e:
+                # Silent failure - don't break execution
+                app_logger.warning(f"Failed to emit execution_complete event: {e}")
+            # --- PHASE 2 END ---
+
             app_logger.info("✅ LLM-only execution completed successfully")
             return
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH END ---
@@ -2105,6 +2200,25 @@ The following domain knowledge may be relevant to this conversation:
                 "step": "RAG Knowledge Retrieval",
                 "type": "rag_execution"
             })
+
+            # --- PHASE 2: Emit execution_start lifecycle event for rag_focused ---
+            try:
+                profile_config = self._get_profile_config()
+                knowledge_config = profile_config.get("knowledgeConfig", {})
+                knowledge_collections = knowledge_config.get("collections", [])
+
+                start_event = self._emit_lifecycle_event("execution_start", {
+                    "profile_type": "rag_focused",
+                    "profile_tag": self._get_current_profile_tag(),
+                    "query": self.original_user_input,
+                    "knowledge_collections": len(knowledge_collections)
+                })
+                yield start_event
+                app_logger.info("✅ Emitted execution_start event for rag_focused profile")
+            except Exception as e:
+                # Silent failure - don't break execution
+                app_logger.warning(f"Failed to emit execution_start event: {e}")
+            # --- PHASE 2 END ---
 
             # --- MANDATORY Knowledge Retrieval ---
             import time
@@ -2571,6 +2685,25 @@ The following domain knowledge may be relevant to this conversation:
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved rag_focused turn data to workflow_history for turn {self.current_turn_number}")
 
+            # --- PHASE 2: Emit execution_complete lifecycle event for rag_focused ---
+            try:
+                complete_event = self._emit_lifecycle_event("execution_complete", {
+                    "profile_type": "rag_focused",
+                    "profile_tag": profile_tag,
+                    "collections_searched": len(collection_names),
+                    "documents_retrieved": len(final_results),
+                    "total_input_tokens": self.turn_input_tokens,
+                    "total_output_tokens": self.turn_output_tokens,
+                    "retrieval_duration_ms": retrieval_duration_ms,
+                    "success": True
+                })
+                yield complete_event
+                app_logger.info("✅ Emitted execution_complete event for rag_focused profile")
+            except Exception as e:
+                # Silent failure - don't break execution
+                app_logger.warning(f"Failed to emit execution_complete event: {e}")
+            # --- PHASE 2 END ---
+
             app_logger.info("✅ RAG-focused execution completed successfully")
             return
         # --- RAG FOCUSED EXECUTION PATH END ---
@@ -2976,6 +3109,23 @@ The following domain knowledge may be relevant to this conversation:
         # Check for cancellation before starting execution
         self._check_cancellation()
 
+        # --- PHASE 2: Emit execution_start lifecycle event for tool_enabled ---
+        if not is_llm_only and not is_rag_focused:
+            try:
+                start_event = self._emit_lifecycle_event("execution_start", {
+                    "profile_type": "tool_enabled",
+                    "profile_tag": profile_tag,
+                    "query": self.original_user_input,
+                    "has_context": bool(self.previous_turn_data),
+                    "is_replay": bool(self.plan_to_execute)
+                })
+                yield start_event
+                app_logger.info("✅ Emitted execution_start event for tool_enabled profile")
+            except Exception as e:
+                # Silent failure - don't break execution
+                app_logger.warning(f"Failed to emit execution_start event: {e}")
+        # --- PHASE 2 END ---
+
         try:
             # --- MODIFICATION START: Handle Replay ---
             if self.plan_to_execute:
@@ -3189,6 +3339,25 @@ The following domain knowledge may be relevant to this conversation:
             self._log_system_event(event_data, "cancelled")
             yield self._format_sse(event_data, "cancelled")
 
+            # --- PHASE 2: Emit execution_cancelled lifecycle event (all profiles) ---
+            try:
+                profile_type = self._detect_profile_type()
+                # Emit for all profile types (tool_enabled, llm_only, rag_focused)
+                cancelled_event = self._emit_lifecycle_event("execution_cancelled", {
+                    "profile_type": profile_type,
+                    "profile_tag": self._get_current_profile_tag(),
+                    "phases_completed": len([a for a in self.turn_action_history if a.get("tool_name") != "TDA_SystemLog"]),
+                    "cancellation_stage": self.state.name,
+                    "partial_input_tokens": self.turn_input_tokens,
+                    "partial_output_tokens": self.turn_output_tokens
+                })
+                yield cancelled_event
+                app_logger.info(f"✅ Emitted execution_cancelled event for {profile_type} profile")
+            except Exception as e:
+                # Silent failure - don't break cancellation flow
+                app_logger.warning(f"Failed to emit execution_cancelled event: {e}")
+            # --- PHASE 2 END ---
+
             # Save partial turn data before re-raising
             await self._save_partial_turn_data(
                 status="cancelled",
@@ -3214,6 +3383,29 @@ The following domain knowledge may be relevant to this conversation:
             }
             self._log_system_event(event_data, "error")
             yield self._format_sse(event_data, "error")
+
+            # --- PHASE 2: Emit execution_error lifecycle event (all profiles) ---
+            try:
+                profile_type = self._detect_profile_type()
+                # Emit for all profile types (tool_enabled, llm_only, rag_focused)
+                error_type = self._classify_error(root_exception)
+                error_event = self._emit_lifecycle_event("execution_error", {
+                    "profile_type": profile_type,
+                    "profile_tag": self._get_current_profile_tag(),
+                    "error_message": str(root_exception),
+                    "error_type": error_type,
+                    "error_stage": self.state.name,
+                    "phases_completed": len([a for a in self.turn_action_history if a.get("tool_name") != "TDA_SystemLog"]),
+                    "partial_input_tokens": self.turn_input_tokens,
+                    "partial_output_tokens": self.turn_output_tokens,
+                    "success": False
+                })
+                yield error_event
+                app_logger.info(f"✅ Emitted execution_error event for {profile_type} profile (error_type: {error_type})")
+            except Exception as e:
+                # Silent failure - don't break error handling flow
+                app_logger.warning(f"Failed to emit execution_error event: {e}")
+            # --- PHASE 2 END ---
 
             # Save partial turn data for error case
             await self._save_partial_turn_data(
@@ -3889,6 +4081,30 @@ The following domain knowledge may be relevant to this conversation:
             "is_session_primer": self.is_session_primer
         }, "final_answer")
         # --- MODIFICATION END ---
+
+        # --- PHASE 2: Emit execution_complete lifecycle event for tool_enabled ---
+        try:
+            profile_type = self._detect_profile_type()
+            if profile_type == "tool_enabled":
+                import time
+                # Calculate duration if possible (requires tracking start_time)
+                duration_ms = 0  # TODO: Track start_time in future enhancement
+
+                complete_event = self._emit_lifecycle_event("execution_complete", {
+                    "profile_type": "tool_enabled",
+                    "profile_tag": self._get_current_profile_tag(),
+                    "phases_executed": len([a for a in self.turn_action_history if a.get("tool_name") != "TDA_SystemLog"]),
+                    "total_input_tokens": self.turn_input_tokens,
+                    "total_output_tokens": self.turn_output_tokens,
+                    "duration_ms": duration_ms,
+                    "success": True
+                })
+                yield complete_event
+                app_logger.info("✅ Emitted execution_complete event for tool_enabled profile")
+        except Exception as e:
+            # Silent failure - don't break execution
+            app_logger.warning(f"Failed to emit execution_complete event: {e}")
+        # --- PHASE 2 END ---
 
         # --- Session Name Generation (AFTER final answer) ---
         # Generate session name for first turn AFTER final answer (consolidation requirement)
