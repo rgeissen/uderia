@@ -2210,14 +2210,21 @@ async def create_session():
         new_session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
         if new_session_data:
             # Prepare notification payload with full session metadata for UI display
+            # Derive profile_tags_used from profile_tag if not yet populated (for immediate UI display)
+            profile_tags_used = new_session_data.get("profile_tags_used", [])
+            profile_tag = new_session_data.get("profile_tag")
+            if profile_tag and profile_tag not in profile_tags_used:
+                profile_tags_used = [profile_tag]  # Use profile_tag for initial display
+
             notification_payload = {
                 "id": new_session_data["id"],
                 "name": new_session_data.get("name", "New Chat"),
                 "models_used": new_session_data.get("models_used", []),
+                "profile_tags_used": profile_tags_used,  # Include for immediate UI display
                 "last_updated": new_session_data.get("last_updated", datetime.now(timezone.utc).isoformat()),
                 # Include profile and genie metadata for proper UI rendering
                 "profile_id": new_session_data.get("profile_id"),
-                "profile_tag": new_session_data.get("profile_tag"),
+                "profile_tag": profile_tag,
                 "profile_type": target_profile.get("profile_type") if target_profile else None,
                 "genie_metadata": new_session_data.get("genie_metadata", {}),
                 "is_temporary": new_session_data.get("is_temporary", False),
