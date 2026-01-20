@@ -1967,6 +1967,54 @@ class RAGRetriever:
             return None
 
 
+# --- LAZY INITIALIZATION HELPER ---
+def get_rag_retriever() -> Optional[RAGRetriever]:
+    """
+    Get the global RAGRetriever instance, initializing it lazily if needed.
+
+    This ensures the RAG retriever is always available when needed, even if
+    startup initialization failed or timing caused issues.
+
+    Returns:
+        RAGRetriever instance, or None if RAG is disabled or initialization fails
+    """
+    # Check if already initialized in APP_STATE
+    retriever = APP_STATE.get("rag_retriever_instance")
+    if retriever is not None:
+        return retriever
+
+    # Check if RAG is disabled
+    if not APP_CONFIG.RAG_ENABLED:
+        logger.debug("RAG is disabled in configuration")
+        return None
+
+    # Lazy initialization
+    try:
+        from trusted_data_agent.core.utils import get_project_root
+
+        logger.info("Lazy-initializing RAG retriever...")
+
+        project_root = get_project_root()
+        rag_cases_dir = project_root / APP_CONFIG.RAG_CASES_DIR
+        persist_dir = project_root / APP_CONFIG.RAG_PERSIST_DIR
+
+        retriever = RAGRetriever(
+            rag_cases_dir=rag_cases_dir,
+            embedding_model_name=APP_CONFIG.RAG_EMBEDDING_MODEL,
+            persist_directory=persist_dir
+        )
+
+        # Store in APP_STATE for consistency with main.py
+        APP_STATE['rag_retriever_instance'] = retriever
+        logger.info("RAG retriever lazy-initialized successfully")
+
+        return retriever
+
+    except Exception as e:
+        logger.error(f"Failed to lazy-initialize RAG retriever: {e}", exc_info=True)
+        return None
+
+
 # Example Usage (for testing purposes)
 if __name__ == "__main__":
     # Assuming tda_rag_cases is in the parent directory of this script

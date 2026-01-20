@@ -65,6 +65,7 @@ def _ensure_user_default_collection(user_id: str, mcp_servers: list):
     from trusted_data_agent.core.collection_db import get_collection_db
     from trusted_data_agent.core.config_manager import get_config_manager
     from trusted_data_agent.core.config import APP_STATE
+    from trusted_data_agent.agent.rag_retriever import get_rag_retriever
     from datetime import datetime, timezone
     import uuid
 
@@ -134,7 +135,7 @@ def _ensure_user_default_collection(user_id: str, mcp_servers: list):
             logger.info(f"Reloaded {len(collections_list)} collections into APP_STATE after creating default collections")
 
             # Reload the new collections into the RAG retriever's memory
-            retriever = APP_STATE.get("rag_retriever_instance")
+            retriever = get_rag_retriever()
             if retriever:
                 for collection_id in collections_created:
                     try:

@@ -27,6 +27,7 @@ from trusted_data_agent.core.utils import generate_task_id, _get_prompt_info
 # --- MODIFICATION END ---
 
 from trusted_data_agent.core.config import APP_CONFIG, APP_STATE
+from trusted_data_agent.agent.rag_retriever import get_rag_retriever
 from trusted_data_agent.core import session_manager
 from trusted_data_agent.agent import execution_service
 from trusted_data_agent.core import configuration_service
@@ -2518,7 +2519,7 @@ async def get_rag_collections():
     try:
         # --- MARKETPLACE PHASE 2: Filter by user access ---
         user_uuid = _get_user_uuid_from_request()
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
@@ -2621,7 +2622,7 @@ async def create_rag_collection():
         embedding_model = data.get("embedding_model", "all-MiniLM-L6-v2")
         
         # Add collection via RAG retriever
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -2774,7 +2775,7 @@ async def delete_rag_collection(collection_id: int):
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
         
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
             
@@ -2827,7 +2828,7 @@ async def toggle_rag_collection(collection_id: int):
                     }), 400
         
         # Now check if RAG retriever is initialized
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized. Please configure and connect the application first."}), 500
         
@@ -2861,7 +2862,7 @@ async def reload_all_collections():
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
         
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -2901,7 +2902,7 @@ async def reload_all_collections():
 async def refresh_rag_collection(collection_id: int):
     """Refresh the vector store for a specific RAG collection."""
     try:
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -2957,7 +2958,7 @@ async def get_rag_collection_rows(collection_id: int):
         light = request.args.get('light', 'false').lower() == 'true'
         
         # Get retriever
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"error": "RAG retriever not initialized"}), 500
         
@@ -3094,7 +3095,7 @@ async def submit_rag_case_feedback(case_id: str):
                 "message": "Invalid feedback_score. Must be -1 (downvote), 0 (neutral), or 1 (upvote)"
             }), 400
         
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -3181,7 +3182,7 @@ async def populate_collection_from_template(collection_id: int):
                 examples.append((user_query, sql_statement))
         
         # Get RAG retriever
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -3249,7 +3250,7 @@ async def populate_collection_from_template(collection_id: int):
 async def get_rag_templates():
     """Get information about available Planner Repository Constructors."""
     try:
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -3544,7 +3545,7 @@ async def export_collection(collection_id: int):
         chroma_base_path = Path(__file__).resolve().parents[3] / ".chromadb_rag_cache"
 
         # Find the ChromaDB collection directory (UUID-based)
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
 
@@ -3844,7 +3845,7 @@ async def import_collection():
             new_collection_name = f"col_{user_uuid}_{int(time.time())}"
 
             # Get the RAG retriever to recreate the collection using ChromaDB's API
-            retriever = APP_STATE.get("rag_retriever_instance")
+            retriever = get_rag_retriever()
             if not retriever:
                 return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
 
@@ -7653,7 +7654,7 @@ async def browse_marketplace_collections():
         from trusted_data_agent.core.collection_db import get_collection_db
         collection_db = get_collection_db()
         all_collections = collection_db.get_all_collections()
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
@@ -7780,7 +7781,7 @@ async def subscribe_to_collection(collection_id: int):
             return jsonify({"status": "error", "message": "Authentication required"}), 401
         
         # Get retriever and validate collection exists
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -7947,7 +7948,7 @@ async def fork_marketplace_collection(collection_id: int):
             return jsonify({"status": "error", "message": "No MCP server configured for your account"}), 400
         
         # Get retriever
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -8018,7 +8019,7 @@ async def publish_collection_to_marketplace(collection_id: int):
             return jsonify({"status": "error", "message": "The Default Collection cannot be published to the marketplace"}), 400
         
         # Get retriever and validate ownership
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -8090,7 +8091,7 @@ async def unpublish_collection_from_marketplace(collection_id: int):
             return jsonify({"status": "error", "message": "Authentication required"}), 401
         
         # Get retriever and validate ownership
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -8179,7 +8180,7 @@ async def rate_marketplace_collection(collection_id: int):
             return jsonify({"status": "error", "message": "Rating must be an integer between 1 and 5"}), 400
         
         # Verify collection exists
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         

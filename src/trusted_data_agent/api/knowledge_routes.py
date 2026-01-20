@@ -23,6 +23,7 @@ import json
 
 from trusted_data_agent.core.config import APP_STATE
 from trusted_data_agent.auth.middleware import require_auth
+from trusted_data_agent.agent.rag_retriever import get_rag_retriever
 from trusted_data_agent.llm.document_upload import DocumentUploadHandler
 from trusted_data_agent.agent.repository_constructor import (
     create_repository_constructor,
@@ -255,7 +256,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 return
             
             # Get retriever instance
-            retriever = APP_STATE.get("rag_retriever_instance")
+            retriever = get_rag_retriever()
             if not retriever:
                 yield format_sse({"type": "error", "message": "RAG retriever not initialized"}, "error")
                 return
@@ -452,7 +453,7 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
             return jsonify({"status": "error", "message": "Access denied"}), 403
         
         # Get retriever instance for storage directory
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -688,7 +689,7 @@ async def list_knowledge_documents(current_user: dict, collection_id: int):
 async def delete_knowledge_document(current_user: dict, collection_id: int, document_id: str):
     """Delete a document from Knowledge repository."""
     try:
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -766,7 +767,7 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
         }
     """
     try:
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
         
@@ -875,7 +876,7 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
         }
     """
     try:
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"error": "RAG retriever not initialized"}), 500
         
@@ -1025,7 +1026,7 @@ async def get_single_chunk(current_user: dict, collection_id: int, chunk_id: str
         }
     """
     try:
-        retriever = APP_STATE.get("rag_retriever_instance")
+        retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"error": "RAG retriever not initialized"}), 500
         
