@@ -955,7 +955,7 @@ function attachMCPEventListeners() {
             // Build confirmation message with collection warning
             let confirmMessage = `Are you sure you want to delete MCP server "${serverName}"?`;
             if (collectionCount > 0) {
-                confirmMessage += `\n\n⚠️ This will also delete ${collectionCount} associated collection(s):`;
+                confirmMessage += `\n\nWarning: This will also delete ${collectionCount} associated collection(s):`;
                 serverCollections.forEach(c => {
                     confirmMessage += `\n• ${c.name}`;
                 });
@@ -1637,8 +1637,11 @@ Claude Desktop format:
                     <div class="flex items-center gap-3">
                         <label class="flex-1 cursor-pointer">
                             <input type="file" id="import-mcp-file-input" accept=".json,application/json" class="hidden">
-                            <span class="flex items-center justify-center px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-white text-sm">
-                                📁 Or Upload server.json File
+                            <span class="flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-white text-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                </svg>
+                                Or Upload server.json File
                             </span>
                         </label>
                         <span id="import-mcp-filename" class="text-sm text-gray-400 flex-1"></span>
@@ -2549,7 +2552,7 @@ function renderProfileCard(profile) {
                                     <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                                     </svg>
-                                    <span class="flex-1">${isMasterClassification ? '⭐ Primary Classification' : 'Set as Primary'}</span>
+                                    <span class="flex-1">${isMasterClassification ? 'Primary Classification' : 'Set as Primary'}</span>
                                 </button>
 
                                 <!-- Inherit Classification Toggle -->
@@ -4357,7 +4360,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             warningDiv.className = 'mt-4 p-3 bg-yellow-900/30 border border-yellow-600/50 rounded-lg';
             warningDiv.innerHTML = `
                 <div class="flex items-start space-x-2">
-                    <span class="text-yellow-400 text-lg">⚠️</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
                     <div class="flex-1">
                         <p class="text-sm font-semibold text-yellow-300 mb-1">Nested Genie Coordination Active</p>
                         <p class="text-xs text-yellow-200/80">

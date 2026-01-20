@@ -1951,8 +1951,11 @@
                                             <p class="text-sm text-gray-400 mt-1">Model-Context-Protocol servers provide access to your data sources</p>
                                         </div>
                                         <div class="flex gap-2">
-                                            <button type="button" id="import-mcp-server-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium text-sm">
-                                                📥 Import from server.json
+                                            <button type="button" id="import-mcp-server-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium text-sm flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                </svg>
+                                                Import from server.json
                                             </button>
                                             <button type="button" id="add-mcp-server-btn" class="px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium text-sm">
                                                 + Add Server
@@ -2009,25 +2012,34 @@
                                     <div class="flex gap-2 border-b border-white/10 mb-6">
                                         <button class="profile-type-tab active px-6 py-3 text-sm font-medium transition-all border-b-2 border-[#F15F22] text-white" data-tab="tool-profiles">
                                             <div class="flex items-center gap-2">
-                                                <span>🛠️</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                </svg>
                                                 Efficiency Focused (Optimizer)
                                             </div>
                                         </button>
                                         <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="conversation-profiles">
                                             <div class="flex items-center gap-2">
-                                                <span>💬</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                                </svg>
                                                 Conversation Focused (LLM)
                                             </div>
                                         </button>
                                         <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="rag-profiles">
                                             <div class="flex items-center gap-2">
-                                                <span>🔍</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                </svg>
                                                 Knowledge Focused (RAG)
                                             </div>
                                         </button>
                                         <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="genie-profiles">
                                             <div class="flex items-center gap-2">
-                                                <span>🧞</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                                </svg>
                                                 Genie (Multi-Profile)
                                             </div>
                                         </button>
@@ -4552,12 +4564,12 @@
                     <h4 class="font-semibold text-white mb-2">Core Principles: A Superior Approach</h4>
                     <p class="mb-3">The Uderia Platform transcends typical data chat applications by delivering a seamless and powerful experience based on six core principles:</p>
                     <ul class="space-y-2 text-sm">
-                        <li>• <strong>🚀 Actionable:</strong> Go from conversational discovery to production-ready workflow in seconds. Your interactive queries can be immediately operationalized via REST API.</li>
-                        <li>• <strong>🔍 Transparent:</strong> Eliminate the "black box" of AI. The Live Status Window shows every step of the agent's thought process in real-time.</li>
-                        <li>• <strong>⚡ Efficient:</strong> The intelligent Fusion Optimizer uses a multi-layered architecture for resilient and cost-effective task execution.</li>
-                        <li>• <strong>🛡️ Sovereignty:</strong> Your data, your rules, your environment. Leverage hyperscaler LLMs or run private models on your own infrastructure with Ollama.</li>
-                        <li>• <strong>💰 Financial Governance:</strong> Complete cost transparency and control with real-time tracking, comprehensive analytics, and detailed visibility into every token consumed.</li>
-                        <li>• <strong>🤝 Collaborative:</strong> Transform isolated expertise into collective intelligence. The Intelligence Marketplace enables you to share proven execution patterns and domain knowledge.</li>
+                        <li>• <strong>Actionable:</strong> Go from conversational discovery to production-ready workflow in seconds. Your interactive queries can be immediately operationalized via REST API.</li>
+                        <li>• <strong>Transparent:</strong> Eliminate the "black box" of AI. The Live Status Window shows every step of the agent's thought process in real-time.</li>
+                        <li>• <strong>Efficient:</strong> The intelligent Fusion Optimizer uses a multi-layered architecture for resilient and cost-effective task execution.</li>
+                        <li>• <strong>Sovereignty:</strong> Your data, your rules, your environment. Leverage hyperscaler LLMs or run private models on your own infrastructure with Ollama.</li>
+                        <li>• <strong>Financial Governance:</strong> Complete cost transparency and control with real-time tracking, comprehensive analytics, and detailed visibility into every token consumed.</li>
+                        <li>• <strong>Collaborative:</strong> Transform isolated expertise into collective intelligence. The Intelligence Marketplace enables you to share proven execution patterns and domain knowledge.</li>
                     </ul>
                 </div>
                 <div>
@@ -4929,10 +4941,10 @@
                             </label>
                             <select id="knowledge-repo-chunking" name="chunking_strategy" required
                                     class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none text-white">
-                                <option value="semantic">🧠 Semantic - Smart splitting based on meaning</option>
-                                <option value="paragraph">📋 Paragraph - Split by paragraphs</option>
-                                <option value="sentence">✍️ Sentence - Split by sentences</option>
-                                <option value="fixed_size">📏 Fixed Size - Split by character count</option>
+                                <option value="semantic">Semantic - Smart splitting based on meaning</option>
+                                <option value="paragraph">Paragraph - Split by paragraphs</option>
+                                <option value="sentence">Sentence - Split by sentences</option>
+                                <option value="fixed_size">Fixed Size - Split by character count</option>
                             </select>
                             <p class="mt-1 text-xs text-gray-400">Controls how documents are divided for retrieval</p>
                         </div>
@@ -6837,7 +6849,7 @@
             if (showWarning === 'true') {
                 // Show persistent warning banner about default password
                 window.showAppBanner(
-                    '⚠️ Security Warning: You are using the default admin password. Please change it immediately in Administration → User Management.',
+                    'Security Warning: You are using the default admin password. Please change it immediately in Administration → User Management.',
                     'warning',
                     0  // Never auto-dismiss
                 );
@@ -7091,7 +7103,7 @@
             </div>
             <div class="space-y-4">
                 <div class="bg-yellow-900/30 border border-yellow-600/50 rounded-md p-4">
-                    <p class="text-sm text-yellow-200 font-medium mb-2">⚠️ Important: Copy your token now</p>
+                    <p class="text-sm text-yellow-200 font-medium mb-2">Important: Copy your token now</p>
                     <p class="text-xs text-yellow-300">This token will only be shown once. Make sure to copy it and store it securely.</p>
                 </div>
                 <div>
