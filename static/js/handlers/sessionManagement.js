@@ -40,7 +40,11 @@ export async function handleStartNewSession() {
     let activeProfileOverrideId = window.activeProfileOverrideId || null;
 
     // If no activeProfileOverrideId but activeTagPrefix is set, resolve the tag to a profile ID
-    if (!activeProfileOverrideId && window.activeTagPrefix && window.configState?.profiles) {
+    // BUT only if the tag badge is still visible (user hasn't removed the override)
+    const tagBadge = document.getElementById('active-profile-tag');
+    const isTagBadgeVisible = tagBadge && !tagBadge.classList.contains('hidden');
+
+    if (!activeProfileOverrideId && window.activeTagPrefix && isTagBadgeVisible && window.configState?.profiles) {
         const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
         const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
         if (overrideProfile) {
@@ -52,6 +56,10 @@ export async function handleStartNewSession() {
     // Clear the active profile override for autocomplete when starting a new session
     if (window.activeProfileOverrideId) {
         delete window.activeProfileOverrideId;
+    }
+    // Also clear activeTagPrefix to prevent stale state
+    if (window.activeTagPrefix) {
+        window.activeTagPrefix = '';
     }
     // --- MODIFICATION END ---
 
