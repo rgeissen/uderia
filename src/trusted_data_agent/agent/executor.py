@@ -1034,9 +1034,9 @@ class PlanExecutor:
                                 else:
                                     # Fallback: try to get name from collection DB table directly
                                     try:
-                                        from trusted_data_agent.core.collection_db import CollectionDB
-                                        coll_db = CollectionDB(user_uuid=self.user_uuid)
-                                        coll_info = coll_db.get_collection(coll_id)
+                                        from trusted_data_agent.core.collection_db import get_collection_db
+                                        coll_db = get_collection_db()
+                                        coll_info = coll_db.get_collection_by_id(coll_id)
                                         if coll_info and coll_info.get("name"):
                                             collection_names_for_start.append(coll_info["name"])
                                         else:
@@ -2261,9 +2261,9 @@ The following domain knowledge may be relevant to this conversation:
                     else:
                         # Fallback: try to get name from collection DB table directly
                         try:
-                            from trusted_data_agent.core.collection_db import CollectionDB
-                            coll_db = CollectionDB(user_uuid=self.user_uuid)
-                            coll_info = coll_db.get_collection(coll_id)
+                            from trusted_data_agent.core.collection_db import get_collection_db
+                            coll_db = get_collection_db()
+                            coll_info = coll_db.get_collection_by_id(coll_id)
                             if coll_info and coll_info.get("name"):
                                 collection_names_for_start.append(coll_info["name"])
                             else:
