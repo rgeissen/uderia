@@ -2298,13 +2298,156 @@ The following domain knowledge may be relevant to this conversation:
             )
 
             if not all_results:
-                # NO KNOWLEDGE FOUND - This is an ERROR for rag_focused
-                error_msg = "No relevant knowledge found. Try rephrasing or check your knowledge repositories."
+                # NO KNOWLEDGE FOUND - Treat as valid response, not error
+                retrieval_duration_ms = int((time.time() - retrieval_start_time) * 1000)
+                collection_names = set([c.get("name", "Unknown") for c in knowledge_collections])
+
+                no_results_message = """<div class="no-knowledge-found">
+    <p><strong>No relevant knowledge found</strong> for your query.</p>
+    <p class="text-gray-400 text-sm mt-2">Try rephrasing your question or check your knowledge repositories.</p>
+</div>"""
+                no_results_text = "No relevant knowledge found. Try rephrasing or check your knowledge repositories."
+
+                # Emit knowledge retrieval complete event (with 0 documents)
+                retrieval_complete_payload = {
+                    "collection_names": list(collection_names),
+                    "document_count": 0,
+                    "duration_ms": retrieval_duration_ms,
+                    "session_id": self.session_id
+                }
+                knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": retrieval_complete_payload})
+                yield self._format_sse({
+                    "type": "knowledge_retrieval_complete",
+                    "payload": retrieval_complete_payload
+                }, event="notification")
+
+                # Save to conversation history
+                await session_manager.add_message_to_histories(
+                    self.user_uuid, self.session_id, 'assistant',
+                    content=no_results_text,
+                    html_content=no_results_message,
+                    is_session_primer=self.is_session_primer
+                )
+
+                # Update models_used for session tracking
+                profile_tag = self._get_current_profile_tag()
+                await session_manager.update_models_used(
+                    self.user_uuid,
+                    self.session_id,
+                    self.current_provider,
+                    self.current_model,
+                    profile_tag
+                )
+
+                # Get session data for token totals
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
+                session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
+
+                # System events (for session name generation on first turn)
+                system_events = []
+
+                # Generate session name for first turn
+                if self.current_turn_number == 1:
+                    session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                    if session_data and session_data.get("name") == "New Chat":
+                        async for result in self._generate_and_emit_session_name():
+                            if isinstance(result, str):
+                                yield result
+                            else:
+                                new_name, name_input_tokens, name_output_tokens, name_events = result
+                                system_events.extend(name_events)
+                                if new_name != "New Chat":
+                                    try:
+                                        await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                                        yield self._format_sse({
+                                            "session_id": self.session_id,
+                                            "newName": new_name
+                                        }, "session_name_update")
+                                    except Exception as name_e:
+                                        app_logger.error(f"Failed to save session name: {name_e}")
+
+                # Build turn summary for workflow_history
+                turn_summary = {
+                    "turn": self.current_turn_number,
+                    "user_query": self.original_user_input,
+                    "final_summary_text": no_results_text,
+                    "status": "success",  # NOT "error"
+                    "no_knowledge_found": True,  # Flag for UI indication
+                    "execution_trace": [],
+                    "original_plan": None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "provider": self.current_provider,
+                    "model": self.current_model,
+                    "profile_tag": profile_tag,
+                    "profile_type": "rag_focused",
+                    "task_id": self.task_id if hasattr(self, 'task_id') else None,
+                    "turn_input_tokens": self.turn_input_tokens,
+                    "turn_output_tokens": self.turn_output_tokens,
+                    "session_id": self.session_id,
+                    "session_input_tokens": session_input_tokens,
+                    "session_output_tokens": session_output_tokens,
+                    "knowledge_retrieval_event": {
+                        "enabled": True,
+                        "retrieved": False,
+                        "document_count": 0,
+                        "collections": list(collection_names),
+                        "duration_ms": retrieval_duration_ms,
+                        "summary": f"Searched {len(collection_names)} collection(s), no relevant documents found"
+                    },
+                    "knowledge_events": knowledge_events,
+                    "system_events": system_events
+                }
+
+                # Save turn data to workflow_history
+                await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
+                app_logger.debug(f"Saved rag_focused (no results) turn data for turn {self.current_turn_number}")
+
+                # Send session update notification
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                if session_data:
+                    yield self._format_sse({
+                        "type": "session_model_update",
+                        "payload": {
+                            "session_id": self.session_id,
+                            "models_used": session_data.get("models_used", []),
+                            "profile_tags_used": session_data.get("profile_tags_used", []),
+                            "last_updated": session_data.get("last_updated"),
+                            "provider": self.current_provider,
+                            "model": self.current_model,
+                            "name": session_data.get("name", "Unnamed Session"),
+                        }
+                    }, event="notification")
+
+                # Emit final_answer (NOT error) with turn_id for badge rendering
                 yield self._format_sse({
                     "step": "Finished",
-                    "error": error_msg,
-                    "error_type": "no_knowledge_found"
-                }, "error")
+                    "final_answer": no_results_message,
+                    "final_answer_text": no_results_text,
+                    "turn_id": self.current_turn_number,
+                    "session_id": self.session_id,
+                    "no_knowledge_found": True,
+                    "is_session_primer": self.is_session_primer
+                }, "final_answer")
+
+                # Emit lifecycle event
+                try:
+                    complete_event = self._emit_lifecycle_event("execution_complete", {
+                        "profile_type": "rag_focused",
+                        "profile_tag": profile_tag,
+                        "collections_searched": len(collection_names),
+                        "documents_retrieved": 0,
+                        "no_knowledge_found": True,
+                        "total_input_tokens": self.turn_input_tokens,
+                        "total_output_tokens": self.turn_output_tokens,
+                        "retrieval_duration_ms": retrieval_duration_ms,
+                        "success": True
+                    })
+                    yield complete_event
+                except Exception as e:
+                    app_logger.warning(f"Failed to emit execution_complete event: {e}")
+
+                app_logger.info("✅ RAG-focused execution completed (no knowledge found)")
                 return
 
             # Apply reranking if configured (reuse existing code from llm_only)

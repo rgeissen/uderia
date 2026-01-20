@@ -1481,6 +1481,19 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
     letter-spacing: 0.05em;
 }
 
+/* No knowledge found message styling (RAG-focused profiles) */
+.no-knowledge-found {
+    padding: 1rem;
+    background-color: rgba(255, 165, 0, 0.1); /* Subtle orange/amber tint */
+    border-left: 3px solid var(--teradata-orange, #f7941d);
+    border-radius: 0.25rem;
+    margin: 0.5rem 0;
+}
+
+.no-knowledge-found p {
+    margin: 0;
+}
+
 /* Ensure avatar hover effects still work even if context is invalid */
 .clickable-avatar:hover {
     transform: scale(1.1);
