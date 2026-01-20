@@ -57,6 +57,14 @@ function _getGenieStepTitle(eventType, payload) {
  */
 function _getConversationAgentStepTitle(eventType, payload) {
     // Route to appropriate harmonized function based on event type
+
+    // lifecycle events → getLifecycleTitle (execution_start, execution_complete, etc.)
+    if (eventType === 'execution_start' || eventType === 'execution_complete' ||
+        eventType === 'execution_error' || eventType === 'execution_cancelled') {
+        const profileType = payload?.profile_type || 'unknown';
+        return getLifecycleTitle(eventType, payload, profileType);
+    }
+
     // conversation_* events → llm_only profile
     if (eventType.startsWith('conversation_') || eventType.startsWith('llm_execution')) {
         return getLlmOnlyTitle(eventType, payload);

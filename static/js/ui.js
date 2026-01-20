@@ -2365,6 +2365,77 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 break;
             }
 
+            // --- Lifecycle Events for RAG-focused and other profiles ---
+            case 'execution_start': {
+                stepEl.classList.add('info');
+
+                const profileType = details.profile_type || 'unknown';
+                const profileTag = details.profile_tag || 'N/A';
+                const query = details.query || '';
+                const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+                const knowledgeCollections = details.knowledge_collections || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-orange-400">@${profileTag}</code></div>
+                        <div class="status-kv-key">Type</div>
+                        <div class="status-kv-value">${profileType}</div>
+                        ${knowledgeCollections > 0 ? `
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${knowledgeCollections}</div>
+                        ` : ''}
+                        ${queryPreview ? `
+                        <div class="status-kv-key">Query</div>
+                        <div class="status-kv-value text-gray-300">"${queryPreview}"</div>
+                        ` : ''}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'execution_complete': {
+                stepEl.classList.add('success');
+
+                const profileType = details.profile_type || 'unknown';
+                const profileTag = details.profile_tag || 'N/A';
+                const success = details.success !== false;
+                const statusText = success ? 'Success' : 'Failed';
+                const statusClass = success ? 'text-emerald-400' : 'text-rose-400';
+
+                // Profile-specific details for rag_focused
+                let profileDetailsHtml = '';
+                if (details.collections_searched !== undefined) {
+                    const docsRetrieved = details.documents_retrieved || 0;
+                    const collectionsSearched = details.collections_searched || 0;
+                    const retrievalDuration = details.retrieval_duration_ms || 0;
+                    profileDetailsHtml = `
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collectionsSearched} searched</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${docsRetrieved} retrieved</div>
+                        <div class="status-kv-key">Retrieval</div>
+                        <div class="status-kv-value">${retrievalDuration}ms</div>
+                    `;
+                }
+
+                const inputTokens = details.total_input_tokens || 0;
+                const outputTokens = details.total_output_tokens || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value"><code class="status-code text-orange-400">@${profileTag}</code></div>
+                        ${profileDetailsHtml}
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    </div>
+                `;
+                break;
+            }
+
             default:
                 // Generic fallback with JSON display
                 try {
