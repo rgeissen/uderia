@@ -1774,7 +1774,7 @@ async def new_session():
         response_data = {
             "id": session_id,
             "name": "New Chat",
-            "profile_tags_used": [profile_tag] if profile_tag else [],  # Include for immediate UI display
+            "profile_tags_used": [],  # Populated on first query execution, not on session creation
             "profile_tag": profile_tag,  # Current profile tag for display
             "models_used": [],
             # Include profile metadata for resource panel updates

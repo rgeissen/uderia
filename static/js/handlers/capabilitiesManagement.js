@@ -326,12 +326,9 @@ export function renderResourcePanel(type) {
 
         tabButton.style.display = 'inline-block';
 
-        // Restore Resources tab and categories container for normal profiles (not special types)
+        // Restore categories container for normal profiles (not special types)
+        // Note: Resources tab visibility is controlled by handleLoadResources('resources') based on actual data
         if (!state.activeGenieProfile && !state.activeRagProfile && !state.activeLlmOnlyProfile) {
-            const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
-            if (resourcesTab) {
-                resourcesTab.style.display = 'inline-block';
-            }
             // Restore categories container display
             categoriesContainer.style.display = 'flex';
         }
