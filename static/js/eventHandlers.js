@@ -575,8 +575,8 @@ async function processStream(responseBody) {
                             }, isFinal, 'lifecycle');
                         }
                     } else if (eventName === 'rag_retrieval') {
-                        state.lastRagCaseData = eventData; // Store the full RAG case data
-                        UI.blinkRagDot();
+                        state.lastRagCaseData = eventData; // Store the full CCR (Champion Case Retrieval) data
+                        UI.blinkCcrDot();
                     } else if (eventName === 'llm_execution') {
                         // LLM execution event for llm_only profile (emitted with specific event name like genie)
                         const { details, step, type } = eventData;
@@ -2508,7 +2508,7 @@ export function initializeEventListeners() {
 
     DOM.contextStatusDot.addEventListener('click', handleContextPurgeClick);
 
-    DOM.ragStatusDot.addEventListener('click', () => {
+    DOM.ccrStatusDot.addEventListener('click', () => {
         if (state.lastRagCaseData) {
             UI.showRagCaseModal(state.lastRagCaseData);
         } else {

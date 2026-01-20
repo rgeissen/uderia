@@ -4230,21 +4230,21 @@ export function blinkContextDot() {
 }
 
 /**
- * Provides brief visual feedback on the RAG status dot by making it blink yellow.
+ * Provides brief visual feedback on the CCR (Champion Case Retrieval) status dot by making it blink yellow.
  */
-export function blinkRagDot() {
-    if (!DOM.ragStatusDot) return;
+export function blinkCcrDot() {
+    if (!DOM.ccrStatusDot) return;
 
     // Ensure it's in the 'connected' state before blinking
-    if (!DOM.ragStatusDot.classList.contains('connected')) {
-        DOM.ragStatusDot.classList.add('connected');
+    if (!DOM.ccrStatusDot.classList.contains('connected')) {
+        DOM.ccrStatusDot.classList.add('connected');
     }
 
-    DOM.ragStatusDot.classList.add('blinking-yellow');
+    DOM.ccrStatusDot.classList.add('blinking-yellow');
 
     // The animation runs for 1.5s (0.5s * 3 iterations)
     setTimeout(() => {
-        DOM.ragStatusDot.classList.remove('blinking-yellow');
+        DOM.ccrStatusDot.classList.remove('blinking-yellow');
     }, 1500);
 }
 

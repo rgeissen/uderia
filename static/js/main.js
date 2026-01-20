@@ -1097,11 +1097,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             DOM.keyObservationsToggleButton.classList.remove('hidden');
         }
 
-        if (DOM.ragStatusDot) {
+        if (DOM.ccrStatusDot) {
             if (!state.appConfig.rag_enabled) {
-                DOM.ragStatusDot.parentElement.style.display = 'none';
+                DOM.ccrStatusDot.parentElement.style.display = 'none';
             } else {
-                DOM.ragStatusDot.parentElement.style.display = 'flex';
+                DOM.ccrStatusDot.parentElement.style.display = 'flex';
             }
         }
 
@@ -1123,14 +1123,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Note: Credentials are ALWAYS stored in localStorage
         
-        // Update RAG indicator based on status
-        if (DOM.ragStatusDot && state.appConfig.rag_enabled) {
+        // Update CCR (Champion Case Retrieval) indicator based on status
+        if (DOM.ccrStatusDot && state.appConfig.rag_enabled) {
             if (status.rag_active) {
-                DOM.ragStatusDot.classList.remove('disconnected');
-                DOM.ragStatusDot.classList.add('connected');
+                DOM.ccrStatusDot.classList.remove('disconnected');
+                DOM.ccrStatusDot.classList.add('connected');
             } else {
-                DOM.ragStatusDot.classList.remove('connected');
-                DOM.ragStatusDot.classList.add('disconnected');
+                DOM.ccrStatusDot.classList.remove('connected');
+                DOM.ccrStatusDot.classList.add('disconnected');
             }
         }
 

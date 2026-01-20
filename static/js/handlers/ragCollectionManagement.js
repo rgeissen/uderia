@@ -23,13 +23,13 @@ function escapeHtml(text) {
 }
 
 /**
- * Updates the RAG indicator based on current RAG status
+ * Updates the CCR (Champion Case Retrieval) indicator based on current status
  */
-async function updateRagIndicator() {
-    if (!DOM.ragStatusDot || !state.appConfig.rag_enabled) {
+async function updateCcrIndicator() {
+    if (!DOM.ccrStatusDot || !state.appConfig.rag_enabled) {
         return;
     }
-    
+
     try {
         const token = localStorage.getItem('tda_auth_token');
         const response = await fetch('/api/status', {
@@ -38,16 +38,16 @@ async function updateRagIndicator() {
             }
         });
         const status = await response.json();
-        
+
         if (status.rag_active) {
-            DOM.ragStatusDot.classList.remove('disconnected');
-            DOM.ragStatusDot.classList.add('connected');
+            DOM.ccrStatusDot.classList.remove('disconnected');
+            DOM.ccrStatusDot.classList.add('connected');
         } else {
-            DOM.ragStatusDot.classList.remove('connected');
-            DOM.ragStatusDot.classList.add('disconnected');
+            DOM.ccrStatusDot.classList.remove('connected');
+            DOM.ccrStatusDot.classList.add('disconnected');
         }
     } catch (error) {
-        console.error('Failed to update RAG indicator:', error);
+        console.error('Failed to update CCR indicator:', error);
     }
 }
 
@@ -723,8 +723,8 @@ async function toggleRagCollection(collectionId, currentState) {
             // Refresh collections list
             await loadRagCollections();
             
-            // Update RAG indicator status
-            await updateRagIndicator();
+            // Update CCR indicator status
+            await updateCcrIndicator();
         } else {
             // Backend returns 'message' field for errors
             showNotification('error', data.message || 'Failed to toggle collection');

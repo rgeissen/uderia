@@ -2038,15 +2038,15 @@ export async function reconnectAndLoad() {
             DOM.contextStatusDot.classList.remove('disconnected');
             DOM.contextStatusDot.classList.add('idle');
             
-            // Update RAG indicator - check if RAG is active after configuration
-            if (DOM.ragStatusDot) {
+            // Update CCR (Champion Case Retrieval) indicator - check if active after configuration
+            if (DOM.ccrStatusDot) {
                 const status = await API.checkServerStatus();
                 if (status.rag_active) {
-                    DOM.ragStatusDot.classList.remove('disconnected');
-                    DOM.ragStatusDot.classList.add('connected');
+                    DOM.ccrStatusDot.classList.remove('disconnected');
+                    DOM.ccrStatusDot.classList.add('connected');
                 } else {
-                    DOM.ragStatusDot.classList.remove('connected');
-                    DOM.ragStatusDot.classList.add('disconnected');
+                    DOM.ccrStatusDot.classList.remove('connected');
+                    DOM.ccrStatusDot.classList.add('disconnected');
                 }
             }
             
@@ -2968,15 +2968,15 @@ function attachProfileEventListeners() {
                     DOM.llmStatusDot.classList.remove('disconnected', 'busy');
                     DOM.llmStatusDot.classList.add('idle');
 
-                    // Update RAG indicator
-                    if (DOM.ragStatusDot) {
+                    // Update CCR (Champion Case Retrieval) indicator
+                    if (DOM.ccrStatusDot) {
                         const status = await API.checkServerStatus();
                         if (status.rag_active) {
-                            DOM.ragStatusDot.classList.remove('disconnected');
-                            DOM.ragStatusDot.classList.add('connected');
+                            DOM.ccrStatusDot.classList.remove('disconnected');
+                            DOM.ccrStatusDot.classList.add('connected');
                         } else {
-                            DOM.ragStatusDot.classList.remove('connected');
-                            DOM.ragStatusDot.classList.add('disconnected');
+                            DOM.ccrStatusDot.classList.remove('connected');
+                            DOM.ccrStatusDot.classList.add('disconnected');
                         }
                     }
 

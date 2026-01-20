@@ -56,16 +56,16 @@ export async function finalizeConfiguration(config, switchToConversationView = t
     DOM.contextStatusDot.classList.remove('disconnected');
     DOM.contextStatusDot.classList.add('idle');
     
-    // Update RAG indicator - check if RAG is active after configuration
-    if (DOM.ragStatusDot) {
-        // Fetch fresh status after configuration to check if RAG collections are loaded
+    // Update CCR (Champion Case Retrieval) indicator - check if active after configuration
+    if (DOM.ccrStatusDot) {
+        // Fetch fresh status after configuration to check if planner collections are loaded
         const status = await API.checkServerStatus();
         if (status.rag_active) {
-            DOM.ragStatusDot.classList.remove('disconnected');
-            DOM.ragStatusDot.classList.add('connected');
+            DOM.ccrStatusDot.classList.remove('disconnected');
+            DOM.ccrStatusDot.classList.add('connected');
         } else {
-            DOM.ragStatusDot.classList.remove('connected');
-            DOM.ragStatusDot.classList.add('disconnected');
+            DOM.ccrStatusDot.classList.remove('connected');
+            DOM.ccrStatusDot.classList.add('disconnected');
         }
     }
     

@@ -353,11 +353,11 @@ export function subscribeToNotifications() {
                 const { task_id, session_id, event } = data.payload;
                 if (session_id !== state.currentSessionId) break;
 
-                // --- MODIFICATION START: Add RAG event handling ---
+                // --- MODIFICATION START: Add CCR (Champion Case Retrieval) event handling ---
                 // Check the *original* event type inside the payload
                 if (event.type === 'rag_retrieval') {
                     state.lastRagCaseData = event; // Store the full case data
-                    UI.blinkRagDot();
+                    UI.blinkCcrDot();
                 }
                 // --- MODIFICATION END ---
 
@@ -420,7 +420,7 @@ export function subscribeToNotifications() {
             }
             // --- MODIFICATION END ---
             case 'rag_retrieval':
-                UI.blinkRagDot();
+                UI.blinkCcrDot();
                 break;
             // --- Genie Coordination Events ---
             case 'genie_start':  // From execution_service.py

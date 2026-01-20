@@ -150,7 +150,7 @@ export const mcpStatusDot = document.getElementById('mcp-status-dot');
 export const llmStatusDot = document.getElementById('llm-status-dot');
 export const sseStatusDot = document.getElementById('sse-status-dot');
 export const contextStatusDot = document.getElementById('context-status-dot');
-export const ragStatusDot = document.getElementById('rag-status-dot');
+export const ccrStatusDot = document.getElementById('ccr-status-dot');
 
 // Window menu
 export const windowMenuButton = document.getElementById('window-menu-button');
