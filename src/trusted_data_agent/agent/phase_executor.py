@@ -343,7 +343,7 @@ class PhaseExecutor:
                     flattened_results.extend(tool_result['results'])
 
             if flattened_results:
-                app_logger.info(f"Extracted and flattened {len(flattened_results)} items from previous loop phase '{source_phase_key}'.")
+                app_logger.debug(f"Extracted and flattened {len(flattened_results)} items from previous loop phase '{source_phase_key}'.")
                 return flattened_results
 
         def find_results_list(data):

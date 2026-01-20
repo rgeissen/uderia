@@ -3172,7 +3172,7 @@ The following domain knowledge may be relevant to this conversation:
                             # Store the collection ID and case ID from the retrieved RAG case
                             self.rag_source_collection_id = data['full_case_data']['metadata']['collection_id']
                             self.rag_source_case_id = data.get('case_id')  # Capture case_id for feedback tracking
-                            app_logger.info(f"RAG example retrieved from collection {self.rag_source_collection_id}, case_id: {self.rag_source_case_id}")
+                            app_logger.debug(f"RAG example retrieved from collection {self.rag_source_collection_id}, case_id: {self.rag_source_case_id}")
                         
                         # --- PHASE 2: Track knowledge repository access ---
                         elif event_name == "knowledge_retrieval":

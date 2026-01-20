@@ -257,7 +257,7 @@ def _regenerate_contexts():
             APP_STATE['tools_context'] = "\n".join(tool_context_parts)
         else:
             APP_STATE['tools_context'] = "--- No Tools Available ---"
-        app_logger.info(f"Regenerated LLM tool context. {enabled_count} tools are active.")
+        app_logger.debug(f"Regenerated LLM tool context. {enabled_count} tools are active.")
 
     if 'mcp_prompts' in APP_STATE and 'structured_prompts' in APP_STATE:
         for category, prompt_list in APP_STATE['structured_prompts'].items():
@@ -296,7 +296,7 @@ def _regenerate_contexts():
             APP_STATE['prompts_context'] = "\n".join(prompt_context_parts)
         else:
             APP_STATE['prompts_context'] = "--- No Prompts Available ---"
-        app_logger.info(f"Regenerated LLM prompt context. {enabled_count} prompts are active.")
+        app_logger.debug(f"Regenerated LLM prompt context. {enabled_count} prompts are active.")
 
     if disabled_tools_list or disabled_prompts_list:
         constraints_list = []
@@ -310,8 +310,8 @@ def _regenerate_contexts():
             "You are explicitly forbidden from using the following capabilities in your plan under any circumstances:\n"
             + "\n".join(constraints_list) + "\n"
         )
-        app_logger.info(f"Regenerated LLM constraints context. {len(constraints_list)} capabilities are forbidden.")
+        app_logger.debug(f"Regenerated LLM constraints context. {len(constraints_list)} capabilities are forbidden.")
     else:
         APP_STATE['constraints_context'] = "" 
-        app_logger.info("Regenerated LLM constraints context. No capabilities are currently forbidden.")
+        app_logger.debug("Regenerated LLM constraints context. No capabilities are currently forbidden.")
 

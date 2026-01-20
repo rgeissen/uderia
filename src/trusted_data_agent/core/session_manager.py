@@ -336,17 +336,14 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
                     # Enrich genie_metadata with nesting_level and slave_profile_tag from database
                     if genie_metadata.get("is_genie_slave"):
                         session_id = data.get("id", session_file.stem)
-                        app_logger.info(f"[Nesting Debug] Session {session_id} is a genie slave, fetching parent link for user {user_uuid}...")
                         parent_link = await get_genie_parent_session(session_id, user_uuid)
-                        app_logger.info(f"[Nesting Debug] Parent link data: {parent_link}")
                         if parent_link:
                             nesting_level = parent_link.get("nesting_level", 0)
                             slave_profile_tag = parent_link.get("slave_profile_tag")
                             genie_metadata["nesting_level"] = nesting_level
                             genie_metadata["slave_profile_tag"] = slave_profile_tag
-                            app_logger.info(f"[Nesting Debug] Enriched session {session_id} with nesting_level={nesting_level}, slave_profile_tag={slave_profile_tag}")
                         else:
-                            app_logger.warning(f"[Nesting Debug] No parent link found for session {session_id}")
+                            app_logger.warning(f"No parent link found for genie slave session {session_id}")
 
                     summary = {
                         "id": data.get("id", session_file.stem),

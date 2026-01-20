@@ -106,7 +106,7 @@ def build_mcp_server_config(server_id: str, server_data: dict) -> dict:
             'url': mcp_server_url
         }
 
-        app_logger.info(f"Building HTTP config for {server_id}: {mcp_server_url}")
+        app_logger.debug(f"Building HTTP config for {server_id}: {mcp_server_url}")
         return {server_id: config}
 
     else:
@@ -474,11 +474,9 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     else:
                         raise ValueError(f"Unsupported provider: {provider}")
 
-                    app_logger.info(f"LLM client validated successfully: {provider}/{model}")
-
                     # === Add to pool after successful creation ===
                     llm_pool[pool_key] = temp_llm_instance
-                    app_logger.info(f"✓ Created new LLM instance for {provider}/{model} (added to pool)")
+                    app_logger.debug(f"Created LLM instance for {provider}/{model} (added to pool)")
 
                 except Exception as e:
                     app_logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
@@ -559,7 +557,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                 }
 
             server_name = mcp_server.get('name')  # For logging only
-            app_logger.info(f"Initializing MCP client for profile {profile_id} (server: {server_name}, ID: {mcp_server_id})")
+            app_logger.debug(f"Initializing MCP client for profile {profile_id} (server: {server_name}, ID: {mcp_server_id})")
 
             # Initialize and validate MCP client
             try:
@@ -1166,10 +1164,9 @@ async def retrieve_credentials_for_provider(user_identifier: str, provider: str)
         credentials = encryption.decrypt_credentials(user_identifier, provider)
         
         if credentials:
-            app_logger.info(f"Retrieved credentials for user {user_identifier}, provider {provider}")
             return {"status": "success", "credentials": credentials}
         else:
-            app_logger.info(f"No stored credentials found for user {user_identifier}, provider {provider}")
+            app_logger.debug(f"No stored credentials found for user {user_identifier}, provider {provider}")
             return {"status": "success", "credentials": None, "message": "No stored credentials found"}
             
     except Exception as e:

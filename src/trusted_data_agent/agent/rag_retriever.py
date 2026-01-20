@@ -1085,7 +1085,7 @@ class RAGRetriever:
                     meta["is_most_efficient"] = (case_id == best_case_id)
                     collection.update(ids=[case_id], metadatas=[meta])
                 
-                logger.info(f"New champion for query '{user_query[:50]}...' in collection {collection_id}: {best_case_id} (feedback={best_feedback}, tokens={best_tokens})")
+                logger.debug(f"New champion for query '{user_query[:50]}...' in collection {collection_id}: {best_case_id}")
                 
         except Exception as e:
             logger.error(f"Error re-evaluating champion: {e}", exc_info=True)
@@ -1239,7 +1239,7 @@ class RAGRetriever:
             repository_type: Type of repository to retrieve from - "planner" or "knowledge" (default: "planner")
                            --- MODIFICATION: Added repository_type parameter for knowledge repository support ---
         """
-        logger.info(f"Retrieving top {k} RAG examples for query: '{query}' (repository_type: {repository_type}, min_score: {min_score}, allowed_collections: {allowed_collection_ids})")
+        logger.debug(f"Retrieving top {k} RAG examples for query: '{query[:50]}...' (repository_type: {repository_type})")
         
         if not self.collections:
             logger.warning("No active collections to retrieve examples from")
@@ -1262,13 +1262,13 @@ class RAGRetriever:
         # --- MODIFICATION START: Query all active collections with optional filtering ---
         all_candidate_cases = []
         
-        logger.info(f"RAG retriever has {len(self.collections)} loaded collections: {list(self.collections.keys())}")
-        logger.info(f"Effective allowed collections: {effective_allowed}")
+        logger.debug(f"RAG retriever has {len(self.collections)} loaded collections: {list(self.collections.keys())}")
+        logger.debug(f"Effective allowed collections: {effective_allowed}")
         
         for collection_id, collection in self.collections.items():
             # Skip collections not in the allowed set (if filtering is active)
             if effective_allowed is not None and collection_id not in effective_allowed:
-                logger.info(f"Skipping collection '{collection_id}' - not accessible to user or not in profile filter")
+                logger.debug(f"Skipping collection '{collection_id}' - not accessible to user or not in profile filter")
                 continue
             
             # --- MODIFICATION START: Filter by repository_type ---
@@ -1329,14 +1329,8 @@ class RAGRetriever:
 
                     where_filter = {"$and": base_filters}
                 
-                # Log collection state before query
-                try:
-                    coll_count = collection.count()
-                    logger.info(f"Collection '{collection_id}' has {coll_count} documents before query")
-                except Exception as e:
-                    logger.warning(f"Could not get count for collection '{collection_id}': {e}")
-                
-                logger.info(f"Querying collection '{collection_id}' with where_filter={where_filter}, n_results={k * 10}")
+                # Log collection state before query (debug level)
+                logger.debug(f"Querying collection '{collection_id}' with where_filter, n_results={k * 10}")
                 
                 query_results = collection.query(
                     query_texts=[query],
@@ -1346,7 +1340,7 @@ class RAGRetriever:
                 )
                 # --- MODIFICATION END ---
                 
-                logger.info(f"Collection '{collection_id}' returned {len(query_results['ids'][0])} raw results")
+                logger.debug(f"Collection '{collection_id}' returned {len(query_results['ids'][0])} raw results")
                 
                 for i in range(len(query_results["ids"][0])):
                     case_id = query_results["ids"][0][i]
@@ -1356,7 +1350,7 @@ class RAGRetriever:
                     similarity_score = 1 - distance 
 
                     if similarity_score < min_score:
-                        logger.info(f"Skipping case {case_id} from collection '{collection_id}' due to low similarity score: {similarity_score:.3f} < {min_score}")
+                        logger.debug(f"Skipping case {case_id} (similarity {similarity_score:.3f} < {min_score})")
                         continue
                     
                     # Handle different metadata structures for knowledge vs planner repositories
@@ -1840,7 +1834,7 @@ class RAGRetriever:
             new_tokens = case_study["metadata"].get("llm_config", {}).get("output_tokens", 0)
             new_document = new_query # The document we embed is the user query
             
-            logger.info(f"Processing RAG case {new_case_id} for collection '{collection_id}', query: '{new_query[:50]}...' (Tokens: {new_tokens})")
+            logger.debug(f"Processing RAG case {new_case_id} for collection '{collection_id}'")
 
             # 4. Query ChromaDB for existing "most efficient" in this collection
             # --- MODIFICATION: Use rag_context to build query filter with user isolation ---
@@ -1879,30 +1873,24 @@ class RAGRetriever:
             
             # Downvoted cases never become champion
             if new_feedback < 0:
-                logger.info(f"New case {new_case_id} is downvoted (feedback={new_feedback}). Not eligible for champion.")
                 case_study["metadata"]["is_most_efficient"] = False
             # Old champion is downvoted, new case wins by default (if not also downvoted)
             elif old_best_case_feedback < 0:
-                logger.info(f"Old case {old_best_case_id} is downvoted. New case {new_case_id} becomes champion.")
                 case_study["metadata"]["is_most_efficient"] = True
                 id_to_demote = old_best_case_id
             # Compare feedback scores first
             elif new_feedback != old_best_case_feedback:
                 if new_feedback > old_best_case_feedback:
-                    logger.info(f"New case {new_case_id} has better feedback ({new_feedback}) than old case {old_best_case_id} ({old_best_case_feedback}). New case wins.")
                     case_study["metadata"]["is_most_efficient"] = True
                     id_to_demote = old_best_case_id
                 else:
-                    logger.info(f"Old case {old_best_case_id} has better feedback ({old_best_case_feedback}) than new case {new_case_id} ({new_feedback}). Old case wins.")
                     case_study["metadata"]["is_most_efficient"] = False
             # Same feedback level - use token efficiency as tiebreaker
             else:
                 if new_tokens < old_best_case_tokens:
-                    logger.info(f"New case {new_case_id} is MORE efficient ({new_tokens} tokens) than old case {old_best_case_id} ({old_best_case_tokens} tokens). Same feedback level ({new_feedback}).")
                     case_study["metadata"]["is_most_efficient"] = True
                     id_to_demote = old_best_case_id
                 else:
-                    logger.info(f"New case {new_case_id} ({new_tokens} tokens) is NOT more efficient than old case {old_best_case_id} ({old_best_case_tokens} tokens). Same feedback level ({new_feedback}).")
                     case_study["metadata"]["is_most_efficient"] = False
             
             new_metadata = self._prepare_chroma_metadata(case_study)

@@ -1409,7 +1409,7 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
 
     normalized_args = _normalize_tool_arguments(args)
     if normalized_args != args:
-        app_logger.info(f"Normalized tool arguments for '{tool_name}'. Original: {args}, Normalized: {normalized_args}")
+        app_logger.debug(f"Normalized tool arguments for '{tool_name}'")
 
     args = normalized_args
 
@@ -1432,28 +1432,22 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
                 for synonym in synonyms:
                     if synonym in tool_arg_names:
                         # Found a match! The tool wants this specific synonym.
-                        app_logger.info(
-                            f"Aligning argument for '{tool_name}': "
-                            f"Renaming canonical '{canonical_name}' to tool-specific '{synonym}'."
-                        )
+                        app_logger.debug(f"Aligning argument for '{tool_name}': '{canonical_name}' -> '{synonym}'")
                         # Rename the key in our arguments to match the tool's expectation.
                         aligned_args[synonym] = aligned_args.pop(canonical_name)
                         break # Found the correct synonym, move to the next canonical name
     # --- MODIFICATION END ---
 
 
-    app_logger.info(f"🔧 [MCP CALL START] Tool: '{tool_name}' | Args: {aligned_args}")
+    app_logger.debug(f"[MCP] Calling tool '{tool_name}' with args: {aligned_args}")
     try:
         # Use server ID instead of name for session management
         server_id = get_user_mcp_server_id(user_uuid)
         if not server_id:
             raise Exception("MCP server ID not found in configuration.")
 
-        app_logger.info(f"🔧 [MCP CALL] Opening session to server ID: {server_id}")
         async with mcp_client.session(server_id) as temp_session:
-            app_logger.info(f"🔧 [MCP CALL] Calling tool '{tool_name}'...")
             call_tool_result = await temp_session.call_tool(tool_name, aligned_args)
-            app_logger.info(f"🔧 [MCP CALL SUCCESS] Tool '{tool_name}' returned result (length: {len(str(call_tool_result))} chars)")
     except Exception as e:
         app_logger.error(f"❌ [MCP CALL ERROR] Tool '{tool_name}' failed: {e}", exc_info=True)
         result = {"status": "error", "error": f"An exception occurred while invoking tool '{tool_name}'.", "data": str(e)}

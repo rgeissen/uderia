@@ -1403,19 +1403,13 @@ Ranking:"""
         Returns:
             Formatted knowledge context string for inclusion in planning prompt
         """
-        app_logger.info(f"[KNOWLEDGE DEBUG] _retrieve_knowledge_for_planning called with query: {query[:100]}")
-        app_logger.info(f"[KNOWLEDGE DEBUG] profile_config: {profile_config is not None}")
-        
         # 1. Check if enabled
         if not self._is_knowledge_enabled(profile_config):
-            app_logger.info(f"[KNOWLEDGE DEBUG] Knowledge retrieval disabled (global or profile setting)")
             return ""
-        
+
         # 2. Get configured collections
         knowledge_collections = self._get_knowledge_collections(profile_config)
-        app_logger.info(f"[KNOWLEDGE DEBUG] knowledge_collections: {knowledge_collections}")
         if not knowledge_collections:
-            app_logger.info("[KNOWLEDGE DEBUG] No knowledge collections configured in profile")
             return ""
         
         app_logger.info(f"Retrieving knowledge from {len(knowledge_collections)} configured collections")
@@ -1490,13 +1484,9 @@ Ranking:"""
         balanced_results = self._balance_collection_diversity(all_results, max_docs)
         
         app_logger.info(f"Selected {len(balanced_results)} knowledge documents for planning (balanced across collections)")
-        app_logger.info(f"[KNOWLEDGE DEBUG] Balanced results: {[{k: v for k, v in doc.items() if k in ['collection_name', 'similarity_score']} for doc in balanced_results]}")
-        
+
         # 6. Format with token limits
         formatted_knowledge = self._format_with_token_limit(balanced_results, max_tokens)
-        
-        app_logger.info(f"[KNOWLEDGE DEBUG] Formatted knowledge length: {len(formatted_knowledge)} chars")
-        app_logger.info(f"[KNOWLEDGE DEBUG] Formatted knowledge preview: {formatted_knowledge[:500] if formatted_knowledge else '(EMPTY)'}")
         
         # Track which collections were accessed for event logging
         accessed_collections = list(set(doc.get("collection_name") for doc in balanced_results if doc.get("collection_name")))
@@ -1679,15 +1669,12 @@ Ranking:"""
 
         # --- KNOWLEDGE REPOSITORIES: Domain knowledge context (retrieved FIRST to inform RAG decision) ---
         knowledge_context_str = ""
-        app_logger.info(f"[KNOWLEDGE DEBUG] Starting knowledge retrieval: rag_retriever={self.rag_retriever is not None}, KNOWLEDGE_RAG_ENABLED={APP_CONFIG.KNOWLEDGE_RAG_ENABLED}")
-        
         if self.rag_retriever and APP_CONFIG.KNOWLEDGE_RAG_ENABLED:
             # Get profile configuration for knowledge settings
             profile_config = None
             # Use executor's active_profile_id which is already correctly set to either
             # the override profile or the default profile at initialization (executor.py line 103)
             if self.executor.active_profile_id and self.executor.active_profile_id != "__system_default__":
-                app_logger.info(f"[KNOWLEDGE DEBUG] active_profile_id={self.executor.active_profile_id}, user_uuid={self.executor.user_uuid}")
                 try:
                     from trusted_data_agent.core.config_manager import get_config_manager
                     config_manager = get_config_manager()
@@ -1696,13 +1683,8 @@ Ranking:"""
                     # Use the active profile directly - it's already the correct profile
                     profile_id = self.executor.active_profile_id
 
-                    app_logger.info(f"[KNOWLEDGE DEBUG] Selected profile_id={profile_id}")
-
                     if profile_id:
                         profile_config = next((p for p in profiles if p.get("id") == profile_id), None)
-                        app_logger.info(f"[KNOWLEDGE DEBUG] Found profile_config={profile_config is not None}")
-                        if profile_config:
-                            app_logger.info(f"[KNOWLEDGE DEBUG] Profile has knowledgeConfig={profile_config.get('knowledgeConfig')}")
                 except Exception as e:
                     app_logger.warning(f"Failed to get profile for knowledge retrieval: {e}")
             
@@ -1759,32 +1741,23 @@ Ranking:"""
             allowed_collection_ids = None
             # Use executor's active_profile_id which is already correctly set to either
             # the override profile or the default profile at initialization (executor.py line 103)
-            app_logger.info(f"[RAG FILTER DEBUG] Starting collection filtering: active_profile_id={self.executor.active_profile_id}, user_uuid={self.executor.user_uuid}")
             if self.executor.active_profile_id and self.executor.active_profile_id != "__system_default__":
                 try:
                     from trusted_data_agent.core.config_manager import get_config_manager
                     config_manager = get_config_manager()
                     profiles = config_manager.get_profiles(self.executor.user_uuid)
-                    app_logger.info(f"[RAG FILTER DEBUG] Retrieved {len(profiles)} profiles from config_manager")
 
                     # Use the active profile directly - it's already the correct profile
                     profile_id = self.executor.active_profile_id
-                    app_logger.info(f"[RAG FILTER DEBUG] Using profile_id: {profile_id}")
 
                     if profile_id:
                         profile = next((p for p in profiles if p.get("id") == profile_id), None)
-                        app_logger.info(f"[RAG FILTER DEBUG] profile_id={profile_id}, profile_found={profile is not None}")
                         if profile:
                             # Use ragCollections instead of autocompleteCollections for RAG retrieval filtering
                             rag_collections = profile.get("ragCollections", ["*"])
-                            app_logger.info(f"[RAG FILTER DEBUG] ragCollections from profile: {rag_collections}")
                             if rag_collections != ["*"]:
                                 allowed_collection_ids = set(rag_collections)
                                 app_logger.info(f"RAG retrieval filtered to collections: {allowed_collection_ids} (profile: {profile.get('name')})")
-                            else:
-                                app_logger.info(f"[RAG FILTER DEBUG] ragCollections is wildcard, not filtering")
-                        else:
-                            app_logger.warning(f"[RAG FILTER DEBUG] Profile {profile_id} not found in profiles list")
                 except Exception as e:
                     app_logger.warning(f"Failed to get profile collections for RAG filtering: {e}")
             
@@ -1820,9 +1793,7 @@ Ranking:"""
 """
                 formatted_examples = [self.rag_retriever._format_few_shot_example(case) for case in retrieved_cases]
                 rag_few_shot_examples_str = "\n\n" + adaptive_header + "\n".join(formatted_examples) + "\n\n"
-                app_logger.info(f"Retrieved RAG cases for few-shot examples: {[case['case_id'] for case in retrieved_cases]}")
-            else:
-                app_logger.info("No relevant RAG cases found for few-shot examples.")
+                app_logger.debug(f"Retrieved RAG cases for few-shot examples: {[case['case_id'] for case in retrieved_cases]}")
 
         # Get MCP system name from database (bootstrapped from tda_config.json)
         import sqlite3
@@ -1885,18 +1856,10 @@ Ranking:"""
         yield self.executor._format_sse(event_data)
         # --- MODIFICATION END ---
 
-        if rag_few_shot_examples_str:
-            app_logger.info(f"RAG Findings (few-shot examples) used:\n{rag_few_shot_examples_str}")
-
-        app_logger.info(
-            f"\n--- Meta-Planner Turn ---\n"
-            f"** CONTEXT **\n"
-            f"Original User Input: {self.executor.original_user_input}\n"
-            f"Execution Depth: {self.executor.execution_depth}\n"
-            f"Previous Turn History Summary (for prompt):\n{previous_turn_summary_str}\n"
-            f"** GENERATED PLAN **\n{response_text}\n"
-            f"-------------------------"
-        )
+        # Log summary of planning (verbose details logged at debug level)
+        rag_case_count = len(retrieved_cases) if retrieved_cases else 0
+        app_logger.info(f"Meta-planner generated plan (RAG cases: {rag_case_count}, depth: {self.executor.execution_depth})")
+        app_logger.debug(f"Generated plan: {response_text[:500]}..." if len(response_text) > 500 else f"Generated plan: {response_text}")
 
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         # Get user_uuid and session_id from the executor instance
@@ -1975,11 +1938,10 @@ Ranking:"""
 
         # --- NORMALIZATION: Convert all template syntaxes to canonical format ---
         if self.executor.meta_plan:
-            app_logger.info("Normalizing plan template syntax to canonical format...")
             self.executor.meta_plan = self._normalize_plan_syntax(self.executor.meta_plan)
         # --- END NORMALIZATION ---
 
         if self.executor.active_prompt_name and self.executor.meta_plan:
             if len(self.executor.meta_plan) > 1 or any(phase.get("type") == "loop" for phase in self.executor.meta_plan):
                 self.executor.is_complex_prompt_workflow = True
-                app_logger.info(f"'{self.executor.active_prompt_name}' has been qualified as a complex prompt workflow based on the generated plan.")
+                app_logger.debug(f"'{self.executor.active_prompt_name}' qualified as complex prompt workflow")
