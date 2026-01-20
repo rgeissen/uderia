@@ -2773,6 +2773,22 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
+    } else if (source === 'lifecycle') {
+        // Lifecycle events (execution_start, execution_complete, etc.) for all profile types
+        // Reset status window if no active execution
+        if (!state.isConversationAgentActive && !state.isGenieCoordinationActive && !state.isRestTaskActive) {
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!hasExistingSteps) {
+                resetStatusWindowForNewTask();
+                updateTaskIdDisplay(null);
+            }
+        }
+        statusTitle.textContent = 'Live Status';
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
     } else if (source === 'interactive') {
         // If the last active view was a REST task or agent execution, reset the view
         // BUT: Don't reset if genie/conversation agent is CURRENTLY active - let them finish!
