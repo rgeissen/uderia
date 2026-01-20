@@ -1273,13 +1273,13 @@ class PlanExecutor:
 
             # Generate session name if first turn (using unified generator)
             if self.current_turn_number == 1:
-                async for result in self._generate_and_emit_session_name():
-                    if isinstance(result, str):
+                async for name_result in self._generate_and_emit_session_name():
+                    if isinstance(name_result, str):
                         # SSE event - yield to frontend
-                        yield result
+                        yield name_result
                     else:
                         # Final result tuple: (name, input_tokens, output_tokens, collected_events)
-                        new_name, name_input_tokens, name_output_tokens, name_events = result
+                        new_name, name_input_tokens, name_output_tokens, name_events = name_result
                         system_events.extend(name_events)
 
                         if new_name and new_name != "New Chat":
