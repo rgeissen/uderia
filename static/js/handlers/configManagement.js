@@ -147,13 +147,7 @@ export async function finalizeConfiguration(config, switchToConversationView = t
 
     try {
         const sessions = await API.loadAllSessions();
-        console.log('[DEBUG] Sessions from API:', sessions);
-        if (sessions && sessions.length > 0) {
-            console.log('[DEBUG] First session structure:', sessions[0]);
-            console.log('[DEBUG] First session profile_tags_used:', sessions[0].profile_tags_used);
-            console.log('[DEBUG] First session models_used:', sessions[0].models_used);
-        }
-        
+
         // Filter out archived sessions from the conversation view selector
         const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
 

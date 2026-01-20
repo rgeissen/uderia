@@ -1128,7 +1128,8 @@ async function handleReloadPlanClick(element) {
                         turn_input_tokens: turnData.turn_input_tokens || 0,
                         turn_output_tokens: turnData.turn_output_tokens || 0
                     },
-                    turnData.system_events || []  // Pass system events (session name generation, etc.)
+                    turnData.system_events || [],  // Pass system events (session name generation, etc.)
+                    turnData.duration_ms || 0  // Pass duration for execution summary card
                 );
             }
 
@@ -1279,6 +1280,30 @@ async function handleReloadPlanClick(element) {
                     }
                     UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
+
+                // Render system events (session name generation, etc.) after agent events
+                const systemEvents = turnData.system_events || [];
+                if (systemEvents.length > 0) {
+                    systemEvents.forEach((event, index) => {
+                        // System events are always final (completed)
+                        const isFinal = true;
+
+                        // Check if payload is already a complete event (has 'step' field)
+                        let eventData;
+                        if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                            // Payload is complete event_dict (session name events) - use as-is
+                            eventData = event.payload;
+                        } else {
+                            // Payload is just details - reconstruct eventData
+                            eventData = {
+                                step: _getConversationAgentStepTitle(event.type, event.payload),
+                                details: event.payload,
+                                type: event.type
+                            };
+                        }
+                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                    });
+                }
 
                 // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
@@ -1493,7 +1518,8 @@ async function handleReloadPlanClick(element) {
                 turn_input_tokens: turnData.turn_input_tokens || 0,
                 turn_output_tokens: turnData.turn_output_tokens || 0
             },
-            turnData.system_events || []  // Pass system events (session name generation, etc.)
+            turnData.system_events || [],  // Pass system events (session name generation, etc.)
+            turnData.duration_ms || 0  // Pass duration for execution summary card
         );
 
         // --- MODIFICATION START: Update task ID display for reloaded turn ---

@@ -4,6 +4,7 @@ import json
 import logging
 import copy
 import uuid
+import time
 # --- MODIFICATION START: Import asyncio ---
 import asyncio
 # --- MODIFICATION END ---
@@ -2221,7 +2222,6 @@ The following domain knowledge may be relevant to this conversation:
             # --- PHASE 2 END ---
 
             # --- MANDATORY Knowledge Retrieval ---
-            import time
             retrieval_start_time = time.time()
 
             # Collect events for plan reload (similar to genie_events and conversation_agent_events)
@@ -3126,6 +3126,10 @@ The following domain knowledge may be relevant to this conversation:
                 app_logger.warning(f"Failed to emit execution_start event: {e}")
         # --- PHASE 2 END ---
 
+        # Track execution start time for duration calculation (tool_enabled profiles)
+        if not is_llm_only and not is_rag_focused:
+            self.tool_enabled_start_time = time.time()
+
         try:
             # --- MODIFICATION START: Handle Replay ---
             if self.plan_to_execute:
@@ -3346,7 +3350,7 @@ The following domain knowledge may be relevant to this conversation:
                 cancelled_event = self._emit_lifecycle_event("execution_cancelled", {
                     "profile_type": profile_type,
                     "profile_tag": self._get_current_profile_tag(),
-                    "phases_completed": len([a for a in self.turn_action_history if a.get("tool_name") != "TDA_SystemLog"]),
+                    "phases_completed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
                     "cancellation_stage": self.state.name,
                     "partial_input_tokens": self.turn_input_tokens,
                     "partial_output_tokens": self.turn_output_tokens
@@ -3395,7 +3399,7 @@ The following domain knowledge may be relevant to this conversation:
                     "error_message": str(root_exception),
                     "error_type": error_type,
                     "error_stage": self.state.name,
-                    "phases_completed": len([a for a in self.turn_action_history if a.get("tool_name") != "TDA_SystemLog"]),
+                    "phases_completed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
                     "partial_input_tokens": self.turn_input_tokens,
                     "partial_output_tokens": self.turn_output_tokens,
                     "success": False
@@ -3558,6 +3562,8 @@ The following domain knowledge may be relevant to this conversation:
                     # Status fields for consistency with partial turn data
                     "status": "success",
                     "is_partial": False,
+                    # Duration tracking for tool_enabled profile (calculated from start time)
+                    "duration_ms": int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0,
                 }
                 # --- MODIFICATION END ---
                 await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -4086,14 +4092,13 @@ The following domain knowledge may be relevant to this conversation:
         try:
             profile_type = self._detect_profile_type()
             if profile_type == "tool_enabled":
-                import time
-                # Calculate duration if possible (requires tracking start_time)
-                duration_ms = 0  # TODO: Track start_time in future enhancement
+                # Calculate duration from tracked start time
+                duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0
 
                 complete_event = self._emit_lifecycle_event("execution_complete", {
                     "profile_type": "tool_enabled",
                     "profile_tag": self._get_current_profile_tag(),
-                    "phases_executed": len([a for a in self.turn_action_history if a.get("tool_name") != "TDA_SystemLog"]),
+                    "phases_executed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
                     "total_input_tokens": self.turn_input_tokens,
                     "total_output_tokens": self.turn_output_tokens,
                     "duration_ms": duration_ms,

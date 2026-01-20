@@ -365,8 +365,9 @@ export function updateGenieMasterBadges() {
  * @param {Object} knowledgeRetrievalEvent - Optional knowledge retrieval event data.
  * @param {Object} turnTokens - Optional turn token data { turn_input_tokens, turn_output_tokens }.
  * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
+ * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = []) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = [], durationMs = 0) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -514,6 +515,46 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             total_output: 0
         });
     }
+
+    // --- Execution Summary Card for tool_enabled profiles ---
+    // Only show if we have duration data (indicates tool_enabled profile)
+    if (durationMs > 0) {
+        const summaryCard = document.createElement('div');
+        summaryCard.className = 'status-step p-3 rounded-md mb-2 completed conv-agent-success';
+
+        const durationSec = (durationMs / 1000).toFixed(1);
+        const phaseCount = (originalPlan || []).length;
+        const toolCount = (executionTrace || []).reduce((acc, entry) => {
+            // Count actual tool calls (not TDA_SystemLog)
+            if (entry.action && entry.action.tool_name && entry.action.tool_name !== 'TDA_SystemLog') {
+                return acc + 1;
+            }
+            return acc;
+        }, 0);
+
+        summaryCard.innerHTML = `
+            <div class="flex items-center gap-2 mb-2">
+                <div class="status-icon-glow">
+                    <svg class="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+                <h4 class="font-bold text-sm text-white">Execution Complete</h4>
+            </div>
+            <div class="status-details text-xs text-gray-300">
+                <div class="status-kv-grid">
+                    <div class="status-kv-key">Phases</div>
+                    <div class="status-kv-value">${phaseCount} completed</div>
+                    <div class="status-kv-key">Tools</div>
+                    <div class="status-kv-value">${toolCount} executed</div>
+                    <div class="status-kv-key">Duration</div>
+                    <div class="status-kv-value">${durationSec}s</div>
+                </div>
+            </div>
+        `;
+        DOM.statusWindowContent.appendChild(summaryCard);
+    }
+    // --- End Execution Summary Card ---
 
     // Auto-scroll logic
     if (!state.isMouseOverStatus) {
@@ -1002,6 +1043,28 @@ function _renderSessionNameCompleteDetails(details) {
             <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
             <div class="status-kv-key">Tokens</div>
             <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+        </div>
+    `;
+}
+
+function _renderExecutionCompleteDetails(details) {
+    const profileTag = details.profile_tag || 'Unknown';
+    const phasesExecuted = details.phases_executed || 0;
+    const inputTokens = details.total_input_tokens || 0;
+    const outputTokens = details.total_output_tokens || 0;
+    const durationMs = details.duration_ms || 0;
+    const durationSec = (durationMs / 1000).toFixed(1);
+
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Profile</div>
+            <div class="status-kv-value"><code class="status-code text-emerald-300">@${profileTag}</code></div>
+            <div class="status-kv-key">Phases</div>
+            <div class="status-kv-value">${phasesExecuted} executed</div>
+            <div class="status-kv-key">Tokens</div>
+            <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+            <div class="status-kv-key">Duration</div>
+            <div class="status-kv-value">${durationSec}s</div>
         </div>
     `;
 }
@@ -2439,6 +2502,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderSessionNameStartDetails(details);
             } else if (type === "session_name_generation_complete") {
                 customRenderedHtml = _renderSessionNameCompleteDetails(details);
+            } else if (type === "execution_complete") {
+                customRenderedHtml = _renderExecutionCompleteDetails(details);
             } else {
                 try {
                     const cache = new Set();
@@ -3637,22 +3702,9 @@ export function addSessionToList(session, isActive = false) {
     // Display profile tags (preferred) or fall back to models_used
     const tagsDiv = document.createElement('div');
     tagsDiv.className = 'session-models text-xs text-gray-400 mt-1 flex flex-wrap gap-1';
-    
-    // Debug logging with expanded arrays
-    console.log('[DEBUG] Session data:', {
-        id: session.id,
-        profile_tags_used: session.profile_tags_used,
-        models_used: session.models_used,
-        provider: session.provider,
-        model: session.model,
-        has_profile_tags: session.profile_tags_used && Array.isArray(session.profile_tags_used) && session.profile_tags_used.length > 0
-    });
-    console.log('[DEBUG] models_used expanded:', session.models_used);
-    console.log('[DEBUG] profile_tags_used expanded:', session.profile_tags_used);
-    
+
     // Prefer profile_tags_used over models_used
     if (session.profile_tags_used && Array.isArray(session.profile_tags_used) && session.profile_tags_used.length > 0) {
-        console.log('[DEBUG] Using profile tags:', session.profile_tags_used);
         session.profile_tags_used.forEach(tag => {
             const tagSpan = document.createElement('span');
             tagSpan.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all duration-200';
@@ -3716,7 +3768,6 @@ export function addSessionToList(session, isActive = false) {
             tagsDiv.appendChild(tagSpan);
         });
     } else if (session.models_used && Array.isArray(session.models_used) && session.models_used.length > 0) {
-        console.log('[DEBUG] Falling back to models_used:', session.models_used);
         // Fallback to models_used for backwards compatibility
         session.models_used.forEach(modelString => {
             const modelSpan = document.createElement('span');
