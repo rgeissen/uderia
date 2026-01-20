@@ -2202,19 +2202,31 @@ The following domain knowledge may be relevant to this conversation:
                 "type": "rag_execution"
             })
 
+            # Collect events for plan reload (similar to genie_events and conversation_agent_events)
+            # Initialize BEFORE lifecycle emission so we can store the start event
+            knowledge_events = []
+
             # --- PHASE 2: Emit execution_start lifecycle event for rag_focused ---
             try:
                 profile_config = self._get_profile_config()
                 knowledge_config = profile_config.get("knowledgeConfig", {})
                 knowledge_collections = knowledge_config.get("collections", [])
 
-                start_event = self._emit_lifecycle_event("execution_start", {
+                execution_start_payload = {
                     "profile_type": "rag_focused",
                     "profile_tag": self._get_current_profile_tag(),
                     "query": self.original_user_input,
                     "knowledge_collections": len(knowledge_collections)
-                })
+                }
+                start_event = self._emit_lifecycle_event("execution_start", execution_start_payload)
                 yield start_event
+
+                # Store lifecycle start event for reload
+                knowledge_events.append({
+                    "type": "execution_start",
+                    "payload": execution_start_payload
+                })
+
                 app_logger.info("✅ Emitted execution_start event for rag_focused profile")
             except Exception as e:
                 # Silent failure - don't break execution
@@ -2223,9 +2235,6 @@ The following domain knowledge may be relevant to this conversation:
 
             # --- MANDATORY Knowledge Retrieval ---
             retrieval_start_time = time.time()
-
-            # Collect events for plan reload (similar to genie_events and conversation_agent_events)
-            knowledge_events = []
 
             profile_config = self._get_profile_config()
             knowledge_config = profile_config.get("knowledgeConfig", {})
@@ -2367,6 +2376,23 @@ The following domain knowledge may be relevant to this conversation:
                                     except Exception as name_e:
                                         app_logger.error(f"Failed to save session name: {name_e}")
 
+                # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
+                execution_complete_payload = {
+                    "profile_type": "rag_focused",
+                    "profile_tag": profile_tag,
+                    "collections_searched": len(collection_names),
+                    "documents_retrieved": 0,
+                    "no_knowledge_found": True,
+                    "total_input_tokens": self.turn_input_tokens,
+                    "total_output_tokens": self.turn_output_tokens,
+                    "retrieval_duration_ms": retrieval_duration_ms,
+                    "success": True
+                }
+                knowledge_events.append({
+                    "type": "execution_complete",
+                    "payload": execution_complete_payload
+                })
+
                 # Build turn summary for workflow_history
                 turn_summary = {
                     "turn": self.current_turn_number,
@@ -2430,19 +2456,9 @@ The following domain knowledge may be relevant to this conversation:
                     "is_session_primer": self.is_session_primer
                 }, "final_answer")
 
-                # Emit lifecycle event
+                # Emit lifecycle event (already stored in knowledge_events above for reload)
                 try:
-                    complete_event = self._emit_lifecycle_event("execution_complete", {
-                        "profile_type": "rag_focused",
-                        "profile_tag": profile_tag,
-                        "collections_searched": len(collection_names),
-                        "documents_retrieved": 0,
-                        "no_knowledge_found": True,
-                        "total_input_tokens": self.turn_input_tokens,
-                        "total_output_tokens": self.turn_output_tokens,
-                        "retrieval_duration_ms": retrieval_duration_ms,
-                        "success": True
-                    })
+                    complete_event = self._emit_lifecycle_event("execution_complete", execution_complete_payload)
                     yield complete_event
                 except Exception as e:
                     app_logger.warning(f"Failed to emit execution_complete event: {e}")
@@ -2788,6 +2804,22 @@ The following domain knowledge may be relevant to this conversation:
                                 except Exception as name_e:
                                     app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
 
+            # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
+            execution_complete_payload = {
+                "profile_type": "rag_focused",
+                "profile_tag": profile_tag,
+                "collections_searched": len(collection_names),
+                "documents_retrieved": len(final_results),
+                "total_input_tokens": self.turn_input_tokens,
+                "total_output_tokens": self.turn_output_tokens,
+                "retrieval_duration_ms": retrieval_duration_ms,
+                "success": True
+            }
+            knowledge_events.append({
+                "type": "execution_complete",
+                "payload": execution_complete_payload
+            })
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -2828,18 +2860,9 @@ The following domain knowledge may be relevant to this conversation:
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved rag_focused turn data to workflow_history for turn {self.current_turn_number}")
 
-            # --- PHASE 2: Emit execution_complete lifecycle event for rag_focused ---
+            # --- PHASE 2: Emit execution_complete lifecycle event (already stored in knowledge_events) ---
             try:
-                complete_event = self._emit_lifecycle_event("execution_complete", {
-                    "profile_type": "rag_focused",
-                    "profile_tag": profile_tag,
-                    "collections_searched": len(collection_names),
-                    "documents_retrieved": len(final_results),
-                    "total_input_tokens": self.turn_input_tokens,
-                    "total_output_tokens": self.turn_output_tokens,
-                    "retrieval_duration_ms": retrieval_duration_ms,
-                    "success": True
-                })
+                complete_event = self._emit_lifecycle_event("execution_complete", execution_complete_payload)
                 yield complete_event
                 app_logger.info("✅ Emitted execution_complete event for rag_focused profile")
             except Exception as e:
