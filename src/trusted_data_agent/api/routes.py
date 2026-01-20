@@ -1774,8 +1774,8 @@ async def new_session():
         response_data = {
             "id": session_id,
             "name": "New Chat",
-            "profile_tags_used": [],  # Will be populated on first turn execution, not on session creation
-            "profile_tag": profile_tag,  # Current profile tag for display (not yet in history)
+            "profile_tags_used": [profile_tag] if profile_tag else [],  # Include for immediate UI display
+            "profile_tag": profile_tag,  # Current profile tag for display
             "models_used": [],
             # Include profile metadata for resource panel updates
             "profile_id": profile_override_id if profile_override_id else default_profile_id,
