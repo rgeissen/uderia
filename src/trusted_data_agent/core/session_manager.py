@@ -126,13 +126,16 @@ async def _save_session(user_uuid: str, session_id: str, session_data: dict):
         notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
         if notification_queues:
             # Check if notification state has changed
+            # Include profile_tags_used as a tuple for comparison (arrays aren't directly comparable)
+            profile_tags_used = session_data.get("profile_tags_used", [])
             current_state = {
                 "provider": session_data.get("provider"),
                 "model": session_data.get("model"),
                 "profile_tag": session_data.get("profile_tag"),
+                "profile_tags_used": tuple(profile_tags_used) if profile_tags_used else (),
             }
             last_state = _last_notification_state.get(session_id)
-            
+
             # Only send notification if state changed or this is the first notification
             if last_state != current_state:
                 notification_payload = {

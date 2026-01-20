@@ -198,6 +198,11 @@ export function handleConversationAgentEvent(eventType, payload) {
             completeAgentExecution(payload);
             break;
 
+        case 'conversation_llm_step':
+            // LLM step events are handled by ui.js for Live Status rendering
+            // No additional state tracking needed here
+            break;
+
         default:
             console.warn('[ConversationAgentHandler] Unknown event type:', eventType);
     }

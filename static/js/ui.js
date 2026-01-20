@@ -1575,9 +1575,28 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     }
 
     // CRITICAL FIX: For tool completion, UPDATE the existing "Executing..." step instead of creating a new one
+    // When multiple tools run in parallel, we match by tool_name to find the correct step
     if (type === 'conversation_tool_completed') {
-        const lastStep = parentContainer.querySelector('.status-step.active');
+        const toolName = details?.tool_name;
+
+        // Find the executing step for THIS specific tool (not just any active step)
+        // Use data-tool-status="executing" to distinguish from already-completed tools
+        let lastStep = null;
+        if (toolName) {
+            lastStep = parentContainer.querySelector(
+                `.status-step[data-tool-name="${toolName}"][data-tool-status="executing"]`
+            );
+        }
+
+        // Fallback to any active step (backwards compatibility)
+        if (!lastStep) {
+            lastStep = parentContainer.querySelector('.status-step.active');
+        }
+
         if (lastStep) {
+            // Mark as completed so next completion for same tool finds a different element
+            lastStep.dataset.toolStatus = 'completed';
+
             // Update the existing step's icon and content
             lastStep.classList.remove('active');
             lastStep.classList.add('completed');
@@ -1605,7 +1624,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             // Update details section with completion status
             const detailsEl = lastStep.querySelector('.status-details');
             if (detailsEl) {
-                const toolName = details.tool_name || 'Unknown';
+                const displayToolName = toolName || 'Unknown';
                 const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const statusText = details.success ? '✓ Success' : '✗ Failed';
                 const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
@@ -1628,7 +1647,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Tool</div>
-                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">${toolName}</code></div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">${displayToolName}</code></div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value ${statusClass}">${statusText}</div>
                         <div class="status-kv-key">Duration</div>
@@ -1666,6 +1685,14 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
     const stepEl = document.createElement('div');
     stepEl.className = 'status-step p-3 rounded-md mb-2 conversation-agent-status-step';
+
+    // Add data attributes for tool matching during live execution
+    // This allows completion events to find the correct executing step when multiple tools run in parallel
+    if (type === 'conversation_tool_invoked' && details?.tool_name) {
+        stepEl.dataset.toolName = details.tool_name;
+        stepEl.dataset.toolStatus = 'executing';
+    }
+
     if (isFinal) {
         stepEl.classList.add('completed');
     } else {

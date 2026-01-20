@@ -72,6 +72,54 @@ function _getConversationAgentStepTitle(eventType, payload) {
     return eventType;
 }
 
+/**
+ * Merge conversation_tool_invoked events with their corresponding conversation_tool_completed events.
+ * This prevents duplicate rows in historical replay - we only show the final state.
+ *
+ * For 5 parallel base_tableDDL calls, we want to show 5 completed rows, not 10 (5 invoked + 5 completed).
+ *
+ * @param {Array} events - Array of conversation agent events
+ * @returns {Array} Processed events with tool invokes merged into completions
+ */
+function _mergeToolEvents(events) {
+    const result = [];
+    const pendingInvokes = new Map(); // tool_name -> array of events
+
+    for (const event of events) {
+        const type = event.type;
+        const toolName = event.payload?.tool_name;
+
+        if (type === 'conversation_tool_invoked' && toolName) {
+            // Queue invoked events by tool name
+            if (!pendingInvokes.has(toolName)) {
+                pendingInvokes.set(toolName, []);
+            }
+            pendingInvokes.get(toolName).push(event);
+        } else if (type === 'conversation_tool_completed' && toolName) {
+            // Match with oldest pending invoke for this tool
+            const pending = pendingInvokes.get(toolName);
+            if (pending && pending.length > 0) {
+                // Remove the matched invoke (don't render it separately)
+                pending.shift();
+            }
+            // Always render the completed event (it has the final state)
+            result.push(event);
+        } else {
+            // Keep all other events (start, llm_step, agent_complete)
+            result.push(event);
+        }
+    }
+
+    // Any unmatched invokes (tool started but didn't complete - error case) get added as-is
+    for (const pending of pendingInvokes.values()) {
+        for (const event of pending) {
+            result.push(event);
+        }
+    }
+
+    return result;
+}
+
 // ============================================================================
 // HARMONIZED EVENT TITLE GENERATION (Phase 1: Terminology Harmonization)
 // ============================================================================
@@ -1206,9 +1254,15 @@ async function handleReloadPlanClick(element) {
                     statusTitle.textContent = `Conversation Agent - Turn ${turnId}`;
                 }
 
+                // Pre-process: merge tool_invoked with tool_completed pairs
+                // This prevents duplicate rows - we only show the final state for each tool call
+                const processedEvents = _mergeToolEvents(agentEvents);
+
                 // Replay each event using the same renderer as live execution
-                agentEvents.forEach((event, index) => {
-                    const isFinal = index === agentEvents.length - 1;
+                processedEvents.forEach((event, index) => {
+                    // Completion events never show spinners (they're final by definition)
+                    const isCompletionEvent = ['conversation_tool_completed', 'conversation_agent_complete'].includes(event.type);
+                    const isFinal = isCompletionEvent || index === processedEvents.length - 1;
                     // Check if payload is already a complete event (has 'step' field)
                     // or if it's just details that need to be wrapped
                     let eventData;

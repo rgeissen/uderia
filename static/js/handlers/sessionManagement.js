@@ -39,17 +39,23 @@ export async function handleStartNewSession() {
     // Check both activeProfileOverrideId (set on query execution) and activeTagPrefix (set on autocomplete selection)
     let activeProfileOverrideId = window.activeProfileOverrideId || null;
 
-    // If no activeProfileOverrideId but activeTagPrefix is set, resolve the tag to a profile ID
-    // BUT only if the tag badge is still visible (user hasn't removed the override)
+    // If no activeProfileOverrideId but tag badge is visible, resolve the tag to a profile ID
+    // Read the tag directly from the badge element (more reliable than window.activeTagPrefix which may be cleared)
     const tagBadge = document.getElementById('active-profile-tag');
     const isTagBadgeVisible = tagBadge && !tagBadge.classList.contains('hidden');
 
-    if (!activeProfileOverrideId && window.activeTagPrefix && isTagBadgeVisible && window.configState?.profiles) {
-        const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
-        const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
-        if (overrideProfile) {
-            activeProfileOverrideId = overrideProfile.id;
-            console.log(`[Session Primer] Resolved activeTagPrefix @${tag} to profile ID: ${activeProfileOverrideId}`);
+    if (!activeProfileOverrideId && isTagBadgeVisible && window.configState?.profiles) {
+        // Get tag from badge's first span (the one containing "@TAG"), fallback to activeTagPrefix
+        // Badge structure: <span>@TAG</span><span class="tag-remove">×</span>
+        const tagSpan = tagBadge.querySelector('span:first-child');
+        const badgeText = (tagSpan?.textContent || window.activeTagPrefix || '').trim();
+        const tag = badgeText.replace('@', '').trim().toUpperCase();
+        if (tag) {
+            const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
+            if (overrideProfile) {
+                activeProfileOverrideId = overrideProfile.id;
+                console.log(`[Session Primer] Resolved tag badge @${tag} to profile ID: ${activeProfileOverrideId}`);
+            }
         }
     }
 

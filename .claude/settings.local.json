@@ -36,7 +36,8 @@
       "Bash(__NEW_LINE_489e8e44bbf938dd__ curl -s -X GET \"http://localhost:5050/api/v1/tasks/$TASK_ID\" -H \"Authorization: Bearer $TOKEN\")",
       "Bash(chmod:*)",
       "Bash(git pull:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
