@@ -1222,10 +1222,17 @@ class PlanExecutor:
             self.turn_input_tokens += input_tokens
             self.turn_output_tokens += output_tokens
 
-            # Note: Session token counters are already updated by llm_handler.call_llm_api()
-            # No need to update again here to avoid double-counting
+            # CRITICAL: Conversation agent uses LangChain directly (not llm_handler)
+            # so we must explicitly update session token counts here
+            if input_tokens > 0 or output_tokens > 0:
+                await session_manager.update_token_count(
+                    self.user_uuid,
+                    self.session_id,
+                    input_tokens,
+                    output_tokens
+                )
 
-            # Emit token update event
+            # Emit token update event with updated session totals
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
                 yield self._format_sse({
@@ -2376,6 +2383,22 @@ The following domain knowledge may be relevant to this conversation:
                                     except Exception as name_e:
                                         app_logger.error(f"Failed to save session name: {name_e}")
 
+                # Emit token_update event after session name generation (if any tokens were consumed)
+                # This ensures the UI status window shows updated session totals
+                if self.turn_input_tokens > 0 or self.turn_output_tokens > 0:
+                    # Re-fetch session to get updated token counts after session name generation
+                    session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                    if session_data:
+                        yield self._format_sse({
+                            "statement_input": 0,  # No new statement tokens in "no results" path
+                            "statement_output": 0,
+                            "turn_input": self.turn_input_tokens,
+                            "turn_output": self.turn_output_tokens,
+                            "total_input": session_data.get("input_tokens", 0),
+                            "total_output": session_data.get("output_tokens", 0),
+                            "call_id": "rag_no_results"
+                        }, "token_update")
+
                 # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
                 execution_complete_payload = {
                     "profile_type": "rag_focused",
@@ -2624,18 +2647,25 @@ The following domain knowledge may be relevant to this conversation:
             # Set LLM idle indicator
             yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
-            # Emit token update event
-            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
-            if session_data:
-                yield self._format_sse({
-                    "statement_input": input_tokens,
-                    "statement_output": output_tokens,
-                    "turn_input": self.turn_input_tokens,
-                    "turn_output": self.turn_output_tokens,
-                    "total_input": session_data.get("input_tokens", 0),
-                    "total_output": session_data.get("output_tokens", 0),
-                    "call_id": call_id
-                }, "token_update")
+            # Explicitly update session token counts and emit token_update event
+            # This ensures the status window shows correct session totals during live execution
+            # Note: _call_llm_and_update_tokens already calls update_token_count internally via handler.py,
+            # but we need to ensure it completes and fetch updated session data before emitting the event
+            if input_tokens > 0 or output_tokens > 0:
+                # Re-fetch session to ensure token counts are current
+                # The handler already updated tokens, but we need the latest persisted values
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+
+                if session_data:
+                    yield self._format_sse({
+                        "statement_input": input_tokens,
+                        "statement_output": output_tokens,
+                        "turn_input": self.turn_input_tokens,
+                        "turn_output": self.turn_output_tokens,
+                        "total_input": session_data.get("input_tokens", 0),
+                        "total_output": session_data.get("output_tokens", 0),
+                        "call_id": call_id
+                    }, "token_update")
 
             # Emit RAG LLM step event for plan reload (similar to conversation_llm_step)
             rag_llm_step_payload = {
