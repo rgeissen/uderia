@@ -2149,7 +2149,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                 // Trigger the knowledge indicator
                 if (collections.length > 0) {
-                    blinkKnowledgeDot();
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        blinkKnowledgeDot();
+                    }
                     updateKnowledgeIndicator(collections, documentCount);
                 }
                 break;
@@ -2256,7 +2259,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                 // Trigger the knowledge indicator
                 if (collections.length > 0) {
-                    blinkKnowledgeDot();
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        blinkKnowledgeDot();
+                    }
                     updateKnowledgeIndicator(collections, documentCount);
                 }
                 break;
@@ -2643,7 +2649,10 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderKnowledgeRetrievalDetails(details);
                 // Trigger the indicator blink when rendering knowledge retrieval event
                 if (details.collections && details.collections.length > 0) {
-                    blinkKnowledgeDot();
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        blinkKnowledgeDot();
+                    }
                     updateKnowledgeIndicator(details.collections, details.document_count || 0);
                 }
             } else if (type === "session_name_generation_start") {

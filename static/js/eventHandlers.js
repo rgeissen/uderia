@@ -588,7 +588,10 @@ async function processStream(responseBody) {
                             if (eventData.type === 'knowledge_retrieval_complete' || eventData.type === 'knowledge_retrieval') {
                                 const collections = payload.collections || [];
                                 const documentCount = payload.document_count || 0;
-                                UI.blinkKnowledgeDot();
+                                // Only blink during live execution, not when viewing historical turns
+                                if (!state.isViewingHistoricalTurn) {
+                                    UI.blinkKnowledgeDot();
+                                }
                                 UI.updateKnowledgeIndicator(collections, documentCount);
                                 // Store the knowledge event for potential replay
                                 state.pendingKnowledgeRetrievalEvent = payload;
@@ -657,7 +660,10 @@ async function processStream(responseBody) {
                         if (details && details.collections) {
                             const collections = details.collections || [];
                             const documentCount = details.document_count || 0;
-                            UI.blinkKnowledgeDot();
+                            // Only blink during live execution, not when viewing historical turns
+                            if (!state.isViewingHistoricalTurn) {
+                                UI.blinkKnowledgeDot();
+                            }
                             UI.updateKnowledgeIndicator(collections, documentCount);
                         }
 
@@ -1061,6 +1067,9 @@ async function handleReloadPlanClick(element) {
         console.error("Missing turnId or sessionId for reloading plan details.");
         return;
     }
+
+    // Set flag to prevent status indicator blinks during historical viewing
+    state.isViewingHistoricalTurn = true;
 
     // Indicate loading in the status window
     DOM.statusWindowContent.innerHTML = `<p class="p-4 text-gray-400">Loading details for Turn ${turnId}...</p>`;
@@ -1568,6 +1577,9 @@ async function handleReloadPlanClick(element) {
     } catch (error) {
         console.error(`Error loading details for turn ${turnId}:`, error);
         DOM.statusWindowContent.innerHTML = `<div class="p-4 status-step error"><h4 class="font-bold text-sm text-white mb-2">Error Loading Details</h4><p class="text-xs">${error.message}</p></div>`;
+    } finally {
+        // Reset flag after historical viewing completes
+        state.isViewingHistoricalTurn = false;
     }
 }
 

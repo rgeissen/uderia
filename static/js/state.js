@@ -48,6 +48,9 @@ export const state = {
     // --- MODIFICATION END ---
     phaseContainerStack: [],
     isRestTaskActive: false,
+    // --- MODIFICATION START: Add flag to prevent indicator blinks during historical turn viewing ---
+    isViewingHistoricalTurn: false,
+    // --- MODIFICATION END ---
     activeRestTaskId: null,
     lastRagCaseData: null, // Stores the last retrieved RAG case for display
     // --- MODIFICATION START: RAG Collection Inspection ---

@@ -337,7 +337,10 @@ export function subscribeToNotifications() {
                     const collections = event.data?.collections || [];
                     const documentCount = event.data?.document_count || 0;
                     console.log('[knowledge_retrieval] Received:', { collections, documentCount });
-                    UI.blinkKnowledgeDot();
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        UI.blinkKnowledgeDot();
+                    }
                     UI.updateKnowledgeIndicator(collections, documentCount);
                 }
                 // --- END PHASE 3 ---
@@ -461,7 +464,10 @@ export function subscribeToNotifications() {
                 if (data.type === 'knowledge_retrieval_complete' || data.type === 'knowledge_retrieval') {
                     const collections = payload.collections || [];
                     const documentCount = payload.document_count || 0;
-                    UI.blinkKnowledgeDot();
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        UI.blinkKnowledgeDot();
+                    }
                     UI.updateKnowledgeIndicator(collections, documentCount);
                     // Store the knowledge event for potential replay
                     state.pendingKnowledgeRetrievalEvent = payload;
