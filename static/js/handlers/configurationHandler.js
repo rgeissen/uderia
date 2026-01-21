@@ -2765,39 +2765,52 @@ function attachProfileEventListeners() {
                     await configState.setActiveForConsumptionProfiles(activeIds);
                 }
                 
-                // Step 4: Check if classification exists
+                // Step 4: Check if classification is needed based on profile type
                 const updatedProfile = configState.profiles.find(p => p.id === profileId);
-                const classificationResults = updatedProfile?.classification_results || {};
-                const toolsDict = classificationResults.tools || {};
-                const promptsDict = classificationResults.prompts || {};
-                const totalTools = Object.values(toolsDict).reduce((sum, tools) => sum + tools.length, 0);
-                const totalPrompts = Object.values(promptsDict).reduce((sum, prompts) => sum + prompts.length, 0);
-                const hasClassification = totalTools > 0 || totalPrompts > 0;
-                
-                // Step 5: If no classification exists, trigger automatic reclassification
-                if (!hasClassification) {
-                    showNotification('info', `Running classification for default profile "${profile.name}"...`);
-                    
-                    const headers = { 'Content-Type': 'application/json' };
-                    const authToken = localStorage.getItem('tda_auth_token');
-                    if (authToken) {
-                        headers['Authorization'] = `Bearer ${authToken}`;
-                    }
-                    
-                    const response = await fetch(`/api/v1/profiles/${profileId}/reclassify`, {
-                        method: 'POST',
-                        headers: headers,
-                        credentials: 'include'
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (response.ok && result.status === 'success') {
-                        showNotification('success', `Default profile "${profile.name}" classified successfully`);
+                const profileType = updatedProfile?.profile_type || 'tool_enabled';
+                const useMcpTools = updatedProfile?.useMcpTools || false;
+
+                // Determine if this profile type needs MCP classification
+                const needsClassification =
+                    profileType === 'tool_enabled' ||
+                    (profileType === 'llm_only' && useMcpTools);
+
+                // Step 5: Only trigger reclassification for profiles that need it
+                if (needsClassification) {
+                    const classificationResults = updatedProfile?.classification_results || {};
+                    const toolsDict = classificationResults.tools || {};
+                    const promptsDict = classificationResults.prompts || {};
+                    const totalTools = Object.values(toolsDict).reduce((sum, tools) => sum + tools.length, 0);
+                    const totalPrompts = Object.values(promptsDict).reduce((sum, prompts) => sum + prompts.length, 0);
+                    const hasClassification = totalTools > 0 || totalPrompts > 0;
+
+                    if (!hasClassification) {
+                        showNotification('info', `Running classification for default profile "${profile.name}"...`);
+
+                        const headers = { 'Content-Type': 'application/json' };
+                        const authToken = localStorage.getItem('tda_auth_token');
+                        if (authToken) {
+                            headers['Authorization'] = `Bearer ${authToken}`;
+                        }
+
+                        const response = await fetch(`/api/v1/profiles/${profileId}/reclassify`, {
+                            method: 'POST',
+                            headers: headers,
+                            credentials: 'include'
+                        });
+
+                        const result = await response.json();
+
+                        if (response.ok && result.status === 'success') {
+                            showNotification('success', `Default profile "${profile.name}" classified successfully`);
+                        } else {
+                            showNotification('warning', `Default profile set, but classification failed: ${result.message || 'Unknown error'}`);
+                        }
                     } else {
-                        showNotification('warning', `Default profile set, but classification failed: ${result.message || 'Unknown error'}`);
+                        showNotification('success', `Default profile changed to "${profile.name}"`);
                     }
                 } else {
+                    // Profile doesn't need classification (genie, rag_focused, or pure llm_only)
                     showNotification('success', `Default profile changed to "${profile.name}"`);
                 }
                 

@@ -5829,7 +5829,33 @@ async def reclassify_profile(profile_id: str):
         # Create temporary LLM client
         app_logger.info(f"Creating temporary LLM client for {provider}/{model}")
         temp_llm_instance = await create_llm_client(provider, model, credentials)
-        
+
+        # Determine if MCP is needed based on profile type
+        profile_type = profile.get('profile_type', 'tool_enabled')
+        use_mcp_tools = profile.get('useMcpTools', False)
+
+        needs_mcp = False
+        if profile_type == "tool_enabled":
+            needs_mcp = True
+        elif profile_type == "llm_only" and use_mcp_tools:
+            needs_mcp = True
+        # genie and rag_focused profiles don't need MCP
+
+        if not needs_mcp:
+            # Profiles that don't need MCP - just clear classification and return
+            app_logger.info(f"Profile {profile_id} is {profile_type} - no MCP classification needed")
+            config_manager.clear_profile_classification(profile_id, user_uuid)
+            return jsonify({
+                "status": "success",
+                "message": f"Profile reclassified (no MCP classification needed for {profile_type} profiles)",
+                "profile_id": profile_id,
+                "classification_results": {
+                    "tools": {},
+                    "prompts": {},
+                    "resources": {}
+                }
+            }), 200
+
         # Get MCP configuration from profile
         mcp_server_id = profile.get('mcpServerId')
         if not mcp_server_id:
@@ -6309,6 +6335,50 @@ async def test_profile(profile_id: str):
                     results["mcp_connection"] = {"status": "error", "message": f"MCP server '{mcp_server_id}' not found."}
             else:
                 results["mcp_connection"] = {"status": "warning", "message": "No MCP server configured."}
+        elif profile_type == "genie":
+            # Genie profiles coordinate child profiles
+            genie_config = profile.get("genieConfig", {})
+            slave_profiles = genie_config.get("slaveProfiles", [])
+
+            if not slave_profiles or len(slave_profiles) == 0:
+                results["profile_type"] = {
+                    "status": "error",
+                    "message": "Genie profile has no child profiles configured."
+                }
+            else:
+                # Validate child profiles exist
+                all_profiles = config_manager.get_profiles(user_uuid)
+                profile_map = {p.get("id"): p for p in all_profiles}
+
+                valid_children = []
+                invalid_children = []
+
+                for slave_id in slave_profiles:
+                    child_profile = profile_map.get(slave_id)
+                    if child_profile:
+                        child_tag = child_profile.get("tag", "unknown")
+                        valid_children.append(f"@{child_tag}")
+                    else:
+                        invalid_children.append(slave_id)
+
+                if invalid_children:
+                    results["profile_type"] = {
+                        "status": "warning",
+                        "message": f"Genie profile with {len(valid_children)} valid children, {len(invalid_children)} missing."
+                    }
+                else:
+                    # All children valid
+                    child_list = ", ".join(valid_children)
+                    results["profile_type"] = {
+                        "status": "success",
+                        "message": f"Genie profile coordinating {len(valid_children)} child profile(s): {child_list}."
+                    }
+
+            # Genie profiles don't need MCP connection test
+            results["mcp_connection"] = {
+                "status": "info",
+                "message": "Genie profiles delegate to child profiles (no direct MCP connection)."
+            }
         elif profile_type == "llm_only" and use_mcp_tools:
             # Conversation profile with MCP tools enabled - test MCP connection
             mcp_server_id = profile.get("mcpServerId")
