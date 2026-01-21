@@ -4082,7 +4082,8 @@ The following domain knowledge may be relevant to this conversation:
             source="prompt_library",
             is_delegated_task=is_delegated_task,
             force_final_summary=APP_CONFIG.SUB_PROMPT_FORCE_SUMMARY,
-            event_handler=self.event_handler
+            event_handler=self.event_handler,
+            profile_override_id=self.profile_override_id
         )
 
         sub_executor.workflow_state = self.workflow_state
