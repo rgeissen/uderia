@@ -2349,30 +2349,20 @@ function renderProfileCard(profile) {
             <div class="flex items-start justify-between">
                 <div class="flex items-start gap-3 flex-1">
                     <div class="flex flex-col items-center gap-2">
-                        <button title="${isDefault ? 'Current Default Profile' : (testsPassedForDefault ? 'Set as Default' : 'Run tests before setting as default')}" 
-                                data-action="set-default-profile" 
-                                data-profile-id="${profile.id}" 
-                                class="p-1 rounded-full ${isDefault ? 'text-yellow-400' : (testsPassedForDefault ? 'text-gray-500 hover:text-yellow-400' : 'text-gray-700 cursor-not-allowed opacity-40')}"
-                                ${!isDefault && !testsPassedForDefault ? 'disabled' : ''}>
+                        <button title="${isDefault ? 'Current Default Profile' : (testsPassedForDefault ? 'Set as Default' : 'Click to test and set as default')}"
+                                data-action="set-default-profile"
+                                data-profile-id="${profile.id}"
+                                class="p-1 rounded-full ${isDefault ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}">
                             <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/></svg>
                         </button>
                         <div class="flex items-center" title="${(() => {
                             const testStatus = configState.profileTestStatus[profile.id];
                             if (isActiveForConsumption) return 'Active for Consumption';
-                            if (!testStatus?.tested || !testStatus?.passed) return 'Test profile before activating';
+                            if (!testStatus?.tested || !testStatus?.passed) return 'Click to test and activate';
                             return 'Activate for Consumption';
                         })()}">
-                           <label class="relative inline-flex items-center ${(() => {
-                               const testStatus = configState.profileTestStatus[profile.id];
-                               if (isActiveForConsumption || (testStatus?.tested && testStatus?.passed)) return 'cursor-pointer';
-                               return 'cursor-not-allowed opacity-50';
-                           })()}">
-                                <input type="checkbox" data-action="toggle-active-consumption" data-profile-id="${profile.id}" ${isActiveForConsumption ? 'checked' : ''} ${(() => {
-                                    const testStatus = configState.profileTestStatus[profile.id];
-                                    if (isActiveForConsumption) return '';
-                                    if (!testStatus?.tested || !testStatus?.passed) return 'disabled';
-                                    return '';
-                                })()} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
+                           <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" data-action="toggle-active-consumption" data-profile-id="${profile.id}" ${isActiveForConsumption ? 'checked' : ''} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
                                 <div class="w-11 h-6 bg-gray-800/50 border border-gray-500 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teradata-orange peer-disabled:opacity-50 peer-disabled:cursor-not-allowed"></div>
                             </label>
                         </div>
@@ -2690,18 +2680,67 @@ function attachProfileEventListeners() {
                 return;
             }
             
-            // Validation: Check if profile tests have passed (only for non-default profiles)
-            const testStatus = configState.profileTestStatus[profileId];
-            if (!testStatus || !testStatus.passed) {
-                showNotification('error', 'Profile must pass all tests before it can be set as default. Please run tests first.');
-                return;
-            }
-            
             try {
                 // Disable button during processing
                 button.disabled = true;
                 const originalHTML = button.innerHTML;
                 button.innerHTML = '<svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+
+                // Auto-test: If tests haven't passed yet, run them automatically
+                let testStatus = configState.profileTestStatus[profileId];
+                if (!testStatus || !testStatus.passed) {
+                    showNotification('info', `Testing profile "${profile.name}" before activation...`);
+
+                    // Update test results UI to show testing in progress
+                    const resultsContainer = document.getElementById(`test-results-${profileId}`);
+                    if (resultsContainer) {
+                        resultsContainer.innerHTML = `<span class="text-yellow-400">Testing...</span>`;
+                    }
+
+                    // Run the test
+                    const testResult = await API.testProfile(profileId);
+                    const allSuccessful = Object.values(testResult.results).every(r => r.status === 'success' || r.status === 'info');
+
+                    // Build results HTML
+                    let html = '';
+                    for (const [key, value] of Object.entries(testResult.results)) {
+                        let statusClass;
+                        if (value.status === 'success') {
+                            statusClass = 'text-green-400';
+                        } else if (value.status === 'info') {
+                            statusClass = 'text-blue-400';
+                        } else if (value.status === 'warning') {
+                            statusClass = 'text-yellow-400';
+                        } else {
+                            statusClass = 'text-red-400';
+                        }
+                        html += `<p class="${statusClass}">${value.message}</p>`;
+                    }
+
+                    // Update test results display
+                    if (resultsContainer) {
+                        resultsContainer.innerHTML = html;
+                    }
+
+                    // Update test status in state
+                    configState.profileTestStatus[profileId] = {
+                        tested: true,
+                        passed: allSuccessful,
+                        timestamp: Date.now(),
+                        results: html
+                    };
+
+                    // If test failed, abort activation
+                    if (!allSuccessful) {
+                        showNotification('error', `Profile test failed. Cannot activate "${profile.name}".`);
+                        button.disabled = false;
+                        button.innerHTML = originalHTML;
+                        renderProfiles(); // Re-render to show test results
+                        return;
+                    }
+
+                    showNotification('success', `Profile test passed for "${profile.name}". Activating...`);
+                }
                 
                 // Step 1: If profile is also the master classification profile for its MCP server AND has inherit_classification enabled, disable it
                 // (Master classification profile cannot inherit - circular dependency)
@@ -2801,13 +2840,6 @@ function attachProfileEventListeners() {
             let activeIds = configState.activeForConsumptionProfileIds;
 
             if (isChecked) {
-                // Check if profile has been tested successfully
-                const testStatus = configState.profileTestStatus[profileId];
-                if (!testStatus?.tested || !testStatus?.passed) {
-                    e.target.checked = false; // Revert the checkbox
-                    showNotification('error', 'Please run and pass the test before activating this profile.');
-                    return;
-                }
                 // Get profile to check type
                 const profile = configState.profiles.find(p => p.id === profileId);
                 // Check if profile doesn't need MCP classification (llm_only, rag_focused, genie)
@@ -2861,7 +2893,14 @@ function attachProfileEventListeners() {
                         return;
                     }
                     
-                    // Tests passed - activate the profile
+                    // Tests passed - update test status and activate the profile
+                    configState.profileTestStatus[profileId] = {
+                        tested: true,
+                        passed: true,
+                        timestamp: Date.now(),
+                        results: testResultsHTML
+                    };
+
                     if (!activeIds.includes(profileId)) {
                         activeIds.push(profileId);
                     }
@@ -2873,8 +2912,7 @@ function attachProfileEventListeners() {
                         await configState.setDefaultProfile(profileId);
                     }
 
-                    // Get the profile to check if it's tool-enabled
-                    const profile = configState.profiles.find(p => p.id === profileId);
+                    // Check if profile is tool-enabled (reuse profile variable from above)
                     const isToolEnabled = profile && profile.profile_type === 'tool_enabled';
 
                     // If tool-enabled and no master classification profile exists for this MCP server, set as master
