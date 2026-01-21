@@ -101,13 +101,16 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         }
     }
 
-    const promptEditorMenuItem = DOM.promptEditorButton.parentElement;
-    if (Utils.isPrivilegedUser()) {
-        promptEditorMenuItem.style.display = 'block';
-        DOM.promptEditorButton.disabled = false;
-    } else {
-        promptEditorMenuItem.style.display = 'none';
-        DOM.promptEditorButton.disabled = true;
+    // Show/hide prompt editor based on user privileges (if button exists in UI)
+    if (DOM.promptEditorButton?.parentElement) {
+        const promptEditorMenuItem = DOM.promptEditorButton.parentElement;
+        if (Utils.isPrivilegedUser()) {
+            promptEditorMenuItem.style.display = 'block';
+            DOM.promptEditorButton.disabled = false;
+        } else {
+            promptEditorMenuItem.style.display = 'none';
+            DOM.promptEditorButton.disabled = true;
+        }
     }
 
     // Load resources based on default profile type
@@ -185,7 +188,7 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         await handleStartNewSession();
     }
 
-    DOM.chatModalButton.disabled = false;
+    if (DOM.chatModalButton) DOM.chatModalButton.disabled = false;
     DOM.userInput.placeholder = "Ask about databases, tables, users...";
     UI.setExecutionState(false);
 
@@ -289,8 +292,8 @@ export async function handleConfigFormSubmit(e) {
         }
     } catch (error) {
         setConfigStatus(`Error: ${error.message}`, 'text-sm text-red-400 text-center');
-        DOM.promptEditorButton.disabled = true;
-        DOM.chatModalButton.disabled = true;
+        if (DOM.promptEditorButton) DOM.promptEditorButton.disabled = true;
+        if (DOM.chatModalButton) DOM.chatModalButton.disabled = true;
         DOM.mcpStatusDot.classList.add('disconnected');
         DOM.mcpStatusDot.classList.remove('connected');
         DOM.llmStatusDot.classList.add('disconnected');

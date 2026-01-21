@@ -1058,8 +1058,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('[Startup] Resource panel initialized with default profile:', window.configState.defaultProfileId);
     }
 
-    const promptEditorMenuItem = DOM.promptEditorButton.parentElement;
-    promptEditorMenuItem.style.display = 'none';
+    // Hide prompt editor menu item if it exists (may be removed from UI)
+    if (DOM.promptEditorButton?.parentElement) {
+        DOM.promptEditorButton.parentElement.style.display = 'none';
+    }
 
     try {
         // Use the app config that was already fetched in index.html

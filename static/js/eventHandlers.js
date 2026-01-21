@@ -2561,20 +2561,38 @@ export function initializeEventListeners() {
     }
 
 
-    // Prompt editor listeners
-    DOM.promptEditorButton.addEventListener('click', openPromptEditor);
-    DOM.promptEditorClose.addEventListener('click', closePromptEditor);
-    DOM.promptEditorSave.addEventListener('click', saveSystemPromptChanges);
-    DOM.promptEditorReset.addEventListener('click', () => resetSystemPrompt(false));
-    DOM.promptEditorTextarea.addEventListener('input', UI.updatePromptEditorState);
+    // Prompt editor listeners (button may not exist if removed from UI)
+    if (DOM.promptEditorButton) {
+        DOM.promptEditorButton.addEventListener('click', openPromptEditor);
+    }
+    if (DOM.promptEditorClose) {
+        DOM.promptEditorClose.addEventListener('click', closePromptEditor);
+    }
+    if (DOM.promptEditorSave) {
+        DOM.promptEditorSave.addEventListener('click', saveSystemPromptChanges);
+    }
+    if (DOM.promptEditorReset) {
+        DOM.promptEditorReset.addEventListener('click', () => resetSystemPrompt(false));
+    }
+    if (DOM.promptEditorTextarea) {
+        DOM.promptEditorTextarea.addEventListener('input', UI.updatePromptEditorState);
+    }
 
-    // Simple chat modal listeners
-    DOM.chatModalButton.addEventListener('click', openChatModal);
-    DOM.chatModalClose.addEventListener('click', UI.closeChatModal); // FIXED
-    DOM.chatModalOverlay.addEventListener('click', (e) => {
-        if (e.target === DOM.chatModalOverlay) UI.closeChatModal(); // FIXED
-    });
-    DOM.chatModalForm.addEventListener('submit', handleChatModalSubmit);
+    // Simple chat modal listeners (button may not exist if removed from UI)
+    if (DOM.chatModalButton) {
+        DOM.chatModalButton.addEventListener('click', openChatModal);
+    }
+    if (DOM.chatModalClose) {
+        DOM.chatModalClose.addEventListener('click', UI.closeChatModal);
+    }
+    if (DOM.chatModalOverlay) {
+        DOM.chatModalOverlay.addEventListener('click', (e) => {
+            if (e.target === DOM.chatModalOverlay) UI.closeChatModal();
+        });
+    }
+    if (DOM.chatModalForm) {
+        DOM.chatModalForm.addEventListener('submit', handleChatModalSubmit);
+    }
 
     // Global listeners
     document.addEventListener('keydown', handleKeyDown);

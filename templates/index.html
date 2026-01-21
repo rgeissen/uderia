@@ -321,17 +321,15 @@
                             </button>
                         </div>
                     </div>
-                    <!-- RIGHT: Config/Info/Window Buttons -->
+                    <!-- RIGHT: Window/Layout Button -->
                     <div class="flex items-center gap-x-1">
                         <div class="menu-item">
-                            <button id="chat-modal-button" class="px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-white/10 rounded-md transition-colors disabled:opacity-50" disabled>Chat</button>
-                        </div>
-                        <!-- MODIFICATION: Removed Config Button -->
-                        <div class="menu-item">
-                            <button id="prompt-editor-button" class="px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-white/10 rounded-md transition-colors disabled:opacity-50" disabled>System Prompt</button>
-                        </div>
-                        <div class="menu-item">
-                            <button id="window-menu-button" class="px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-white/10 rounded-md transition-colors">Window</button>
+                            <button id="window-menu-button" class="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors" title="Panel Settings">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 9h16M9 9v11" />
+                                </svg>
+                            </button>
                             <div id="window-dropdown-menu" class="dropdown-menu mt-2 w-56 rounded-md shadow-lg glass-panel p-1">
                                 <label class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-200 rounded-md hover:bg-white/10 cursor-pointer">
                                     <span>History Panel</span>

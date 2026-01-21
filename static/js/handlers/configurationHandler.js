@@ -2116,7 +2116,7 @@ export async function reconnectAndLoad() {
             }
             
             // Enable chat input
-            DOM.chatModalButton.disabled = false;
+            if (DOM.chatModalButton) DOM.chatModalButton.disabled = false;
             DOM.userInput.placeholder = "Ask about databases, tables, users...";
             UI.setExecutionState(false);
             
