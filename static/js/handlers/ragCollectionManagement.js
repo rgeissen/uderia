@@ -4042,9 +4042,9 @@ function setupIntelligenceRefreshControls() {
     // Auto-refresh toggle
     const autoRefreshToggle = document.getElementById('intelligence-auto-refresh-toggle');
     if (autoRefreshToggle) {
-        // Load saved preference
+        // Load saved preference (default to enabled)
         const savedAutoRefresh = localStorage.getItem('intelligenceAutoRefresh');
-        const isEnabled = savedAutoRefresh !== null ? savedAutoRefresh === 'true' : false;
+        const isEnabled = savedAutoRefresh !== null ? savedAutoRefresh === 'true' : true;
 
         autoRefreshToggle.checked = isEnabled;
 
