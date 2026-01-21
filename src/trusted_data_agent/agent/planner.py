@@ -1735,7 +1735,8 @@ Ranking:"""
         # --- PLANNER REPOSITORIES: Few-shot examples for execution patterns ---
         # Include RAG examples alongside knowledge context - Directive 3 will decide the best approach
         rag_few_shot_examples_str = ""
-        
+        retrieved_cases = None  # Initialize before conditional block
+
         if self.rag_retriever:
             # Determine which collections to query based on profile
             allowed_collection_ids = None

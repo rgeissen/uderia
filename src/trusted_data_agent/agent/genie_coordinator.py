@@ -178,7 +178,11 @@ class SlaveSessionTool(BaseTool):
             return f"Error invoking @{self.profile_tag}: {str(e)}"
 
     async def _get_or_create_slave_session(self) -> str:
-        """Reuse existing child session or create new one."""
+        """Reuse existing child session or create new one.
+
+        If the child profile has a session_primer configured, it will be
+        automatically executed when the session is first created.
+        """
         cache_key = f"{self.parent_session_id}:{self.profile_id}"
 
         if cache_key in _slave_session_cache:
@@ -203,14 +207,86 @@ class SlaveSessionTool(BaseTool):
 
             data = response.json()
             session_id = data.get("session_id")
+            session_primer = data.get("session_primer")
 
             if not session_id:
                 raise Exception(f"No session_id in response: {data}")
 
+            # Cache the session immediately so primer execution can reuse it
             _slave_session_cache[cache_key] = session_id
             logger.info(f"Created child session {session_id} for @{self.profile_tag}")
 
+            # Execute session primer if configured (leverages existing _execute_and_poll)
+            if session_primer:
+                logger.info(f"Executing session primer for @{self.profile_tag}: {session_primer[:50]}...")
+                self._emit_event("genie_slave_progress", {
+                    "profile_tag": self.profile_tag,
+                    "slave_session_id": session_id,
+                    "status": "primer_executing",
+                    "message": "Executing session primer...",
+                    "session_id": self.parent_session_id
+                })
+
+                try:
+                    await self._execute_primer(session_id, session_primer)
+                    logger.info(f"Session primer completed for @{self.profile_tag}")
+                except Exception as e:
+                    logger.warning(f"Session primer failed for @{self.profile_tag}: {e}")
+                    # Continue anyway - primer failure shouldn't block the main query
+
             return session_id
+
+    async def _execute_primer(self, session_id: str, primer: str) -> str:
+        """Execute a session primer query with is_session_primer flag."""
+        async with httpx.AsyncClient(timeout=self.query_timeout) as client:
+            # Submit primer with is_session_primer flag
+            response = await client.post(
+                f"{self.base_url}/api/v1/sessions/{session_id}/query",
+                headers={"Authorization": f"Bearer {self.auth_token}"},
+                json={
+                    "prompt": primer,
+                    "profile_id": self.profile_id,
+                    "is_session_primer": True
+                }
+            )
+
+            if response.status_code != 202:
+                raise Exception(f"Failed to submit primer: {response.status_code} - {response.text}")
+
+            data = response.json()
+            task_id = data.get("task_id")
+
+            if not task_id:
+                raise Exception(f"No task_id in primer response: {data}")
+
+            logger.info(f"Submitted session primer to @{self.profile_tag}, task_id: {task_id}")
+
+            # Poll for completion (same pattern as _execute_and_poll)
+            poll_interval = 1.0
+            max_polls = int(self.query_timeout / poll_interval)
+
+            for _ in range(max_polls):
+                status_response = await client.get(
+                    f"{self.base_url}/api/v1/tasks/{task_id}",
+                    headers={"Authorization": f"Bearer {self.auth_token}"}
+                )
+
+                if status_response.status_code != 200:
+                    await asyncio.sleep(poll_interval)
+                    continue
+
+                status_data = status_response.json()
+                status = status_data.get("status")
+
+                if status in ("completed", "complete"):
+                    return "Primer executed successfully"
+                elif status in ("failed", "error"):
+                    error = status_data.get("error", "Unknown error")
+                    raise Exception(f"Primer execution failed: {error}")
+
+                await asyncio.sleep(poll_interval)
+
+            raise Exception("Timeout waiting for primer execution")
 
     async def _execute_and_poll(self, session_id: str, query: str) -> str:
         """Submit query and poll for completion."""
