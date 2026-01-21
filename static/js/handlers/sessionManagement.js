@@ -100,7 +100,7 @@ export async function handleStartNewSession() {
         if (data.session_primer) {
             console.log('[Session Primer] Executing session primer:', data.session_primer.substring(0, 50) + '...');
             // Import and use handleStreamRequest to execute the primer
-            const { handleStreamRequest } = await import('../eventHandlers.js');
+            const { handleStreamRequest } = await import('../eventHandlers.js?v=3.4');
             const primerRequest = {
                 message: data.session_primer,
                 session_id: data.id,

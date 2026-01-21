@@ -14,7 +14,7 @@ import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import * as Utils from '../utils.js';
 import { handleLoadSession, handleStartNewSession } from './sessionManagement.js?v=3.2';
 // We need to import from eventHandlers for functions not yet moved
-import { handleLoadResources } from '../eventHandlers.js?v=3.2';
+import { handleLoadResources } from '../eventHandlers.js?v=3.4';
 // Note: openSystemPromptPopup is deprecated - welcome screen is now the unified interface
 import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js';
 

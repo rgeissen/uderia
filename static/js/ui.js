@@ -9,7 +9,7 @@ import { state } from './state.js';
 import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedModelId } from './utils.js';
 // We need access to the functions that will handle save/cancel from the input
 import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.2';
-import { handleReplayQueryClick } from './eventHandlers.js?v=3.2';
+import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
 import { checkServerStatus, loadAllSessions } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
 
@@ -881,6 +881,83 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     });
 
     wrapper.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+/**
+ * Updates the profile badge of the most recent user message.
+ * Used when the backend resolves the correct profile tag for session primers.
+ * @param {string} profileTag - The profile tag to display
+ */
+export function updateLastUserMessageProfileTag(profileTag) {
+    if (!profileTag) return;
+
+    // Find the last user message wrapper
+    const chatContainer = DOM.chatLog;
+    if (!chatContainer) return;
+
+    const messageWrappers = chatContainer.querySelectorAll('.message-bubble');
+    let lastUserWrapper = null;
+
+    // Find the last user message (has justify-end class)
+    for (let i = messageWrappers.length - 1; i >= 0; i--) {
+        if (messageWrappers[i].classList.contains('justify-end')) {
+            lastUserWrapper = messageWrappers[i];
+            break;
+        }
+    }
+
+    if (!lastUserWrapper) return;
+
+    // Check if there's already a profile badge
+    let existingBadge = lastUserWrapper.querySelector('[title^="Executed with profile"]');
+
+    // Create or update the badge
+    const hexToRgba = (hex, alpha) => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    // Get profile colors if available
+    let bgStyle = 'rgba(55, 65, 81, 0.5)';
+    let borderColor = 'rgba(255, 255, 255, 0.2)';
+    if (window.configState?.profiles) {
+        const profile = window.configState.profiles.find(p => p.tag === profileTag);
+        if (profile && profile.color) {
+            const color1 = hexToRgba(profile.color, 0.3);
+            const color2 = hexToRgba(profile.color, 0.15);
+            bgStyle = `linear-gradient(135deg, ${color1}, ${color2})`;
+            borderColor = hexToRgba(profile.color, 0.5);
+        }
+    }
+
+    if (existingBadge) {
+        // Update existing badge
+        existingBadge.textContent = `@${profileTag}`;
+        existingBadge.title = `Executed with profile: ${profileTag}`;
+        existingBadge.style.background = bgStyle;
+        existingBadge.style.borderColor = borderColor;
+    } else {
+        // Create new badge and insert it
+        const profileBadge = document.createElement('div');
+        profileBadge.className = 'flex items-center gap-x-2 px-3 py-1 rounded-lg backdrop-blur-md border border-white/20 shadow-lg flex-shrink-0';
+        profileBadge.textContent = `@${profileTag}`;
+        profileBadge.title = `Executed with profile: ${profileTag}`;
+        profileBadge.style.background = bgStyle;
+        profileBadge.style.borderColor = borderColor;
+        profileBadge.style.fontSize = '0.875rem';
+        profileBadge.style.fontWeight = '600';
+        profileBadge.style.color = 'white';
+        profileBadge.style.alignSelf = 'flex-start';
+        profileBadge.style.marginRight = '12px';
+
+        // Insert at the beginning of the wrapper (before the message container)
+        const messageContainer = lastUserWrapper.querySelector('.glass-panel');
+        if (messageContainer) {
+            lastUserWrapper.insertBefore(profileBadge, messageContainer);
+        }
+    }
 }
 
 

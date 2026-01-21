@@ -3,7 +3,7 @@
 
 import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js';
 import { handleStartNewSession, handleLoadSession } from './sessionManagement.js?v=3.2';
-import { handleLoadResources } from '../eventHandlers.js?v=3.2';
+import { handleLoadResources } from '../eventHandlers.js?v=3.4';
 import * as API from '../api.js';
 import * as UI from '../ui.js';
 import * as DOM from '../domElements.js';

@@ -1747,15 +1747,19 @@ async def new_session():
             app_logger.warning(f"Default profile ID {default_profile_id} not found in profiles list")
 
     try:
+        # Determine profile_id: use override if present, otherwise default
+        active_profile_id = profile_override_id if profile_override_id else default_profile_id
+
         session_id = await session_manager.create_session(
             user_uuid=user_uuid,
             provider=profile_provider,
             llm_instance=APP_STATE.get('llm'),
             charting_intensity=charting_intensity,
             system_prompt_template=system_prompt_template,
-            profile_tag=profile_tag
+            profile_tag=profile_tag,
+            profile_id=active_profile_id
         )
-        app_logger.info(f"Created new session: {session_id} for user {user_uuid} with profile_tag {profile_tag}.")
+        app_logger.info(f"Created new session: {session_id} for user {user_uuid} with profile_tag {profile_tag}, profile_id {active_profile_id}.")
 
         # Check if the profile has a session primer
         # Use overridden profile if provided (profile override awareness), otherwise use default

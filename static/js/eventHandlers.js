@@ -506,7 +506,6 @@ async function processStream(responseBody) {
                         }
                     } else if (eventName === 'notification') {
                         // Handle notifications sent during execution stream
-                        console.log('[notification] Received during execution:', eventData.type, eventData);
                         if (eventData.type === 'profile_override_failed') {
                             const { override_profile_name, override_profile_tag, default_profile_tag, error_message } = eventData.payload;
                             // Show banner - import the function from notifications.js
@@ -531,23 +530,19 @@ async function processStream(responseBody) {
                         } else if (eventData.type === 'session_model_update') {
                             // Handle session metadata updates during execution
                             const { session_id, models_used, profile_tags_used, last_updated, provider, model, name } = eventData.payload;
-                            console.log('[session_model_update] Received during execution:', {
-                                session_id,
-                                models_used,
-                                profile_tags_used,
-                                provider,
-                                model,
-                                current_session: state.currentSessionId,
-                                is_current: session_id === state.currentSessionId
-                            });
                             UI.updateSessionModels(session_id, models_used, profile_tags_used);
                             if (session_id === state.currentSessionId) {
-                                console.log('[session_model_update] Updating Live Status with:', provider, model);
                                 state.currentProvider = provider;
                                 state.currentModel = model;
                                 UI.updateStatusPromptName();
-                            } else {
-                                console.log('[session_model_update] Not updating Live Status - wrong session');
+                            }
+                        } else if (eventData.type === 'user_message_profile_tag') {
+                            // Update the last user message's profile badge with the backend-resolved tag
+                            // This is especially important for session primers where the frontend may not know the correct tag
+                            const payload = eventData.payload || eventData;
+                            const { profile_tag } = payload;
+                            if (profile_tag) {
+                                UI.updateLastUserMessageProfileTag(profile_tag);
                             }
                         } else if (eventData.type === 'conversation_agent_start' ||
                                    eventData.type === 'conversation_llm_step' ||

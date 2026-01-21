@@ -4,7 +4,7 @@
  * It initializes the application by setting up event listeners and loading initial data.
  */
 
-import { initializeEventListeners } from './eventHandlers.js?v=3.2';
+import { initializeEventListeners } from './eventHandlers.js?v=3.4';
 import { finalizeConfiguration } from './handlers/configManagement.js';
 import { initializeConfigurationUI } from './handlers/configurationHandler.js';
 import * as API from './api.js';
@@ -1036,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeVoiceRecognition();
     
     // Import and wire repository tabs
-    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.2');
+    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.4');
     wireRepositoryTabs();
     
     // Initialize utility sessions filter for sidebar
