@@ -200,10 +200,7 @@
       "llmConfigurationId": null,
       "mcpServerId": null,
       "genieConfig": {
-        "slaveProfiles": [
-          "profile-default-chat",
-          "profile-default-rag"
-        ],
+        "slaveProfiles": [],
         "maxConcurrentSlaves": 3
       },
       "isDefault": false

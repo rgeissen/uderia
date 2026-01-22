@@ -1125,17 +1125,16 @@ class ConfigManager:
                 return False, "RAG focused profiles require at least 1 knowledge collection"
 
         elif profile_type == "genie":
-            # Genie profiles REQUIRE genieConfig with slaveProfiles (field name preserved for API compatibility)
+            # Genie profiles REQUIRE genieConfig (but slaveProfiles can be empty - user will configure later)
             genie_config = profile.get("genieConfig", {})
             if not genie_config:
                 return False, "Genie profiles require genieConfig"
 
+            # Note: slaveProfiles can be empty - activation will prompt user to add children
             slave_profiles = genie_config.get("slaveProfiles", [])
-            if not slave_profiles or len(slave_profiles) == 0:
-                return False, "Genie profiles require at least one child profile"
 
-            # Validate all child profiles exist and are not genie profiles (prevent nesting)
-            if user_uuid:
+            # Only validate child profiles if any are configured
+            if slave_profiles and len(slave_profiles) > 0 and user_uuid:
                 all_profiles = self.get_profiles(user_uuid)
                 profile_map = {p.get("id"): p for p in all_profiles}
                 current_profile_id = profile.get("id")

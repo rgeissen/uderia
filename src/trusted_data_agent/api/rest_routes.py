@@ -5575,47 +5575,92 @@ async def activate_profile(profile_id: str):
         # Run tests before activation
         test_results = {}
         all_tests_passed = True
-        
-        # Test LLM configuration
-        try:
-            llm_config_id = profile.get("llmConfigurationId")
-            if llm_config_id:
-                llm_configs = config_manager.get_llm_configurations(user_uuid)
-                llm_config = next((cfg for cfg in llm_configs if cfg.get("id") == llm_config_id), None)
-                
-                if llm_config:
-                    from trusted_data_agent.llm.llm_factory import LLMFactory
-                    llm_instance = LLMFactory.create_llm(llm_config)
-                    response = await llm_instance.ainvoke("Say 'OK' if you can read this.")
-                    test_results["llm"] = {"status": "success", "message": "LLM connection successful."}
-                else:
-                    test_results["llm"] = {"status": "error", "message": "LLM configuration not found."}
-                    all_tests_passed = False
-            else:
-                test_results["llm"] = {"status": "error", "message": "No LLM configuration specified."}
+
+        profile_type = profile.get("profile_type", "tool_enabled")
+
+        # Genie profiles: test child profile configuration instead of LLM/MCP
+        if profile_type == "genie":
+            genie_config = profile.get("genieConfig", {})
+            slave_profiles = genie_config.get("slaveProfiles", [])
+
+            if not slave_profiles or len(slave_profiles) == 0:
+                test_results["profile_type"] = {
+                    "status": "error",
+                    "message": "Genie profile has no child profiles configured. Add child profiles before activating."
+                }
                 all_tests_passed = False
-        except Exception as llm_error:
-            test_results["llm"] = {"status": "error", "message": f"LLM connection failed: {str(llm_error)}"}
-            all_tests_passed = False
-        
-        # Test MCP server
-        try:
-            mcp_server_id = profile.get("mcpServerId")
-            if mcp_server_id:
-                mcp_servers = config_manager.get_mcp_servers(user_uuid)
-                mcp_server = next((srv for srv in mcp_servers if srv.get("id") == mcp_server_id), None)
-                
-                if mcp_server:
-                    test_results["mcp_server"] = {"status": "success", "message": f"MCP server configured: {mcp_server.get('name', 'Unknown')}"}
-                else:
-                    test_results["mcp_server"] = {"status": "error", "message": "MCP server not found."}
-                    all_tests_passed = False
             else:
-                test_results["mcp_server"] = {"status": "error", "message": "No MCP server specified."}
+                # Validate child profiles exist
+                all_profiles = config_manager.get_profiles(user_uuid)
+                profile_map = {p.get("id"): p for p in all_profiles}
+
+                valid_children = []
+                invalid_children = []
+
+                for slave_id in slave_profiles:
+                    child_profile = profile_map.get(slave_id)
+                    if child_profile:
+                        valid_children.append(f"@{child_profile.get('tag', 'unknown')}")
+                    else:
+                        invalid_children.append(slave_id)
+
+                if invalid_children:
+                    test_results["profile_type"] = {
+                        "status": "error",
+                        "message": f"Child profile(s) not found: {', '.join(invalid_children)}"
+                    }
+                    all_tests_passed = False
+                else:
+                    test_results["profile_type"] = {
+                        "status": "success",
+                        "message": f"Genie coordinating {len(valid_children)} child profile(s): {', '.join(valid_children)}."
+                    }
+
+            # Genie profiles delegate to children - no direct LLM/MCP needed
+            test_results["llm"] = {"status": "info", "message": "Genie profiles use child profile LLM configurations."}
+            test_results["mcp_server"] = {"status": "info", "message": "Genie profiles delegate to child profiles (no direct MCP)."}
+
+        else:
+            # Test LLM configuration (non-Genie profiles)
+            try:
+                llm_config_id = profile.get("llmConfigurationId")
+                if llm_config_id:
+                    llm_configs = config_manager.get_llm_configurations(user_uuid)
+                    llm_config = next((cfg for cfg in llm_configs if cfg.get("id") == llm_config_id), None)
+
+                    if llm_config:
+                        from trusted_data_agent.llm.llm_factory import LLMFactory
+                        llm_instance = LLMFactory.create_llm(llm_config)
+                        response = await llm_instance.ainvoke("Say 'OK' if you can read this.")
+                        test_results["llm"] = {"status": "success", "message": "LLM connection successful."}
+                    else:
+                        test_results["llm"] = {"status": "error", "message": "LLM configuration not found."}
+                        all_tests_passed = False
+                else:
+                    test_results["llm"] = {"status": "error", "message": "No LLM configuration specified."}
+                    all_tests_passed = False
+            except Exception as llm_error:
+                test_results["llm"] = {"status": "error", "message": f"LLM connection failed: {str(llm_error)}"}
                 all_tests_passed = False
-        except Exception as mcp_error:
-            test_results["mcp_server"] = {"status": "error", "message": f"MCP test failed: {str(mcp_error)}"}
-            all_tests_passed = False
+
+            # Test MCP server (non-Genie profiles)
+            try:
+                mcp_server_id = profile.get("mcpServerId")
+                if mcp_server_id:
+                    mcp_servers = config_manager.get_mcp_servers(user_uuid)
+                    mcp_server = next((srv for srv in mcp_servers if srv.get("id") == mcp_server_id), None)
+
+                    if mcp_server:
+                        test_results["mcp_server"] = {"status": "success", "message": f"MCP server configured: {mcp_server.get('name', 'Unknown')}"}
+                    else:
+                        test_results["mcp_server"] = {"status": "error", "message": "MCP server not found."}
+                        all_tests_passed = False
+                else:
+                    test_results["mcp_server"] = {"status": "error", "message": "No MCP server specified."}
+                    all_tests_passed = False
+            except Exception as mcp_error:
+                test_results["mcp_server"] = {"status": "error", "message": f"MCP test failed: {str(mcp_error)}"}
+                all_tests_passed = False
         
         # Test RAG collections (check database, not ChromaDB)
         try:
