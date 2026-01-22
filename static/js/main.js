@@ -655,11 +655,22 @@ async function initializeRAGAutoCompletion() {
 
         userInput.addEventListener('input', () => {
             const inputValue = userInput.value;
-            
+
             // Don't update tag badge if we're in the middle of programmatic changes
             if (!isUpdatingInput) {
-                // Only try to detect and show badge if we don't already have an active tag
-                if (!activeTagPrefix) {
+                // If we have an active tag, check if the full message (prefix + input) still has a valid tag
+                if (activeTagPrefix) {
+                    // Reconstruct what the full message would look like
+                    const fullMessage = activeTagPrefix + inputValue;
+                    const tagMatch = fullMessage.match(/^@(\w+)\s/);
+
+                    if (!tagMatch) {
+                        // Tag pattern is no longer valid - user deleted it
+                        activeTagPrefix = '';
+                        hideActiveTagBadge();
+                    }
+                } else {
+                    // No active tag - check if user is adding one
                     updateTagBadge();
                 }
             }
