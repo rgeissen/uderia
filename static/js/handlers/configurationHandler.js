@@ -2323,10 +2323,8 @@ export async function reconnectAndLoad() {
 
                     if (sortedSessions && Array.isArray(sortedSessions) && sortedSessions.length > 0) {
                         // Populate session list dropdown/sidebar
-                        const sessionToLoad = sortedSessions.find(s => s.id === currentSessionId) ? currentSessionId : sortedSessions[0].id;
-
                         sortedSessions.forEach((session) => {
-                            const isActive = session.id === sessionToLoad;
+                            const isActive = session.id === currentSessionId;
                             const sessionItem = UI.addSessionToList(session, isActive);
                             DOM.sessionList.appendChild(sessionItem);
                         });
@@ -2349,8 +2347,37 @@ export async function reconnectAndLoad() {
                         // Update genie master badges (adds collapse toggles to sessions with slaves)
                         updateGenieMasterBadges();
 
-                        // Load the selected session
-                        await handleLoadSession(sessionToLoad);
+                        // Determine which session to load:
+                        // 1. If currentSessionId exists (from localStorage), try to load it directly
+                        // 2. The session may be beyond the paginated list - that's OK, try loading anyway
+                        // 3. If that fails (session deleted), fall back to the first session
+                        if (currentSessionId) {
+                            const isInLoadedList = sortedSessions.some(s => s.id === currentSessionId);
+                            console.log('[Session Load] Attempting to load stored session:', currentSessionId,
+                                isInLoadedList ? '(found in loaded list)' : '(not in first page, loading directly)');
+
+                            try {
+                                await handleLoadSession(currentSessionId);
+                            } catch (loadError) {
+                                console.warn('[Session Load] Failed to load stored session, falling back to first session:', loadError.message);
+                                localStorage.removeItem('currentSessionId');
+                                await handleLoadSession(sortedSessions[0].id);
+                            }
+                        } else {
+                            // No stored session ID, load the most recent session
+                            console.log('[Session Load] No stored session ID, loading most recent:', sortedSessions[0].id);
+                            await handleLoadSession(sortedSessions[0].id);
+                        }
+                    } else if (currentSessionId) {
+                        // No sessions loaded in first page, but we have a stored session ID
+                        console.log('[Session Load] No sessions in list, but stored session exists. Attempting direct load:', currentSessionId);
+                        try {
+                            await handleLoadSession(currentSessionId);
+                        } catch (loadError) {
+                            console.warn('[Session Load] Stored session not found, creating new session:', loadError.message);
+                            localStorage.removeItem('currentSessionId');
+                            await handleStartNewSession();
+                        }
                     } else {
                         // No active sessions exist, create a new one
                         await handleStartNewSession();

@@ -7061,16 +7061,24 @@
                                     fetch('/sessions', { headers }),
                                     new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 30000))
                                 ]);
-                                const sessions = await sessionsResponse.json();
-                                
+                                const sessionsData = await sessionsResponse.json();
+                                // Handle paginated API response format: {sessions: [...], total_count: N, has_more: bool}
+                                const sessions = sessionsData.sessions || sessionsData;
+
                                 let sessionToLoad = null;
-                                
-                                if (sessions && sessions.length > 0) {
-                                    // Load the most recent session (first in list)
+
+                                // First, check if we have a stored session ID in localStorage
+                                const storedSessionId = localStorage.getItem('currentSessionId');
+                                if (storedSessionId) {
+                                    // Try to load the stored session - it may exist even if not in first page
+                                    console.log('[Welcome Button] Found stored session ID:', storedSessionId);
+                                    sessionToLoad = { id: storedSessionId };
+                                } else if (sessions && Array.isArray(sessions) && sessions.length > 0) {
+                                    // No stored session, load the most recent session (first in list)
                                     sessionToLoad = sessions[0];
                                     console.log('[Welcome Button] Loading most recent session:', sessionToLoad.id);
                                 } else {
-                                    // No existing sessions - create a new one and validate LLM
+                                    // No existing sessions AND no stored session ID - create a new one
                                     console.log('[Welcome Button] No existing sessions, creating new session and validating LLM...');
                                     const sessionResponse = await Promise.race([
                                         fetch('/session', {
@@ -7080,16 +7088,16 @@
                                         }),
                                         new Promise((_, reject) => setTimeout(() => reject(new Error('Session creation timed out')), 30000))
                                     ]);
-                                    
+
                                     console.log('[Welcome Button] Session response status:', sessionResponse.status, sessionResponse.ok);
                                     const sessionResult = await sessionResponse.json();
                                     console.log('[Welcome Button] Session result:', sessionResult);
-                                    
+
                                     if (!sessionResponse.ok) {
                                         console.error('[Welcome Button] Session creation failed:', sessionResult);
                                         throw new Error(sessionResult.error || sessionResult.message || 'Failed to validate configuration');
                                     }
-                                    
+
                                     sessionToLoad = sessionResult;
                                     console.log('[Welcome Button] New session created and LLM validated:', sessionResult);
                                 }

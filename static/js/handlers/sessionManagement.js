@@ -234,6 +234,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         }
     } catch (error) {
         UI.addMessage('assistant', `Error loading session: ${error.message}`);
+        throw error;  // Re-throw so callers can implement fallback logic
     } finally {
         DOM.userInput.focus();
     }

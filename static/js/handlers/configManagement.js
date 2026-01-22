@@ -290,10 +290,37 @@ export async function finalizeConfiguration(config, switchToConversationView = t
             // Update genie master badges (adds collapse toggles to sessions with slaves)
             updateGenieMasterBadges();
 
-            // If the previously active session still exists and is not archived, ensure it is loaded.
-            // Otherwise, load the most recent active session.
-            const sessionToLoad = sortedSessions.find(s => s.id === currentSessionId) ? currentSessionId : sortedSessions[0].id;
-            await handleLoadSession(sessionToLoad);
+            // Determine which session to load:
+            // 1. If currentSessionId exists (from localStorage), try to load it directly
+            // 2. The session may be beyond the paginated list - that's OK, try loading anyway
+            // 3. If that fails (session deleted), fall back to the first session
+            if (currentSessionId) {
+                const isInLoadedList = sortedSessions.some(s => s.id === currentSessionId);
+                console.log('[Session Load] Attempting to load stored session:', currentSessionId,
+                    isInLoadedList ? '(found in loaded list)' : '(not in first page, loading directly)');
+
+                try {
+                    await handleLoadSession(currentSessionId);
+                } catch (loadError) {
+                    console.warn('[Session Load] Failed to load stored session, falling back to first session:', loadError.message);
+                    localStorage.removeItem('currentSessionId');
+                    await handleLoadSession(sortedSessions[0].id);
+                }
+            } else {
+                // No stored session ID, load the most recent session
+                console.log('[Session Load] No stored session ID, loading most recent:', sortedSessions[0].id);
+                await handleLoadSession(sortedSessions[0].id);
+            }
+        } else if (currentSessionId) {
+            // No sessions loaded in first page, but we have a stored session ID
+            console.log('[Session Load] No sessions in list, but stored session exists. Attempting direct load:', currentSessionId);
+            try {
+                await handleLoadSession(currentSessionId);
+            } catch (loadError) {
+                console.warn('[Session Load] Stored session not found, creating new session:', loadError.message);
+                localStorage.removeItem('currentSessionId');
+                await handleStartNewSession();
+            }
         } else {
             // No active sessions exist, create a new one
             await handleStartNewSession();
