@@ -2640,6 +2640,14 @@ const profileColors = {
     'genie-profiles': '#9333ea'          // Purple - Coordinate
 };
 
+// Description banner mapping for each tab
+const descriptionMap = {
+    'conversation-profiles': 'description-conversation',
+    'rag-profiles': 'description-rag',
+    'tool-profiles': 'description-tool',
+    'genie-profiles': 'description-genie'
+};
+
 function setupProfileTypeTabs() {
     const tabs = document.querySelectorAll('.profile-type-tab');
     const contents = document.querySelectorAll('.profile-type-content');
@@ -2664,6 +2672,11 @@ function setupProfileTypeTabs() {
             // Show/hide content
             contents.forEach(content => {
                 content.classList.toggle('hidden', content.id !== targetTab + '-container');
+            });
+
+            // Show/hide description banners
+            document.querySelectorAll('.profile-description').forEach(desc => {
+                desc.classList.toggle('hidden', desc.id !== descriptionMap[targetTab]);
             });
         });
     });
