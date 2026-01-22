@@ -816,8 +816,8 @@ Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate 
 │ SAFETY       │ 100% Safe      │ Zero          │ Governed     │ Composite (Inherits)    │
 │              │ No Actions     │ Hallucinate   │ Audit Trail  │                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ COST         │ Lowest         │ Low-Moderate  │ Moderate     │ Variable (Scales with   │
-│              │ (~2K tokens)   │ (~5K tokens)  │ (~15K tokens)│ complexity & depth)     │
+│ COST         │ Low per turn   │ Low-Moderate  │ Lowest for   │ Variable (Scales with   │
+│ (complex)    │ (many turns)   │ (~5K tokens)  │ complex tasks│ complexity & depth)     │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
 │ SPEED        │ Fastest        │ Fast          │ Fast + Smart │ Comprehensive           │
 │              │                │               │ (Self-heals) │ (Auto-parallel)         │
