@@ -11,6 +11,16 @@
     --user-avatar-bg: #4b5563;
 }
 
+/* Fix for iPad/iOS touch events in scrollable tab containers */
+/* touch-action: manipulation tells iOS to handle taps immediately without */
+/* the 300ms delay used for detecting double-taps or scroll gestures */
+.mcp-transport-tab,
+.llm-provider-tab {
+    touch-action: manipulation;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
 /* MODIFICATION: Set body to flex-col for new layout */
 body {
     font-family: var(--font-primary, 'Inter', sans-serif);
