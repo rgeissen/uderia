@@ -2100,7 +2100,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             }
 
             case 'knowledge_retrieval': {
-                // Knowledge retrieval event - use purple/violet theme for consistency
+                // Knowledge retrieval event - use blue theme (Focus profile color)
                 stepEl.classList.remove('conversation-agent-status-step');
                 stepEl.classList.add('knowledge-retrieval-status-step');
 
@@ -4959,7 +4959,7 @@ function createKnowledgeRepositoryCard(col) {
     // Subscribed indicator (if user is subscribed but doesn't own it)
     if (col.is_subscribed && !col.is_owned) {
         const subscribedBadge = document.createElement('span');
-        subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-purple-500/20 text-indigo-400 flex items-center gap-1';
+        subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1';
         subscribedBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg> Subscribed`;
         subscribedBadge.title = 'You are subscribed to this collection';
         indicatorsRow.appendChild(subscribedBadge);
@@ -5069,7 +5069,7 @@ function createKnowledgeRepositoryCard(col) {
     // Upload button (Knowledge repositories only)
     const uploadBtn = document.createElement('button');
     uploadBtn.type = 'button';
-    uploadBtn.className = 'px-3 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-sm text-white';
+    uploadBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
     uploadBtn.innerHTML = '<span style="font-size: 14px;">+</span> Upload';
     uploadBtn.addEventListener('click', () => {
         if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.openUploadDocumentsModal) {
@@ -5095,7 +5095,7 @@ function createKnowledgeRepositoryCard(col) {
         // Subscribed collection - show Unsubscribe button
         const unsubscribeBtn = document.createElement('button');
         unsubscribeBtn.type = 'button';
-        unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-sm text-white';
+        unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
         unsubscribeBtn.textContent = 'Unsubscribe';
         unsubscribeBtn.addEventListener('click', async () => {
             if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
@@ -5184,7 +5184,7 @@ function createCollectionCard(col) {
             // Subscribed indicator (if user is subscribed but doesn't own it)
             if (col.is_subscribed && !col.is_owned) {
                 const subscribedBadge = document.createElement('span');
-                subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-purple-500/20 text-indigo-400 flex items-center gap-1';
+                subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1';
                 subscribedBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg> Subscribed`;
                 subscribedBadge.title = 'You are subscribed to this collection';
                 indicatorsRow.appendChild(subscribedBadge);
@@ -5301,7 +5301,7 @@ function createCollectionCard(col) {
                 // Subscribed collection - show Unsubscribe button
                 const unsubscribeBtn = document.createElement('button');
                 unsubscribeBtn.type = 'button';
-                unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-sm text-white';
+                unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
                 unsubscribeBtn.textContent = 'Unsubscribe';
                 unsubscribeBtn.addEventListener('click', async () => {
                     if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {

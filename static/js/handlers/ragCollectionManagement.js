@@ -2382,7 +2382,7 @@ function displayQuestionsPreview(questions) {
         questionDiv.className = 'bg-gray-900/50 rounded p-3 border border-gray-700';
         
         questionDiv.innerHTML = `
-            <div class="text-xs font-semibold text-purple-300 mb-1">Question ${index + 1}</div>
+            <div class="text-xs font-semibold text-blue-300 mb-1">Question ${index + 1}</div>
             <div class="text-sm text-white mb-2">${escapeHtml(q.question)}</div>
             <div class="text-xs text-gray-400 font-mono bg-black/30 rounded p-2 overflow-x-auto">
                 ${escapeHtml(q.sql.substring(0, 100))}${q.sql.length > 100 ? '...' : ''}
@@ -3089,7 +3089,7 @@ async function renderLlmFieldsForTemplate(templateId) {
             if (!requiresMcpContext) {
                 step2Section.classList.remove('hidden');
                 // Update step number from 2 to 1
-                const stepBadge = step2Section.querySelector('.bg-purple-600');
+                const stepBadge = step2Section.querySelector('.bg-blue-600');
                 if (stepBadge) {
                     stepBadge.textContent = '1';
                 }
@@ -3103,7 +3103,7 @@ async function renderLlmFieldsForTemplate(templateId) {
                 }
             } else {
                 // Reset to Step 2 for MCP-based templates
-                const stepBadge = step2Section.querySelector('.bg-purple-600');
+                const stepBadge = step2Section.querySelector('.bg-blue-600');
                 if (stepBadge) {
                     stepBadge.textContent = '2';
                 }

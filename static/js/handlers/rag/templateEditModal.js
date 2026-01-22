@@ -358,7 +358,7 @@ export class TemplateEditModal {
         const tableStyle = 'width: 100%; border-collapse: collapse;';
         const tdStyle = 'padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); color: #e5e7eb;';
         const codeStyle = 'background: #2d3748; padding: 0.125rem 0.375rem; border-radius: 0.25rem; color: #F15F22; font-family: monospace; font-size: 0.875rem;';
-        const badgeStyle = 'display: inline-block; padding: 0.25rem 0.5rem; background: #10b981; color: white; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;';
+        const badgeStyle = 'display: inline-block; padding: 0.25rem 0.5rem; background: #3b82f6; color: white; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;';
         
         infoContainer.innerHTML = `
             <div style="${alertStyle}">

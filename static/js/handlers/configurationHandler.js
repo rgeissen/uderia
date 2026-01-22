@@ -2371,17 +2371,22 @@ function renderProfileCard(profile) {
                         <div class="flex items-center gap-2 mb-1">
                             <h4 class="font-semibold text-white">${escapeHtml(profile.name || profile.tag)}</h4>
                             <div class="flex items-center gap-1">
-                                ${profile.color ? `
+                                ${(() => {
+                                    // Profile type color scheme: Ideate=Green, Focus=Blue, Optimize=Orange, Coordinate=Purple
+                                    const profileTypeColors = {
+                                        'llm_only': '#4ade80',      // Green - Ideate
+                                        'rag_focused': '#3b82f6',   // Blue - Focus
+                                        'tool_enabled': '#F15F22',  // Orange - Optimize
+                                        'genie': '#9333ea'          // Purple - Coordinate
+                                    };
+                                    const tagColor = profileTypeColors[profile.profile_type] || profile.color || '#F15F22';
+                                    return `
                                 <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono font-semibold border"
-                                      style="background: linear-gradient(135deg, ${profile.color}30, ${profile.color}15); border-color: ${profile.color}50; color: ${profile.color};">
-                                    <span class="w-2 h-2 rounded-full" style="background: ${profile.color};"></span>
+                                      style="background: linear-gradient(135deg, ${tagColor}30, ${tagColor}15); border-color: ${tagColor}50; color: ${tagColor};">
+                                    <span class="w-2 h-2 rounded-full" style="background: ${tagColor};"></span>
                                     @${escapeHtml(profile.tag)}
-                                </span>
-                                ` : `
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold bg-[#F15F22]/20 text-[#F15F22] border border-[#F15F22]/30">
-                                    @${escapeHtml(profile.tag)}
-                                </span>
-                                `}
+                                </span>`;
+                                })()}
                                 <button type="button" data-action="copy-profile-id" data-profile-id="${profile.id}"
                                     class="inline-flex items-center justify-center p-1 ml-1 text-gray-400 hover:text-[#F15F22] transition-colors rounded hover:bg-white/5 group relative"
                                     title="Copy Profile ID">
@@ -2461,8 +2466,8 @@ function renderProfileCard(profile) {
                             <p><span class="font-medium">Classification:</span> ${(() => {
                                 const mode = profile.classification_mode;
                                 const badges = {
-                                    'light': '<span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400 rounded">Light</span>',
-                                    'full': '<span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium bg-purple-500/20 text-purple-400 rounded">Full</span>'
+                                    'light': '<span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-400 rounded">Light</span>',
+                                    'full': '<span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium bg-orange-500/20 text-orange-400 rounded">Full</span>'
                                 };
                                 return badges[mode] || badges['light'];
                             })()}</p>
@@ -2518,7 +2523,7 @@ function renderProfileCard(profile) {
                     ${profile.profile_type === 'tool_enabled' ? `
                     <div class="relative inline-block">
                         <button type="button" data-action="toggle-classification-menu" data-profile-id="${profile.id}"
-                            class="px-4 py-2 text-sm font-medium bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors text-white flex items-center gap-2"
+                            class="px-4 py-2 text-sm font-medium bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors text-white flex items-center gap-2"
                             title="Classification options">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
@@ -2627,6 +2632,14 @@ function renderProfileCard(profile) {
     `;
 }
 
+// Profile tab colors - matches the color scheme for each profile type
+const profileColors = {
+    'conversation-profiles': '#4ade80',  // Green - Ideate
+    'rag-profiles': '#3b82f6',           // Blue - Focus
+    'tool-profiles': '#F15F22',          // Orange - Optimize
+    'genie-profiles': '#9333ea'          // Purple - Coordinate
+};
+
 function setupProfileTypeTabs() {
     const tabs = document.querySelectorAll('.profile-type-tab');
     const contents = document.querySelectorAll('.profile-type-content');
@@ -2635,24 +2648,22 @@ function setupProfileTypeTabs() {
         tab.addEventListener('click', () => {
             const targetTab = tab.dataset.tab;
 
-            // Update tab styles
+            // Update tab styles with color-matched borders
             tabs.forEach(t => {
                 if (t === tab) {
                     t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
-                    t.classList.add('text-white', 'border-[#F15F22]');
+                    t.classList.add('text-white');
+                    t.style.borderColor = profileColors[t.dataset.tab] || '#F15F22';
                 } else {
-                    t.classList.remove('text-white', 'border-[#F15F22]');
+                    t.classList.remove('text-white');
                     t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                    t.style.borderColor = '';
                 }
             });
 
             // Show/hide content
             contents.forEach(content => {
-                if (content.id === targetTab + '-container') {
-                    content.classList.remove('hidden');
-                } else {
-                    content.classList.add('hidden');
-                }
+                content.classList.toggle('hidden', content.id !== targetTab + '-container');
             });
         });
     });
@@ -3377,11 +3388,11 @@ function attachProfileEventListeners() {
                 if (resultsContainer) {
                     resultsContainer.innerHTML = `
                         <div class="flex items-center gap-2">
-                            <svg class="animate-spin h-4 w-4 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <svg class="animate-spin h-4 w-4 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            <span class="text-purple-400">Reclassifying profile...</span>
+                            <span class="text-orange-400">Reclassifying profile...</span>
                         </div>
                     `;
                 }
@@ -4377,7 +4388,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             const profileTypeColor = {
                 'llm_only': 'text-green-400',
                 'tool_enabled': 'text-orange-400',
-                'rag_focused': 'text-purple-400',
+                'rag_focused': 'text-blue-400',
                 'genie': 'text-purple-600'
             }[profile.profile_type] || 'text-gray-400';
 

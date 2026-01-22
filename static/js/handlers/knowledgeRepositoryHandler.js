@@ -1077,7 +1077,7 @@ function openKnowledgeInspectionModal(repo) {
                         <div class="text-sm text-gray-400 mt-1">Created</div>
                     </div>
                     <div class="bg-gray-800/50 p-4 rounded-lg text-center">
-                        <div class="text-3xl font-bold text-purple-400">${repo.id || repo.collection_id}</div>
+                        <div class="text-3xl font-bold text-blue-400">${repo.id || repo.collection_id}</div>
                         <div class="text-sm text-gray-400 mt-1">ID</div>
                     </div>
                 </div>
@@ -1242,7 +1242,7 @@ function createKnowledgeRepositoryCard(repo) {
                 <button class="edit-knowledge-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white" data-repo-id="${repoId}">
                     Edit
                 </button>
-                <button class="upload-knowledge-docs-btn px-3 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
+                <button class="upload-knowledge-docs-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                     </svg>
@@ -1281,21 +1281,21 @@ function renderMoreChunks(count = 5) {
     for (let idx = startIdx; idx < endIdx; idx++) {
         const chunk = chunks[idx];
         const chunkEl = document.createElement('div');
-        chunkEl.className = 'bg-gray-700/50 rounded-lg p-4 border border-gray-600 hover:border-purple-500/50 transition-colors';
+        chunkEl.className = 'bg-gray-700/50 rounded-lg p-4 border border-gray-600 hover:border-blue-500/50 transition-colors';
         
         const isTruncated = chunk.text.length > 500;
         const chunkId = `chunk-preview-${idx}`;
         
         chunkEl.innerHTML = `
             <div class="flex items-center justify-between mb-3">
-                <span class="text-sm font-semibold text-purple-300">Chunk ${idx + 1}</span>
+                <span class="text-sm font-semibold text-blue-300">Chunk ${idx + 1}</span>
                 <span class="text-xs px-2 py-1 rounded-full bg-gray-600 text-gray-300">${chunk.text.length} chars</span>
             </div>
             <div id="${chunkId}-text" class="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
                 ${isTruncated ? chunk.text.substring(0, 500) + '...' : chunk.text}
             </div>
             ${isTruncated ? `
-                <button id="${chunkId}-toggle" class="mt-3 text-xs text-purple-400 hover:text-purple-300 underline transition-colors">
+                <button id="${chunkId}-toggle" class="mt-3 text-xs text-blue-400 hover:text-blue-300 underline transition-colors">
                     Show full chunk
                 </button>
             ` : ''}
@@ -1378,21 +1378,21 @@ function updatePreviewToggleButton() {
     
     if (previewEnabled) {
         // Active state
-        toggleBtn.classList.remove('bg-purple-500/20', 'hover:bg-purple-500/30', 'border-purple-500/40');
-        toggleBtn.classList.add('bg-purple-500', 'hover:bg-purple-600', 'border-purple-500');
-        if (icon) icon.classList.replace('text-purple-400', 'text-white');
+        toggleBtn.classList.remove('bg-blue-500/20', 'hover:bg-blue-500/30', 'border-blue-500/40');
+        toggleBtn.classList.add('bg-blue-500', 'hover:bg-blue-600', 'border-blue-500');
+        if (icon) icon.classList.replace('text-blue-400', 'text-white');
         if (text) {
             text.textContent = 'Hide Preview';
-            text.classList.replace('text-purple-300', 'text-white');
+            text.classList.replace('text-blue-300', 'text-white');
         }
     } else {
         // Inactive state
-        toggleBtn.classList.remove('bg-purple-500', 'hover:bg-purple-600', 'border-purple-500');
-        toggleBtn.classList.add('bg-purple-500/20', 'hover:bg-purple-500/30', 'border-purple-500/40');
-        if (icon) icon.classList.replace('text-white', 'text-purple-400');
+        toggleBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'border-blue-500');
+        toggleBtn.classList.add('bg-blue-500/20', 'hover:bg-blue-500/30', 'border-blue-500/40');
+        if (icon) icon.classList.replace('text-white', 'text-blue-400');
         if (text) {
             text.textContent = 'Show Preview';
-            text.classList.replace('text-white', 'text-purple-300');
+            text.classList.replace('text-white', 'text-blue-300');
         }
     }
 }
@@ -1547,7 +1547,7 @@ export function openUploadDocumentsModal(collectionId, collectionName, repoData)
     const modalTitle = modalOverlay.querySelector('h2');
     if (modalTitle) {
         modalTitle.innerHTML = `
-            <svg class="w-6 h-6 text-purple-400 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-6 h-6 text-blue-400 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
             <span>Upload Documents to ${collectionName}</span>

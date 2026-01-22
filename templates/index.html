@@ -1077,13 +1077,13 @@
                                 </span>
                             </div>
                             <!-- Knowledge Banner -->
-                            <div id="knowledge-banner" class="hidden mt-2 px-3 py-1.5 bg-purple-500/20 border border-purple-400/40 rounded-md text-xs text-purple-200">
+                            <div id="knowledge-banner" class="hidden mt-2 px-3 py-1.5 bg-blue-500/20 border border-blue-400/40 rounded-md text-xs text-blue-200">
                                 <div class="flex items-center gap-x-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                                         <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/>
                                     </svg>
                                     <span class="font-medium">Knowledge:</span>
-                                    <span id="knowledge-collections-list" class="text-purple-100"></span>
+                                    <span id="knowledge-collections-list" class="text-blue-100"></span>
                                 </div>
                             </div>
                             <div id="token-usage-display" class="text-xs text-gray-400 mt-2 w-full">
@@ -2004,59 +2004,63 @@
                                                             </button>
                                                         </div>                                    </div>
 
-                                    <!-- Profile Type Tabs -->
+                                    <!-- Profile Type Tabs (ordered: Ideate → Focus → Optimize → Coordinate) -->
                                     <div class="flex gap-2 border-b border-white/10 mb-6">
-                                        <button class="profile-type-tab active px-6 py-3 text-sm font-medium transition-all border-b-2 border-[#F15F22] text-white" data-tab="tool-profiles">
+                                        <!-- 1. Ideate - Conversation Focused (Green) -->
+                                        <button class="profile-type-tab active px-6 py-3 text-sm font-medium transition-all border-b-2 border-[#4ade80] text-white" data-tab="conversation-profiles">
                                             <div class="flex items-center gap-2">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#4ade80">
+                                                    <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                                 </svg>
-                                                Efficiency Focused (Optimizer)
+                                                <span class="font-bold uppercase tracking-wide">Ideate</span>
                                             </div>
                                         </button>
-                                        <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="conversation-profiles">
-                                            <div class="flex items-center gap-2">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                                </svg>
-                                                Conversation Focused (LLM)
-                                            </div>
-                                        </button>
+                                        <!-- 2. Focus - Knowledge Focused (Blue) -->
                                         <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="rag-profiles">
                                             <div class="flex items-center gap-2">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#3b82f6">
+                                                    <path fill-rule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" clip-rule="evenodd" />
                                                 </svg>
-                                                Knowledge Focused (RAG)
+                                                <span class="font-bold uppercase tracking-wide">Focus</span>
                                             </div>
                                         </button>
+                                        <!-- 3. Optimize - Efficiency Focused (Orange) -->
+                                        <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="tool-profiles">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#F15F22">
+                                                    <path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.75a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.913-.143z" clip-rule="evenodd" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">Optimize</span>
+                                            </div>
+                                        </button>
+                                        <!-- 4. Coordinate - Genie (Purple) -->
                                         <button class="profile-type-tab px-6 py-3 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20" data-tab="genie-profiles">
                                             <div class="flex items-center gap-2">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#9333ea">
+                                                    <path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" />
+                                                    <path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 013.57-4.047zM20.226 19.389a8.287 8.287 0 00-1.308-5.135 3.75 3.75 0 013.57 4.047l-.01.121a.563.563 0 01-.373.486l-.115.04c-.567.2-1.156.349-1.764.441z" />
                                                 </svg>
-                                                Genie (Multi-Profile)
+                                                <span class="font-bold uppercase tracking-wide">Coordinate</span>
                                             </div>
                                         </button>
                                     </div>
 
-                                    <!-- Efficiency Focused Profiles Container -->
-                                    <div id="tool-profiles-container" class="profile-type-content space-y-4">
-                                        <!-- Efficiency Focused profile cards will be dynamically added here -->
-                                    </div>
-
-                                    <!-- Conversation Profiles Container -->
-                                    <div id="conversation-profiles-container" class="profile-type-content space-y-4 hidden">
+                                    <!-- 1. Conversation Profiles Container (Ideate - default visible) -->
+                                    <div id="conversation-profiles-container" class="profile-type-content space-y-4">
                                         <!-- Conversation profile cards will be dynamically added here -->
                                     </div>
 
-                                    <!-- RAG Focused Profiles Container -->
+                                    <!-- 2. RAG Focused Profiles Container (Focus) -->
                                     <div id="rag-profiles-container" class="profile-type-content space-y-4 hidden">
                                         <!-- RAG focused profile cards will be dynamically added here -->
                                     </div>
 
-                                    <!-- Genie Profiles Container -->
+                                    <!-- 3. Efficiency Focused Profiles Container (Optimize) -->
+                                    <div id="tool-profiles-container" class="profile-type-content space-y-4 hidden">
+                                        <!-- Efficiency Focused profile cards will be dynamically added here -->
+                                    </div>
+
+                                    <!-- 4. Genie Profiles Container (Coordinate) -->
                                     <div id="genie-profiles-container" class="profile-type-content space-y-4 hidden">
                                         <!-- Genie profile cards will be dynamically added here -->
                                     </div>
@@ -4755,13 +4759,13 @@
                             <div class="space-y-4">
                                 <div class="flex items-center justify-between mb-3">
                                     <div class="flex items-center gap-2">
-                                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                                         </svg>
                                         <h3 class="text-base font-semibold text-white">Generation Prompt</h3>
                                     </div>
-                                    <button type="button" id="rag-collection-refresh-prompt" 
-                                            class="text-xs px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-md flex items-center gap-1 transition-colors border border-purple-500/30"
+                                    <button type="button" id="rag-collection-refresh-prompt"
+                                            class="text-xs px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-md flex items-center gap-1 transition-colors border border-blue-500/30"
                                             title="Refresh prompt preview">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
@@ -4769,10 +4773,10 @@
                                         Refresh
                                     </button>
                                 </div>
-                                
+
                                 <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-600 h-[calc(100%-3rem)]">
-                                    <textarea id="rag-collection-llm-prompt-preview" 
-                                              class="w-full h-full p-3 bg-gray-900/70 border border-gray-700 rounded-lg text-xs font-mono text-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    <textarea id="rag-collection-llm-prompt-preview"
+                                              class="w-full h-full p-3 bg-gray-900/70 border border-gray-700 rounded-lg text-xs font-mono text-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                                               placeholder="Click Refresh to preview the prompt that will be sent to the LLM..."></textarea>
                                 </div>
                                 
@@ -4823,16 +4827,16 @@
                                 </div>
                                 
                                 <!-- Step 2: Generate Questions -->
-                                <div id="rag-collection-step2-section" class="hidden bg-gray-800/50 rounded-lg p-4 border border-purple-500/30">
+                                <div id="rag-collection-step2-section" class="hidden bg-gray-800/50 rounded-lg p-4 border border-blue-500/30">
                                     <div class="flex items-center gap-3 mb-3">
-                                        <div class="flex items-center justify-center w-8 h-8 rounded-full bg-purple-600 text-white font-bold text-sm flex-shrink-0">2</div>
+                                        <div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm flex-shrink-0">2</div>
                                         <div class="flex-1 min-w-0">
                                             <h4 class="text-sm font-semibold text-white">Generate Questions</h4>
                                             <p class="text-xs text-gray-400">Create question/SQL pairs</p>
                                         </div>
                                     </div>
-                                    <button type="button" id="rag-collection-generate-questions-btn" 
-                                            class="w-full px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 transition-colors font-semibold text-white text-sm flex items-center justify-center gap-2">
+                                    <button type="button" id="rag-collection-generate-questions-btn"
+                                            class="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors font-semibold text-white text-sm flex items-center justify-center gap-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                         </svg>
@@ -5031,19 +5035,19 @@
                 <div class="w-[55%] p-6 bg-gray-800/30 flex flex-col min-h-0">
                     <div class="flex items-center justify-between mb-4 flex-shrink-0">
                         <div class="flex items-center gap-2">
-                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                             </svg>
                             <h3 class="text-lg font-semibold text-white">Chunking Preview</h3>
                         </div>
-                        <button type="button" id="knowledge-preview-toggle" 
-                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 transition-colors">
-                            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <button type="button" id="knowledge-preview-toggle"
+                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-colors">
+                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                             </svg>
-                            <span class="text-sm font-medium text-purple-300">Show Preview</span>
+                            <span class="text-sm font-medium text-blue-300">Show Preview</span>
                         </button>
                     </div>
 
@@ -5060,9 +5064,9 @@
 
                     <div id="knowledge-repo-preview-results" class="hidden flex-1 flex flex-col min-h-0">
                         <!-- Stats Bar -->
-                        <div class="flex items-center justify-between p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg mb-4 flex-shrink-0">
-                            <span class="text-sm font-medium text-purple-300">Statistics</span>
-                            <span id="knowledge-repo-preview-stats" class="text-xs text-purple-400">—</span>
+                        <div class="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg mb-4 flex-shrink-0">
+                            <span class="text-sm font-medium text-blue-300">Statistics</span>
+                            <span id="knowledge-repo-preview-stats" class="text-xs text-blue-400">—</span>
                         </div>
 
                         <!-- Scrollable Chunks -->

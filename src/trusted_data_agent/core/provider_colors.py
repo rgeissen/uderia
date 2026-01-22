@@ -7,23 +7,28 @@ Provider and profile type color mapping for visual identification throughout the
 
 # Profile type color schemes (take priority over provider colors)
 # These ensure consistent visual identification of profile classes
+# Color scheme: Ideate=Green, Focus=Blue, Optimize=Orange, Coordinate=Purple
 PROFILE_TYPE_COLORS = {
-    "genie": {
-        "primary": "#f15f22",     # Uderia Orange (Genie coordination)
-        "secondary": "#ff8c5a",   # Lighter orange
-        "name": "Genie (Multi-Profile)"
-    },
-    "rag_focused": {
-        "primary": "#10b981",     # Emerald green (knowledge/RAG)
-        "secondary": "#34d399",   # Lighter green
-        "name": "Knowledge Focused (RAG)"
-    },
     "llm_only": {
-        "primary": "#8b5cf6",     # Purple (conversation only)
-        "secondary": "#a78bfa",   # Lighter purple
+        "primary": "#4ade80",     # Green (Ideate - conversation/brainstorming)
+        "secondary": "#86efac",   # Lighter green
         "name": "Conversation Focused (LLM)"
     },
-    "tool_enabled": None  # Use provider color for Efficiency Focused profiles
+    "rag_focused": {
+        "primary": "#3b82f6",     # Blue (Focus - knowledge retrieval)
+        "secondary": "#93c5fd",   # Lighter blue
+        "name": "Knowledge Focused (RAG)"
+    },
+    "tool_enabled": {
+        "primary": "#F15F22",     # Orange (Optimize - efficiency/execution)
+        "secondary": "#f97316",   # Lighter orange
+        "name": "Efficiency Focused (Tool)"
+    },
+    "genie": {
+        "primary": "#9333ea",     # Purple (Coordinate - multi-profile orchestration)
+        "secondary": "#a855f7",   # Lighter purple
+        "name": "Genie (Multi-Profile)"
+    }
 }
 
 # Provider color schemes: primary color and lighter variant for gradients
@@ -98,27 +103,28 @@ def get_provider_from_llm_config(llm_config: dict) -> str:
 
 def get_profile_colors(profile_type: str, provider: str = None) -> dict:
     """
-    Get color scheme for a profile based on type and provider.
+    Get color scheme for a profile based on type.
 
-    Priority order:
-    1. Profile type color (Genie = orange, Knowledge = green, Conversation = purple)
-    2. Provider color (for Efficiency Focused profiles: Google = blue, Anthropic = purple, etc.)
-    3. Default gray
+    All profile types now have explicit colors:
+    - llm_only (Ideate) = Green
+    - rag_focused (Focus) = Blue
+    - tool_enabled (Optimize) = Orange
+    - genie (Coordinate) = Purple
 
     Args:
         profile_type: Profile type ("genie", "rag_focused", "llm_only", "tool_enabled")
-        provider: Optional provider name for fallback coloring
+        provider: Optional provider name (no longer used for coloring, kept for compatibility)
 
     Returns:
         Dictionary with 'primary', 'secondary', and 'name' keys
     """
-    # Priority 1: Profile type colors (Genie, Knowledge Focused, Conversation Focused)
+    # All profile types have explicit colors
     if profile_type and profile_type in PROFILE_TYPE_COLORS:
         type_colors = PROFILE_TYPE_COLORS[profile_type]
-        if type_colors is not None:  # tool_enabled returns None (use provider color)
+        if type_colors is not None:
             return type_colors
 
-    # Priority 2: Provider colors (for Efficiency Focused profiles)
+    # Fallback to provider color (legacy, should not be reached)
     if provider:
         return get_provider_color(provider)
 
