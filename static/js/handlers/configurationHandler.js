@@ -981,10 +981,22 @@ export function renderLLMProviders() {
     const container = document.getElementById('llm-providers-container');
     if (!container) return;
 
-    if (configState.llmConfigurations.length === 0) {
+    // Filter by provider if not "all"
+    let configs = configState.llmConfigurations;
+    if (activeLLMProviderFilter !== 'all') {
+        configs = configs.filter(c =>
+            c.provider.toLowerCase() === activeLLMProviderFilter ||
+            (activeLLMProviderFilter === 'amazon' && c.provider.toLowerCase() === 'amazon_bedrock')
+        );
+    }
+
+    if (configs.length === 0) {
+        const providerName = activeLLMProviderFilter === 'all'
+            ? ''
+            : ` for ${activeLLMProviderFilter.charAt(0).toUpperCase() + activeLLMProviderFilter.slice(1)}`;
         container.innerHTML = `
             <div class="col-span-full text-center text-gray-400 py-8">
-                <p>No LLM configurations found. Click "Add Configuration" to get started.</p>
+                <p>No LLM configurations found${providerName}. Click "Add Configuration" to get started.</p>
             </div>
         `;
         return;
@@ -992,11 +1004,11 @@ export function renderLLMProviders() {
 
     // Determine which configurations are used by profiles
     const defaultProfile = configState.profiles.find(p => p.id === configState.defaultProfileId);
-    const activeProfiles = configState.profiles.filter(p => 
+    const activeProfiles = configState.profiles.filter(p =>
         configState.activeForConsumptionProfileIds.includes(p.id)
     );
 
-    container.innerHTML = configState.llmConfigurations.map(config => {
+    container.innerHTML = configs.map(config => {
         // Check if this configuration is used by default profile
         const isDefault = defaultProfile?.llmConfigurationId === config.id;
         
@@ -2648,6 +2660,33 @@ const descriptionMap = {
     'genie-profiles': 'description-genie'
 };
 
+// LLM Provider tab colors (brand colors)
+const providerColors = {
+    'all': '#6b7280',       // Gray
+    'google': '#4285f4',    // Google Blue
+    'anthropic': '#8b5cf6', // Purple
+    'openai': '#10a37f',    // OpenAI Green
+    'amazon': '#ff9900',    // AWS Orange
+    'azure': '#00bfff',     // Azure Cyan
+    'friendli': '#ec4899',  // Pink
+    'ollama': '#64748b'     // Slate gray
+};
+
+// LLM Provider description banner mapping
+const llmDescriptionMap = {
+    'all': 'llm-description-all',
+    'google': 'llm-description-google',
+    'anthropic': 'llm-description-anthropic',
+    'openai': 'llm-description-openai',
+    'amazon': 'llm-description-amazon',
+    'azure': 'llm-description-azure',
+    'friendli': 'llm-description-friendli',
+    'ollama': 'llm-description-ollama'
+};
+
+// Current LLM provider filter
+let activeLLMProviderFilter = 'all';
+
 function setupProfileTypeTabs() {
     const tabs = document.querySelectorAll('.profile-type-tab');
     const contents = document.querySelectorAll('.profile-type-content');
@@ -2678,6 +2717,38 @@ function setupProfileTypeTabs() {
             document.querySelectorAll('.profile-description').forEach(desc => {
                 desc.classList.toggle('hidden', desc.id !== descriptionMap[targetTab]);
             });
+        });
+    });
+}
+
+function setupLLMProviderTabs() {
+    const tabs = document.querySelectorAll('.llm-provider-tab');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetProvider = tab.dataset.provider;
+            activeLLMProviderFilter = targetProvider;
+
+            // Update tab styles with color-matched borders
+            tabs.forEach(t => {
+                if (t === tab) {
+                    t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                    t.classList.add('text-white');
+                    t.style.borderColor = providerColors[t.dataset.provider] || '#6b7280';
+                } else {
+                    t.classList.remove('text-white');
+                    t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                    t.style.borderColor = '';
+                }
+            });
+
+            // Show/hide description banners
+            document.querySelectorAll('.llm-provider-description').forEach(desc => {
+                desc.classList.toggle('hidden', desc.id !== llmDescriptionMap[targetProvider]);
+            });
+
+            // Re-render filtered configurations
+            renderLLMProviders();
         });
     });
 }
@@ -5589,6 +5660,7 @@ export async function initializeConfigurationUI() {
     
     renderMCPServers();
     renderLLMProviders();
+    setupLLMProviderTabs();
     renderProfiles();
     updateReconnectButton();
     
