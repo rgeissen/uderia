@@ -2493,12 +2493,18 @@ The Uderia Platform can be deployed in Docker containers for production use, tes
 # Build the image
 docker build -t uderia:latest .
 
+# Generate a secure SECRET_KEY (required)
+export SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+
 # Run the container
 docker run -d \
   -p 5050:5050 \
+  -e SECRET_KEY=$SECRET_KEY \
   -e CORS_ALLOWED_ORIGINS=https://your-domain.com \
   uderia:latest
 ```
+
+> **Important:** The `SECRET_KEY` environment variable is **required**. Without it, the container will fail to start with `ValueError: SECRET_KEY is not set`.
 
 ### Multi-User Deployment Considerations
 
@@ -2513,20 +2519,25 @@ docker run -d \
 
 #### Initial Setup:
 ```bash
+# Generate SECRET_KEY if not already set
+export SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+
 docker run -d \
   -p 5050:5050 \
   -v $(pwd)/tda_auth.db:/app/tda_auth.db \
   -v $(pwd)/tda_sessions:/app/tda_sessions \
+  -e SECRET_KEY=$SECRET_KEY \
   -e CORS_ALLOWED_ORIGINS=https://your-domain.com \
   uderia:latest
 ```
 
 **Important Security Steps:**
-1. Mount volumes for `tda_auth.db` (user database) and `tda_sessions` (session data)
-2. Change default admin password immediately after first login
-3. Create individual user accounts for team members
-4. Configure HTTPS reverse proxy (nginx, traefik) for production
-5. Set `TDA_ENCRYPTION_KEY` environment variable for production encryption
+1. **Set `SECRET_KEY`** environment variable (required) - used for session management; the app will not start without it
+2. Mount volumes for `tda_auth.db` (user database) and `tda_sessions` (session data)
+3. Change default admin password immediately after first login
+4. Create individual user accounts for team members
+5. Configure HTTPS reverse proxy (nginx, traefik) for production
+6. Set `TDA_ENCRYPTION_KEY` environment variable for production encryption
 
 **Optional Security Configuration:**
 - **Rate Limiting**: Disabled by default, can be enabled and configured through the web UI:
