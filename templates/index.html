@@ -1958,6 +1958,101 @@
                                             </button>
                                         </div>
                                     </div>
+
+                                    <!-- MCP Transport Tabs -->
+                                    <div class="flex gap-2 border-b border-white/10 mb-4 overflow-x-auto pb-1">
+                                        <!-- All -->
+                                        <button class="mcp-transport-tab active px-4 py-2 text-sm font-medium transition-all border-b-2 border-[#6b7280] text-white whitespace-nowrap" data-transport="all">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#6b7280">
+                                                    <path fill-rule="evenodd" d="M3 6a3 3 0 013-3h2.25a3 3 0 013 3v2.25a3 3 0 01-3 3H6a3 3 0 01-3-3V6zm9.75 0a3 3 0 013-3H18a3 3 0 013 3v2.25a3 3 0 01-3 3h-2.25a3 3 0 01-3-3V6zM3 15.75a3 3 0 013-3h2.25a3 3 0 013 3V18a3 3 0 01-3 3H6a3 3 0 01-3-3v-2.25zm9.75 0a3 3 0 013-3H18a3 3 0 013 3V18a3 3 0 01-3 3h-2.25a3 3 0 01-3-3v-2.25z" clip-rule="evenodd" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">All</span>
+                                            </div>
+                                        </button>
+                                        <!-- STDIO -->
+                                        <button class="mcp-transport-tab px-4 py-2 text-sm font-medium transition-all border-b-2 border-transparent text-gray-400 hover:border-white/20 whitespace-nowrap" data-transport="stdio">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#F15F22">
+                                                    <path fill-rule="evenodd" d="M2.25 6a3 3 0 013-3h13.5a3 3 0 013 3v12a3 3 0 01-3 3H5.25a3 3 0 01-3-3V6zm3.97.97a.75.75 0 011.06 0l2.25 2.25a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l1.72-1.72-1.72-1.72a.75.75 0 010-1.06zm4.28 4.28a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" clip-rule="evenodd" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">STDIO</span>
+                                            </div>
+                                        </button>
+                                        <!-- HTTP -->
+                                        <button class="mcp-transport-tab px-4 py-2 text-sm font-medium transition-all border-b-2 border-transparent text-gray-400 hover:border-white/20 whitespace-nowrap" data-transport="http">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#3b82f6">
+                                                    <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM6.262 6.072a8.25 8.25 0 1010.562-.766 4.5 4.5 0 01-1.318 1.357L14.25 7.5l.165.33a.809.809 0 01-1.086 1.085l-.604-.302a1.125 1.125 0 00-1.298.21l-.132.131c-.439.44-.439 1.152 0 1.591l.296.296c.256.257.622.374.98.314l1.17-.195c.323-.054.654.036.905.245l1.33 1.108c.32.267.46.694.358 1.1a8.7 8.7 0 01-2.288 4.04l-.723.724a1.125 1.125 0 01-1.298.21l-.153-.076a1.125 1.125 0 01-.622-1.006v-1.089c0-.298-.119-.585-.33-.796l-1.347-1.347a1.125 1.125 0 01-.21-1.298L9.75 12l-1.64-1.64a6 6 0 01-1.676-3.257l-.172-1.03z" clip-rule="evenodd" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">HTTP</span>
+                                            </div>
+                                        </button>
+                                        <!-- SSE -->
+                                        <button class="mcp-transport-tab px-4 py-2 text-sm font-medium transition-all border-b-2 border-transparent text-gray-400 hover:border-white/20 whitespace-nowrap" data-transport="sse">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#4ade80">
+                                                    <path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.75a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.913-.143z" clip-rule="evenodd" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">SSE</span>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    <!-- MCP Transport Description Banners -->
+                                    <!-- All Description -->
+                                    <div id="mcp-description-all" class="mcp-transport-description mb-4 p-4 rounded-lg border transition-all duration-300"
+                                         style="background: linear-gradient(135deg, rgba(107, 114, 128, 0.1), rgba(107, 114, 128, 0.05)); border-color: rgba(107, 114, 128, 0.3);">
+                                        <div class="flex items-start gap-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                                            </svg>
+                                            <div>
+                                                <p class="text-white font-medium">View all MCP server configurations across transport types</p>
+                                                <p class="text-sm text-gray-400 mt-1">Best for: Quick overview of all servers</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- STDIO Description -->
+                                    <div id="mcp-description-stdio" class="mcp-transport-description hidden mb-4 p-4 rounded-lg border transition-all duration-300"
+                                         style="background: linear-gradient(135deg, rgba(241, 95, 34, 0.1), rgba(241, 95, 34, 0.05)); border-color: rgba(241, 95, 34, 0.3);">
+                                        <div class="flex items-start gap-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#F15F22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                                            </svg>
+                                            <div>
+                                                <p class="text-white font-medium">Local servers running via command execution</p>
+                                                <p class="text-sm text-gray-400 mt-1">Best for: Development, local databases, file systems</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- HTTP Description -->
+                                    <div id="mcp-description-http" class="mcp-transport-description hidden mb-4 p-4 rounded-lg border transition-all duration-300"
+                                         style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05)); border-color: rgba(59, 130, 246, 0.3);">
+                                        <div class="flex items-start gap-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                                            </svg>
+                                            <div>
+                                                <p class="text-white font-medium">Network-based REST API connections</p>
+                                                <p class="text-sm text-gray-400 mt-1">Best for: Cloud services, remote databases, microservices</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- SSE Description -->
+                                    <div id="mcp-description-sse" class="mcp-transport-description hidden mb-4 p-4 rounded-lg border transition-all duration-300"
+                                         style="background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(74, 222, 128, 0.05)); border-color: rgba(74, 222, 128, 0.3);">
+                                        <div class="flex items-start gap-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                                            </svg>
+                                            <div>
+                                                <p class="text-white font-medium">Server-Sent Events for real-time streaming</p>
+                                                <p class="text-sm text-gray-400 mt-1">Best for: Live data feeds, real-time updates</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div id="mcp-servers-container" class="space-y-4">
                                         <!-- MCP server cards will be dynamically added here -->
                                     </div>

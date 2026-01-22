@@ -850,10 +850,25 @@ export function renderMCPServers() {
     const container = document.getElementById('mcp-servers-container');
     if (!container) return;
 
-    if (configState.mcpServers.length === 0) {
+    // Filter by transport if not "all"
+    let servers = configState.mcpServers;
+    if (activeMCPTransportFilter !== 'all') {
+        servers = servers.filter(server => {
+            const transportType = server.transport?.type || 'sse';
+            if (activeMCPTransportFilter === 'http') {
+                return transportType === 'http' || transportType === 'streamable_http';
+            }
+            return transportType === activeMCPTransportFilter;
+        });
+    }
+
+    if (servers.length === 0) {
+        const transportName = activeMCPTransportFilter === 'all'
+            ? ''
+            : ` for ${activeMCPTransportFilter.toUpperCase()}`;
         container.innerHTML = `
             <div class="text-center text-gray-400 py-8">
-                <p>No MCP servers configured. Click "Add Server" to get started.</p>
+                <p>No MCP servers found${transportName}. Click "Add Server" to get started.</p>
             </div>
         `;
         return;
@@ -861,11 +876,11 @@ export function renderMCPServers() {
 
     // Determine which servers are used by profiles
     const defaultProfile = configState.profiles.find(p => p.id === configState.defaultProfileId);
-    const activeProfiles = configState.profiles.filter(p => 
+    const activeProfiles = configState.profiles.filter(p =>
         configState.activeForConsumptionProfileIds.includes(p.id)
     );
 
-    container.innerHTML = configState.mcpServers.map(server => {
+    container.innerHTML = servers.map(server => {
         // Check if this server is used by default profile
         const isDefault = defaultProfile?.mcpServerId === server.id;
         
@@ -924,26 +939,35 @@ export function renderMCPServers() {
 
 function attachMCPEventListeners() {
 
-    // Test MCP button
+    // Test MCP button - remove old listeners by cloning
+    document.querySelectorAll('[data-action="test-mcp"]').forEach(btn => {
+        btn.replaceWith(btn.cloneNode(true));
+    });
     document.querySelectorAll('[data-action="test-mcp"]').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const serverId = e.target.dataset.serverId;
+            const serverId = e.currentTarget.dataset.serverId;
             testMCPConnection(serverId);
         });
     });
 
-    // Edit MCP button
+    // Edit MCP button - remove old listeners by cloning
+    document.querySelectorAll('[data-action="edit-mcp"]').forEach(btn => {
+        btn.replaceWith(btn.cloneNode(true));
+    });
     document.querySelectorAll('[data-action="edit-mcp"]').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const serverId = e.target.dataset.serverId;
+            const serverId = e.currentTarget.dataset.serverId;
             showMCPServerModal(serverId);
         });
     });
 
-    // Delete MCP button
+    // Delete MCP button - remove old listeners by cloning
+    document.querySelectorAll('[data-action="delete-mcp"]').forEach(btn => {
+        btn.replaceWith(btn.cloneNode(true));
+    });
     document.querySelectorAll('[data-action="delete-mcp"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-            const serverId = e.target.dataset.serverId;
+            const serverId = e.currentTarget.dataset.serverId;
             const server = configState.mcpServers.find(s => s.id === serverId);
             const serverName = server ? server.name : 'this server';
 
@@ -2687,6 +2711,25 @@ const llmDescriptionMap = {
 // Current LLM provider filter
 let activeLLMProviderFilter = 'all';
 
+// MCP transport type colors
+const mcpTransportColors = {
+    'all': '#6b7280',    // Gray
+    'stdio': '#F15F22',  // Orange (local execution)
+    'http': '#3b82f6',   // Blue (network)
+    'sse': '#4ade80'     // Green (streaming)
+};
+
+// MCP transport description mapping
+const mcpDescriptionMap = {
+    'all': 'mcp-description-all',
+    'stdio': 'mcp-description-stdio',
+    'http': 'mcp-description-http',
+    'sse': 'mcp-description-sse'
+};
+
+// Current MCP transport filter
+let activeMCPTransportFilter = 'all';
+
 function setupProfileTypeTabs() {
     const tabs = document.querySelectorAll('.profile-type-tab');
     const contents = document.querySelectorAll('.profile-type-content');
@@ -2749,6 +2792,38 @@ function setupLLMProviderTabs() {
 
             // Re-render filtered configurations
             renderLLMProviders();
+        });
+    });
+}
+
+function setupMCPTransportTabs() {
+    const tabs = document.querySelectorAll('.mcp-transport-tab');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTransport = tab.dataset.transport;
+            activeMCPTransportFilter = targetTransport;
+
+            // Update tab styles with color-matched borders
+            tabs.forEach(t => {
+                if (t === tab) {
+                    t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                    t.classList.add('text-white');
+                    t.style.borderColor = mcpTransportColors[t.dataset.transport] || '#6b7280';
+                } else {
+                    t.classList.remove('text-white');
+                    t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                    t.style.borderColor = '';
+                }
+            });
+
+            // Show/hide description banners
+            document.querySelectorAll('.mcp-transport-description').forEach(desc => {
+                desc.classList.toggle('hidden', desc.id !== mcpDescriptionMap[targetTransport]);
+            });
+
+            // Re-render filtered servers
+            renderMCPServers();
         });
     });
 }
@@ -5659,6 +5734,7 @@ export async function initializeConfigurationUI() {
     await configState.initialize();
     
     renderMCPServers();
+    setupMCPTransportTabs();
     renderLLMProviders();
     setupLLMProviderTabs();
     renderProfiles();
