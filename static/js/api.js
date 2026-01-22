@@ -240,14 +240,32 @@ export async function loadSession(sessionId) {
     return data;
 }
 
-export async function loadAllSessions() {
-    const res = await fetch('/api/v1/sessions', { headers: _getHeaders(false) });
+/**
+ * Load sessions with optional pagination.
+ * @param {number} limit - Maximum number of sessions to return (default: 50, use 0 for all)
+ * @param {number} offset - Number of sessions to skip (default: 0)
+ * @returns {Promise<{sessions: Array, total_count: number, has_more: boolean}>}
+ */
+export async function loadSessions(limit = 50, offset = 0) {
+    const url = `/sessions?limit=${limit}&offset=${offset}`;
+    const res = await fetch(url, { headers: _getHeaders(false) });
     const data = await res.json();
     if (!res.ok) {
         throw new Error(data.error || "Could not retrieve past sessions.");
     }
-    // REST API returns {sessions: [...], total: N}
-    return data.sessions || [];
+    // Returns {sessions: [...], total_count: N, has_more: bool}
+    return data;
+}
+
+/**
+ * Load all sessions (backwards compatible, no pagination).
+ * @deprecated Use loadSessions() with pagination for better performance
+ * @returns {Promise<Array>} Array of sessions
+ */
+export async function loadAllSessions() {
+    // Use limit=0 to get all sessions for backwards compatibility
+    const result = await loadSessions(0, 0);
+    return result.sessions || [];
 }
 
 export async function renameSession(sessionId, newName) {

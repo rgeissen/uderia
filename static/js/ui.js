@@ -3903,18 +3903,16 @@ export function addSessionToList(session, isActive = false) {
                     backdrop-filter: blur(4px);
                 `;
 
-                // Add hover effect
+                // Add hover effect (no translateY to prevent layout shift)
                 tagSpan.addEventListener('mouseenter', () => {
                     tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, 0.3)}, ${hexToRgba(profile.color, 0.12)})`;
                     tagSpan.style.borderColor = hexToRgba(profile.color, 0.6);
                     tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
-                    tagSpan.style.transform = 'translateY(-1px)';
                 });
                 tagSpan.addEventListener('mouseleave', () => {
                     tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
                     tagSpan.style.borderColor = borderColor;
                     tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
-                    tagSpan.style.transform = 'translateY(0)';
                 });
 
                 // Add enhanced color dot with glow

@@ -185,47 +185,9 @@ export function subscribeToNotifications() {
         console.log('[SSE] Connection established');
         UI.updateSSEStatus('connected');
 
-        // Load existing sessions and populate UI on initial connection
-        try {
-            console.log('[SSE] Loading existing sessions...');
-            const sessions = await API.loadAllSessions();
-            console.log('[SSE] Received sessions from API:', sessions);
-
-            if (sessions && sessions.length > 0) {
-                console.log(`[SSE] Found ${sessions.length} existing sessions, populating UI...`);
-
-                // Clear existing session list (in case of reconnection)
-                DOM.sessionList.innerHTML = '';
-
-                // Sessions are already in correct hierarchical order from backend
-                // (parent → L1 child → L2 grandchild, etc.)
-                let addedCount = 0;
-                for (const session of sessions) {
-                    const genieMetadata = session.genie_metadata || {};
-                    const isGenieSlave = genieMetadata.is_genie_slave;
-                    const parentSessionId = genieMetadata.parent_session_id;
-                    const nestingLevel = genieMetadata.nesting_level;
-
-                    const sessionItem = UI.addSessionToList(session, false);
-
-                    // Append in order (backend already sorted hierarchically)
-                    DOM.sessionList.appendChild(sessionItem);
-                    addedCount++;
-                }
-
-                console.log(`[SSE] Added ${addedCount} sessions to DOM`);
-
-                // After all sessions loaded, update genie master badges
-                UI.updateGenieMasterBadges();
-
-                console.log('[SSE] Session list populated successfully');
-                console.log('[SSE] Final DOM.sessionList.children.length:', DOM.sessionList.children.length);
-            } else {
-                console.log('[SSE] No existing sessions found');
-            }
-        } catch (error) {
-            console.error('[SSE] Error loading existing sessions:', error);
-        }
+        // Skip SSE session loading - sessions are loaded by configManagement.js with pagination
+        // This prevents duplicate loading and ensures pagination works correctly
+        console.log('[SSE] Skipping session load - handled by configManagement.js with pagination');
     };
 
     eventSource.addEventListener('notification', (event) => {

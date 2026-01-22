@@ -18,6 +18,99 @@ import { handleLoadResources } from '../eventHandlers.js?v=3.4';
 // Note: openSystemPromptPopup is deprecated - welcome screen is now the unified interface
 import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js';
 
+// ============================================================================
+// SESSION PAGINATION
+// ============================================================================
+
+const SESSION_PAGE_SIZE = 20;
+let sessionPaginationState = {
+    loadedOffset: 0,
+    totalCount: 0,
+    hasMore: false,
+    isLoading: false
+};
+
+/**
+ * Creates or updates the "Load More" button for sessions
+ */
+function showLoadMoreSessionsButton(remainingCount) {
+    hideLoadMoreSessionsButton();
+    if (remainingCount <= 0) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'load-more-sessions-btn';
+    btn.className = 'w-full py-2 px-3 mt-2 text-sm text-blue-400 hover:text-blue-300 hover:bg-gray-700/50 rounded-lg transition-colors flex items-center justify-center gap-2 border border-dashed border-gray-600';
+    btn.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+        Load ${Math.min(remainingCount, SESSION_PAGE_SIZE)} more (${remainingCount} remaining)
+    `;
+    btn.onclick = handleLoadMoreSessions;
+
+    // Append INSIDE the session list so it scrolls with the sessions
+    if (DOM.sessionList) {
+        DOM.sessionList.appendChild(btn);
+        console.log('[Session Pagination] Button added inside session list');
+    } else {
+        console.error('[Session Pagination] DOM.sessionList not found!');
+    }
+}
+
+function hideLoadMoreSessionsButton() {
+    const existingBtn = document.getElementById('load-more-sessions-btn');
+    if (existingBtn) existingBtn.remove();
+}
+
+async function handleLoadMoreSessions() {
+    if (sessionPaginationState.isLoading) return;
+
+    sessionPaginationState.isLoading = true;
+    const btn = document.getElementById('load-more-sessions-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `
+            <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Loading...
+        `;
+    }
+
+    try {
+        const newOffset = sessionPaginationState.loadedOffset + SESSION_PAGE_SIZE;
+        const result = await API.loadSessions(SESSION_PAGE_SIZE, newOffset);
+
+        const newSessions = result.sessions || [];
+        sessionPaginationState.loadedOffset = newOffset;
+        sessionPaginationState.hasMore = result.has_more;
+        sessionPaginationState.totalCount = result.total_count;
+
+        const activeSessions = newSessions.filter(s => !s.archived);
+        const sortedSessions = sortSessionsHierarchically(activeSessions);
+
+        sortedSessions.forEach((session) => {
+            const sessionItem = UI.addSessionToList(session, false);
+            DOM.sessionList.appendChild(sessionItem);
+        });
+
+        if (window.updateUtilitySessionsFilter) window.updateUtilitySessionsFilter();
+        updateGenieMasterBadges();
+
+        if (result.has_more) {
+            const remaining = result.total_count - newOffset - newSessions.length;
+            showLoadMoreSessionsButton(remaining);
+        } else {
+            hideLoadMoreSessionsButton();
+        }
+    } catch (error) {
+        console.error('Failed to load more sessions:', error);
+    } finally {
+        sessionPaginationState.isLoading = false;
+    }
+}
+
 /**
  * Helper to safely set config status message (old form element may not exist)
  */
@@ -149,7 +242,21 @@ export async function finalizeConfiguration(config, switchToConversationView = t
     const currentSessionId = state.currentSessionId;
 
     try {
-        const sessions = await API.loadAllSessions();
+        // Reset pagination state
+        sessionPaginationState = { loadedOffset: 0, totalCount: 0, hasMore: false, isLoading: false };
+
+        // Load first page of sessions with pagination
+        console.log('[Session Pagination] Loading sessions with PAGE_SIZE:', SESSION_PAGE_SIZE);
+        const result = await API.loadSessions(SESSION_PAGE_SIZE, 0);
+        console.log('[Session Pagination] API result:', {
+            sessionsCount: result.sessions?.length,
+            total_count: result.total_count,
+            has_more: result.has_more
+        });
+
+        const sessions = result.sessions || [];
+        sessionPaginationState.totalCount = result.total_count;
+        sessionPaginationState.hasMore = result.has_more;
 
         // Filter out archived sessions from the conversation view selector
         const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
@@ -158,12 +265,22 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         const sortedSessions = sortSessionsHierarchically(activeSessions);
 
         DOM.sessionList.innerHTML = '';
+        hideLoadMoreSessionsButton();
+
         if (sortedSessions && Array.isArray(sortedSessions) && sortedSessions.length > 0) {
             sortedSessions.forEach((session) => {
                 const isActive = session.id === currentSessionId;
                 const sessionItem = UI.addSessionToList(session, isActive);
                 DOM.sessionList.appendChild(sessionItem);
             });
+
+            // Show "Load More" button if there are more sessions
+            console.log('[Session Pagination] Checking has_more:', result.has_more, 'total_count:', result.total_count, 'loaded:', sessions.length);
+            if (result.has_more) {
+                const remainingCount = result.total_count - sessions.length;
+                console.log('[Session Pagination] Showing load more button, remainingCount:', remainingCount);
+                showLoadMoreSessionsButton(remainingCount);
+            }
 
             // Update utility sessions filter visibility
             if (window.updateUtilitySessionsFilter) {

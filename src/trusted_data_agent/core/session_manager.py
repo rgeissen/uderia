@@ -293,10 +293,24 @@ async def get_session(user_uuid: str, session_id: str) -> dict | None:
 
     return session_data
 
-async def get_all_sessions(user_uuid: str) -> list[dict]:
+async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0) -> dict:
+    """
+    Get all sessions for a user with optional pagination.
+
+    Args:
+        user_uuid: The user's UUID
+        limit: Maximum number of sessions to return (None = all sessions)
+        offset: Number of sessions to skip (for pagination)
+
+    Returns:
+        dict with keys:
+            - sessions: list of session summaries
+            - total_count: total number of sessions (before pagination)
+            - has_more: boolean indicating if more sessions exist
+    """
     from trusted_data_agent.core.config import APP_CONFIG
 
-    app_logger.debug(f"Getting all sessions for user '{user_uuid}'. Filter by user: {APP_CONFIG.SESSIONS_FILTER_BY_USER}")
+    app_logger.debug(f"Getting all sessions for user '{user_uuid}'. Filter by user: {APP_CONFIG.SESSIONS_FILTER_BY_USER}, limit={limit}, offset={offset}")
     session_summaries = []
 
     # Determine which directories to scan based on filter setting
@@ -311,17 +325,18 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
                 app_logger.info(f"Created user session directory: {user_session_dir}")
             except OSError as e:
                 app_logger.error(f"Failed to create user session directory: {user_session_dir}. Error: {e}")
-                return []
+                return {"sessions": [], "total_count": 0, "has_more": False}
         scan_dirs = [user_session_dir]
     else:
         # All users mode: scan all subdirectories
         app_logger.debug(f"Scanning all user directories in: {SESSIONS_DIR}")
         if not SESSIONS_DIR.is_dir():
             app_logger.warning(f"Sessions directory not found: {SESSIONS_DIR}. Returning empty list.")
-            return []
+            return {"sessions": [], "total_count": 0, "has_more": False}
         scan_dirs = [d for d in SESSIONS_DIR.iterdir() if d.is_dir()]
 
     # Scan all determined directories (recursively to include child Genie sessions)
+    # First pass: collect all session summaries WITHOUT genie metadata enrichment
     for session_dir in scan_dirs:
         for session_file in session_dir.glob("**/*.json"):
             app_logger.debug(f"Found potential session file: {session_file.name}")
@@ -330,20 +345,8 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
                     # Load only necessary fields for summary to improve performance
                     content = await f.read()
                     data = json.loads(content)
-                    
-                    genie_metadata = data.get("genie_metadata", {})
 
-                    # Enrich genie_metadata with nesting_level and slave_profile_tag from database
-                    if genie_metadata.get("is_genie_slave"):
-                        session_id = data.get("id", session_file.stem)
-                        parent_link = await get_genie_parent_session(session_id, user_uuid)
-                        if parent_link:
-                            nesting_level = parent_link.get("nesting_level", 0)
-                            slave_profile_tag = parent_link.get("slave_profile_tag")
-                            genie_metadata["nesting_level"] = nesting_level
-                            genie_metadata["slave_profile_tag"] = slave_profile_tag
-                        else:
-                            app_logger.warning(f"No parent link found for genie slave session {session_id}")
+                    genie_metadata = data.get("genie_metadata", {})
 
                     summary = {
                         "id": data.get("id", session_file.stem),
@@ -372,6 +375,53 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
                      "name": f"Error Loading ({session_file.stem})",
                      "created_at": "Unknown"
                 })
+
+    # --- BATCH GENIE METADATA ENRICHMENT ---
+    # Collect all slave session IDs that need metadata enrichment
+    slave_session_ids = [
+        s["id"] for s in session_summaries
+        if s.get("genie_metadata", {}).get("is_genie_slave")
+    ]
+
+    # Batch query for all slave session metadata in a single database call
+    if slave_session_ids:
+        try:
+            import sqlite3
+            from trusted_data_agent.core.utils import get_project_root
+
+            db_path = str(get_project_root() / "tda_auth.db")
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Single query for all slave sessions
+            placeholders = ','.join(['?'] * len(slave_session_ids))
+            cursor.execute(f"""
+                SELECT slave_session_id, nesting_level, slave_profile_tag
+                FROM genie_session_links
+                WHERE slave_session_id IN ({placeholders})
+            """, slave_session_ids)
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            # Build lookup map
+            metadata_map = {row['slave_session_id']: dict(row) for row in rows}
+
+            # Apply metadata to sessions
+            for session in session_summaries:
+                session_id = session.get("id")
+                if session_id in metadata_map:
+                    genie_data = metadata_map[session_id]
+                    session["genie_metadata"]["nesting_level"] = genie_data.get("nesting_level", 0)
+                    session["genie_metadata"]["slave_profile_tag"] = genie_data.get("slave_profile_tag")
+                elif session.get("genie_metadata", {}).get("is_genie_slave"):
+                    app_logger.warning(f"No parent link found for genie slave session {session_id}")
+
+            app_logger.debug(f"Batch enriched {len(metadata_map)} genie slave sessions")
+        except Exception as e:
+            app_logger.error(f"Failed to batch enrich genie metadata: {e}", exc_info=True)
+    # --- END BATCH GENIE METADATA ENRICHMENT ---
 
 
     # Filter out template generation sessions
@@ -469,15 +519,31 @@ async def get_all_sessions(user_uuid: str) -> list[dict]:
             final_sessions.extend(slaves)
 
     session_summaries = final_sessions
-    app_logger.debug(f"[FINAL RESULT] Returning {len(session_summaries)} sessions")
-    for i, session in enumerate(session_summaries[:10], 1):
+
+    # Calculate total count before pagination
+    total_count = len(session_summaries)
+
+    # Apply pagination if limit is specified
+    if limit is not None:
+        paginated_sessions = session_summaries[offset:offset + limit]
+        has_more = offset + limit < total_count
+    else:
+        paginated_sessions = session_summaries
+        has_more = False
+
+    app_logger.debug(f"[FINAL RESULT] Returning {len(paginated_sessions)} of {total_count} sessions (offset={offset}, limit={limit}, has_more={has_more})")
+    for i, session in enumerate(paginated_sessions[:10], 1):
         session_id = session.get("id", "unknown")[:12]
         is_slave = session.get("genie_metadata", {}).get("is_genie_slave", False)
         nesting_level = session.get("genie_metadata", {}).get("nesting_level", "N/A")
         name = session.get("name", "Unnamed")[:30]
         app_logger.debug(f"[FINAL] {i}. {session_id}... - {name} (slave={is_slave}, level={nesting_level})")
 
-    return session_summaries
+    return {
+        "sessions": paginated_sessions,
+        "total_count": total_count,
+        "has_more": has_more
+    }
 
 async def delete_session(user_uuid: str, session_id: str) -> bool:
     """Archives a session by marking it as archived instead of deleting the file."""
