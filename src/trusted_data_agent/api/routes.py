@@ -17,7 +17,7 @@ from langchain_mcp_adapters.prompts import load_mcp_prompt
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from trusted_data_agent.auth.middleware import require_auth, optional_auth
-from trusted_data_agent.core.config import APP_CONFIG, APP_STATE, get_user_mcp_server_id
+from trusted_data_agent.core.config import APP_CONFIG, APP_STATE, get_user_mcp_server_id, get_user_mcp_client
 from trusted_data_agent.core import session_manager
 from trusted_data_agent.agent.prompts import PROVIDER_SYSTEM_PROMPTS
 from trusted_data_agent.agent.executor import PlanExecutor
@@ -884,7 +884,7 @@ async def get_app_settings():
 
 @api_bp.route("/prompt/<prompt_name>", methods=["GET"])
 @require_auth
-async def get_prompt_content(prompt_name):
+async def get_prompt_content(current_user, prompt_name):
     """
     Retrieves the content of a specific MCP prompt. For dynamic prompts
     with arguments, it renders them with placeholder values for preview.
@@ -894,14 +894,40 @@ async def get_prompt_content(prompt_name):
     if not user_uuid:
         return jsonify({"error": "Authentication required."}), 401
 
-    mcp_client = APP_STATE.get("mcp_client")
-    if not mcp_client:
-        return jsonify({"error": "MCP client not configured."}), 400
-
-    # Use per-user server ID instead of global config
+    # Try to get user's cached MCP client first
+    mcp_client = get_user_mcp_client(user_uuid)
     server_id = get_user_mcp_server_id(user_uuid)
+
+    # Auto-load profile if MCP client not cached (same pattern as /resources endpoint)
+    if not mcp_client or not server_id:
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        # Use active_for_consumption profile (handles profile overwrite)
+        active_profile_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+        profile_id_to_load = active_profile_ids[0] if active_profile_ids else None
+
+        if not profile_id_to_load:
+            # Fallback to default profile
+            profile_id_to_load = config_manager.get_default_profile_id(user_uuid)
+
+        if not profile_id_to_load:
+            return jsonify({"error": "No active profile configured."}), 400
+
+        # Load profile into APP_STATE (without LLM validation for prompt viewing)
+        result = await configuration_service.switch_profile_context(profile_id_to_load, user_uuid, validate_llm=False)
+        if result["status"] != "success":
+            return jsonify({"error": f"Failed to load profile: {result.get('message', 'Unknown error')}"}), 400
+
+        # Re-fetch after loading
+        mcp_client = get_user_mcp_client(user_uuid)
+        server_id = get_user_mcp_server_id(user_uuid)
+
+    if not mcp_client:
+        return jsonify({"error": "MCP client not configured for this profile."}), 400
+
     if not server_id:
-         return jsonify({"error": "MCP server ID not configured."}), 400
+        return jsonify({"error": "MCP server ID not configured for this profile."}), 400
 
     try:
         prompt_info = _get_prompt_info(prompt_name)
