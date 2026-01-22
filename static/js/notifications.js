@@ -210,6 +210,14 @@ export function subscribeToNotifications() {
                 break;
             case 'new_session_created': {
                 const newSession = data.payload;
+
+                // Check if session already exists in DOM (may have been added locally)
+                const existingElement = document.getElementById(`session-${newSession.id}`);
+                if (existingElement) {
+                    console.log(`[SSE new_session_created] Session ${newSession.id} already in DOM, skipping duplicate add`);
+                    break;
+                }
+
                 // Add the new session to the UI list, but do not make it active
                 const sessionItem = UI.addSessionToList(newSession, false);
 

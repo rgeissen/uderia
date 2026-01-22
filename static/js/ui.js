@@ -3414,6 +3414,18 @@ export function highlightResource(resourceName, type) {
 }
 
 export function addSessionToList(session, isActive = false) {
+    // Check if session already exists in the DOM to prevent duplicates
+    const existingSession = document.getElementById(`session-${session.id}`);
+    if (existingSession) {
+        console.log(`[addSessionToList] Session ${session.id} already exists in DOM, updating instead of duplicating`);
+        // Update active state if needed
+        if (isActive) {
+            document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+            existingSession.classList.add('active');
+        }
+        return existingSession;
+    }
+
     const sessionItem = document.createElement('div');
     sessionItem.id = `session-${session.id}`;
     sessionItem.dataset.sessionId = session.id;

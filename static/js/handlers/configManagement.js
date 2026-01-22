@@ -293,16 +293,35 @@ export async function finalizeConfiguration(config, switchToConversationView = t
             // If the previously active session still exists and is not archived, ensure it is loaded.
             // Otherwise, load the most recent active session.
             const sessionToLoad = sortedSessions.find(s => s.id === currentSessionId) ? currentSessionId : sortedSessions[0].id;
+            console.log('[Session Loading] Loading session:', sessionToLoad, '(current was:', currentSessionId, ')');
             await handleLoadSession(sessionToLoad);
+        } else if (currentSessionId) {
+            // No sessions in the loaded list, but we have a session ID from localStorage
+            // Try to load it directly - it might exist but wasn't returned due to filtering/pagination
+            console.log('[Session Loading] No sessions in list, but have currentSessionId from localStorage:', currentSessionId);
+            try {
+                await handleLoadSession(currentSessionId);
+                console.log('[Session Loading] Successfully loaded session from localStorage ID');
+            } catch (loadError) {
+                console.warn('[Session Loading] Failed to load session from localStorage ID:', loadError);
+                // Session doesn't exist anymore, create a new one
+                await handleStartNewSession();
+            }
         } else {
-            // No active sessions exist, create a new one
+            // No active sessions exist and no session ID in localStorage, create a new one
+            console.log('[Session Loading] No sessions exist and no localStorage ID, creating new session');
             await handleStartNewSession();
         }
     } catch (sessionError) {
         console.error("Error loading previous sessions:", sessionError);
         DOM.sessionList.innerHTML = '<li class="text-red-400 p-2">Error loading sessions</li>';
-        // Fallback to creating a new session if loading fails
-        await handleStartNewSession();
+        // Don't automatically create a new session on error - let user retry or create manually
+        // This prevents creating unwanted sessions due to temporary network/auth issues
+        console.warn('[Session Loading] Not auto-creating session due to error. User can create manually.');
+        // Show a notification to inform the user
+        if (typeof showNotification === 'function') {
+            showNotification('warning', 'Could not load sessions. Please try refreshing or create a new session.');
+        }
     }
 
     if (DOM.chatModalButton) DOM.chatModalButton.disabled = false;

@@ -2350,9 +2350,23 @@ export async function reconnectAndLoad() {
                         updateGenieMasterBadges();
 
                         // Load the selected session
+                        console.log('[reconnectAndLoad] Loading session:', sessionToLoad, '(current was:', currentSessionId, ')');
                         await handleLoadSession(sessionToLoad);
+                    } else if (currentSessionId) {
+                        // No sessions in the loaded list, but we have a session ID from localStorage
+                        // Try to load it directly - it might exist but wasn't returned due to filtering/pagination
+                        console.log('[reconnectAndLoad] No sessions in list, but have currentSessionId from localStorage:', currentSessionId);
+                        try {
+                            await handleLoadSession(currentSessionId);
+                            console.log('[reconnectAndLoad] Successfully loaded session from localStorage ID');
+                        } catch (loadError) {
+                            console.warn('[reconnectAndLoad] Failed to load session from localStorage ID:', loadError);
+                            // Session doesn't exist anymore, create a new one
+                            await handleStartNewSession();
+                        }
                     } else {
-                        // No active sessions exist, create a new one
+                        // No active sessions exist and no session ID in localStorage, create a new one
+                        console.log('[reconnectAndLoad] No sessions exist and no localStorage ID, creating new session');
                         await handleStartNewSession();
                     }
                     
