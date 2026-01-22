@@ -100,7 +100,7 @@ Eliminate the friction between conversational exploration and production automat
 * **IFOC Workflow - Four Profile Classes**: The intelligent workflow that mirrors how experts work:
   - **🟢 IDEATE (Conversation)**: Brainstorm, explore, and draft solutions without touching live systems
   - **🔵 FOCUS (Knowledge)**: Verified intelligence with zero-hallucination guarantee—every answer grounded in your documents
-  - **🟠 OPTIMIZE (Efficiency)**: The powerhouse—Fusion Optimizer executing operations with strategic planning and self-correction
+  - **🟠 OPTIMIZE (Efficiency)**: The powerhouse—Fusion Optimizer with full MCP Tools + Prompts support, strategic planning, and self-correction
   - **🟣 COORDINATE (Multi-Profile)**: Multi-level autonomous orchestration where coordinators manage specialist teams
   - Profile tags (e.g., `@CHAT`, `@POLICY`, `@OPTIMIZER`, `@EXECUTIVE`) for instant switching via single command
   - Temporary overrides via `@TAG` syntax for single queries without changing defaults
@@ -650,7 +650,7 @@ Eliminate hallucinations entirely. The **Focus** phase grounds every answer in y
                ▼
     ┌───────────────────────┐
     │  Execute Operations   │ ← Database queries, APIs, tools
-    │  via MCP Server       │ ← Real-time data access
+    │  via MCP Server       │ ← MCP Tools + Prompts access
     └───────┬───────────────┘
             │
             ▼
@@ -673,6 +673,7 @@ This is **where ideas become reality**. The **Optimize** phase is powered by the
 **Breakthrough Potential:**
 - **Strategic Intelligence**: Creates multi-phase plans, not just single-shot responses
 - **Autonomous Self-Correction**: Detects and fixes errors without human intervention
+- **Full MCP Integration**: The only profile class that supports both **MCP Tools AND MCP Prompts**—execute pre-built workflows and complex multi-step operations directly
 - **Cost Optimization**: 40% token reduction through plan hydration and tactical fast-path
 - **Proactive Optimization**: Learns from context to skip redundant operations
 - **Democratize Expertise**: Non-technical users execute complex operations through conversation
@@ -809,8 +810,8 @@ Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate 
 │              │ Brainstorm     │ Ground        │ Deliver      │ Scale                   │
 │              │ Draft          │ Reference     │ Operate      │ Synthesize              │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ DATA ACCESS  │ None           │ Documents     │ Full         │ All Sources (Adaptive)  │
-│              │                │ Only          │ (MCP Tools)  │                         │
+│ DATA ACCESS  │ None           │ Documents     │ Full (MCP    │ All Sources (Adaptive)  │
+│              │                │ Only          │ Tools+Prompts│                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
 │ SAFETY       │ 100% Safe      │ Zero          │ Governed     │ Composite (Inherits)    │
 │              │ No Actions     │ Hallucinate   │ Audit Trail  │                         │
