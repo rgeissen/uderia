@@ -23,7 +23,7 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 
 1. [Core Principles: A Superior Approach](#core-principles-a-superior-approach)
 2. [Key Features](#-key-features)
-3. [Profile Classes: Four Execution Modes](#-profile-classes-four-execution-modes)
+3. [Profile Classes: The IFOC Workflow](#-profile-classes-the-ifoc-workflow)
 4. [The Heart of the Application - The Engine & its Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
 5. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
 6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
@@ -97,12 +97,12 @@ Eliminate the friction between conversational exploration and production automat
   - Async polling pattern for reliable long-running executions
   - Complete example DAG (`tda_00_execute_questions.py`) included
 
-* **Four Profile Classes - Composable AI Architecture**: Build specialized AI experts and orchestrate them into autonomous organizations:
-  - **🛠️ Efficiency Focused (Optimizer)**: The powerhouse—Fusion Optimizer engine executing database queries, API calls, and complex operations with strategic planning, self-correction, and proactive optimization
-  - **💬 Conversation Focused (LLM)**: Pure intelligence for learning, prototyping, and risk-free exploration (zero data exposure)
-  - **🔍 Knowledge Focused (RAG)**: Verified intelligence with zero-hallucination guarantee—every answer grounded in your documents
-  - **🧞 Genie (Multi-Profile)**: Multi-level autonomous coordination where Genies coordinate other Genies, creating hierarchical AI organizations
-  - Profile tags (e.g., `@OPTIMIZER`, `@CHAT`, `@POLICY`, `@EXECUTIVE`) for instant switching via single command
+* **IFOC Workflow - Four Profile Classes**: The intelligent workflow that mirrors how experts work:
+  - **🟢 IDEATE (Conversation)**: Brainstorm, explore, and draft solutions without touching live systems
+  - **🔵 FOCUS (Knowledge)**: Verified intelligence with zero-hallucination guarantee—every answer grounded in your documents
+  - **🟠 OPTIMIZE (Efficiency)**: The powerhouse—Fusion Optimizer executing operations with strategic planning and self-correction
+  - **🟣 COORDINATE (Multi-Profile)**: Multi-level autonomous orchestration where coordinators manage specialist teams
+  - Profile tags (e.g., `@CHAT`, `@POLICY`, `@OPTIMIZER`, `@EXECUTIVE`) for instant switching via single command
   - Temporary overrides via `@TAG` syntax for single queries without changing defaults
   - Nested coordination support: Build 3-level AI hierarchies (Master → Coordinators → Specialists)
   - Complete safeguards: Circular dependency detection, depth limits, cost visibility at every level
@@ -112,8 +112,8 @@ Eliminate the friction between conversational exploration and production automat
   - Import from Claude Desktop configuration files (direct migration)
   - Automatic format detection with validation
   - Bulk import multiple servers at once
-  - Support for both HTTP/SSE and stdio transports
-  - stdio servers: automatic subprocess lifecycle management (npx, uvx, python)
+  - Three transport types: 🟠 STDIO (local), 🔵 HTTP (network), 🟢 SSE (streaming)
+  - STDIO servers: automatic subprocess lifecycle management (npx, uvx, python)
   - Server-side ID generation ensures uniqueness
   - Duplicate detection prevents configuration conflicts
   - One-click access to [MCP community servers](https://github.com/modelcontextprotocol/servers)
@@ -501,17 +501,36 @@ The cost management system stores all pricing data locally in SQLite (`llm_model
 
 ---
 
-## 🎭 Profile Classes: Four Execution Modes
+## 🎭 Profile Classes: The IFOC Workflow
 
-The Uderia Platform reimagines AI orchestration through **profile classes**—four distinct execution modes that unlock unprecedented flexibility and power. From conversational intelligence to multi-layered autonomous coordination, these modes transform how organizations leverage AI to solve complex challenges.
+The Uderia Platform introduces the **IFOC Workflow**—four distinct execution modes that mirror how experts actually solve problems. From creative exploration to coordinated execution, these modes transform how organizations leverage AI.
 
-### Overview: Four Fundamental Modes
+### The IFOC Philosophy: Ideate → Focus → Optimize → Coordinate
 
-Every profile belongs to one of four classes, each designed to excel at specific types of work. Together, they create a composable AI architecture that adapts to any challenge.
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           THE IFOC WORKFLOW                                     │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│   🟢 IDEATE          🔵 FOCUS           🟠 OPTIMIZE        🟣 COORDINATE        │
+│   ─────────          ───────           ──────────        ────────────          │
+│   Brainstorm         Research          Execute           Orchestrate           │
+│   Explore            Verify            Deliver           Scale                 │
+│   Draft              Ground            Operate           Synthesize            │
+│                                                                                 │
+│   "What if...?"      "What does        "Do it."          "Handle              │
+│                       policy say?"                        everything."         │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Every profile belongs to one of four classes, each designed for a specific phase of intelligent work. Together, they create a composable AI architecture that adapts to any challenge.
 
 ---
 
-#### 2. 💬 Conversation Focused (LLM) - Pure Intelligence
+#### 1. 🟢 IDEATE - Conversation Focused (LLM)
+
+**Color: Green `#4ade80`** | **Philosophy: Creative exploration without constraints**
 
 ```
 ┌─────────────────────────────────────────┐
@@ -533,19 +552,19 @@ Every profile belongs to one of four classes, each designed to excel at specific
 ```
 
 **The Value:**
-Transform your LLM into a trusted advisor. Get instant insights, draft solutions, and explore possibilities—all without touching live data. Perfect for learning, brainstorming, and planning before execution.
+Transform your LLM into a trusted thought partner. Explore possibilities, brainstorm solutions, and draft approaches—all without touching live systems. The **Ideate** phase is where creativity flows freely.
+
+**When to Use IDEATE:**
+- **Exploring new ideas**: "What approaches could solve this problem?"
+- **Learning concepts**: "Explain CTEs in SQL with examples"
+- **Drafting solutions**: "Write a query to calculate customer lifetime value"
+- **Planning ahead**: "What should I consider before migrating this database?"
 
 **Breakthrough Potential:**
 - **Zero-Cost Exploration**: Learn complex concepts without expensive tool invocations
 - **Rapid Prototyping**: Draft SQL, APIs, and workflows before committing resources
 - **Risk-Free Testing**: Validate approaches before touching production systems
 - **Training Ground**: Onboard new team members without data exposure
-
-**Real-World Examples:**
-- "Explain our data architecture and suggest optimization strategies"
-- "Draft a SQL query to calculate customer lifetime value"
-- "What are best practices for handling PII in our analytics pipeline?"
-- "Review this query logic before I run it in production"
 
 **Example Profiles:**
 - `@CHAT` - Your AI thought partner for any question
@@ -554,7 +573,61 @@ Transform your LLM into a trusted advisor. Get instant insights, draft solutions
 
 ---
 
-#### 1. 🛠️ Efficiency Focused (Optimizer) - The Powerhouse
+#### 2. 🔵 FOCUS - Knowledge Focused (RAG)
+
+**Color: Blue `#3b82f6`** | **Philosophy: Grounded answers from verified sources**
+
+```
+┌─────────────────────────────────────────┐
+│  User Question                          │
+│  "What's our remote work policy?"       │
+└───────────────┬─────────────────────────┘
+                │
+                ▼
+    ┌───────────────────────┐
+    │  Semantic Search      │
+    │  Your Document Store  │ ← Policies, SOPs, Manuals
+    └───────┬───────────────┘
+            │
+            ▼
+      ┌──────────┐
+      │   LLM    │
+      │ Synthesis│ ← ONLY uses retrieved docs
+      └─────┬────┘  NO general knowledge allowed
+            │
+            ▼
+┌───────────────────────────────────────────┐
+│  Answer + Source Citations                │
+│  "Per HR Policy 3.2, page 7..."          │
+│  [View Source Document]                   │
+└───────────────────────────────────────────┘
+```
+
+**The Value:**
+Eliminate hallucinations entirely. The **Focus** phase grounds every answer in your verified documents, policies, and institutional knowledge. When accuracy matters more than creativity, Focus delivers verified intelligence.
+
+**When to Use FOCUS:**
+- **Compliance questions**: "What does policy say about data retention?"
+- **Reference lookups**: "What's the approved vendor list?"
+- **Verification**: "Is this approach compliant with our security standards?"
+- **Institutional knowledge**: "How did we handle this situation before?"
+
+**Breakthrough Potential:**
+- **Zero Hallucination Guarantee**: Answers only from your verified documents
+- **Institutional Memory**: Never lose domain expertise when people leave
+- **Compliance Confidence**: All responses traceable to source documents
+- **Instant Expertise**: New hires access decades of knowledge immediately
+
+**Example Profiles:**
+- `@POLICY` - Corporate policies and procedures
+- `@LEGAL` - Contracts, compliance, and regulations
+- `@TECHNICAL` - Engineering documentation and runbooks
+
+---
+
+#### 3. 🟠 OPTIMIZE - Efficiency Focused (Tool)
+
+**Color: Orange `#F15F22`** | **Philosophy: Strategic execution that learns and heals**
 
 ```
 ┌──────────────────────────────────────────┐
@@ -589,7 +662,13 @@ Transform your LLM into a trusted advisor. Get instant insights, draft solutions
 ```
 
 **The Value:**
-This is **where the magic happens**. The Efficiency Focused (Optimizer) profile is powered by the revolutionary **Fusion Optimizer**—a multi-layered AI architecture that doesn't just execute tasks, it *thinks strategically*, *learns from experience*, and *heals itself*. Your words become intelligent operations that get smarter with every execution.
+This is **where ideas become reality**. The **Optimize** phase is powered by the revolutionary **Fusion Optimizer**—a multi-layered AI architecture that doesn't just execute tasks, it *thinks strategically*, *learns from experience*, and *heals itself*.
+
+**When to Use OPTIMIZE:**
+- **Live data operations**: "Show me Q4 results by region"
+- **Complex workflows**: "Calculate inventory turnover and flag anomalies"
+- **Automated tasks**: "Export customer segments to CSV"
+- **Real-time monitoring**: "Alert if error rate exceeds threshold"
 
 **Breakthrough Potential:**
 - **Strategic Intelligence**: Creates multi-phase plans, not just single-shot responses
@@ -601,13 +680,7 @@ This is **where the magic happens**. The Efficiency Focused (Optimizer) profile 
 
 **Real-World Transformation:**
 - **Before**: Write SQL → Debug errors → Retry → Export → Format → Email (30 minutes)
-- **After**: "Analyze Q4 sales trends and email the exec team" (2 minutes, auto-corrects, learns for next time)
-
-**Example Queries:**
-- "Show me yesterday's failed transactions and their error patterns"
-- "Calculate inventory turnover by warehouse for Q4, flag anomalies, and generate executive summary"
-- "Find all customers who haven't purchased in 90 days, segment by lifetime value, export to CSV"
-- "Monitor our API health metrics in real-time and alert if error rate exceeds threshold"
+- **After**: "Analyze Q4 sales trends and email the exec team" (2 minutes, auto-corrects, learns)
 
 **Example Profiles:**
 - `@OPTIMIZER` - Full Fusion Optimizer with all features enabled
@@ -617,70 +690,28 @@ This is **where the magic happens**. The Efficiency Focused (Optimizer) profile 
 
 ---
 
-#### 3. 🔍 Knowledge Focused (RAG) - Verified Intelligence
+#### 4. 🟣 COORDINATE - Genie (Multi-Profile)
 
-```
-┌─────────────────────────────────────────┐
-│  User Question                          │
-│  "What's our remote work policy?"       │
-└───────────────┬─────────────────────────┘
-                │
-                ▼
-    ┌───────────────────────┐
-    │  Semantic Search      │
-    │  Your Document Store  │ ← Policies, SOPs, Manuals
-    └───────┬───────────────┘
-            │
-            ▼
-      ┌──────────┐
-      │   LLM    │
-      │ Synthesis│ ← ONLY uses retrieved docs
-      └─────┬────┘  NO general knowledge allowed
-            │
-            ▼
-┌───────────────────────────────────────────┐
-│  Answer + Source Citations                │
-│  "Per HR Policy 3.2, page 7..."          │
-│  [View Source Document]                   │
-└───────────────────────────────────────────┘
-```
+**Color: Purple `#9333ea`** | **Philosophy: Autonomous orchestration at scale**
 
 **The Value:**
-Eliminate hallucinations entirely. Every answer grounded in your verified documents, policies, and institutional knowledge. The AI becomes a perfect librarian with instant recall across your entire knowledge base.
+**This is the breakthrough.** The **Coordinate** phase creates **autonomous AI organizations** where specialized agents collaborate intelligently. One question triggers a cascade of expert consultations, data retrievals, and synthesis—all happening automatically.
+
+**When to Use COORDINATE:**
+- **Multi-domain questions**: "Analyze Q4, check compliance, and recommend strategy"
+- **Complex investigations**: "Research this issue across all our systems"
+- **Executive summaries**: "Prepare a board presentation on performance"
+- **Cross-functional work**: "Coordinate finance, legal, and engineering review"
 
 **Breakthrough Potential:**
-- **Zero Hallucination Guarantee**: Answers only from your verified documents
-- **Institutional Memory**: Never lose domain expertise when people leave
-- **Compliance Confidence**: All responses traceable to source documents
-- **Instant Expertise**: New hires access decades of knowledge immediately
-
-**Real-World Examples:**
-- "What does our security policy say about third-party data sharing?"
-- "Find all mentions of GDPR compliance requirements in our SOPs"
-- "How do we handle customer data retention per our legal agreements?"
-- "What are the approved vendors for cloud infrastructure?"
-
-**Example Profiles:**
-- `@POLICY` - Corporate policies and procedures
-- `@LEGAL` - Contracts, compliance, and regulations
-- `@TECHNICAL` - Engineering documentation and runbooks
-
----
-
-#### 4. 🧞 Genie (Multi-Profile) - Autonomous Orchestration
-
-**The Value:**
-**This is the breakthrough.** Genie profiles don't just coordinate multiple experts—they create **autonomous AI organizations** where specialized agents collaborate intelligently. One question triggers a cascade of expert consultations, data retrievals, and synthesis—all happening automatically.
-
-**Breakthrough Potential:**
-- **Multi-Level Intelligence**: Genies can coordinate other Genies, creating hierarchical AI organizations that mirror your team structure
-- **Compound Expertise**: Combine database operations + knowledge retrieval + analysis in a single, coherent workflow
-- **Adaptive Problem Solving**: The system decides which experts to consult based on the specific question
-- **Conversational State**: Each expert maintains context across the entire conversation, not just single turns
+- **Multi-Level Intelligence**: Coordinators can orchestrate other Coordinators, creating hierarchical AI organizations
+- **Compound Expertise**: Combine database operations + knowledge retrieval + analysis in a single workflow
+- **Adaptive Problem Solving**: The system decides which experts to consult based on the question
+- **Conversational State**: Each expert maintains context across the entire conversation
 - **Scalable Architecture**: Build AI "departments" with master coordinators managing specialized teams
 
 **The Game-Changer: Nested Coordination**
-Unlike simple AI assistants, Genie profiles can orchestrate *other Genie profiles*, enabling unprecedented organizational depth:
+Unlike simple AI assistants, Coordinate profiles can orchestrate *other Coordinate profiles*, enabling unprecedented organizational depth:
 
 ```
                          ┌─────────────────────────────────────┐
@@ -764,73 +795,73 @@ Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate 
 
 ---
 
-### Profile Selection Guide: Choose the Right Tool for the Job
+### IFOC Selection Guide: Choose the Right Phase
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│                              PROFILE SELECTION MATRIX                                    │
+│                              IFOC SELECTION MATRIX                                       │
 ├──────────────┬────────────────┬───────────────┬──────────────┬─────────────────────────┤
-│              │🛠️ Efficiency  │💬 Conversation│🔍 Knowledge  │🧞 Genie                 │
-│              │   Focused      │   Focused     │   Focused    │   (Multi-Profile)       │
-│              │  (Optimizer)   │     (LLM)     │    (RAG)     │                         │
+│              │🟢 IDEATE       │🔵 FOCUS       │🟠 OPTIMIZE   │🟣 COORDINATE            │
+│              │ (Conversation) │ (Knowledge)   │ (Efficiency) │ (Multi-Profile)         │
+│              │                │               │              │                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ BEST FOR     │ Operations     │ Learning      │ Compliance   │ Complex Multi-Domain    │
-│              │ Live Data      │ Prototyping   │ Reference    │ Orchestration           │
-│              │ Strategic AI   │ Risk-Free     │ Verified     │                         │
+│ PHILOSOPHY   │ Explore        │ Verify        │ Execute      │ Orchestrate             │
+│              │ Brainstorm     │ Ground        │ Deliver      │ Scale                   │
+│              │ Draft          │ Reference     │ Operate      │ Synthesize              │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ DATA ACCESS  │ Full           │ None          │ Documents    │ All Sources (Adaptive)  │
-│              │ (MCP Tools)    │               │ Only         │                         │
+│ DATA ACCESS  │ None           │ Documents     │ Full         │ All Sources (Adaptive)  │
+│              │                │ Only          │ (MCP Tools)  │                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ SAFETY       │ Governed       │ 100% Safe     │ Zero         │ Composite (Inherits)    │
-│              │ Audit Trail    │ No Actions    │ Hallucinate  │                         │
+│ SAFETY       │ 100% Safe      │ Zero          │ Governed     │ Composite (Inherits)    │
+│              │ No Actions     │ Hallucinate   │ Audit Trail  │                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ COST         │ Moderate       │ Lowest        │ Low-Moderate │ Variable (Scales with   │
-│              │ (~15K tokens)  │ (~2K tokens)  │ (~5K tokens) │ complexity & depth)     │
+│ COST         │ Lowest         │ Low-Moderate  │ Moderate     │ Variable (Scales with   │
+│              │ (~2K tokens)   │ (~5K tokens)  │ (~15K tokens)│ complexity & depth)     │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ SPEED        │ Fast + Smart   │ Fastest       │ Fast         │ Comprehensive           │
-│              │ (Self-heals)   │               │              │ (Auto-parallel)         │
+│ SPEED        │ Fastest        │ Fast          │ Fast + Smart │ Comprehensive           │
+│              │                │               │ (Self-heals) │ (Auto-parallel)         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ USE WHEN     │ "Show me Q4    │ "How do I     │ "What does   │ "Analyze Q4, check      │
-│              │  results"      │  optimize?"   │  policy say?"│  compliance, recommend" │
+│ USE WHEN     │ "How do I      │ "What does    │ "Show me Q4  │ "Analyze Q4, check      │
+│              │  optimize?"    │  policy say?" │  results"    │  compliance, recommend" │
 └──────────────┴────────────────┴───────────────┴──────────────┴─────────────────────────┘
 ```
 
-### Intelligent Workflow Patterns
+### IFOC Workflow Patterns
 
-**Pattern 1: Draft → Execute → Verify**
+**Pattern 1: Ideate → Focus → Optimize**
 ```
-1. @CHAT    "Draft a query to find inactive customers"
-            → Get SQL without execution (safe, cheap)
+1. 🟢 IDEATE  "Draft a query to find inactive customers"
+              → Get SQL without execution (safe, cheap)
 
-2. @PROD    "Execute the query I just drafted"
-            → Run against live database (controlled)
+2. 🔵 FOCUS   "What's our customer data retention policy?"
+              → Verify compliance from documents
 
-3. @POLICY  "What's our customer data retention policy?"
-            → Verify compliance from documents
+3. 🟠 OPTIMIZE "Execute the query I just drafted"
+               → Run against live database (controlled)
 ```
 
-**Pattern 2: Strategic Orchestration**
+**Pattern 2: Coordinate for Strategic Work**
 ```
-@EXECUTIVE  "Prepare board presentation on Q4 performance"
+🟣 COORDINATE  "Prepare board presentation on Q4 performance"
 
 Automatically triggers:
-  → @CFO      (Financial analysis + database queries)
-  → @LEGAL    (Compliance checks from policies)
-  → @ANALYST  (Trend analysis + visualizations)
-  → Synthesis (Coordinated strategic narrative)
+  → 🟠 @CFO      (OPTIMIZE: Financial analysis + database queries)
+  → 🔵 @LEGAL    (FOCUS: Compliance checks from policies)
+  → 🟠 @ANALYST  (OPTIMIZE: Trend analysis + visualizations)
+  → Synthesis   (Coordinated strategic narrative)
 
 Result: Complete board deck in minutes, not days
 ```
 
-**Pattern 3: Learn → Apply → Teach**
+**Pattern 3: Learn → Apply → Deploy**
 ```
-1. @MENTOR   "Explain CTEs in SQL"        ← Learning mode
-2. @CHAT     "Draft a CTE for X"          ← Practice mode
-3. @DEV      "Test this CTE"              ← Safe execution
-4. @PROD     "Deploy to production"       ← Controlled rollout
+1. 🟢 @MENTOR   "Explain CTEs in SQL"        ← IDEATE: Learning
+2. 🟢 @CHAT     "Draft a CTE for X"          ← IDEATE: Practice
+3. 🟠 @DEV      "Test this CTE"              ← OPTIMIZE: Safe execution
+4. 🟠 @PROD     "Deploy to production"       ← OPTIMIZE: Controlled rollout
 ```
 
-### Why This Architecture Matters
+### Why IFOC Matters
 
 **Traditional AI Assistants:**
 - One-size-fits-all approach
@@ -838,14 +869,14 @@ Result: Complete board deck in minutes, not days
 - No separation of concerns
 - Limited to single LLM's capabilities
 
-**Uderia's Profile Architecture:**
-- **Right-sized responses**: Pay only for capabilities you need
-- **Composable intelligence**: Combine specialists for compound expertise
+**Uderia's IFOC Architecture:**
+- **Right phase for the task**: Match your intent to the appropriate mode
+- **Composable intelligence**: Combine phases for compound expertise
 - **Governed execution**: Clear boundaries for safety and compliance
-- **Organizational scale**: Mirror your team structure in AI coordination
+- **Organizational scale**: Coordinate specialists like a real team
 
 **The Bottom Line:**
-Stop treating AI as a single assistant. Build an AI organization where specialized experts collaborate intelligently. From simple conversations to multi-level autonomous coordination, Uderia's profile system gives you the architecture to scale AI from individual productivity to enterprise transformation.
+Stop treating AI as a single assistant. The IFOC workflow mirrors how experts actually work: **Ideate** possibilities, **Focus** on verified knowledge, **Optimize** execution, and **Coordinate** complex multi-domain work. Build an AI organization where specialized experts collaborate intelligently.
 
 #### 5. **Strategic Planner Intelligence**
 
@@ -1315,12 +1346,13 @@ The Uderia Platform is built on a modern, asynchronous client-server architectur
 
 #### MCP Integration Layer
 - **Protocol:** Model Context Protocol - standardized tool/prompt/resource exposure
-- **Connection Types:**
-  - **HTTP/SSE** - Remote MCP servers via streamable HTTP
-  - **stdio** - Local MCP servers via subprocess (npx, uvx, python, etc.)
+- **Transport Types:**
+  - 🟠 **STDIO** - Local servers via subprocess (npx, uvx, python)
+  - 🔵 **HTTP** - Remote servers via network REST API
+  - 🟢 **SSE** - Streaming servers via Server-Sent Events
 - **Import Formats:** MCP Registry specification and Claude Desktop configuration
 - **Security:** Credential passthrough, no credential storage in agent
-- **Lifecycle Management:** Automatic process spawning and cleanup for stdio servers
+- **Lifecycle Management:** Automatic process spawning and cleanup for STDIO servers
 
 ### Data Flow & Session Management
 
@@ -1929,13 +1961,120 @@ Import servers directly from your `claude_desktop_config.json`:
 }
 ```
 
-**Transport Types Supported:**
+### MCP Transport Types
 
-- **`sse` / `streamable_http`** - HTTP-based servers (host, port, path)
-- **`stdio`** - Process-based servers (command, args, env)
-  - Automatically spawns and manages subprocess lifecycle
-  - Ideal for local MCP servers (npx, uvx, python, node)
-  - Examples: `mcp-server-time`, `@modelcontextprotocol/server-*`
+MCP servers connect using three transport protocols, each designed for specific deployment scenarios:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           MCP TRANSPORT TYPES                                   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│   🟠 STDIO             🔵 HTTP              🟢 SSE                              │
+│   ─────────            ──────              ─────                                │
+│   Local                Network             Streaming                            │
+│   Development          Production          Real-time                            │
+│   Subprocess           REST API            Events                               │
+│                                                                                 │
+│   "Run locally"        "Connect to         "Stream live                         │
+│                         remote server"      updates"                            │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 🟠 STDIO - Local Command Execution
+
+**Color: Orange `#F15F22`** | **Best for: Development, local databases, file systems**
+
+```json
+{
+  "transport": {
+    "type": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-time", "--local-timezone=America/New_York"],
+    "env": {}
+  }
+}
+```
+
+**Characteristics:**
+- Runs as a local subprocess (npx, uvx, python, node)
+- Automatic process lifecycle management (spawn/cleanup)
+- No network required - communicates via stdin/stdout
+- Ideal for development and local tooling
+
+**Common Use Cases:**
+- Local file system access (`@modelcontextprotocol/server-filesystem`)
+- Development databases
+- Local AI model servers (Ollama integrations)
+- CLI tool wrappers
+
+---
+
+#### 🔵 HTTP - Network REST API
+
+**Color: Blue `#3b82f6`** | **Best for: Cloud services, remote databases, microservices**
+
+```json
+{
+  "transport": {
+    "type": "http",
+    "url": "https://mcp.example.com/api"
+  }
+}
+```
+
+**Characteristics:**
+- Standard HTTP/HTTPS connections
+- Firewall-friendly (uses standard web ports)
+- Supports authentication headers
+- Production-ready with load balancing support
+
+**Common Use Cases:**
+- Cloud-hosted databases (Teradata, Snowflake, BigQuery)
+- Enterprise APIs with authentication
+- Microservices architecture
+- Production deployments behind reverse proxy
+
+---
+
+#### 🟢 SSE - Server-Sent Events
+
+**Color: Green `#4ade80`** | **Best for: Live data feeds, real-time updates**
+
+```json
+{
+  "transport": {
+    "type": "sse",
+    "url": "http://localhost:8000/sse"
+  }
+}
+```
+
+**Characteristics:**
+- Unidirectional streaming from server to client
+- Persistent connections for real-time updates
+- Lower latency than polling
+- Built-in reconnection handling
+
+**Common Use Cases:**
+- Real-time monitoring dashboards
+- Live data feeds (stock prices, metrics)
+- Event-driven architectures
+- Long-running operations with progress updates
+
+---
+
+#### Transport Selection Guide
+
+| Scenario | Recommended Transport |
+|----------|----------------------|
+| Local development | 🟠 STDIO |
+| Testing MCP servers | 🟠 STDIO |
+| Production cloud database | 🔵 HTTP |
+| Enterprise deployment | 🔵 HTTP |
+| Real-time monitoring | 🟢 SSE |
+| Live data streaming | 🟢 SSE |
 
 **Import Benefits:**
 
