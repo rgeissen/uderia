@@ -810,11 +810,11 @@ Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate 
 │              │ Brainstorm     │ Ground        │ Deliver      │ Scale                   │
 │              │ Draft          │ Reference     │ Operate      │ Synthesize              │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ DATA ACCESS  │ None           │ Documents     │ Full (MCP    │ All Sources (Adaptive)  │
-│              │                │ Only          │ Tools+Prompts│                         │
+│ DATA ACCESS  │ Optional       │ Documents     │ Full (MCP    │ All Sources (Adaptive)  │
+│              │ (MCP Tools/RAG)│ Only          │ Tools+Prompts│                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
-│ SAFETY       │ 100% Safe      │ Zero          │ Governed     │ Composite (Inherits)    │
-│              │ No Actions     │ Hallucinate   │ Audit Trail  │                         │
+│ SAFETY       │ Exploratory    │ Zero          │ Governed     │ Composite (Inherits)    │
+│              │ (Interactive)  │ Hallucinate   │ Audit Trail  │                         │
 ├──────────────┼────────────────┼───────────────┼──────────────┼─────────────────────────┤
 │ COST         │ Low per turn   │ Low-Moderate  │ Lowest for   │ Variable (Scales with   │
 │ (complex)    │ (many turns)   │ (~5K tokens)  │ complex tasks│ complexity & depth)     │
