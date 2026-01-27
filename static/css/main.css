@@ -3105,19 +3105,10 @@ button.bg-gray-700.px-2:hover {
 }
 
 .genie-icon.pulsing {
-    animation: geniePulse 2s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
-@keyframes geniePulse {
-    0%, 100% {
-        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
-        transform: scale(1);
-    }
-    50% {
-        box-shadow: 0 4px 20px rgba(139, 92, 246, 0.6), 0 0 30px rgba(139, 92, 246, 0.3);
-        transform: scale(1.05);
-    }
-}
+/* geniePulse animation removed */
 
 .genie-icon.completed {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -3229,13 +3220,10 @@ button.bg-gray-700.px-2:hover {
 
 .slave-status-indicator.active {
     background: #F15F22;
-    animation: slaveStatusPulse 1.5s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
-@keyframes slaveStatusPulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.6; transform: scale(1.2); }
-}
+/* slaveStatusPulse animation removed */
 
 .slave-status-indicator.completed {
     background: #10b981;
@@ -3404,19 +3392,10 @@ button.bg-gray-700.px-2:hover {
 }
 
 .agent-icon.pulsing {
-    animation: agentIconPulse 2s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
-@keyframes agentIconPulse {
-    0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-    }
-    50% {
-        transform: scale(1.05);
-        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
-    }
-}
+/* agentIconPulse animation removed */
 
 .agent-icon.completed {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -3502,19 +3481,10 @@ button.bg-gray-700.px-2:hover {
 
 .tool-status-indicator.active {
     background: #F15F22;
-    animation: toolStatusPulse 1.5s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
-@keyframes toolStatusPulse {
-    0%, 100% {
-        opacity: 1;
-        box-shadow: 0 0 0 0 rgba(241, 95, 34, 0.4);
-    }
-    50% {
-        opacity: 0.7;
-        box-shadow: 0 0 0 4px rgba(241, 95, 34, 0);
-    }
-}
+/* toolStatusPulse animation removed */
 
 .tool-status-indicator.completed {
     background: #10b981;
@@ -4140,7 +4110,7 @@ button.bg-gray-700.px-2:hover {
 
 .conversation-agent-status-step.active {
     border-left-color: #60a5fa;
-    animation: convAgentStepPulse 2s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
 .conversation-agent-status-step.completed {
@@ -4158,10 +4128,7 @@ button.bg-gray-700.px-2:hover {
     border-left-color: #ef4444;
 }
 
-@keyframes convAgentStepPulse {
-    0%, 100% { background: rgba(59, 130, 246, 0.1); }
-    50% { background: rgba(59, 130, 246, 0.2); }
-}
+/* convAgentStepPulse animation removed */
 
 /* Conversation Agent Detail Rows */
 .conv-agent-detail-row {
@@ -4204,7 +4171,7 @@ button.bg-gray-700.px-2:hover {
     background: rgba(251, 191, 36, 0.2);
     border-color: rgba(251, 191, 36, 0.4);
     color: #fcd34d;
-    animation: convAgentTagPulse 1.5s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
 .conv-agent-tag.completed {
@@ -4219,10 +4186,7 @@ button.bg-gray-700.px-2:hover {
     color: #fca5a5;
 }
 
-@keyframes convAgentTagPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-}
+/* convAgentTagPulse animation removed */
 
 /* Knowledge Retrieval Status Step (within conversation agent) */
 .knowledge-retrieval-status-step {
@@ -4232,7 +4196,7 @@ button.bg-gray-700.px-2:hover {
 
 .knowledge-retrieval-status-step.active {
     border-left-color: #a855f7;
-    animation: knowledgeStepPulse 2s ease-in-out infinite;
+    /* Animation removed - no pulsing effect */
 }
 
 .knowledge-retrieval-status-step.completed {
@@ -4240,7 +4204,4 @@ button.bg-gray-700.px-2:hover {
     border-left-color: #6b7280;
 }
 
-@keyframes knowledgeStepPulse {
-    0%, 100% { background: rgba(139, 92, 246, 0.1); }
-    50% { background: rgba(139, 92, 246, 0.2); }
-}
+/* knowledgeStepPulse animation removed */

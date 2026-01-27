@@ -18,6 +18,49 @@ import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers
 // Instead, eventHandlers.js will import these UI functions.
 
 // ============================================================================
+// Profile Type Colors for Status Window Tags
+// ============================================================================
+
+const PROFILE_TYPE_COLORS = {
+    'llm_only': '#4ade80',      // Green (IDEATE)
+    'rag_focused': '#3b82f6',   // Blue (FOCUS)
+    'tool_enabled': '#F15F22',  // Orange (OPTIMIZE)
+    'genie': '#9333ea'          // Purple (COORDINATE)
+};
+
+/**
+ * Get the color for a profile tag based on its profile type.
+ * @param {string} profileTag - The profile tag (e.g., 'OPTIM', 'GENIE')
+ * @param {string} profileType - Optional profile type (llm_only, rag_focused, tool_enabled, genie)
+ * @returns {string} The hex color for the profile type
+ */
+function getProfileTagColor(profileTag, profileType) {
+    // If profile_type is provided directly, use it
+    if (profileType && PROFILE_TYPE_COLORS[profileType]) {
+        return PROFILE_TYPE_COLORS[profileType];
+    }
+    // Fallback: Look up from configState
+    const profile = window.configState?.profiles?.find(p => p.tag === profileTag);
+    if (profile && profile.profile_type && PROFILE_TYPE_COLORS[profile.profile_type]) {
+        return PROFILE_TYPE_COLORS[profile.profile_type];
+    }
+    // Default fallback
+    return '#94a3b8'; // gray-400
+}
+
+/**
+ * Render a profile tag with the correct profile type color.
+ * @param {string} tag - The profile tag (without @)
+ * @param {string} profileType - Optional profile type for color lookup
+ * @param {string} additionalClasses - Optional additional CSS classes
+ * @returns {string} HTML string for the colored profile tag
+ */
+function renderProfileTag(tag, profileType, additionalClasses = '') {
+    const color = getProfileTagColor(tag, profileType);
+    return `<code class="status-code ${additionalClasses}" style="color: ${color}; border-color: ${color}40; background: ${color}15;">@${tag}</code>`;
+}
+
+// ============================================================================
 // Genie Slave Session Collapse State Management
 // ============================================================================
 
@@ -1126,6 +1169,7 @@ function _renderSessionNameCompleteDetails(details) {
 
 function _renderExecutionCompleteDetails(details) {
     const profileTag = details.profile_tag || 'Unknown';
+    const profileType = details.profile_type;
     const phasesExecuted = details.phases_executed || 0;
     const inputTokens = details.total_input_tokens || 0;
     const outputTokens = details.total_output_tokens || 0;
@@ -1135,7 +1179,7 @@ function _renderExecutionCompleteDetails(details) {
     return `
         <div class="status-kv-grid">
             <div class="status-kv-key">Profile</div>
-            <div class="status-kv-value"><code class="status-code text-emerald-300">@${profileTag}</code></div>
+            <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
             <div class="status-kv-key">Phases</div>
             <div class="status-kv-value">${phasesExecuted} executed</div>
             <div class="status-kv-key">Tokens</div>
@@ -1363,7 +1407,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-indigo-300">@GENIE</code></div>
+                        <div class="status-kv-value">${renderProfileTag('GENIE', 'genie')}</div>
                         <div class="status-kv-key">Experts</div>
                         <div class="status-kv-value">${profileCount} available</div>
                     </div>
@@ -1371,7 +1415,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <details class="mt-2">
                             <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Profiles</summary>
                             <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
-                                ${details.slave_profiles.map(p => `<span class="genie-tag">@${p.tag}</span>`).join('')}
+                                ${details.slave_profiles.map(p => {
+                                    const slaveColor = getProfileTagColor(p.tag, p.profile_type);
+                                    return `<span class="genie-tag" style="color: ${slaveColor}; border-color: ${slaveColor}40;">@${p.tag}</span>`;
+                                }).join('')}
                             </div>
                         </details>
                     ` : ''}
@@ -1421,6 +1468,8 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
             case 'genie_slave_invoked': {
                 const profileTag = details.profile_tag || 'UNKNOWN';
+                const profileType = details.profile_type;
+                const slaveTagColor = getProfileTagColor(profileTag, profileType);
                 const query = details.query || details.query_preview || '';
 
                 // Build query display - show full query in expandable section
@@ -1430,12 +1479,12 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     const needsExpand = query.length > 100;
                     queryHtml = needsExpand ? `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to @${profileTag}</summary>
+                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to <span style="color: ${slaveTagColor};">@${profileTag}</span></summary>
                             <div class="mt-1 p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
                         </details>
                     ` : `
                         <div class="mt-2">
-                            <div class="text-slate-400 text-xs font-medium mb-1">Question to @${profileTag}</div>
+                            <div class="text-slate-400 text-xs font-medium mb-1">Question to <span style="color: ${slaveTagColor};">@${profileTag}</span></div>
                             <div class="p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
                         </div>
                     `;
@@ -1444,7 +1493,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-amber-300">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value text-amber-400">Processing...</div>
                     </div>
@@ -1458,12 +1507,13 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
             case 'genie_slave_progress': {
                 const profileTag = details.profile_tag || 'UNKNOWN';
+                const profileType = details.profile_type;
                 const message = details.message || 'Working...';
                 const progress = details.progress_pct !== undefined ? details.progress_pct : null;
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-amber-300">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value text-amber-400">${message}</div>
                         ${progress !== null ? `
@@ -1477,6 +1527,8 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
             case 'genie_slave_completed': {
                 const profileTag = details.profile_tag || 'UNKNOWN';
+                const profileType = details.profile_type;
+                const slaveTagColor = getProfileTagColor(profileTag, profileType);
                 const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const statusText = details.success ? '✓ Success' : '✗ Failed';
                 const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
@@ -1488,7 +1540,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     // Show result collapsed by default - user can expand to see details
                     resultHtml = `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from @${profileTag}</summary>
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from <span style="color: ${slaveTagColor};">@${profileTag}</span></summary>
                             <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(result)}</div>
                         </details>
                     `;
@@ -1498,7 +1550,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 if (details.error) {
                     errorHtml = `
                         <div class="mt-2">
-                            <div class="text-rose-400 text-xs font-medium mb-1">Error from @${profileTag}</div>
+                            <div class="text-rose-400 text-xs font-medium mb-1">Error from <span style="color: ${slaveTagColor};">@${profileTag}</span></div>
                             <div class="p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${escapeHtml(details.error)}</div>
                         </div>
                     `;
@@ -1507,7 +1559,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value ${statusClass}">${statusText}</div>
                         <div class="status-kv-key">Duration</div>
@@ -1530,7 +1582,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     </div>
                     ${details.profiles_consulted && details.profiles_consulted.length > 0 ? `
                         <div class="mt-2 flex flex-wrap gap-1">
-                            ${details.profiles_consulted.map(tag => `<span class="genie-tag completed">@${tag}</span>`).join('')}
+                            ${details.profiles_consulted.map(tag => {
+                                const tagColor = getProfileTagColor(tag);
+                                return `<span class="genie-tag" style="color: ${tagColor}; border-color: ${tagColor}40;">@${tag}</span>`;
+                            }).join('')}
                         </div>
                     ` : ''}
                 `;
@@ -1560,7 +1615,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="mt-2">
                             <div class="text-gray-500 text-xs mb-1">Profiles Consulted:</div>
                             <div class="genie-profile-tags flex flex-wrap gap-1">
-                                ${details.profiles_used.map(tag => `<span class="genie-tag completed">@${tag}</span>`).join('')}
+                                ${details.profiles_used.map(tag => {
+                                    const tagColor = getProfileTagColor(tag);
+                                    return `<span class="genie-tag" style="color: ${tagColor}; border-color: ${tagColor}40;">@${tag}</span>`;
+                                }).join('')}
                             </div>
                         </div>
                     `;
@@ -1938,10 +1996,11 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             case 'conversation_agent_start': {
                 const toolCount = details.available_tools?.length || 0;
                 const profileTag = details.profile_tag || 'CONV';
+                const profileType = details.profile_type;
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-indigo-300">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
                         <div class="status-kv-key">Tools</div>
                         <div class="status-kv-value">${toolCount} available</div>
                     </div>
@@ -2358,6 +2417,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
             case 'llm_execution': {
                 const profileTag = details.profile_tag || 'CHAT';
+                const profileType = details.profile_type;
                 const profileName = details.profile_name || 'Conversation';
                 const turnNumber = details.turn_number || 1;
                 const historyLength = details.history_length || 0;
@@ -2369,7 +2429,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-indigo-300">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
 
                         <div class="status-kv-key">Mode</div>
                         <div class="status-kv-value">Direct LLM Execution</div>
@@ -2461,7 +2521,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-orange-400">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
                         <div class="status-kv-key">Type</div>
                         <div class="status-kv-value">${profileType}</div>
                         ${knowledgeCollections > 0 ? `
@@ -2510,7 +2570,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value ${statusClass}">${statusText}</div>
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value"><code class="status-code text-orange-400">@${profileTag}</code></div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
                         ${profileDetailsHtml}
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
