@@ -3666,6 +3666,9 @@ export function addSessionToList(session, isActive = false) {
         // Determine if this child is itself a Genie (nested Genie)
         const isNestedGenie = session.profile_type === 'genie';
 
+        // Get profile type color for the child session
+        const childProfileColor = PROFILE_TYPE_COLORS[session.profile_type] || '#94a3b8';
+
         // Calculate depth warning level
         const depthWarningLevel = nestingLevel >= maxNestingDepth - 1 ? 'critical' :
                                    nestingLevel >= maxNestingDepth - 2 ? 'warning' : 'normal';
@@ -3673,17 +3676,17 @@ export function addSessionToList(session, isActive = false) {
         const genieBadge = document.createElement('div');
         genieBadge.className = 'genie-child-badge-container mt-0.5';
 
-        // Ultra-compact industrial design for narrow sidebar
+        // Ultra-compact industrial design for narrow sidebar - uses child profile type color
         const badgeHTML = `
             <div class="inline-flex items-center gap-1 text-xs" style="
                 padding: 2px 6px;
                 border-radius: 4px;
                 background: ${depthWarningLevel === 'critical' ? 'rgba(239, 68, 68, 0.08)' :
                              depthWarningLevel === 'warning' ? 'rgba(245, 158, 11, 0.08)' :
-                             'rgba(241, 95, 34, 0.06)'};
+                             `${childProfileColor}10`};
                 border-left: 2px solid ${depthWarningLevel === 'critical' ? '#ef4444' :
                                          depthWarningLevel === 'warning' ? '#f59e0b' :
-                                         'rgba(241, 95, 34, 0.4)'};
+                                         `${childProfileColor}66`};
             ">
                 <!-- Tree connector (minimal) -->
                 <span style="color: rgba(148, 163, 184, 0.4); font-size: 10px; line-height: 1;">├</span>
@@ -3695,27 +3698,19 @@ export function addSessionToList(session, isActive = false) {
                     padding: 0 3px;
                     background: ${depthWarningLevel === 'critical' ? 'rgba(239, 68, 68, 0.12)' :
                                  depthWarningLevel === 'warning' ? 'rgba(245, 158, 11, 0.12)' :
-                                 'rgba(100, 116, 139, 0.12)'};
+                                 `${childProfileColor}20`};
                     border-radius: 2px;
                     color: ${depthWarningLevel === 'critical' ? '#ef4444' :
                              depthWarningLevel === 'warning' ? '#f59e0b' :
-                             '#94a3b8'};
+                             childProfileColor};
                     font-weight: 600;
                     font-size: 9px;
                     font-family: monospace;
                     line-height: 1.3;
                 ">L${nestingLevel}</span>
 
-                <!-- Profile tag (compact) -->
-                <span style="
-                    color: ${isNestedGenie ? 'rgba(168, 85, 247, 0.85)' : 'rgba(241, 95, 34, 0.85)'};
-                    font-weight: 600;
-                    font-size: 10px;
-                    font-family: monospace;
-                ">@${childProfileTag}</span>
-
                 <!-- Nested Genie indicator (minimal icon) -->
-                ${isNestedGenie ? `<span style="color: rgba(168, 85, 247, 0.6); font-size: 10px; line-height: 1;">⚙</span>` : ''}
+                ${isNestedGenie ? `<span style="color: ${childProfileColor}99; font-size: 10px; line-height: 1;">⚙</span>` : ''}
             </div>
         `;
 
