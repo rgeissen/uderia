@@ -118,6 +118,19 @@ async function initializeRAGAutoCompletion() {
     let profileSelectedIndex = -1;
     let isShowingProfileSelector = false;
 
+    // Prevent scroll events from propagating to parent when scrolling inside dropdown
+    profileTagSelector.addEventListener('wheel', (e) => {
+        const { scrollTop, scrollHeight, clientHeight } = profileTagSelector;
+        const atTop = scrollTop === 0;
+        const atBottom = scrollTop + clientHeight >= scrollHeight;
+
+        // Only prevent default if we're at the boundary and trying to scroll further
+        if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+            e.preventDefault();
+        }
+        e.stopPropagation();
+    }, { passive: false });
+
     function highlightSuggestion(index) {
         const items = suggestionsContainer.querySelectorAll('.rag-suggestion-item');
         items.forEach((item, idx) => {
@@ -134,13 +147,19 @@ async function initializeRAGAutoCompletion() {
         items.forEach((item, idx) => {
             if (idx === index) {
                 item.classList.add('profile-tag-highlighted');
-                // Auto-scroll highlighted item into view for keyboard navigation
-                // Use 'center' to ensure item is always visible and centered
-                item.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center',
-                    inline: 'nearest'
-                });
+                // Auto-scroll highlighted item into view within the dropdown only
+                // Use scrollTop manipulation to avoid scrolling the whole page
+                const container = profileTagSelector;
+                const itemTop = item.offsetTop;
+                const itemBottom = itemTop + item.offsetHeight;
+                const containerTop = container.scrollTop;
+                const containerBottom = containerTop + container.clientHeight;
+
+                if (itemTop < containerTop) {
+                    container.scrollTop = itemTop;
+                } else if (itemBottom > containerBottom) {
+                    container.scrollTop = itemBottom - container.clientHeight;
+                }
             } else {
                 item.classList.remove('profile-tag-highlighted');
             }

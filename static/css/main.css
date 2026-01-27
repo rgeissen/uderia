@@ -2435,8 +2435,8 @@ button[data-action="delete-mcp"]:hover {
 /* RAG suggestions and profile tag selector shared base styling - enhanced */
 #rag-suggestions-container,
 #profile-tag-selector {
-    background: linear-gradient(135deg, 
-        rgba(30, 41, 59, 0.95) 0%, 
+    background: linear-gradient(135deg,
+        rgba(30, 41, 59, 0.95) 0%,
         rgba(15, 23, 42, 0.98) 100%);
     backdrop-filter: var(--glass-blur-strong) saturate(180%);
     -webkit-backdrop-filter: var(--glass-blur-strong) saturate(180%);
@@ -2445,13 +2445,13 @@ button[data-action="delete-mcp"]:hover {
     max-height: 240px;
     overflow-y: auto;
     overflow-x: hidden;
-    z-index: 10;
-    width: 100%;
-    box-shadow: 
+    overscroll-behavior: contain; /* Prevent scroll propagation to parent */
+    z-index: 50;
+    box-shadow:
         var(--shadow-3xl),
         0 0 0 1px rgba(241, 95, 34, 0.1) inset,
         0 1px 0 rgba(255, 255, 255, 0.08) inset;
-    position: relative;
+    /* position handled by Tailwind classes in HTML (absolute bottom-full) */
     animation: slideInUp 0.2s var(--ease-out-expo);
 }
 
@@ -2485,6 +2485,7 @@ button[data-action="delete-mcp"]:hover {
 #profile-tag-selector {
     max-height: 400px; /* Increased from 280px to show more profiles */
     scroll-behavior: smooth; /* Smooth scrolling for keyboard navigation */
+    overscroll-behavior: contain; /* Prevent scroll propagation to parent */
 }
 
 .rag-suggestion-item {
