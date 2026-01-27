@@ -28,6 +28,70 @@ const PROFILE_TYPE_COLORS = {
     'genie': '#9333ea'          // Purple (COORDINATE)
 };
 
+// ============================================================================
+// EVENT CATEGORY COLOR CODING SYSTEM (6 Categories)
+// Maps event types to background color categories
+// Left border = execution state (active=orange, completed=green)
+// Background = event category (success, system, optimization, error, coordination)
+// ============================================================================
+const EVENT_CATEGORY_MAP = {
+    // Success Events (Green background) - normal execution & completion
+    'phase_start': 'success',
+    'phase_end': 'success',
+    'tool_result': 'success',
+    'tool_intent': 'success',
+    'llm_execution': 'success',
+    'llm_execution_complete': 'success',
+    'rag_execution': 'success',
+    'knowledge_retrieval_start': 'success',
+    'knowledge_retrieval_complete': 'success',
+    'knowledge_reranking_start': 'success',
+    'knowledge_reranking_complete': 'success',
+    'rag_llm_step': 'success',
+    'conversation_tool_invoked': 'success',
+    'conversation_tool_completed': 'success',
+    'conversation_llm_step': 'success',
+    'genie_slave_invoked': 'success',
+    'genie_slave_progress': 'success',
+    'genie_slave_completed': 'success',
+    'execution_complete': 'success',
+    'conversation_agent_complete': 'success',
+    'genie_coordination_complete': 'success',
+    'final_answer': 'success',
+
+    // System/Lifecycle Events (Yellow background)
+    'execution_start': 'system',
+    'session_name_generation_start': 'system',
+    'session_name_generation_complete': 'system',
+    'status_indicator_update': 'system',
+    'token_update': 'system',
+    'conversation_agent_start': 'system',
+
+    // Optimization Events (Cyan background)
+    'workaround': 'optimization',
+    'plan_optimization': 'optimization',
+
+    // Error Events (Red background)
+    'execution_error': 'error',
+    'tool_error': 'error',
+    'error': 'error',
+    'execution_cancelled': 'error',
+
+    // Genie Coordination Events (Purple background)
+    'genie_coordination_start': 'coordination',
+    'genie_llm_step': 'coordination',
+    'genie_synthesis_start': 'coordination',
+};
+
+/**
+ * Get the category for an event type (for background color).
+ * @param {string} eventType - The event type
+ * @returns {string} The category name (success, system, optimization, error, coordination)
+ */
+function getEventCategory(eventType) {
+    return EVENT_CATEGORY_MAP[eventType] || 'success';
+}
+
 /**
  * Get the color for a profile tag based on its profile type.
  * @param {string} profileTag - The profile tag (e.g., 'OPTIM', 'GENIE')
@@ -577,11 +641,6 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 
         summaryCard.innerHTML = `
             <div class="flex items-center gap-2 mb-2">
-                <div class="status-icon-glow">
-                    <svg class="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                    </svg>
-                </div>
                 <h4 class="font-bold text-sm text-white">Execution Complete</h4>
             </div>
             <div class="status-details text-xs text-gray-300">
@@ -1310,17 +1369,11 @@ function _renderToolIntentDetails(details) {
 function _renderGenieStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
-    // Mark previous active step as completed and stop icon animations
+    // Mark previous active step as completed
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
         lastStep.classList.remove('active');
         lastStep.classList.add('completed');
-
-        // Also remove active state from icon glow to stop spinning animation
-        const iconGlow = lastStep.querySelector('.status-icon-glow.active');
-        if (iconGlow) {
-            iconGlow.classList.remove('active');
-        }
     }
 
     const stepEl = document.createElement('div');
@@ -1331,6 +1384,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
         stepEl.classList.add('active');
     }
 
+    // Add category class for background color
+    const category = getEventCategory(type);
+    stepEl.classList.add(category);
+
     // Color-code based on event type
     if (type === 'genie_coordination_complete') {
         stepEl.classList.add(details?.success ? 'genie-success' : 'genie-error');
@@ -1338,54 +1395,9 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
         stepEl.classList.add(details?.success ? 'genie-slave-success' : 'genie-slave-error');
     }
 
-    // Step header with icon
+    // Step header (text-only, matching Optimizer style)
     const stepHeader = document.createElement('div');
     stepHeader.className = 'flex items-center gap-2 mb-2';
-
-    // Add appropriate icon based on event type
-    // Unified color schema: Indigo (primary), Amber (progress), Emerald (success), Rose (error), Slate (info)
-    let iconSvg = '';
-    switch (type) {
-        case 'genie_start':
-        case 'genie_routing':
-        case 'genie_coordination_start':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
-            break;
-        case 'genie_llm_step':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
-            break;
-        case 'genie_routing_decision':
-            iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>';
-            break;
-        case 'genie_slave_invoked':
-            iconSvg = '<svg class="w-4 h-4 text-amber-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
-            break;
-        case 'genie_slave_progress':
-            iconSvg = '<svg class="w-4 h-4 text-amber-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-4h2v2h-2zm1-10c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>';
-            break;
-        case 'genie_slave_completed':
-            iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
-                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
-            break;
-        case 'genie_synthesis_start':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l4.59-4.58L18 11l-6 6z"/></svg>';
-            break;
-        case 'genie_coordination_complete':
-            iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>'
-                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>';
-            break;
-        default:
-            iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
-    }
-
-    // Wrap icon in glow container for world-class visual effects
-    const iconContainer = document.createElement('div');
-    iconContainer.className = `status-icon-glow${isFinal ? '' : ' active'}`;
-    iconContainer.innerHTML = iconSvg;
-
-    stepHeader.appendChild(iconContainer);
 
     const titleEl = document.createElement('h4');
     titleEl.className = 'font-bold text-sm text-white';
@@ -1684,6 +1696,13 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 break;
             }
 
+            case 'execution_start':
+            case 'execution_complete':
+            case 'execution_error':
+                // Skip rendering - these lifecycle events are redundant for genie profiles
+                // genie_coordination_start and genie_coordination_complete already show this info
+                return;
+
             default:
                 // Generic fallback with JSON display
                 try {
@@ -1735,30 +1754,23 @@ export function renderGenieStepForReload(eventData, parentContainer, isFinal = f
 function _renderConversationAgentStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
+    // EARLY SKIP: execution_complete for genie profiles is redundant
+    // genie_coordination_complete already shows this info with synthesized response
+    // Also check for case variations just in case
+    const profileType = details?.profile_type?.toLowerCase?.() || details?.profile_type || '';
+    if (type === 'execution_complete' && profileType === 'genie') {
+        console.log('[_renderConversationAgentStep] Skipping redundant execution_complete for genie profile');
+        return;  // Early exit before any DOM creation
+    }
+
     // CRITICAL FIX: For session name generation complete, UPDATE the existing "Generating..." step
     if (type === 'session_name_generation_complete') {
         const lastStep = parentContainer.querySelector('.status-step.active');
 
         if (lastStep) {
-            // Update the existing step's icon and content
+            // Update the existing step as completed
             lastStep.classList.remove('active');
             lastStep.classList.add('completed');
-
-            // Stop spinning animation
-            const iconGlow = lastStep.querySelector('.status-icon-glow.active');
-            if (iconGlow) {
-                iconGlow.classList.remove('active');
-            }
-
-            // Update icon to show success
-            const stepHeader = lastStep.querySelector('.flex.items-center');
-            if (stepHeader) {
-                const iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-                const iconContainer = stepHeader.firstElementChild;
-                if (iconContainer) {
-                    iconContainer.innerHTML = iconSvg;
-                }
-            }
 
             // Update details section with session name and tokens
             // Session name events use .text-xs instead of .status-details
@@ -1808,29 +1820,9 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             // Mark as completed so next completion for same tool finds a different element
             lastStep.dataset.toolStatus = 'completed';
 
-            // Update the existing step's icon and content
+            // Update the existing step as completed
             lastStep.classList.remove('active');
             lastStep.classList.add('completed');
-
-            // Stop spinning animation
-            const iconGlow = lastStep.querySelector('.status-icon-glow.active');
-            if (iconGlow) {
-                iconGlow.classList.remove('active');
-            }
-
-            // Update icon to show success/failure
-            const stepHeader = lastStep.querySelector('.flex.items-center');
-            if (stepHeader) {
-                const iconSvg = details?.success
-                    ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-                    : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-
-                // Replace the spinning icon with success/failure icon
-                const iconContainer = stepHeader.firstElementChild;
-                if (iconContainer) {
-                    iconContainer.innerHTML = iconSvg;
-                }
-            }
 
             // Update details section with completion status
             const detailsEl = lastStep.querySelector('.status-details');
@@ -1876,18 +1868,13 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     }
 
     // Mark previous active step as completed and stop icon animations
+    // Mark previous active step as completed
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
         lastStep.classList.remove('active');
         lastStep.classList.add('completed');
 
-        // Also remove active state from icon glow to stop spinning animation
-        const iconGlow = lastStep.querySelector('.status-icon-glow.active');
-        if (iconGlow) {
-            iconGlow.classList.remove('active');
-        }
-
-        // Remove progress indicator when stage completes (Phase 1: Terminology Harmonization)
+        // Remove progress indicator when stage completes
         const progressIndicator = lastStep.querySelector('.progress-indicator');
         if (progressIndicator) {
             progressIndicator.remove();
@@ -1910,84 +1897,25 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
         stepEl.classList.add('active');
     }
 
+    // Add category class for background color
+    const category = getEventCategory(type);
+    stepEl.classList.add(category);
+
     // Color-code based on event type
     // ONLY apply success/error backgrounds to the FINAL summary event
     if (type === 'conversation_agent_complete') {
         stepEl.classList.add(details?.success ? 'conv-agent-success' : 'conv-agent-error');
     }
-    // Individual tool completions don't get background emphasis - only icon color shows status
 
-    // Step header with icon
+    // Step header (text-only, matching Optimizer style)
     const stepHeader = document.createElement('div');
     stepHeader.className = 'flex items-center gap-2 mb-2';
-
-    // Add appropriate icon based on event type
-    // Unified color schema: Indigo (primary), Amber (progress), Emerald (success), Rose (error), Slate (info)
-    let iconSvg = '';
-    switch (type) {
-        case 'conversation_agent_start':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>';
-            break;
-        case 'conversation_llm_step':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
-            break;
-        case 'conversation_tool_invoked':
-            // Distinct animated progress ring for executing state
-            iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><circle cx="12" cy="12" r="10" stroke-dasharray="63" stroke-dashoffset="16" class="origin-center animate-spin"/></svg>';
-            break;
-        case 'conversation_tool_completed':
-            // Simple checkmark/X (no circle) for individual tool completions
-            iconSvg = details?.success
-                ? '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-                : '<svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-            break;
-        case 'conversation_agent_complete':
-            // Bold checkmark in circle for FINAL summary (this gets background color)
-            iconSvg = details?.success
-                ? '<svg class="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
-                : '<svg class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
-            break;
-        case 'knowledge_retrieval':
-        case 'knowledge_retrieval_complete':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.01 4.5-4.5-2.01-4.5-4.5-4.5zm0 7c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zM3 21.5h8v-2H3v2zm0-3.5h8v-2H3v2z"/></svg>';
-            break;
-        case 'knowledge_retrieval_start':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
-            break;
-        case 'knowledge_reranking_start':
-            iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>';
-            break;
-        case 'knowledge_reranking_complete':
-            iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
-            break;
-        case 'rag_llm_step':
-            iconSvg = '<svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
-            break;
-        case 'knowledge_search_complete':
-            iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
-            break;
-        case 'session_name_generation_start':
-            iconSvg = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
-            break;
-        case 'session_name_generation_complete':
-            iconSvg = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
-            break;
-        default:
-            iconSvg = '<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
-    }
-
-    // Wrap icon in glow container for world-class visual effects
-    const iconContainer = document.createElement('div');
-    iconContainer.className = `status-icon-glow${isFinal ? '' : ' active'}`;
-    iconContainer.innerHTML = iconSvg;
-
-    stepHeader.appendChild(iconContainer);
 
     const titleEl = document.createElement('h4');
     titleEl.className = 'font-bold text-sm text-white';
     titleEl.textContent = step || 'Tool Execution';
 
-    // Add progress indicator for active rag_focused stages (Phase 1: Terminology Harmonization)
+    // Add progress indicator for active rag_focused stages
     if ((type === 'knowledge_retrieval_start' || type === 'rag_llm_step' ||
          type === 'knowledge_reranking_start') && !isFinal) {
         const progressLabel = document.createElement('span');
@@ -2551,9 +2479,17 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             }
 
             case 'execution_complete': {
+                const profileTypeRaw = details.profile_type || 'unknown';
+                const profileTypeLower = profileTypeRaw.toLowerCase?.() || profileTypeRaw;
+
+                // Skip rendering for genie profiles - genie_coordination_complete already shows this info
+                if (profileTypeLower === 'genie') {
+                    console.log('[_renderConversationAgentStep:switch] Skipping redundant execution_complete for genie profile');
+                    return null;
+                }
+
                 stepEl.classList.add('success');
 
-                const profileType = details.profile_type || 'unknown';
                 const profileTag = details.profile_tag || 'N/A';
                 const success = details.success !== false;
                 const statusText = success ? 'Success' : 'Failed';
@@ -2564,14 +2500,17 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 if (details.collections_searched !== undefined) {
                     const docsRetrieved = details.documents_retrieved || 0;
                     const collectionsSearched = details.collections_searched || 0;
-                    const retrievalDuration = details.retrieval_duration_ms || 0;
+                    // Use total_duration_ms if available, otherwise calculate from retrieval + synthesis
+                    const totalDuration = details.total_duration_ms ||
+                        ((details.retrieval_duration_ms || 0) + (details.synthesis_duration_ms || 0));
+                    const totalSeconds = (totalDuration / 1000).toFixed(1);
                     profileDetailsHtml = `
                         <div class="status-kv-key">Collections</div>
                         <div class="status-kv-value">${collectionsSearched} searched</div>
                         <div class="status-kv-key">Documents</div>
                         <div class="status-kv-value">${docsRetrieved} retrieved</div>
-                        <div class="status-kv-key">Retrieval</div>
-                        <div class="status-kv-value">${retrievalDuration}ms</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${totalSeconds}s</div>
                     `;
                 }
 
@@ -2822,6 +2761,10 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
             stepEl.classList.add('completed');
         }
     }
+
+    // Add category class for background color
+    const category = getEventCategory(type);
+    stepEl.classList.add(category);
 }
 
 /**

@@ -2400,6 +2400,7 @@ The following domain knowledge may be relevant to this conversation:
                         }, "token_update")
 
                 # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
+                # No LLM synthesis for no-results case, so synthesis_duration_ms is 0
                 execution_complete_payload = {
                     "profile_type": "rag_focused",
                     "profile_tag": profile_tag,
@@ -2409,6 +2410,8 @@ The following domain knowledge may be relevant to this conversation:
                     "total_input_tokens": self.turn_input_tokens,
                     "total_output_tokens": self.turn_output_tokens,
                     "retrieval_duration_ms": retrieval_duration_ms,
+                    "synthesis_duration_ms": 0,
+                    "total_duration_ms": retrieval_duration_ms,  # Only retrieval, no synthesis
                     "success": True
                 }
                 knowledge_events.append({
@@ -2808,31 +2811,8 @@ The following domain knowledge may be relevant to this conversation:
             # Collect system events for plan reload (like session name generation)
             system_events = []
 
-            # Generate session name for first turn (using unified generator)
-            if self.current_turn_number == 1:
-                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
-                if session_data and session_data.get("name") == "New Chat":
-                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
-
-                    async for result in self._generate_and_emit_session_name():
-                        if isinstance(result, str):
-                            # SSE event - yield to frontend
-                            yield result
-                        else:
-                            # Final result tuple: (name, input_tokens, output_tokens, collected_events)
-                            new_name, name_input_tokens, name_output_tokens, name_events = result
-                            system_events.extend(name_events)
-
-                            if new_name != "New Chat":
-                                try:
-                                    await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                                    yield self._format_sse({
-                                        "session_id": self.session_id,
-                                        "newName": new_name
-                                    }, "session_name_update")
-                                    app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
-                                except Exception as name_e:
-                                    app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+            # Calculate total duration (retrieval + synthesis)
+            total_duration_ms = retrieval_duration_ms + llm_duration_ms
 
             # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
             execution_complete_payload = {
@@ -2843,6 +2823,8 @@ The following domain knowledge may be relevant to this conversation:
                 "total_input_tokens": self.turn_input_tokens,
                 "total_output_tokens": self.turn_output_tokens,
                 "retrieval_duration_ms": retrieval_duration_ms,
+                "synthesis_duration_ms": llm_duration_ms,
+                "total_duration_ms": total_duration_ms,
                 "success": True
             }
             knowledge_events.append({
@@ -2899,6 +2881,34 @@ The following domain knowledge may be relevant to this conversation:
                 # Silent failure - don't break execution
                 app_logger.warning(f"Failed to emit execution_complete event: {e}")
             # --- PHASE 2 END ---
+
+            # --- Session Name Generation (AFTER execution_complete) ---
+            # Generate session name for first turn (using unified generator)
+            if self.current_turn_number == 1:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                if session_data and session_data.get("name") == "New Chat":
+                    app_logger.info(f"First turn detected for session {self.session_id}. Attempting to generate name.")
+
+                    async for result in self._generate_and_emit_session_name():
+                        if isinstance(result, str):
+                            # SSE event - yield to frontend
+                            yield result
+                        else:
+                            # Final result tuple: (name, input_tokens, output_tokens, collected_events)
+                            new_name, name_input_tokens, name_output_tokens, name_events = result
+                            system_events.extend(name_events)
+
+                            if new_name != "New Chat":
+                                try:
+                                    await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
+                                    yield self._format_sse({
+                                        "session_id": self.session_id,
+                                        "newName": new_name
+                                    }, "session_name_update")
+                                    app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
+                                except Exception as name_e:
+                                    app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+            # --- Session Name Generation END ---
 
             app_logger.info("✅ RAG-focused execution completed successfully")
             return
