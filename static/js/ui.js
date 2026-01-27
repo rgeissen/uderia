@@ -81,9 +81,11 @@ const EVENT_CATEGORY_MAP = {
     'error': 'error',
     'execution_cancelled': 'error',
 
-    // Genie Coordination Events (Purple background) - routing/synthesis
-    'genie_llm_step': 'coordination',
-    'genie_synthesis_start': 'coordination',
+    // Genie LLM Events - same green as other profile LLM calls
+    'genie_llm_step': 'success',
+    'genie_synthesis_start': 'success',
+    'genie_synthesis_complete': 'success',
+    'genie_routing': 'success',
 };
 
 /**
@@ -124,7 +126,7 @@ function getProfileTagColor(profileTag, profileType) {
  */
 function renderProfileTag(tag, profileType, additionalClasses = '') {
     const color = getProfileTagColor(tag, profileType);
-    return `<code class="status-code ${additionalClasses}" style="color: ${color}; border-color: ${color}40; background: ${color}15;">@${tag}</code>`;
+    return `<code class="status-code ${additionalClasses}" style="color: white; border-color: ${color}40; background: ${color}15;">@${tag}</code>`;
 }
 
 // ============================================================================
@@ -1372,6 +1374,11 @@ function _renderToolIntentDetails(details) {
 function _renderGenieStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
+    // Skip obsolete events - genie_coordination_start provides the same info
+    if (type === 'genie_start' || type === 'genie_routing') {
+        return;
+    }
+
     // Mark previous active step as completed
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
@@ -1432,7 +1439,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
                                 ${details.slave_profiles.map(p => {
                                     const slaveColor = getProfileTagColor(p.tag, p.profile_type);
-                                    return `<span class="genie-tag" style="color: ${slaveColor}; border-color: ${slaveColor}40;">@${p.tag}</span>`;
+                                    return `<span class="genie-tag" style="color: white; border-color: ${slaveColor}40; background: ${slaveColor}15;">@${p.tag}</span>`;
                                 }).join('')}
                             </div>
                         </details>
@@ -1599,10 +1606,34 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="mt-2 flex flex-wrap gap-1">
                             ${details.profiles_consulted.map(tag => {
                                 const tagColor = getProfileTagColor(tag);
-                                return `<span class="genie-tag" style="color: ${tagColor}; border-color: ${tagColor}40;">@${tag}</span>`;
+                                return `<span class="genie-tag" style="background: ${tagColor}30; color: white; border-color: ${tagColor}40;">@${tag}</span>`;
                             }).join('')}
                         </div>
                     ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_synthesis_complete': {
+                // Show synthesized response (matches "Response from @TAG" pattern in other profiles)
+                const consulted = details.profiles_consulted?.length || 0;
+                let responseHtml = '';
+                if (details.synthesized_response && details.success !== false) {
+                    responseHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Synthesized Response</summary>
+                            <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(details.synthesized_response)}</div>
+                        </details>
+                    `;
+                }
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
+                        <div class="status-kv-key">Profiles</div>
+                        <div class="status-kv-value">${consulted} consulted</div>
+                    </div>
+                    ${responseHtml}
                 `;
                 break;
             }
@@ -1632,22 +1663,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <div class="genie-profile-tags flex flex-wrap gap-1">
                                 ${details.profiles_used.map(tag => {
                                     const tagColor = getProfileTagColor(tag);
-                                    return `<span class="genie-tag" style="color: ${tagColor}; border-color: ${tagColor}40;">@${tag}</span>`;
+                                    return `<span class="genie-tag" style="background: ${tagColor}30; color: white; border-color: ${tagColor}40;">@${tag}</span>`;
                                 }).join('')}
                             </div>
                         </div>
-                    `;
-                }
-
-                // Synthesized response (if available)
-                let responseHtml = '';
-                if (details.synthesized_response && details.success) {
-                    const genieColor = getProfileTagColor('GENIE', 'genie');
-                    responseHtml = `
-                        <details class="mt-2">
-                            <summary class="cursor-pointer text-purple-400 hover:text-purple-300 text-xs font-medium">Synthesized Response</summary>
-                            <div class="mt-1 p-2 bg-purple-900/20 rounded border border-purple-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(details.synthesized_response)}</div>
-                        </details>
                     `;
                 }
 
@@ -1667,7 +1686,6 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         ${tokensHtml}
                     </div>
                     ${profilesHtml}
-                    ${responseHtml}
                     ${errorHtml}
                 `;
                 break;
@@ -3942,7 +3960,7 @@ export function addSessionToList(session, isActive = false) {
                 tagSpan.style.cssText = `
                     background: linear-gradient(135deg, ${color1}, ${color2});
                     border: 1px solid ${borderColor};
-                    color: ${profile.color};
+                    color: white;
                     box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
                     backdrop-filter: blur(4px);
                 `;
@@ -3963,7 +3981,7 @@ export function addSessionToList(session, isActive = false) {
                 tagSpan.style.cssText = `
                     background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.08));
                     border: 1px solid rgba(99, 102, 241, 0.4);
-                    color: #818cf8;
+                    color: white;
                     box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
                 `;
             }
@@ -4042,7 +4060,7 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
                     tagSpan.style.cssText = `
                         background: linear-gradient(135deg, ${color1}, ${color2});
                         border: 1px solid ${borderColor};
-                        color: ${profile.color};
+                        color: white;
                         box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
                         backdrop-filter: blur(4px);
                     `;
@@ -4065,7 +4083,7 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
                     tagSpan.style.cssText = `
                         background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.08));
                         border: 1px solid rgba(99, 102, 241, 0.4);
-                        color: #818cf8;
+                        color: white;
                         box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
                     `;
                 }

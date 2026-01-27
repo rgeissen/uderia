@@ -863,10 +863,10 @@ class ExecutionDashboard {
                     const color1 = hexToRgba(profile.color, 0.3);
                     const color2 = hexToRgba(profile.color, 0.15);
                     const borderColor = hexToRgba(profile.color, 0.5);
-                    badgeStyle = `background: linear-gradient(135deg, ${color1}, ${color2}); border-color: ${borderColor}; color: ${profile.color};`;
+                    badgeStyle = `background: linear-gradient(135deg, ${color1}, ${color2}); border-color: ${borderColor}; color: white;`;
                 } else {
                     // Fallback to orange
-                    badgeStyle = 'background: rgba(241, 95, 34, 0.2); border-color: rgba(241, 95, 34, 0.3); color: #F15F22;';
+                    badgeStyle = 'background: rgba(241, 95, 34, 0.2); border-color: rgba(241, 95, 34, 0.3); color: white;';
                 }
 
                 profileBadgeHTML = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-semibold border mr-2" style="${badgeStyle}">@${turn.profile_tag}</span>`;

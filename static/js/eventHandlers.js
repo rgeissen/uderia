@@ -404,8 +404,14 @@ function getGenieTitle(eventType, payload) {
         case 'genie_coordination_start':
             return 'Coordinator Started';
         case 'genie_llm_step': {
-            const stepName = payload.step_name || 'LLM Processing';
-            return `Calling LLM: ${stepName}`;
+            const stepName = payload.step_name || 'Processing';
+            // Harmonize with other profile naming: "LLM X Execution"
+            if (stepName.toLowerCase().includes('routing')) {
+                return 'LLM Routing Execution';
+            } else if (stepName.toLowerCase().includes('synthesis')) {
+                return 'LLM Synthesis Execution';
+            }
+            return `LLM ${stepName} Execution`;
         }
         case 'genie_routing_decision': {
             const profileCount = payload.selected_profiles?.length || 0;
@@ -421,7 +427,9 @@ function getGenieTitle(eventType, payload) {
             return `Expert @${payload.profile_tag || 'PROFILE'} ${status}${duration}`;
         }
         case 'genie_synthesis_start':
-            return 'Synthesizing Response';
+            return 'LLM Synthesis Started';
+        case 'genie_synthesis_complete':
+            return 'LLM Synthesis Results';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordinator Complete' : 'Coordinator Failed';
         case 'session_name_generation_start':
@@ -803,6 +811,7 @@ async function processStream(responseBody) {
                                eventName === 'genie_routing_decision' ||
                                eventName === 'genie_slave_invoked' || eventName === 'genie_slave_progress' ||
                                eventName === 'genie_slave_completed' || eventName === 'genie_synthesis_start' ||
+                               eventName === 'genie_synthesis_complete' ||
                                eventName === 'genie_coordination_complete') {
                         // Handle genie coordination events - delegate to genieHandler
                         console.log('[SSE] Genie event received:', eventName, eventData);
@@ -1263,9 +1272,14 @@ async function handleReloadPlanClick(element) {
                     statusTitle.textContent = `Genie Coordination - Turn ${turnId}`;
                 }
 
+                // Filter out obsolete events (genie_start, genie_routing are redundant with genie_coordination_start)
+                const filteredGenieEvents = genieEvents.filter(e =>
+                    e.type !== 'genie_start' && e.type !== 'genie_routing'
+                );
+
                 // Replay each event using the same renderer as live execution
-                genieEvents.forEach((event, index) => {
-                    const isFinal = index === genieEvents.length - 1;
+                filteredGenieEvents.forEach((event, index) => {
+                    const isFinal = index === filteredGenieEvents.length - 1;
                     // Check if payload is already a complete event (has 'step' field)
                     // or if it's just details that need to be wrapped
                     let eventData;

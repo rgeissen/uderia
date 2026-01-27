@@ -53,8 +53,7 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
             const borderColor = hexToRgba(defaultProfile.color, 0.5);
             headerDefaultProfile.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
             headerDefaultProfile.style.borderColor = borderColor;
-            // Set text color to match profile color
-            headerDefaultProfileTag.style.color = defaultProfile.color;
+            // Text stays white (defined in HTML) for consistency with conversation canvas
         }
         headerDefaultProfile.classList.remove('hidden');
     } else {
@@ -70,8 +69,7 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
             const borderColor = hexToRgba(overrideProfile.color, 0.5);
             headerOverrideProfile.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
             headerOverrideProfile.style.borderColor = borderColor;
-            // Set text color to match profile color
-            headerOverrideProfileTag.style.color = overrideProfile.color;
+            // Text stays white (defined in HTML) for consistency with conversation canvas
         }
         headerOverrideProfile.classList.remove('hidden');
     } else {

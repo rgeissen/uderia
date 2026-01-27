@@ -130,7 +130,9 @@ function _getGenieStepTitle(eventType, payload) {
             return `@${payload.profile_tag || 'PROFILE'}: ${status}${duration}`;
         }
         case 'genie_synthesis_start':
-            return 'Synthesizing Response';
+            return 'LLM Synthesis Started';
+        case 'genie_synthesis_complete':
+            return 'LLM Synthesis Results';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordination Complete' : 'Coordination Failed';
         default:

@@ -768,15 +768,22 @@ After gathering information from profiles, provide a synthesized answer that:
             if output:
                 response_preview = output[:500] + "..." if len(output) > 500 else output
 
-            # Emit coordination complete event
+            # Emit synthesis complete event with the response (matches other profiles' "LLM Synthesis Results")
+            self._emit_event("genie_synthesis_complete", {
+                "profiles_consulted": self.invoked_profiles,
+                "session_id": self.parent_session_id,
+                "synthesized_response": response_preview,
+                "success": True
+            })
+
+            # Emit coordination complete event (without response - it's in genie_synthesis_complete)
             self._emit_event("genie_coordination_complete", {
                 "total_duration_ms": total_duration_ms,
                 "profiles_used": self.invoked_profiles,  # Use tracked invoked profiles
                 "success": True,
                 "session_id": self.parent_session_id,
                 "input_tokens": self.total_input_tokens,
-                "output_tokens": self.total_output_tokens,
-                "synthesized_response": response_preview  # Include response for status window
+                "output_tokens": self.total_output_tokens
             })
 
             # --- PHASE 2: Emit execution_complete lifecycle event for genie ---
