@@ -2975,14 +2975,21 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
                 }
             }
 
-            const { phase_num, total_phases, status } = details;
+            const { phase_num, total_phases, status, execution_depth } = details;
+            const depthFromDetails = execution_depth ?? 0;
+
+            let depthIndicator = '';
+            if (depthFromDetails > 0) {
+                depthIndicator = '↳ '.repeat(depthFromDetails);
+            }
+
             const phaseFooter = document.createElement('div');
             phaseFooter.className = 'status-phase-header phase-end';
-            phaseFooter.innerHTML = `<span class="font-bold">Phase ${phase_num}/${total_phases} Completed</span>`;
+            phaseFooter.innerHTML = `<span class="font-bold">${depthIndicator}Phase ${phase_num}/${total_phases} Completed</span>`;
 
             if (status === 'skipped') {
                 phaseFooter.classList.add('skipped');
-                phaseFooter.innerHTML = `<span class="font-bold">Phase ${phase_num}/${total_phases} Skipped</span>`;
+                phaseFooter.innerHTML = `<span class="font-bold">${depthIndicator}Phase ${phase_num}/${total_phases} Skipped</span>`;
             } else {
                 containerToEnd.classList.add('completed');
             }

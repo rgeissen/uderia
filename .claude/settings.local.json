@@ -37,7 +37,8 @@
       "Bash(chmod:*)",
       "Bash(git pull:*)",
       "Bash(git push:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git -C /Users/rainer.geissendoerfer/my_private_code/uderia remote:*)"
     ]
   }
 }

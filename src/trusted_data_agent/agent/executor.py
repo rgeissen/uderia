@@ -4051,7 +4051,7 @@ The following domain knowledge may be relevant to this conversation:
                 event_data = {
                     "step": f"Ending Plan Phase {phase_num}/{len(self.meta_plan)}",
                     "type": "phase_end",
-                    "details": {"phase_num": phase_num, "total_phases": len(self.meta_plan), "status": "completed"}
+                    "details": {"phase_num": phase_num, "total_phases": len(self.meta_plan), "status": "completed", "execution_depth": self.execution_depth}
                 }
                 self._log_system_event(event_data)
                 yield self._format_sse(event_data)

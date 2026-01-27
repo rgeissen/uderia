@@ -420,7 +420,7 @@ class PhaseExecutor:
             event_data = {
                 "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                 "type": "phase_end",
-                "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "skipped"}
+                "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "skipped", "execution_depth": self.executor.execution_depth}
             }
             self.executor._log_system_event(event_data)
             yield self.executor._format_sse(event_data)
@@ -528,7 +528,7 @@ class PhaseExecutor:
                     event_data = {"step": "Skipping Empty Loop", "type": "system_message", "details": f"No compatible columns found for '{tool_name}'."}
                     self.executor._log_system_event(event_data)
                     yield self.executor._format_sse(event_data)
-                    event_data = {"step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}", "type": "phase_end", "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "skipped"}}
+                    event_data = {"step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}", "type": "phase_end", "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "skipped", "execution_depth": self.executor.execution_depth}}
                     self.executor._log_system_event(event_data)
                     yield self.executor._format_sse(event_data)
                     return
@@ -656,7 +656,7 @@ class PhaseExecutor:
         event_data = {
             "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
             "type": "phase_end",
-            "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed"}
+            "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
         }
         self.executor._log_system_event(event_data)
         yield self.executor._format_sse(event_data)
@@ -781,7 +781,7 @@ class PhaseExecutor:
                 event_data = {
                     "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                     "type": "phase_end",
-                    "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed"}
+                    "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
                 }
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse(event_data)
@@ -837,7 +837,7 @@ class PhaseExecutor:
                 event_data = {
                     "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                     "type": "phase_end",
-                    "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed"}
+                    "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
                 }
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse(event_data)
@@ -977,7 +977,7 @@ class PhaseExecutor:
                 event_data = {
                     "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                     "type": "phase_end",
-                    "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed"}
+                    "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
                 }
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse(event_data)
@@ -1083,7 +1083,7 @@ class PhaseExecutor:
             yield self.executor._format_sse({
                 "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                 "type": "phase_end",
-                "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed"}
+                "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
             })
 
 
