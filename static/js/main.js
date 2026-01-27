@@ -47,27 +47,31 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     // Update default profile
     if (defaultProfile && defaultProfile.tag) {
         headerDefaultProfileTag.textContent = `@${defaultProfile.tag}`;
-        if (defaultProfile.color && defaultProfile.colorSecondary) {
+        if (defaultProfile.color) {
             const color1 = hexToRgba(defaultProfile.color, 0.3);
             const color2 = hexToRgba(defaultProfile.color, 0.15);
             const borderColor = hexToRgba(defaultProfile.color, 0.5);
             headerDefaultProfile.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
             headerDefaultProfile.style.borderColor = borderColor;
+            // Set text color to match profile color
+            headerDefaultProfileTag.style.color = defaultProfile.color;
         }
         headerDefaultProfile.classList.remove('hidden');
     } else {
         headerDefaultProfile.classList.add('hidden');
     }
-    
+
     // Update override profile
     if (overrideProfile && overrideProfile.tag) {
         headerOverrideProfileTag.textContent = `@${overrideProfile.tag}`;
-        if (overrideProfile.color && overrideProfile.colorSecondary) {
+        if (overrideProfile.color) {
             const color1 = hexToRgba(overrideProfile.color, 0.3);
             const color2 = hexToRgba(overrideProfile.color, 0.15);
-            const borderColor = hexToRgba(overrideProfile.color, 0.15);
+            const borderColor = hexToRgba(overrideProfile.color, 0.5);
             headerOverrideProfile.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
             headerOverrideProfile.style.borderColor = borderColor;
+            // Set text color to match profile color
+            headerOverrideProfileTag.style.color = overrideProfile.color;
         }
         headerOverrideProfile.classList.remove('hidden');
     } else {
