@@ -763,6 +763,11 @@ After gathering information from profiles, provide a synthesized answer that:
             # Calculate duration
             total_duration_ms = int((time.time() - start_time) * 1000)
 
+            # Prepare response preview for status window (truncate if too long)
+            response_preview = None
+            if output:
+                response_preview = output[:500] + "..." if len(output) > 500 else output
+
             # Emit coordination complete event
             self._emit_event("genie_coordination_complete", {
                 "total_duration_ms": total_duration_ms,
@@ -770,7 +775,8 @@ After gathering information from profiles, provide a synthesized answer that:
                 "success": True,
                 "session_id": self.parent_session_id,
                 "input_tokens": self.total_input_tokens,
-                "output_tokens": self.total_output_tokens
+                "output_tokens": self.total_output_tokens,
+                "synthesized_response": response_preview  # Include response for status window
             })
 
             # --- PHASE 2: Emit execution_complete lifecycle event for genie ---

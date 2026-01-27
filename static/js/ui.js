@@ -1624,6 +1624,18 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     `;
                 }
 
+                // Synthesized response (if available)
+                let responseHtml = '';
+                if (details.synthesized_response && details.success) {
+                    const genieColor = getProfileTagColor('GENIE', 'genie');
+                    responseHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-purple-400 hover:text-purple-300 text-xs font-medium">Synthesized Response</summary>
+                            <div class="mt-1 p-2 bg-purple-900/20 rounded border border-purple-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(details.synthesized_response)}</div>
+                        </details>
+                    `;
+                }
+
                 let errorHtml = '';
                 if (details.error) {
                     errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
@@ -1640,6 +1652,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         ${tokensHtml}
                     </div>
                     ${profilesHtml}
+                    ${responseHtml}
                     ${errorHtml}
                 `;
                 break;
