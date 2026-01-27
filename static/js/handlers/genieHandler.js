@@ -360,6 +360,10 @@ export function handleGenieEvent(eventType, payload) {
             updateSynthesisStart(payload);
             break;
 
+        case 'genie_synthesis_complete':
+            // Informational event for Live Status window - no state tracking needed
+            break;
+
         case 'genie_coordination_complete':
             completeCoordination(payload);
             break;

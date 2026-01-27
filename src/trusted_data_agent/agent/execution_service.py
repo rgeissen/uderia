@@ -247,14 +247,7 @@ async def _run_genie_execution(
             app_logger.warning(f"Genie execution blocked: nesting level {current_nesting_level} >= max depth {max_depth}")
             return None
 
-        # Send initial coordination start event
-        await event_handler({
-            "message": f"🔮 Genie Coordinator activated ({profile_tag})",
-            "profile_tag": profile_tag,
-            "profile_type": "genie",
-            "session_id": session_id,
-            "nesting_level": current_nesting_level
-        }, "genie_start")
+        # Note: genie_coordination_start is emitted by GenieCoordinator with full details
 
         # Validate genie configuration
         genie_config = genie_profile.get("genieConfig", {})
@@ -281,12 +274,7 @@ async def _run_genie_execution(
             }, "error")
             return None
 
-        # Send routing info event
-        await event_handler({
-            "message": f"Consulting {len(slave_profiles)} expert profile(s)...",
-            "slave_profiles": [{"tag": p.get("tag"), "name": p.get("name"), "type": p.get("profile_type"), "id": p.get("id")} for p in slave_profiles],
-            "session_id": session_id
-        }, "genie_routing")
+        # Note: genie_coordination_start is emitted by GenieCoordinator with slave_profiles details
 
         # Get LLM configuration for coordinator
         llm_config_id = genie_profile.get("llmConfigurationId")
