@@ -404,6 +404,26 @@ RESPONSE FORMAT:
                     # Use small non-zero delay to ensure SSE actually gets scheduled
                     await asyncio.sleep(0.001)
 
+                    # Emit LLM synthesis results event when it's a Response Generation (not tool selection)
+                    if not has_tool_calls:
+                        # Extract response content from the output
+                        response_content = ""
+                        if hasattr(output, 'content'):
+                            response_content = output.content or ""
+                        elif hasattr(output, 'generations') and output.generations:
+                            # For ChatResult objects
+                            response_content = output.generations[0].text if hasattr(output.generations[0], 'text') else ""
+
+                        await self._emit_event("conversation_llm_complete", {
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "response_preview": response_content[:500] + "..." if len(response_content) > 500 else response_content,
+                            "response_length": len(response_content),
+                            "session_id": self.session_id
+                        })
+                        logger.info(f"[ConvAgent] ✓ Emitted conversation_llm_complete event (response length: {len(response_content)})")
+                        await asyncio.sleep(0.001)
+
                     logger.info(f"[ConvAgent] LLM Step {self.llm_call_count} ({step_name}): {input_tokens} in / {output_tokens} out")
 
                 # Track tool invocations

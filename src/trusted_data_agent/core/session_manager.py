@@ -1045,6 +1045,112 @@ async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) ->
         return False
 # --- MODIFICATION END ---
 
+# --- MODIFICATION START: Add function to update turn system_events ---
+async def update_turn_system_events(user_uuid: str, session_id: str, turn_number: int, system_events: list) -> bool:
+    """
+    Updates the system_events for a specific turn in the workflow_history.
+    This is used when session name generation events need to be added after
+    the turn has already been saved.
+
+    Args:
+        user_uuid: The user's UUID
+        session_id: The session ID
+        turn_number: The turn number to update
+        system_events: The list of system events to store
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        session_data = await _load_session(user_uuid, session_id)
+        if not session_data:
+            app_logger.warning(f"Could not update system_events: Session {session_id} not found for user {user_uuid}.")
+            return False
+
+        # Get workflow_history from last_turn_data
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+
+        # Find the turn with matching turn number
+        turn_found = False
+        for turn in workflow_history:
+            if turn.get("turn") == turn_number:
+                turn["system_events"] = system_events
+                turn_found = True
+                break
+
+        if not turn_found:
+            app_logger.warning(f"Could not update system_events: Turn {turn_number} not found in session {session_id}.")
+            return False
+
+        # Save the updated session
+        await _save_session(user_uuid, session_id, session_data)
+        app_logger.debug(f"Updated system_events for turn {turn_number} in session {session_id}")
+        return True
+
+    except Exception as e:
+        app_logger.error(f"Failed to update system_events for turn {turn_number}: {e}", exc_info=True)
+        return False
+# --- MODIFICATION END ---
+
+# --- MODIFICATION START: Add function to update turn token counts ---
+async def update_turn_token_counts(user_uuid: str, session_id: str, turn_number: int, input_tokens: int, output_tokens: int) -> bool:
+    """
+    Updates the token counts for a specific turn in the workflow_history.
+    This is used when session name generation tokens need to be added after
+    the turn has already been saved.
+
+    Args:
+        user_uuid: The user's UUID
+        session_id: The session ID
+        turn_number: The turn number to update
+        input_tokens: The total input tokens for the turn (including session name)
+        output_tokens: The total output tokens for the turn (including session name)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        session_data = await _load_session(user_uuid, session_id)
+        if not session_data:
+            app_logger.warning(f"Could not update token counts: Session {session_id} not found for user {user_uuid}.")
+            return False
+
+        # Get workflow_history from last_turn_data
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+
+        # Find the turn with matching turn number
+        turn_found = False
+        for turn in workflow_history:
+            if turn.get("turn") == turn_number:
+                # Update all token count fields to ensure consistency
+                turn["input_tokens"] = input_tokens
+                turn["output_tokens"] = output_tokens
+                turn["turn_input_tokens"] = input_tokens
+                turn["turn_output_tokens"] = output_tokens
+                # Also update session_input_tokens and session_output_tokens if they exist
+                # (these are snapshots of session totals at time of turn)
+                if "session_input_tokens" in turn:
+                    turn["session_input_tokens"] = session_data.get("input_tokens", input_tokens)
+                if "session_output_tokens" in turn:
+                    turn["session_output_tokens"] = session_data.get("output_tokens", output_tokens)
+                turn_found = True
+                app_logger.debug(f"Updated turn {turn_number} token counts: {input_tokens} in / {output_tokens} out")
+                break
+
+        if not turn_found:
+            app_logger.warning(f"Could not update token counts: Turn {turn_number} not found in session {session_id}.")
+            return False
+
+        # Save the updated session
+        await _save_session(user_uuid, session_id, session_data)
+        app_logger.debug(f"Updated token counts for turn {turn_number} in session {session_id}")
+        return True
+
+    except Exception as e:
+        app_logger.error(f"Failed to update token counts for turn {turn_number}: {e}", exc_info=True)
+        return False
+# --- MODIFICATION END ---
+
 # --- MODIFICATION START: Add function to update turn feedback ---
 async def update_turn_feedback(user_uuid: str, session_id: str, turn_id: int, vote: str | None) -> bool:
     """

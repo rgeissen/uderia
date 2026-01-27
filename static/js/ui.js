@@ -42,7 +42,6 @@ const EVENT_CATEGORY_MAP = {
     'tool_intent': 'success',
     'llm_execution': 'success',
     'llm_execution_complete': 'success',
-    'rag_execution': 'success',
     'knowledge_retrieval_start': 'success',
     'knowledge_retrieval_complete': 'success',
     'knowledge_reranking_start': 'success',
@@ -51,21 +50,26 @@ const EVENT_CATEGORY_MAP = {
     'conversation_tool_invoked': 'success',
     'conversation_tool_completed': 'success',
     'conversation_llm_step': 'success',
+    'conversation_llm_complete': 'success',
     'genie_slave_invoked': 'success',
     'genie_slave_progress': 'success',
     'genie_slave_completed': 'success',
-    'execution_complete': 'success',
-    'conversation_agent_complete': 'success',
-    'genie_coordination_complete': 'success',
     'final_answer': 'success',
 
-    // System/Lifecycle Events (Yellow background)
-    'execution_start': 'system',
+    // Lifecycle Bookend Events (Green sidebar, NO background)
+    // These frame the execution and should have distinct visual style
+    'execution_start': 'lifecycle',
+    'execution_complete': 'lifecycle',
+    'conversation_agent_start': 'lifecycle',
+    'conversation_agent_complete': 'lifecycle',
+    'genie_coordination_start': 'lifecycle',
+    'genie_coordination_complete': 'lifecycle',
+
+    // System Events (Yellow background) - session/status updates
     'session_name_generation_start': 'system',
     'session_name_generation_complete': 'system',
     'status_indicator_update': 'system',
     'token_update': 'system',
-    'conversation_agent_start': 'system',
 
     // Optimization Events (Cyan background)
     'workaround': 'optimization',
@@ -77,8 +81,7 @@ const EVENT_CATEGORY_MAP = {
     'error': 'error',
     'execution_cancelled': 'error',
 
-    // Genie Coordination Events (Purple background)
-    'genie_coordination_start': 'coordination',
+    // Genie Coordination Events (Purple background) - routing/synthesis
     'genie_llm_step': 'coordination',
     'genie_synthesis_start': 'coordination',
 };
@@ -627,7 +630,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     // Only show if we have duration data (indicates tool_enabled profile)
     if (durationMs > 0) {
         const summaryCard = document.createElement('div');
-        summaryCard.className = 'status-step p-3 rounded-md mb-2 completed conv-agent-success';
+        summaryCard.className = 'status-step p-3 rounded-md mb-2 completed lifecycle';
 
         const durationSec = (durationMs / 1000).toFixed(1);
         const phaseCount = (originalPlan || []).length;
@@ -1901,11 +1904,9 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     const category = getEventCategory(type);
     stepEl.classList.add(category);
 
-    // Color-code based on event type
-    // ONLY apply success/error backgrounds to the FINAL summary event
-    if (type === 'conversation_agent_complete') {
-        stepEl.classList.add(details?.success ? 'conv-agent-success' : 'conv-agent-error');
-    }
+    // Note: conversation_agent_complete is a 'lifecycle' bookend event
+    // Its styling is handled by the category class (lifecycle = green sidebar, no background)
+    // Do NOT add conv-agent-success class as it would override the transparent background
 
     // Step header (text-only, matching Optimizer style)
     const stepHeader = document.createElement('div');
@@ -2495,9 +2496,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const statusText = success ? 'Success' : 'Failed';
                 const statusClass = success ? 'text-emerald-400' : 'text-rose-400';
 
-                // Profile-specific details for rag_focused
+                // Profile-specific details
                 let profileDetailsHtml = '';
                 if (details.collections_searched !== undefined) {
+                    // RAG focused profile
                     const docsRetrieved = details.documents_retrieved || 0;
                     const collectionsSearched = details.collections_searched || 0;
                     // Use total_duration_ms if available, otherwise calculate from retrieval + synthesis
@@ -2511,6 +2513,17 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-value">${docsRetrieved} retrieved</div>
                         <div class="status-kv-key">Duration</div>
                         <div class="status-kv-value">${totalSeconds}s</div>
+                    `;
+                } else if (details.phases_executed !== undefined || details.duration_ms !== undefined) {
+                    // Tool enabled (Optimizer) profile
+                    const phasesExecuted = details.phases_executed || 0;
+                    const durationMs = details.duration_ms || 0;
+                    const durationSec = (durationMs / 1000).toFixed(1);
+                    profileDetailsHtml = `
+                        <div class="status-kv-key">Phases</div>
+                        <div class="status-kv-value">${phasesExecuted} executed</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${durationSec}s</div>
                     `;
                 }
 
@@ -2580,7 +2593,15 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     }
     // --- END ENHANCEMENT ---
 
-    const lastStep = document.getElementById(`status-step-${state.currentStatusId}`);
+    let lastStep = document.getElementById(`status-step-${state.currentStatusId}`);
+
+    // FALLBACK: If no ID-based step found, try class selector
+    // This handles steps created by _renderConversationAgentStep which don't use ID system
+    // (e.g., execution_start lifecycle events that don't have numbered IDs)
+    if (!lastStep && parentContainer) {
+        lastStep = parentContainer.querySelector('.status-step.active');
+    }
+
     if (lastStep && lastStep.classList.contains('active') && parentContainer && parentContainer.contains(lastStep)) {
         lastStep.classList.remove('active');
         lastStep.classList.add('completed');
@@ -2708,11 +2729,11 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 summaryEl.className = 'cursor-pointer text-gray-400 hover:text-white';
 
                 let summaryText = `Details (${detailsString.length} chars)`;
-                if ((step?.includes('Tool Execution Result') || step?.includes('Tool Execution Error')) && typeof details === 'object' && details !== null) {
+                if ((step?.includes('Tool Execution Result') || step?.includes('Tool Execution Error') || step?.includes('LLM Synthesis Results')) && typeof details === 'object' && details !== null) {
                     if (details.results) {
                         const itemCount = Array.isArray(details.results) ? details.results.length : (details.results ? 1 : 0);
                         const status = details.status || 'unknown';
-                        summaryText = `Tool Result (${status}, ${itemCount} items)`;
+                        summaryText = `Result (${status}, ${itemCount} items)`;
                     } else if (details.type === 'chart') {
                         summaryText = 'Chart Specification';
                     }

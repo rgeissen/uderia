@@ -1290,6 +1290,31 @@ class PlanExecutor:
                         new_name, name_input_tokens, name_output_tokens, name_events = name_result
                         system_events.extend(name_events)
 
+                        # Add session name tokens to turn totals and session totals
+                        if name_input_tokens > 0 or name_output_tokens > 0:
+                            self.turn_input_tokens += name_input_tokens
+                            self.turn_output_tokens += name_output_tokens
+                            await session_manager.update_token_count(
+                                self.user_uuid, self.session_id, name_input_tokens, name_output_tokens
+                            )
+                            # Emit token_update event so UI reflects updated session totals
+                            updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+                            if updated_session:
+                                yield self._format_sse({
+                                    "statement_input": name_input_tokens,
+                                    "statement_output": name_output_tokens,
+                                    "turn_input": self.turn_input_tokens,
+                                    "turn_output": self.turn_output_tokens,
+                                    "total_input": updated_session.get("input_tokens", 0),
+                                    "total_output": updated_session.get("output_tokens", 0),
+                                    "call_id": "session_name_generation"
+                                }, "token_update")
+                            # Update turn token counts in workflow_history for reload
+                            await session_manager.update_turn_token_counts(
+                                self.user_uuid, self.session_id, self.current_turn_number,
+                                self.turn_input_tokens, self.turn_output_tokens
+                            )
+
                         if new_name and new_name != "New Chat":
                             await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
                             yield self._format_sse({
@@ -2081,6 +2106,31 @@ The following domain knowledge may be relevant to this conversation:
                             new_name, name_input_tokens, name_output_tokens, name_events = result
                             system_events.extend(name_events)
 
+                            # Add session name tokens to turn totals and session totals
+                            if name_input_tokens > 0 or name_output_tokens > 0:
+                                self.turn_input_tokens += name_input_tokens
+                                self.turn_output_tokens += name_output_tokens
+                                await session_manager.update_token_count(
+                                    self.user_uuid, self.session_id, name_input_tokens, name_output_tokens
+                                )
+                                # Emit token_update event so UI reflects updated session totals
+                                updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+                                if updated_session:
+                                    yield self._format_sse({
+                                        "statement_input": name_input_tokens,
+                                        "statement_output": name_output_tokens,
+                                        "turn_input": self.turn_input_tokens,
+                                        "turn_output": self.turn_output_tokens,
+                                        "total_input": updated_session.get("input_tokens", 0),
+                                        "total_output": updated_session.get("output_tokens", 0),
+                                        "call_id": "session_name_generation"
+                                    }, "token_update")
+                                # Update turn token counts in workflow_history for reload
+                                await session_manager.update_turn_token_counts(
+                                    self.user_uuid, self.session_id, self.current_turn_number,
+                                    self.turn_input_tokens, self.turn_output_tokens
+                                )
+
                             if new_name != "New Chat":
                                 try:
                                     await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
@@ -2186,13 +2236,6 @@ The following domain knowledge may be relevant to this conversation:
         if is_conversation_with_tools:
             app_logger.info("🔧 Conversation profile with MCP Tools - LangChain agent mode")
 
-            # Emit status event
-            yield self._format_sse({
-                "step": "Initializing Tool Agent",
-                "type": "conversation_agent_init",
-                "metadata": {"profile_type": "llm_only", "useMcpTools": True}
-            })
-
             async for event in self._execute_conversation_with_tools():
                 yield event
             return
@@ -2202,12 +2245,6 @@ The following domain knowledge may be relevant to this conversation:
         is_rag_focused = self._is_rag_focused_profile()
         if is_rag_focused:
             app_logger.info("🔍 RAG-focused profile - mandatory knowledge retrieval")
-
-            # Emit status event
-            yield self._format_sse({
-                "step": "RAG Knowledge Retrieval",
-                "type": "rag_execution"
-            })
 
             # Collect events for plan reload (similar to genie_events and conversation_agent_events)
             # Initialize BEFORE lifecycle emission so we can store the start event
@@ -2373,6 +2410,32 @@ The following domain knowledge may be relevant to this conversation:
                             else:
                                 new_name, name_input_tokens, name_output_tokens, name_events = result
                                 system_events.extend(name_events)
+
+                                # Add session name tokens to turn totals and session totals
+                                if name_input_tokens > 0 or name_output_tokens > 0:
+                                    self.turn_input_tokens += name_input_tokens
+                                    self.turn_output_tokens += name_output_tokens
+                                    await session_manager.update_token_count(
+                                        self.user_uuid, self.session_id, name_input_tokens, name_output_tokens
+                                    )
+                                    # Emit token_update event so UI reflects updated session totals
+                                    updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+                                    if updated_session:
+                                        yield self._format_sse({
+                                            "statement_input": name_input_tokens,
+                                            "statement_output": name_output_tokens,
+                                            "turn_input": self.turn_input_tokens,
+                                            "turn_output": self.turn_output_tokens,
+                                            "total_input": updated_session.get("input_tokens", 0),
+                                            "total_output": updated_session.get("output_tokens", 0),
+                                            "call_id": "session_name_generation"
+                                        }, "token_update")
+                                    # Update turn token counts in workflow_history for reload
+                                    await session_manager.update_turn_token_counts(
+                                        self.user_uuid, self.session_id, self.current_turn_number,
+                                        self.turn_input_tokens, self.turn_output_tokens
+                                    )
+
                                 if new_name != "New Chat":
                                     try:
                                         await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
@@ -2702,7 +2765,7 @@ The following domain knowledge may be relevant to this conversation:
                 }]
             }
             yield self._format_sse({
-                "step": "Tool Execution Result",
+                "step": "LLM Synthesis Results",
                 "details": synthesis_result_data,
                 "tool_name": "LLM_Synthesis"
             }, "tool_result")
@@ -2711,7 +2774,7 @@ The following domain knowledge may be relevant to this conversation:
             knowledge_events.append({
                 "type": "tool_result",
                 "payload": {
-                    "step": "Tool Execution Result",
+                    "step": "LLM Synthesis Results",
                     "details": synthesis_result_data,
                     "tool_name": "LLM_Synthesis"
                 }
@@ -2733,7 +2796,8 @@ The following domain knowledge may be relevant to this conversation:
                 "synthesis_tokens_out": output_tokens,
                 "session_id": self.session_id
             }
-            knowledge_events.append({"type": "knowledge_search_complete", "payload": knowledge_search_complete_payload})
+            # NOTE: Don't store knowledge_search_complete in knowledge_events - it's redundant with execution_complete
+            # which already contains the same KPIs. Only emit for live streaming.
             yield self._format_sse({
                 "type": "knowledge_search_complete",
                 "payload": knowledge_search_complete_payload
@@ -2898,6 +2962,31 @@ The following domain knowledge may be relevant to this conversation:
                             new_name, name_input_tokens, name_output_tokens, name_events = result
                             system_events.extend(name_events)
 
+                            # Add session name tokens to turn totals and session totals
+                            if name_input_tokens > 0 or name_output_tokens > 0:
+                                self.turn_input_tokens += name_input_tokens
+                                self.turn_output_tokens += name_output_tokens
+                                await session_manager.update_token_count(
+                                    self.user_uuid, self.session_id, name_input_tokens, name_output_tokens
+                                )
+                                # Emit token_update event so UI reflects updated session totals
+                                updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+                                if updated_session:
+                                    yield self._format_sse({
+                                        "statement_input": name_input_tokens,
+                                        "statement_output": name_output_tokens,
+                                        "turn_input": self.turn_input_tokens,
+                                        "turn_output": self.turn_output_tokens,
+                                        "total_input": updated_session.get("input_tokens", 0),
+                                        "total_output": updated_session.get("output_tokens", 0),
+                                        "call_id": "session_name_generation"
+                                    }, "token_update")
+                                # Update turn token counts in workflow_history for reload
+                                await session_manager.update_turn_token_counts(
+                                    self.user_uuid, self.session_id, self.current_turn_number,
+                                    self.turn_input_tokens, self.turn_output_tokens
+                                )
+
                             if new_name != "New Chat":
                                 try:
                                     await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
@@ -2908,6 +2997,17 @@ The following domain knowledge may be relevant to this conversation:
                                     app_logger.info(f"Successfully updated session {self.session_id} name to '{new_name}'.")
                                 except Exception as name_e:
                                     app_logger.error(f"Failed to save or emit updated session name '{new_name}': {name_e}", exc_info=True)
+
+                            # Update turn data with session name events for reload
+                            # (turn_summary was saved before session name generation)
+                            if name_events:
+                                try:
+                                    await session_manager.update_turn_system_events(
+                                        self.user_uuid, self.session_id, self.current_turn_number, system_events
+                                    )
+                                    app_logger.debug(f"Updated turn {self.current_turn_number} with session name events for reload")
+                                except Exception as e:
+                                    app_logger.warning(f"Failed to update turn with session name events: {e}")
             # --- Session Name Generation END ---
 
             app_logger.info("✅ RAG-focused execution completed successfully")
@@ -4273,10 +4373,8 @@ The following domain knowledge may be relevant to this conversation:
         )
         # --- MODIFICATION END ---
 
-        # The clean summary is already in self.final_summary_text
-        event_data = {"step": "LLM has generated the final answer", "details": self.final_summary_text}
-        self._log_system_event(event_data, "llm_thought")
-        yield self._format_sse(event_data, "llm_thought")
+        # NOTE: Removed redundant "LLM has generated the final answer" event (Issue #14)
+        # The final_answer event below serves as the visual confirmation in the UI
 
         # --- MODIFICATION START: Include both HTML and clean text in response ---
         yield self._format_sse({
@@ -4350,6 +4448,32 @@ The following domain knowledge may be relevant to this conversation:
                             # Final yield: update session name
                             new_name = event_type
                             self.session_name_tokens = (in_tok, out_tok)
+
+                            # Add session name tokens to turn totals and session totals
+                            if in_tok > 0 or out_tok > 0:
+                                self.turn_input_tokens += in_tok
+                                self.turn_output_tokens += out_tok
+                                await session_manager.update_token_count(
+                                    self.user_uuid, self.session_id, in_tok, out_tok
+                                )
+                                # Emit token_update event so UI reflects updated session totals
+                                updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
+                                if updated_session:
+                                    yield self._format_sse({
+                                        "statement_input": in_tok,
+                                        "statement_output": out_tok,
+                                        "turn_input": self.turn_input_tokens,
+                                        "turn_output": self.turn_output_tokens,
+                                        "total_input": updated_session.get("input_tokens", 0),
+                                        "total_output": updated_session.get("output_tokens", 0),
+                                        "call_id": "session_name_generation"
+                                    }, "token_update")
+                                # Update turn token counts in workflow_history for reload
+                                await session_manager.update_turn_token_counts(
+                                    self.user_uuid, self.session_id, self.current_turn_number,
+                                    self.turn_input_tokens, self.turn_output_tokens
+                                )
+
                             if new_name and new_name != "New Chat":
                                 try:
                                     await session_manager.update_session_name(

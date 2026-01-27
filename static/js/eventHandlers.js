@@ -81,6 +81,87 @@ function _getConversationAgentStepTitle(eventType, payload) {
 }
 
 /**
+ * Extract the last statement token counts from turnData for reload display.
+ * The "Last Statement" should show the most recent individual LLM call, not turn totals.
+ *
+ * Priority (checked in order):
+ * 1. system_events: session_name_generation_complete (always last if present)
+ * 2. genie_events: genie_llm_step (genie profile)
+ * 3. conversation_agent_events: conversation_llm_complete or conversation_llm_step
+ * 4. knowledge_events: rag_llm_step, llm_execution_complete, or conversation_llm_step
+ * 5. Fallback: turn totals
+ */
+function _getLastStatementTokens(turnData) {
+    // Helper function to extract tokens from an event payload
+    const extractTokens = (event) => {
+        if (!event || !event.payload) return null;
+        const payload = event.payload;
+        // Handle nested details structure (session_name_generation_complete)
+        const details = payload.details || payload;
+        if (details.input_tokens !== undefined && details.output_tokens !== undefined) {
+            return { input: details.input_tokens, output: details.output_tokens };
+        }
+        return null;
+    };
+
+    // Helper function to find last matching event from array (reverse search)
+    const findLastEventWithTokens = (events, eventTypes) => {
+        if (!events || !Array.isArray(events)) return null;
+        for (let i = events.length - 1; i >= 0; i--) {
+            const event = events[i];
+            if (eventTypes.includes(event.type)) {
+                const tokens = extractTokens(event);
+                if (tokens) return tokens;
+            }
+        }
+        return null;
+    };
+
+    // PRIORITY 1: Session name generation (always chronologically last if present)
+    const systemEvents = turnData.system_events || [];
+    const sessionNameTokens = findLastEventWithTokens(systemEvents, ['session_name_generation_complete']);
+    if (sessionNameTokens) return sessionNameTokens;
+
+    // PRIORITY 2: Genie profile - genie_llm_step (routing + synthesis calls)
+    const genieEvents = turnData.genie_events || [];
+    if (genieEvents.length > 0) {
+        const genieTokens = findLastEventWithTokens(genieEvents, ['genie_llm_step']);
+        if (genieTokens) return genieTokens;
+    }
+
+    // PRIORITY 3: Conversation profile - conversation_agent_events
+    const agentEvents = turnData.conversation_agent_events || [];
+    if (agentEvents.length > 0) {
+        // First try conversation_llm_complete (final response)
+        const completeTokens = findLastEventWithTokens(agentEvents, ['conversation_llm_complete']);
+        if (completeTokens) return completeTokens;
+        // Fallback to conversation_llm_step
+        const stepTokens = findLastEventWithTokens(agentEvents, ['conversation_llm_step']);
+        if (stepTokens) return stepTokens;
+    }
+
+    // PRIORITY 4: RAG/LLM-only profile - knowledge_events
+    const knowledgeEvents = turnData.knowledge_events || [];
+    if (knowledgeEvents.length > 0) {
+        // RAG focused: rag_llm_step
+        const ragTokens = findLastEventWithTokens(knowledgeEvents, ['rag_llm_step']);
+        if (ragTokens) return ragTokens;
+        // LLM-only: llm_execution_complete
+        const llmCompleteTokens = findLastEventWithTokens(knowledgeEvents, ['llm_execution_complete']);
+        if (llmCompleteTokens) return llmCompleteTokens;
+        // LLM-only variant: conversation_llm_step
+        const conversationTokens = findLastEventWithTokens(knowledgeEvents, ['conversation_llm_step']);
+        if (conversationTokens) return conversationTokens;
+    }
+
+    // PRIORITY 5: Fallback to turn totals (tool_enabled or missing data)
+    return {
+        input: turnData.turn_input_tokens || turnData.input_tokens || 0,
+        output: turnData.turn_output_tokens || turnData.output_tokens || 0
+    };
+}
+
+/**
  * Merge conversation_tool_invoked events with their corresponding conversation_tool_completed events.
  * This prevents duplicate rows in historical replay - we only show the final state.
  *
@@ -211,9 +292,14 @@ function getLlmOnlyTitle(eventType, payload) {
             return `Conversation Started (${toolCount} tools available)`;
         }
         case 'conversation_llm_step': {
-            // Change from "LLM Step #N" to "Calling LLM: {purpose}"
-            const stepName = payload.step_name || 'Decision Making';
-            return `Calling LLM: ${stepName}`;
+            // Harmonized naming across profile types
+            return 'LLM Synthesis Execution';
+        }
+        case 'conversation_llm_complete': {
+            // LLM synthesis results event for Conversation profile
+            const inputTokens = payload.input_tokens || 0;
+            const outputTokens = payload.output_tokens || 0;
+            return `LLM Synthesis Results (${inputTokens} in / ${outputTokens} out)`;
         }
         case 'conversation_tool_invoked':
             return `Executing Tool: ${payload.tool_name || 'tool'}`;
@@ -273,8 +359,8 @@ function getRagFocusedTitle(eventType, payload) {
             return `Stage: Retrieval - ${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} retrieved in ${duration}ms`;
         }
         case 'rag_llm_step': {
-            // Token counts are shown in the Tool Execution Result step, so don't duplicate them here
-            return `Stage: Synthesis - Calling LLM`;
+            // Token counts are shown in the LLM Synthesis Results step, so don't duplicate them here
+            return 'LLM Synthesis Execution';
         }
         case 'knowledge_search_complete': {
             const collections = payload.collections_searched || 0;
@@ -288,8 +374,8 @@ function getRagFocusedTitle(eventType, payload) {
             return `Knowledge Retrieved (${docCount} chunks)`;
         }
         case 'tool_result': {
-            // Tool Execution Result event for RAG synthesis
-            return 'Tool Execution Result';
+            // LLM synthesis results event for RAG profile
+            return 'LLM Synthesis Results';
         }
         case 'session_name_generation_start':
             return 'Generating Session Name';
@@ -366,10 +452,9 @@ function getLifecycleTitle(eventType, payload, profileType) {
     switch (eventType) {
         case 'execution_start':
             return `${profileLabel} Started`;
-        case 'execution_complete': {
-            const duration = payload.duration_ms ? Math.round(payload.duration_ms / 1000) : null;
-            return duration ? `${profileLabel} Complete (${duration}s)` : `${profileLabel} Complete`;
-        }
+        case 'execution_complete':
+            // Duration is shown in metrics section, not header (Issue #15 - harmonization)
+            return `${profileLabel} Complete`;
         case 'execution_error': {
             const errorType = payload.error_type || 'error';
             return `${profileLabel} Error: ${errorType}`;
@@ -757,7 +842,8 @@ async function processStream(responseBody) {
                         // All new messages are valid by default, so we don't need to pass `true`
                         // Pass is_session_primer flag for Primer badge display
                         UI.addMessage('assistant', eventData.final_answer, eventData.turn_id, true, null, null, eventData.is_session_primer || false);
-                        UI.updateStatusWindow({ step: "Finished", details: "Response sent to chat." }, true);
+                        // Note: "Finished" status step removed - redundant with execution_complete events
+                        // All profile types now emit execution_complete with profile-specific KPIs
                         UI.setExecutionState(false);
 
                         // Auto-focus input field so user can immediately type next question
@@ -1146,11 +1232,12 @@ async function handleReloadPlanClick(element) {
             }
 
             // Update token display with partial data (isHistorical = true for plan reloads)
+            const lastStatement = _getLastStatementTokens(turnData);
             UI.updateTokenDisplay({
-                statement_input: turnData.turn_input_tokens || 0,
-                statement_output: turnData.turn_output_tokens || 0,
-                turn_input: turnData.turn_input_tokens || 0,
-                turn_output: turnData.turn_output_tokens || 0,
+                statement_input: lastStatement.input,
+                statement_output: lastStatement.output,
+                turn_input: turnData.turn_input_tokens || turnData.input_tokens || 0,
+                turn_output: turnData.turn_output_tokens || turnData.output_tokens || 0,
                 total_input: turnData.session_input_tokens || 0,
                 total_output: turnData.session_output_tokens || 0
             }, true);
@@ -1198,9 +1285,10 @@ async function handleReloadPlanClick(element) {
                 // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+                const lastStatement = _getLastStatementTokens(turnData);
                 UI.updateTokenDisplay({
-                    statement_input: inputTokens,
-                    statement_output: outputTokens,
+                    statement_input: lastStatement.input,
+                    statement_output: lastStatement.output,
                     turn_input: inputTokens,
                     turn_output: outputTokens,
                     total_input: turnData.session_input_tokens || 0,
@@ -1320,9 +1408,10 @@ async function handleReloadPlanClick(element) {
                 // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+                const lastStatement = _getLastStatementTokens(turnData);
                 UI.updateTokenDisplay({
-                    statement_input: inputTokens,
-                    statement_output: outputTokens,
+                    statement_input: lastStatement.input,
+                    statement_output: lastStatement.output,
                     turn_input: inputTokens,
                     turn_output: outputTokens,
                     total_input: turnData.session_input_tokens || 0,
@@ -1412,21 +1501,8 @@ async function handleReloadPlanClick(element) {
                         UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                     });
                 }
-
-                // Add profile info after knowledge events
-                const profileInfoEl = document.createElement('div');
-                profileInfoEl.className = 'p-4 status-step info mt-4';
-                // Removed emoji icons - using clean SVG icons instead
-                const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
-                profileInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">${title}</h4>
-                    <div class="mt-2 p-3 bg-gray-800/30 rounded border border-white/10">
-                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
-                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
-                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${isRagFocused ? 'RAG focused profiles retrieve documents from knowledge repositories and synthesize answers from those sources only.' : 'Conversation profiles bypass the planner and execute directly via LLM without tool calls.'}</p>
-                    </div>
-                `;
-                DOM.statusWindowContent.appendChild(profileInfoEl);
+                // NOTE: Removed redundant "RAG Focused Profile" info card - this info is already
+                // shown in "Knowledge Focused Started" and "Knowledge Focused Complete" events
             } else if (turnData.knowledge_retrieval_event && (turnData.knowledge_chunks_ui || turnData.knowledge_retrieval_event.chunks)) {
                 // Fallback: Use old rendering method if no detailed events
                 // Get chunks from new location (knowledge_chunks_ui) or fall back to old location for backwards compatibility
@@ -1448,21 +1524,8 @@ async function handleReloadPlanClick(element) {
                         turn_output_tokens: turnData.turn_output_tokens || 0
                     }
                 );
-
-                // Add profile info after knowledge details
-                const profileInfoEl = document.createElement('div');
-                profileInfoEl.className = 'p-4 status-step info mt-4';
-                // Removed emoji icons - using clean SVG icons instead
-                const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
-                profileInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">${title}</h4>
-                    <div class="mt-2 p-3 bg-gray-800/30 rounded border border-white/10">
-                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
-                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
-                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${isRagFocused ? 'RAG focused profiles retrieve documents from knowledge repositories and synthesize answers from those sources only.' : 'Conversation profiles bypass the planner and execute directly via LLM without tool calls.'}</p>
-                    </div>
-                `;
-                DOM.statusWindowContent.appendChild(profileInfoEl);
+                // NOTE: Removed redundant "RAG Focused Profile" info card - this info is already
+                // shown in the knowledge events rendered above
             } else {
                 // Fallback: Show simple summary if no detailed knowledge data
                 // Removed emoji icons - using clean SVG icons instead
@@ -1493,9 +1556,10 @@ async function handleReloadPlanClick(element) {
             // Update token counts from historical turn data (isHistorical = true)
             const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
             const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+            const lastStatement = _getLastStatementTokens(turnData);
             UI.updateTokenDisplay({
-                statement_input: inputTokens,
-                statement_output: outputTokens,
+                statement_input: lastStatement.input,
+                statement_output: lastStatement.output,
                 turn_input: inputTokens,
                 turn_output: outputTokens,
                 total_input: turnData.session_input_tokens || 0,
@@ -1549,11 +1613,12 @@ async function handleReloadPlanClick(element) {
         // --- MODIFICATION END ---
 
         // Update token counts for tool-enabled profile reloads (isHistorical = true)
-        const inputTokens = turnData.turn_input_tokens || 0;
-        const outputTokens = turnData.turn_output_tokens || 0;
+        const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+        const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+        const lastStatement = _getLastStatementTokens(turnData);
         UI.updateTokenDisplay({
-            statement_input: inputTokens,
-            statement_output: outputTokens,
+            statement_input: lastStatement.input,
+            statement_output: lastStatement.output,
             turn_input: inputTokens,
             turn_output: outputTokens,
             total_input: turnData.session_input_tokens || 0,
