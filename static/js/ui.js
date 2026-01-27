@@ -3958,15 +3958,6 @@ export function addSessionToList(session, isActive = false) {
                     tagSpan.style.borderColor = borderColor;
                     tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
                 });
-
-                // Add enhanced color dot with glow
-                const dot = document.createElement('span');
-                dot.className = 'w-1.5 h-1.5 rounded-full';
-                dot.style.cssText = `
-                    background: ${profile.color};
-                    box-shadow: 0 0 6px ${hexToRgba(profile.color, 0.6)};
-                `;
-                tagSpan.appendChild(dot);
             } else {
                 // Fallback to indigo (unified palette) if no color
                 tagSpan.style.cssText = `
@@ -4069,15 +4060,6 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
                         tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
                         tagSpan.style.transform = 'translateY(0)';
                     });
-
-                    // Add enhanced color dot with glow
-                    const dot = document.createElement('span');
-                    dot.className = 'w-1.5 h-1.5 rounded-full';
-                    dot.style.cssText = `
-                        background: ${profile.color};
-                        box-shadow: 0 0 6px ${hexToRgba(profile.color, 0.6)};
-                    `;
-                    tagSpan.appendChild(dot);
                 } else {
                     // Fallback to indigo (unified palette) if no color
                     tagSpan.style.cssText = `

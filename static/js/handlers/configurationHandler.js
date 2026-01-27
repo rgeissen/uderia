@@ -2610,7 +2610,6 @@ function renderProfileCard(profile) {
                                     return `
                                 <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono font-semibold border"
                                       style="background: linear-gradient(135deg, ${tagColor}30, ${tagColor}15); border-color: ${tagColor}50; color: ${tagColor};">
-                                    <span class="w-2 h-2 rounded-full" style="background: ${tagColor};"></span>
                                     @${escapeHtml(profile.tag)}
                                 </span>`;
                                 })()}
