@@ -631,6 +631,7 @@ async function processStream(responseBody) {
                             }
                         } else if (eventData.type === 'conversation_agent_start' ||
                                    eventData.type === 'conversation_llm_step' ||
+                                   eventData.type === 'conversation_llm_complete' ||
                                    eventData.type === 'conversation_tool_invoked' ||
                                    eventData.type === 'conversation_tool_completed' ||
                                    eventData.type === 'conversation_agent_complete') {
