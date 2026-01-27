@@ -2929,10 +2929,10 @@ function setupProfileTypeTabs() {
             tabs.forEach(t => {
                 if (t === tab) {
                     t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
-                    t.classList.add('text-white');
+                    t.classList.add('text-white', 'active');
                     t.style.borderColor = profileColors[t.dataset.tab] || '#F15F22';
                 } else {
-                    t.classList.remove('text-white');
+                    t.classList.remove('text-white', 'active');
                     t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
                     t.style.borderColor = '';
                 }
