@@ -3986,12 +3986,12 @@ button.bg-gray-700.px-2:hover {
     border-left-color: #9333ea;
 }
 
-/* GREEN - Lifecycle Bookend Events (Started/Complete - clean visual framing) */
+/* GREY - Lifecycle Bookend Events (Started/Complete - neutral visual framing) */
 .status-step.completed.lifecycle,
 .genie-status-step.completed.lifecycle,
 .conversation-agent-status-step.completed.lifecycle,
 .knowledge-retrieval-status-step.completed.lifecycle {
-    border-left-color: #10b981;
+    border-left-color: #6b7280;  /* Grey to distinguish from success */
 }
 
 /* ============================================================================
@@ -4039,12 +4039,12 @@ button.bg-gray-700.px-2:hover {
     background: #9333ea;
 }
 
-/* GREEN - Lifecycle Bookend Events ::before */
+/* GREY - Lifecycle Bookend Events ::before */
 .status-step.completed.lifecycle::before,
 .genie-status-step.completed.lifecycle::before,
 .conversation-agent-status-step.completed.lifecycle::before,
 .knowledge-retrieval-status-step.completed.lifecycle::before {
-    background: #10b981;
+    background: #6b7280;  /* Grey to match sidebar */
 }
 
 /* ============================================================================
@@ -4094,22 +4094,21 @@ button.bg-gray-700.px-2:hover {
     background: linear-gradient(90deg, rgba(147, 51, 234, 0.08) 0%, transparent 100%);
 }
 
-/* LIFECYCLE BOOKEND EVENTS - Green sidebar, NO background
-   Used for execution_start, execution_complete, *_agent_start, *_agent_complete
-   Creates clean visual framing for execution without competing visually */
+/* LIFECYCLE BOOKEND EVENTS - Bright green sidebar, same green background as success
+   Used for execution_start, execution_complete, *_agent_start, *_agent_complete */
 .status-step.lifecycle,
 .genie-status-step.lifecycle,
 .conversation-agent-status-step.lifecycle,
 .knowledge-retrieval-status-step.lifecycle {
-    background: transparent;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%);
 }
 
-/* Lifecycle active state - also no background */
+/* Lifecycle active state - orange tint while executing */
 .status-step.active.lifecycle,
 .genie-status-step.active.lifecycle,
 .conversation-agent-status-step.active.lifecycle,
 .knowledge-retrieval-status-step.active.lifecycle {
-    background: transparent;
+    background: linear-gradient(90deg, rgba(241, 95, 34, 0.1) 0%, rgba(241, 95, 34, 0.03) 100%);
 }
 
 /* statusStepPulse animation removed - no glow effects */
