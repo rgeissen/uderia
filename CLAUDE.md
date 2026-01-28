@@ -224,6 +224,50 @@ User Query → Strategic Plan → Tactical Execution → Tool Calls → Response
 
 Files: `src/trusted_data_agent/agent/executor.py`, `planner.py`, `phase_executor.py`
 
+#### 6. Context Window Management
+
+The platform maintains sophisticated context window management to optimize token usage, ensure data isolation, and enable multi-turn conversations.
+
+**Three-History System:**
+Each session maintains three synchronized histories:
+- **`chat_object`**: Plain text for LLM context (what gets sent to providers)
+- **`session_history`**: HTML-formatted for UI display
+- **`workflow_history`**: Execution traces for planner context
+
+**Context Modes:**
+- **Full Context** (default): Sends entire `chat_object` history to LLM
+- **Turn Summaries**: Sends only workflow summaries (hold `Alt` for single query, `Shift+Alt` to lock)
+
+**Implemented Optimizations:**
+
+| Optimization | Mechanism | Savings |
+|--------------|-----------|---------|
+| Tool condensation | Names-only after first turn | 60-70% of tool context |
+| History condensation | Remove duplicates, clean capabilities | 10-20% of history |
+| Context distillation | Summarize large tool outputs (>500 rows) | 99%+ of large results |
+| Plan hydration | Inject previous results, skip re-fetch | 30-50% on multi-turn |
+
+**Profile-Specific Context:**
+
+| Profile Type | Context Strategy |
+|--------------|------------------|
+| `tool_enabled` | Full tools + RAG cases + workflow history |
+| `llm_only` | Empty tools, session history only |
+| `rag_focused` | No tools, mandatory knowledge retrieval |
+| `genie` | Child profile descriptions, limited parent history |
+
+**Token Tracking:**
+- Actual tokens extracted from LLM provider responses (not pre-estimated)
+- Per-turn and per-session accumulation
+- Cost calculation with provider-specific pricing
+
+**Future: IFOC Methodology Context Isolation (P0 Enterprise)**
+Planned feature for isolated context windows per methodology phase (Ideate/Focus/Operate/Complete) to ensure data sovereignty. When transitioning between phases (especially backward transitions), earlier phases remain pristine without visibility into later phase artifacts.
+
+**Detailed Documentation:** [docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)
+
+Files: `src/trusted_data_agent/llm/handler.py`, `core/session_manager.py`, `agent/executor.py`
+
 ---
 
 ## Deep Dive: Planner/Executor Architecture
@@ -1026,8 +1070,11 @@ static/js/main.js                           # Frontend initialization
 
 ```
 docs/
+  ├── Architecture/
+  │   ├── CONTEXT_WINDOW_ARCHITECTURE.md    # Context window management (comprehensive)
+  │   ├── PROMPT_ENCRYPTION.md              # Encryption architecture
+  │   └── NESTED_GENIE_UPGRADE_GUIDE.md     # Genie coordinator guide
   ├── RestAPI/restAPI.md                    # REST API reference
-  ├── PROMPT_ENCRYPTION.md                  # Encryption architecture
   ├── RAG/RAG.md                            # RAG system guide
   ├── Marketplace/MARKETPLACE_COMPLETE_GUIDE.md
   └── OAuth/OAUTH.md                        # OAuth setup
