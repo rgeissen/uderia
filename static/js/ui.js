@@ -5812,26 +5812,34 @@ function hideKnowledgeRepositoryMetadata() {
  * Update table header for knowledge repository view
  */
 function updateTableHeaderForKnowledge() {
-    const thead = document.querySelector('#rag-collection-inspect-view thead tr');
-    if (!thead) return;
-    
-    thead.innerHTML = `
+    // Use same selector pattern as wireSortListeners for consistency
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    const tr = thead?.querySelector('tr');
+    if (!tr) return;
+
+    tr.innerHTML = `
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id">Chunk ID <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="content">Content Preview <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="document_id">Source Document <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="chunk_index">Chunk Index <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="token_count">Tokens <span class="text-xs text-gray-500">↕</span></th>
     `;
+
+    // Re-wire sort listeners after replacing innerHTML
+    wireSortListeners();
+    updateSortIndicators();
 }
 
 /**
  * Restore table header for planner repository view
  */
 function updateTableHeaderForPlanner() {
-    const thead = document.querySelector('#rag-collection-inspect-view thead tr');
-    if (!thead) return;
-    
-    thead.innerHTML = `
+    // Use same selector pattern as wireSortListeners for consistency
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    const tr = thead?.querySelector('tr');
+    if (!tr) return;
+
+    tr.innerHTML = `
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="width: 200px;">ID <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_query" style="width: 300px;">User Query <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="strategy_type">Strategy <span class="text-xs text-gray-500">↕</span></th>
@@ -5840,6 +5848,10 @@ function updateTableHeaderForPlanner() {
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="output_tokens">Output Tokens <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="timestamp">Timestamp <span class="text-xs text-gray-500">↕</span></th>
     `;
+
+    // Re-wire sort listeners after replacing innerHTML
+    wireSortListeners();
+    updateSortIndicators();
 }
 
 /**
@@ -6263,6 +6275,38 @@ function updateTableRowFeedback(caseId, feedbackScore) {
 
 // Export updateTableRowFeedback so it can be called from event handlers
 export { updateTableRowFeedback };
+
+/**
+ * Wire up sort click listeners on table headers.
+ * Called after thead innerHTML is replaced to restore event listeners.
+ */
+function wireSortListeners() {
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    if (!thead) return;
+
+    // After innerHTML replacement, th elements are brand new and have no listeners
+    thead.querySelectorAll('th[data-sort-key]').forEach(th => {
+        th.addEventListener('click', () => {
+            const sortKey = th.dataset.sortKey;
+            // Toggle sort direction if clicking same column
+            if (state.ragCollectionSortKey === sortKey) {
+                state.ragCollectionSortDirection = state.ragCollectionSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.ragCollectionSortKey = sortKey;
+                state.ragCollectionSortDirection = 'asc';
+            }
+            // Fetch sorted data from server (server-side sorting) - reset pagination
+            if (state.currentInspectedCollectionId !== null && state.currentInspectedCollectionId !== undefined) {
+                fetchAndRenderCollectionRows({
+                    collectionId: state.currentInspectedCollectionId,
+                    query: state.ragCollectionSearchTerm || '',
+                    refresh: true
+                });
+            }
+            updateSortIndicators();
+        });
+    });
+}
 
 /**
  * Updates visual indicators on table headers to show current sort state

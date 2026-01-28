@@ -1750,8 +1750,19 @@
 }
 
 /* Metadata info cards (used in knowledge repository too) */
-[data-theme="light"] .bg-gray-800\/50 {
+[data-theme="light"] .bg-gray-800\/50,
+[data-theme="light"] [class*="bg-gray-800\\/"] {
     background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-secondary) !important;
+}
+
+/* Ensure all inspect view rows have proper background */
+[data-theme="light"] #rag-collection-inspect-view tr {
+    background: transparent !important;
+}
+
+[data-theme="light"] #rag-collection-inspect-view tr:hover {
+    background: var(--hover-bg) !important;
 }
 
 /* Inspect panel header elements */
@@ -1786,6 +1797,58 @@
 
 [data-theme="light"] #knowledge-repo-metadata .text-gray-400 {
     color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #knowledge-repo-metadata .bg-gray-800\/50,
+[data-theme="light"] #knowledge-repo-metadata [class*="bg-gray"] {
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+/* Knowledge Repository description text */
+[data-theme="light"] #knowledge-meta-description {
+    color: var(--text-secondary) !important;
+}
+
+/* Knowledge Repository table rows */
+[data-theme="light"] #rag-collection-table-body tr[class*="border-gray"] {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body .text-gray-200,
+[data-theme="light"] #rag-collection-table-body .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+/* Selected row in knowledge repository */
+[data-theme="light"] #rag-collection-table-body tr[class*="bg-orange"] {
+    background: rgba(241, 95, 34, 0.12) !important;
+}
+
+/* Table row hover state */
+[data-theme="light"] #rag-collection-table-body tr[class*="hover\\:bg-gray"]:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* All table cells text */
+[data-theme="light"] #rag-collection-table-body td {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body td.text-gray-300,
+[data-theme="light"] #rag-collection-table-body td.text-gray-200,
+[data-theme="light"] #rag-collection-table-body td .text-gray-300,
+[data-theme="light"] #rag-collection-table-body td .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* Font mono text in table */
+[data-theme="light"] #rag-collection-table-body .font-mono {
+    color: var(--text-secondary) !important;
 }
 
 /* Light theme - Response card headers */
