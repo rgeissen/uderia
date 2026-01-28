@@ -1593,6 +1593,201 @@
     background-color: rgba(241, 95, 34, 0.06) !important;
 }
 
+/* ============================================================================
+   Light theme - RAG Inspect Collection Panel
+   ============================================================================ */
+
+/* Table header */
+[data-theme="light"] #rag-collection-table-wrapper thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-wrapper th {
+    color: var(--text-primary) !important;
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-wrapper th:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Table body rows */
+[data-theme="light"] #rag-collection-table-body tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body td {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Selected case row highlight */
+[data-theme="light"] #rag-collection-table-body tr.bg-orange-500\/30 {
+    background: rgba(241, 95, 34, 0.12) !important;
+}
+
+/* Selected Case Details section */
+[data-theme="light"] #rag-selected-case-details {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-details h2,
+[data-theme="light"] #rag-selected-case-details h3 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata code {
+    color: var(--text-primary) !important;
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata .text-gray-200,
+[data-theme="light"] #rag-selected-case-metadata .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* Phase cards (Successful Strategy) - dynamically generated divs with rounded-md */
+[data-theme="light"] #rag-selected-case-plan .rounded-md,
+[data-theme="light"] #rag-selected-case-plan .grid > div,
+[data-theme="light"] #rag-selected-case-plan div[class*="bg-gray"] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan .text-sm {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan code {
+    color: var(--teradata-orange) !important;
+    background: rgba(241, 95, 34, 0.08) !important;
+}
+
+/* Execution Trace cards - dynamically generated divs */
+[data-theme="light"] #rag-selected-case-trace .space-y-1 > div,
+[data-theme="light"] #rag-selected-case-trace .rounded,
+[data-theme="light"] #rag-selected-case-trace div[class*="bg-gray"],
+[data-theme="light"] #rag-selected-case-trace .text-xs.p-2 {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .font-mono {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Execution Trace repeat badge (x5) */
+[data-theme="light"] #rag-selected-case-trace [class*="bg-blue"] {
+    background: rgba(59, 130, 246, 0.2) !important;
+    color: #1d4ed8 !important;
+}
+
+/* Global override for all Tailwind gray backgrounds in inspect panels */
+[data-theme="light"] #rag-selected-case-details [class*="bg-gray-8"],
+[data-theme="light"] #rag-selected-case-details [class*="bg-gray-9"],
+[data-theme="light"] #rag-selected-case-details [class*="rounded-md"],
+[data-theme="light"] #rag-selected-case-details [class*="rounded "] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Specifically target the p-2 rounded divs in trace section */
+[data-theme="light"] #rag-selected-case-trace > div > div.space-y-1 > div {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Execution Trace checkboxes */
+[data-theme="light"] #rag-selected-case-trace input[type="checkbox"] {
+    accent-color: var(--teradata-orange);
+}
+
+/* Loading text */
+[data-theme="light"] #rag-collection-loading {
+    color: var(--text-muted) !important;
+}
+
+/* Footer text */
+[data-theme="light"] #rag-collection-footer {
+    color: var(--text-muted) !important;
+}
+
+/* Separator line */
+[data-theme="light"] #rag-selected-case-separator {
+    border-color: var(--border-primary) !important;
+}
+
+/* Metadata info cards (used in knowledge repository too) */
+[data-theme="light"] .bg-gray-800\/50 {
+    background: var(--bg-elevated) !important;
+}
+
+/* Inspect panel header elements */
+[data-theme="light"] #rag-collection-inspect-back {
+    background: var(--button-bg) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-inspect-back:hover {
+    background: var(--button-bg-hover) !important;
+}
+
+[data-theme="light"] #rag-collection-inspect-title {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-search-input {
+    background: var(--input-bg) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-search-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Knowledge Repository metadata cards */
+[data-theme="light"] #knowledge-repo-metadata .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #knowledge-repo-metadata .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
 /* Light theme - Response card headers */
 [data-theme="light"] .response-card h4,
 [data-theme="light"] .response-card h5 {
