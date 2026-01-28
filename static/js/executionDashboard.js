@@ -845,12 +845,12 @@ class ExecutionDashboard {
                 entry.result?.status === 'error'
             );
 
-            // Build profile tag badge if available
+            // Build profile tag badge if available - using unified profile tag system
             let profileBadgeHTML = '';
             if (turn.profile_tag) {
                 // Find profile by tag to get color
                 const profile = window.configState?.profiles?.find(p => p.tag === turn.profile_tag);
-                let badgeStyle = '';
+                let cssVars = '';
 
                 if (profile && profile.color) {
                     // Helper to convert hex to rgba
@@ -860,16 +860,13 @@ class ExecutionDashboard {
                         const b = parseInt(hex.slice(5, 7), 16);
                         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                     };
-                    const color1 = hexToRgba(profile.color, 0.3);
-                    const color2 = hexToRgba(profile.color, 0.15);
-                    const borderColor = hexToRgba(profile.color, 0.5);
-                    badgeStyle = `background: linear-gradient(135deg, ${color1}, ${color2}); border-color: ${borderColor}; color: white;`;
-                } else {
-                    // Fallback to orange
-                    badgeStyle = 'background: rgba(241, 95, 34, 0.2); border-color: rgba(241, 95, 34, 0.3); color: white;';
+                    const color1 = hexToRgba(profile.color, 0.25);
+                    const color2 = hexToRgba(profile.color, 0.12);
+                    const borderColor = hexToRgba(profile.color, 0.4);
+                    cssVars = `--profile-tag-bg: linear-gradient(135deg, ${color1}, ${color2}); --profile-tag-border: ${borderColor};`;
                 }
 
-                profileBadgeHTML = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-semibold border mr-2" style="${badgeStyle}">@${turn.profile_tag}</span>`;
+                profileBadgeHTML = `<span class="profile-tag profile-tag--sm mr-2" style="${cssVars}">@${turn.profile_tag}</span>`;
             }
 
             return `

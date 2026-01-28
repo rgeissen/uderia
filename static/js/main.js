@@ -25,13 +25,13 @@ import './handlers/splitViewHandler.js';
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
 
-// Session header profile display
+// Session header profile display - uses unified profile tag system
 function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     const headerDefaultProfile = document.getElementById('header-default-profile');
     const headerDefaultProfileTag = document.getElementById('header-default-profile-tag');
     const headerOverrideProfile = document.getElementById('header-override-profile');
     const headerOverrideProfileTag = document.getElementById('header-override-profile-tag');
-    
+
     // Helper to convert hex to rgba
     const hexToRgba = (hex, alpha) => {
         const r = parseInt(hex.slice(1, 3), 16);
@@ -39,41 +39,43 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
         const b = parseInt(hex.slice(5, 7), 16);
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
-    
+
     // Update knowledge indicator based on active profile
     const profile = overrideProfile || defaultProfile;
     updateKnowledgeIndicatorStatus(profile);
-    
-    // Update default profile
+
+    // Update default profile - use CSS custom properties for theme compliance
     if (defaultProfile && defaultProfile.tag) {
         headerDefaultProfileTag.textContent = `@${defaultProfile.tag}`;
         if (defaultProfile.color) {
-            const color1 = hexToRgba(defaultProfile.color, 0.3);
-            const color2 = hexToRgba(defaultProfile.color, 0.15);
-            const borderColor = hexToRgba(defaultProfile.color, 0.5);
-            headerDefaultProfile.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-            headerDefaultProfile.style.borderColor = borderColor;
-            // Text stays white (defined in HTML) for consistency with conversation canvas
+            const color1 = hexToRgba(defaultProfile.color, 0.25);
+            const color2 = hexToRgba(defaultProfile.color, 0.12);
+            const borderColor = hexToRgba(defaultProfile.color, 0.4);
+            headerDefaultProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
+            headerDefaultProfile.style.setProperty('--profile-tag-border', borderColor);
         }
         headerDefaultProfile.classList.remove('hidden');
     } else {
         headerDefaultProfile.classList.add('hidden');
+        headerDefaultProfile.style.removeProperty('--profile-tag-bg');
+        headerDefaultProfile.style.removeProperty('--profile-tag-border');
     }
 
-    // Update override profile
+    // Update override profile - use CSS custom properties for theme compliance
     if (overrideProfile && overrideProfile.tag) {
         headerOverrideProfileTag.textContent = `@${overrideProfile.tag}`;
         if (overrideProfile.color) {
-            const color1 = hexToRgba(overrideProfile.color, 0.3);
-            const color2 = hexToRgba(overrideProfile.color, 0.15);
-            const borderColor = hexToRgba(overrideProfile.color, 0.5);
-            headerOverrideProfile.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-            headerOverrideProfile.style.borderColor = borderColor;
-            // Text stays white (defined in HTML) for consistency with conversation canvas
+            const color1 = hexToRgba(overrideProfile.color, 0.25);
+            const color2 = hexToRgba(overrideProfile.color, 0.12);
+            const borderColor = hexToRgba(overrideProfile.color, 0.4);
+            headerOverrideProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
+            headerOverrideProfile.style.setProperty('--profile-tag-border', borderColor);
         }
         headerOverrideProfile.classList.remove('hidden');
     } else {
         headerOverrideProfile.classList.add('hidden');
+        headerOverrideProfile.style.removeProperty('--profile-tag-bg');
+        headerOverrideProfile.style.removeProperty('--profile-tag-border');
     }
 }
 
@@ -197,12 +199,14 @@ async function initializeRAGAutoCompletion() {
     });
 
     function showActiveTagBadge(profile) {
+        // Add unified profile tag classes
+        activeProfileTag.className = 'profile-tag profile-tag--lg profile-tag--removable';
         activeProfileTag.innerHTML = `
-            <span style="font-size: 13px;">@${profile.tag}</span>
-            <span class="tag-remove" title="Remove profile override">×</span>
+            <span>@${profile.tag}</span>
+            <span class="profile-tag__remove" title="Remove profile override">×</span>
         `;
-        
-        // Apply provider color
+
+        // Apply provider color via CSS custom properties
         if (profile.color && profile.colorSecondary) {
             const hexToRgba = (hex, alpha) => {
                 const r = parseInt(hex.slice(1, 3), 16);
@@ -211,11 +215,13 @@ async function initializeRAGAutoCompletion() {
                 return `rgba(${r}, ${g}, ${b}, ${alpha})`;
             };
             const color1 = hexToRgba(profile.color, 0.25);
-            const color2 = hexToRgba(profile.colorSecondary, 0.15);
-            activeProfileTag.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-            activeProfileTag.style.boxShadow = `0 2px 10px ${hexToRgba(profile.color, 0.2)}`;
+            const color2 = hexToRgba(profile.colorSecondary, 0.12);
+            const borderColor = hexToRgba(profile.color, 0.4);
+            activeProfileTag.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
+            activeProfileTag.style.setProperty('--profile-tag-border', borderColor);
+            activeProfileTag.style.setProperty('--profile-tag-shadow', `0 2px 8px ${hexToRgba(profile.color, 0.15)}`);
         }
-        
+
         activeProfileTag.classList.remove('hidden');
         userInput.classList.add('has-tag');
         
@@ -230,7 +236,7 @@ async function initializeRAGAutoCompletion() {
         }
         
         // Add click handler for remove button
-        const removeBtn = activeProfileTag.querySelector('.tag-remove');
+        const removeBtn = activeProfileTag.querySelector('.profile-tag__remove');
         removeBtn.addEventListener('click', () => {
             activeTagPrefix = '';
             hideActiveTagBadge();
@@ -255,7 +261,10 @@ async function initializeRAGAutoCompletion() {
         }
 
         activeProfileTag.innerHTML = '';
-        activeProfileTag.classList.add('hidden');
+        activeProfileTag.className = 'hidden';  // Reset all classes
+        activeProfileTag.style.removeProperty('--profile-tag-bg');
+        activeProfileTag.style.removeProperty('--profile-tag-border');
+        activeProfileTag.style.removeProperty('--profile-tag-shadow');
         userInput.classList.remove('has-tag');
 
         // Clear session header override and restore default
@@ -565,13 +574,19 @@ async function initializeRAGAutoCompletion() {
             header.className = 'profile-tag-header';
 
             const badge = document.createElement('span');
-            badge.className = 'profile-tag-badge';
+            badge.className = 'profile-tag profile-tag--md profile-tag-badge';
             badge.textContent = `@${profile.tag}`;
-            
-            // Apply provider color
+
+            // Apply provider color via CSS custom properties
             if (profile.color && profile.colorSecondary) {
-                badge.style.background = `linear-gradient(135deg, ${profile.color}40, ${profile.color}25)`;
-                badge.style.borderColor = `${profile.color}50`;
+                const hexToRgba = (hex, alpha) => {
+                    const r = parseInt(hex.slice(1, 3), 16);
+                    const g = parseInt(hex.slice(3, 5), 16);
+                    const b = parseInt(hex.slice(5, 7), 16);
+                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                };
+                badge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, 0.25)}, ${hexToRgba(profile.color, 0.12)})`);
+                badge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, 0.4));
             }
 
             const name = document.createElement('span');

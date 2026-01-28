@@ -39,7 +39,11 @@
       "Bash(git push:*)",
       "Bash(git reset:*)",
       "Bash(git -C /Users/rainer.geissendoerfer/my_private_code/uderia remote:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(conda env create:*)",
+      "Bash(mdfind:*)",
+      "Bash(/opt/anaconda3/bin/conda env create:*)",
+      "Bash(/opt/anaconda3/bin/conda env:*)"
     ]
   }
 }

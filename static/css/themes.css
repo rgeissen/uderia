@@ -87,6 +87,34 @@
     --z-popover: 1060;
     --z-tooltip: 1070;
     --z-notification: 1080;
+
+    /* ========================================
+       Profile Tag Design System
+       ======================================== */
+    --profile-tag-font: var(--font-mono);
+    --profile-tag-font-weight: 600;
+    --profile-tag-letter-spacing: 0.04em;
+    --profile-tag-radius: var(--radius-sm);
+    --profile-tag-text-transform: uppercase;
+
+    /* Size variants */
+    --profile-tag-padding-sm: 0.125rem 0.375rem;
+    --profile-tag-padding-md: 0.25rem 0.625rem;
+    --profile-tag-padding-lg: 0.375rem 0.875rem;
+    --profile-tag-font-size-sm: 0.625rem;
+    --profile-tag-font-size-md: 0.6875rem;
+    --profile-tag-font-size-lg: 0.75rem;
+
+    /* Default colors (dark themes) */
+    --profile-tag-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.25), rgba(241, 95, 34, 0.12));
+    --profile-tag-border: rgba(241, 95, 34, 0.4);
+    --profile-tag-text: white;
+    --profile-tag-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+
+    /* Hover state */
+    --profile-tag-bg-hover: linear-gradient(135deg, rgba(241, 95, 34, 0.35), rgba(241, 95, 34, 0.18));
+    --profile-tag-border-hover: rgba(241, 95, 34, 0.55);
+    --profile-tag-shadow-hover: 0 3px 10px rgba(0, 0, 0, 0.2);
 }
 
 /* ============================================================================
@@ -243,6 +271,1548 @@
     --blur-light: blur(8px);
     --blur-medium: blur(16px);
     --blur-strong: blur(24px);
+}
+
+/* ============================================================================
+   LIGHT THEME (Clean, Professional Light Mode)
+   ============================================================================ */
+[data-theme="light"] {
+    /* Backgrounds */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --bg-elevated: #e2e8f0;
+    --bg-overlay: rgba(255, 255, 255, 0.98);
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.98) 100%);
+    --gradient-elevated: linear-gradient(135deg, rgba(226, 232, 240, 0.3) 0%, transparent 100%);
+
+    /* Glass Effects */
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --glass-bg-strong: rgba(255, 255, 255, 0.95);
+    --glass-border: rgba(148, 163, 184, 0.2);
+    --glass-border-strong: rgba(148, 163, 184, 0.35);
+
+    /* Text Colors */
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-tertiary: #475569;
+    --text-muted: #64748b;
+    --text-subtle: #94a3b8;
+    --text-inverse: #f8fafc;
+
+    /* Borders */
+    --border-primary: rgba(148, 163, 184, 0.35);
+    --border-secondary: rgba(148, 163, 184, 0.2);
+    --border-subtle: rgba(148, 163, 184, 0.1);
+    --border-focus: rgba(241, 95, 34, 0.6);
+    --border-focus-ring: rgba(241, 95, 34, 0.15);
+
+    /* Status Colors */
+    --status-success: #059669;
+    --status-success-bg: rgba(16, 185, 129, 0.1);
+    --status-error: #dc2626;
+    --status-error-bg: rgba(239, 68, 68, 0.1);
+    --status-warning: #d97706;
+    --status-warning-bg: rgba(245, 158, 11, 0.1);
+    --status-info: #2563eb;
+    --status-info-bg: rgba(59, 130, 246, 0.1);
+
+    /* Components */
+    --header-bg: rgba(255, 255, 255, 0.98);
+    --header-border: rgba(148, 163, 184, 0.2);
+    --sidebar-bg: rgba(248, 250, 252, 0.98);
+    --sidebar-border: rgba(148, 163, 184, 0.15);
+    --card-bg: rgba(255, 255, 255, 0.95);
+    --card-bg-hover: rgba(248, 250, 252, 0.98);
+    --input-bg: rgba(241, 245, 249, 0.8);
+    --input-bg-focus: rgba(255, 255, 255, 1);
+    --button-bg: rgba(226, 232, 240, 0.8);
+    --button-bg-hover: rgba(203, 213, 225, 0.9);
+    --modal-bg: rgba(255, 255, 255, 0.98);
+    --modal-overlay: rgba(15, 23, 42, 0.5);
+
+    /* Hover States */
+    --hover-bg: rgba(148, 163, 184, 0.1);
+    --hover-bg-strong: rgba(148, 163, 184, 0.15);
+    --active-bg: rgba(148, 163, 184, 0.2);
+    --hover-border: rgba(148, 163, 184, 0.4);
+
+    /* Scrollbar */
+    --scrollbar-thumb: rgba(148, 163, 184, 0.4);
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
+    --scrollbar-track: rgba(241, 245, 249, 0.5);
+
+    /* Chat Messages */
+    --message-user-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.08) 0%, rgba(241, 95, 34, 0.04) 100%);
+    --message-user-border: rgba(241, 95, 34, 0.25);
+    --message-assistant-bg: rgba(248, 250, 252, 0.95);
+    --message-assistant-border: rgba(148, 163, 184, 0.2);
+    --message-border: rgba(148, 163, 184, 0.2);
+
+    /* Avatar */
+    --avatar-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --avatar-border: rgba(59, 130, 246, 0.4);
+    --avatar-glow: 0 0 20px rgba(59, 130, 246, 0.2);
+
+    /* Code blocks - keep dark for contrast */
+    --code-bg: #1e293b;
+    --code-border: rgba(148, 163, 184, 0.2);
+
+    /* Accent Overlays */
+    --accent-overlay: rgba(241, 95, 34, 0.03);
+    --accent-overlay-hover: rgba(241, 95, 34, 0.06);
+
+    /* Blur */
+    --blur-light: blur(8px);
+    --blur-medium: blur(12px);
+    --blur-strong: blur(16px);
+
+    /* Profile Tag - Light Theme Overrides (enhanced contrast) */
+    --profile-tag-text: #1e293b;
+    --profile-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --profile-tag-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.15);
+    --profile-tag-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.25), rgba(241, 95, 34, 0.18));
+    --profile-tag-bg-hover: linear-gradient(135deg, rgba(241, 95, 34, 0.35), rgba(241, 95, 34, 0.25));
+    --profile-tag-border: rgba(241, 95, 34, 0.55);
+    --profile-tag-border-hover: rgba(241, 95, 34, 0.7);
+}
+
+/* Light theme code block overrides - keep dark background */
+[data-theme="light"] .message-bubble pre {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: #e2e8f0;
+}
+
+[data-theme="light"] .message-bubble code:not(pre code) {
+    background: rgba(15, 23, 42, 0.08);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #0f172a;
+}
+
+/* Light theme overrides for hardcoded Tailwind classes */
+[data-theme="light"] .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Exception: Avatar letters in message bubbles should stay white (on colored backgrounds) */
+[data-theme="light"] .message-bubble .avatar,
+[data-theme="light"] .message-bubble .bg-gray-700,
+[data-theme="light"] .message-bubble .bg-\[\#F15F22\],
+[data-theme="light"] .assistant-avatar,
+[data-theme="light"] .user-avatar {
+    color: white !important;
+}
+
+/* Exception: Panel toggle buttons should stay white (on dark/orange backgrounds) */
+[data-theme="light"] #toggle-history-button,
+[data-theme="light"] #toggle-header-button,
+[data-theme="light"] #toggle-status-button {
+    color: white !important;
+}
+
+[data-theme="light"] #toggle-history-button svg,
+[data-theme="light"] #toggle-header-button svg,
+[data-theme="light"] #toggle-status-button svg {
+    stroke: white !important;
+}
+
+[data-theme="light"] .text-gray-100,
+[data-theme="light"] .text-gray-200,
+[data-theme="light"] .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .text-gray-400,
+[data-theme="light"] .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="light"] .border-white\/10,
+[data-theme="light"] .border-white\/20 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .bg-white\/10,
+[data-theme="light"] .bg-white\/5 {
+    background-color: var(--hover-bg) !important;
+}
+
+/* Light theme - Welcome screen and cards */
+[data-theme="light"] .welcome-timeline-item {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .glass-panel {
+    background: var(--glass-bg) !important;
+    border-color: var(--glass-border) !important;
+}
+
+/* Light theme - Header and sidebar */
+[data-theme="light"] .header-title {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Conversation header (session title bar) */
+[data-theme="light"] #conversation-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border-secondary) !important;
+}
+
+/* Light theme - Header dividers and profile badges */
+[data-theme="light"] #conversation-header .bg-white\/20 {
+    background-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #conversation-header .border-white\/20 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #header-default-profile {
+    background: rgba(241, 95, 34, 0.08) !important;
+    border-color: rgba(241, 95, 34, 0.2) !important;
+}
+
+[data-theme="light"] #sidebar,
+[data-theme="light"] .sidebar {
+    background: var(--sidebar-bg) !important;
+    border-color: var(--sidebar-border) !important;
+}
+
+/* Light theme - Top navigation bar */
+[data-theme="light"] body > nav,
+[data-theme="light"] nav.bg-black\/30 {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-bottom-color: var(--border-primary) !important;
+    backdrop-filter: blur(12px) !important;
+}
+
+[data-theme="light"] body > nav .text-white,
+[data-theme="light"] body > nav .text-gray-300,
+[data-theme="light"] body > nav .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] body > nav .hover\:text-white:hover {
+    color: var(--teradata-orange) !important;
+}
+
+/* Light theme - Left sidebar navigation */
+[data-theme="light"] #app-side-nav {
+    background: rgba(248, 250, 252, 0.98) !important;
+    border-right-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #app-side-nav .text-gray-200,
+[data-theme="light"] #app-side-nav .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #app-side-nav svg {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button:hover svg,
+[data-theme="light"] #app-side-nav .view-switch-button:hover .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button.active {
+    background: rgba(241, 95, 34, 0.1) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button.active svg {
+    color: var(--teradata-orange) !important;
+}
+
+/* Light theme - Status bar (MCP, LLM, CTX, etc.) */
+[data-theme="light"] .status-bar-section {
+    background: linear-gradient(90deg,
+                                rgba(148, 163, 184, 0.1) 0%,
+                                rgba(148, 163, 184, 0.15) 50%,
+                                rgba(148, 163, 184, 0.1) 100%) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05),
+                0 1px 0 rgba(255, 255, 255, 0.8) inset !important;
+}
+
+[data-theme="light"] .status-label {
+    color: var(--text-secondary) !important;
+    text-shadow: none !important;
+}
+
+[data-theme="light"] .status-item:hover .status-label {
+    color: var(--text-primary) !important;
+    text-shadow: none !important;
+}
+
+/* Light theme - User avatar area */
+[data-theme="light"] #user-menu-button .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - User display name next to avatar */
+[data-theme="light"] .user-display-name,
+[data-theme="light"] #user-display-name {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Avatar ring and background */
+[data-theme="light"] #user-menu-button .w-10 {
+    ring-color: var(--border-primary) !important;
+    --tw-ring-offset-color: white !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Light theme - Status bar remove shimmer/glow effects */
+[data-theme="light"] .status-bar-section {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .status-label {
+    text-shadow: none !important;
+}
+
+[data-theme="light"] .status-item:hover .status-label {
+    text-shadow: none !important;
+    letter-spacing: normal !important;
+}
+
+/* Light theme - Status bar divider visibility */
+[data-theme="light"] .status-divider {
+    background: linear-gradient(to bottom, transparent, rgba(100, 116, 139, 0.4), transparent) !important;
+}
+
+/* Light theme - Connection dots remove glow/shimmer */
+[data-theme="light"] .connection-dot {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .connection-dot::before {
+    border-color: currentColor !important;
+    opacity: 0.3 !important;
+}
+
+[data-theme="light"] .connection-dot:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .connection-dot.disconnected {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+}
+
+[data-theme="light"] .connection-dot.connected {
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2) !important;
+}
+
+[data-theme="light"] .connection-dot.connecting {
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2) !important;
+}
+
+/* Light theme - Avatar initial text should be white (on blue background) */
+[data-theme="light"] #user-avatar-initial {
+    color: white !important;
+}
+
+/* Light theme - User dropdown menu */
+[data-theme="light"] #user-dropdown-menu {
+    background: var(--modal-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #user-dropdown-menu .text-white,
+[data-theme="light"] #user-menu-name {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #user-dropdown-menu .text-gray-200,
+[data-theme="light"] #user-dropdown-menu .text-gray-400,
+[data-theme="light"] #user-menu-email {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #user-dropdown-menu button.text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* Theme selector buttons - base styles for all themes */
+.theme-selector {
+    color: var(--text-secondary);
+    background-color: transparent;
+    border-color: var(--border-primary);
+}
+
+.theme-selector:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+/* Light theme - Theme selector buttons */
+[data-theme="light"] .theme-selector {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .theme-selector:hover {
+    background-color: rgba(148, 163, 184, 0.25) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Active theme button styling */
+[data-theme="legacy"] #theme-legacy,
+[data-theme="modern"] #theme-modern,
+[data-theme="light"] #theme-light {
+    background-color: var(--teradata-orange) !important;
+    color: white !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+[data-theme="legacy"] #theme-legacy:hover,
+[data-theme="modern"] #theme-modern:hover,
+[data-theme="light"] #theme-light:hover {
+    background-color: #D9501A !important;
+    color: white !important;
+}
+
+/* Light theme - System Prompt Editor */
+[data-theme="light"] #system-prompt-editor-textarea,
+[data-theme="light"] #system-prompts-tier-selector,
+[data-theme="light"] #prompt-editor-textarea {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #system-prompt-editor-textarea::placeholder,
+[data-theme="light"] #prompt-editor-textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - System prompts tab content */
+[data-theme="light"] #system-prompts-tab .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #system-prompts-tab .text-gray-400,
+[data-theme="light"] #system-prompts-tab .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Exception: Buttons with colored backgrounds should keep white text */
+[data-theme="light"] #system-prompts-tab button.bg-blue-600,
+[data-theme="light"] #system-prompts-tab button.bg-red-600,
+[data-theme="light"] #system-prompts-tab button.bg-\[\#F15F22\],
+[data-theme="light"] #duplicate-prompt-btn,
+[data-theme="light"] #delete-prompt-btn,
+[data-theme="light"] #load-system-prompt-btn,
+[data-theme="light"] #save-system-prompt-btn {
+    color: white !important;
+}
+
+/* Light theme - License tier warning message (make text readable) */
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-200 {
+    color: #92400e !important; /* amber-800 for better contrast */
+}
+
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-300\/80 {
+    color: #a16207 !important; /* yellow-700 for better contrast */
+}
+
+/* Light theme - Admin tabs */
+[data-theme="light"] .admin-tab {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab:hover {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .admin-tab.active {
+    color: var(--teradata-orange) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+/* Light theme - Input and form elements */
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+    background-color: var(--input-bg) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - Buttons */
+[data-theme="light"] .bg-gray-700,
+[data-theme="light"] .bg-gray-800 {
+    background-color: var(--button-bg) !important;
+}
+
+[data-theme="light"] .bg-gray-700:hover,
+[data-theme="light"] .bg-gray-800:hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Gray button styling */
+[data-theme="light"] button.bg-gray-600,
+[data-theme="light"] button.bg-gray-700,
+[data-theme="light"] button.bg-gray-800 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .bg-gray-600 {
+    background-color: var(--button-bg) !important;
+}
+
+/* Light theme - Model Cost Configuration table */
+[data-theme="light"] #costs-table-body {
+    background-color: var(--bg-primary) !important;
+}
+
+[data-theme="light"] #costs-table-body tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #costs-table-body td {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #costs-table-body input {
+    background-color: var(--input-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Table headers with dark backgrounds */
+[data-theme="light"] thead.bg-gray-700\/50,
+[data-theme="light"] th.bg-gray-700\/90 {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .divide-gray-700 > * + * {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .bg-gray-600:hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Light gray buttons (bg-gray-200, bg-gray-300, bg-gray-400) need dark text */
+[data-theme="light"] .bg-gray-200,
+[data-theme="light"] .bg-gray-300,
+[data-theme="light"] .bg-gray-400,
+[data-theme="light"] [class*="bg-gray-2"],
+[data-theme="light"] [class*="bg-gray-3"],
+[data-theme="light"] [class*="bg-gray-4"] {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Gray buttons with icons */
+[data-theme="light"] .bg-gray-200 svg,
+[data-theme="light"] .bg-gray-300 svg,
+[data-theme="light"] .bg-gray-400 svg {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - All colored buttons should have white text */
+[data-theme="light"] .bg-teradata-orange,
+[data-theme="light"] .bg-\[\#F15F22\],
+[data-theme="light"] button[class*="bg-teradata-orange"],
+[data-theme="light"] .welcome-cta-button {
+    color: white !important;
+}
+
+/* Light theme - Orange button icons and text must be white */
+[data-theme="light"] .bg-teradata-orange svg,
+[data-theme="light"] .bg-\[\#F15F22\] svg,
+[data-theme="light"] .welcome-cta-button svg,
+[data-theme="light"] .welcome-cta-button * {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Green buttons */
+[data-theme="light"] .bg-green-500,
+[data-theme="light"] .bg-green-600,
+[data-theme="light"] .bg-green-700,
+[data-theme="light"] .bg-emerald-500,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] [class*="bg-green-5"],
+[data-theme="light"] [class*="bg-green-6"],
+[data-theme="light"] [class*="bg-green-7"] {
+    color: white !important;
+}
+
+/* Blue buttons */
+[data-theme="light"] .bg-blue-500,
+[data-theme="light"] .bg-blue-600,
+[data-theme="light"] .bg-blue-700,
+[data-theme="light"] [class*="bg-blue-5"],
+[data-theme="light"] [class*="bg-blue-6"],
+[data-theme="light"] [class*="bg-blue-7"] {
+    color: white !important;
+}
+
+/* Blue button icons */
+[data-theme="light"] .bg-blue-500 svg,
+[data-theme="light"] .bg-blue-600 svg,
+[data-theme="light"] .bg-blue-700 svg {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Cyan/Teal buttons */
+[data-theme="light"] .bg-cyan-500,
+[data-theme="light"] .bg-cyan-600,
+[data-theme="light"] .bg-teal-500,
+[data-theme="light"] .bg-teal-600,
+[data-theme="light"] [class*="bg-cyan-5"],
+[data-theme="light"] [class*="bg-cyan-6"],
+[data-theme="light"] [class*="bg-teal-5"],
+[data-theme="light"] [class*="bg-teal-6"] {
+    color: white !important;
+}
+
+/* Red buttons */
+[data-theme="light"] .bg-red-500,
+[data-theme="light"] .bg-red-600,
+[data-theme="light"] .bg-rose-500,
+[data-theme="light"] .bg-rose-600,
+[data-theme="light"] [class*="bg-red-5"],
+[data-theme="light"] [class*="bg-red-6"] {
+    color: white !important;
+}
+
+/* Red button icons */
+[data-theme="light"] .bg-red-500 svg,
+[data-theme="light"] .bg-red-600 svg,
+[data-theme="light"] .bg-rose-500 svg,
+[data-theme="light"] .bg-rose-600 svg {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Yellow/Amber buttons - dark text for contrast */
+[data-theme="light"] .bg-yellow-500,
+[data-theme="light"] .bg-yellow-600,
+[data-theme="light"] .bg-amber-500,
+[data-theme="light"] .bg-amber-600,
+[data-theme="light"] [class*="bg-yellow-5"],
+[data-theme="light"] [class*="bg-yellow-6"],
+[data-theme="light"] [class*="bg-amber-5"],
+[data-theme="light"] [class*="bg-amber-6"] {
+    color: #1e293b !important;
+}
+
+/* Purple/Indigo buttons */
+[data-theme="light"] .bg-purple-500,
+[data-theme="light"] .bg-purple-600,
+[data-theme="light"] .bg-indigo-500,
+[data-theme="light"] .bg-indigo-600,
+[data-theme="light"] [class*="bg-purple-5"],
+[data-theme="light"] [class*="bg-purple-6"],
+[data-theme="light"] [class*="bg-indigo-5"],
+[data-theme="light"] [class*="bg-indigo-6"] {
+    color: white !important;
+}
+
+/* Light theme - Badges with transparent/light backgrounds need visible text */
+[data-theme="light"] .text-blue-300,
+[data-theme="light"] .text-blue-400 {
+    color: #1d4ed8 !important;
+}
+
+[data-theme="light"] .text-green-300,
+[data-theme="light"] .text-green-400,
+[data-theme="light"] .text-emerald-400 {
+    color: #059669 !important;
+}
+
+[data-theme="light"] .text-cyan-300,
+[data-theme="light"] .text-cyan-400 {
+    color: #0891b2 !important;
+}
+
+/* Light theme - Semi-transparent badge backgrounds */
+[data-theme="light"] .bg-blue-500\/20,
+[data-theme="light"] [class*="bg-blue-500/2"] {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+[data-theme="light"] .bg-green-500\/20,
+[data-theme="light"] [class*="bg-green-500/2"] {
+    background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+/* Light theme - Badge borders */
+[data-theme="light"] .border-blue-400\/30,
+[data-theme="light"] [class*="border-blue-4"] {
+    border-color: rgba(59, 130, 246, 0.4) !important;
+}
+
+[data-theme="light"] .border-green-400\/30,
+[data-theme="light"] [class*="border-green-4"] {
+    border-color: rgba(34, 197, 94, 0.4) !important;
+}
+
+/* Light theme - Light colored badges (bg-blue-100, etc.) */
+[data-theme="light"] .bg-blue-100 {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+[data-theme="light"] .bg-green-100 {
+    background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+[data-theme="light"] .text-blue-800 {
+    color: #1e40af !important;
+}
+
+[data-theme="light"] .text-green-800 {
+    color: #166534 !important;
+}
+
+/* Light theme - Slate buttons (Save & Connect, etc.) */
+[data-theme="light"] .bg-slate-700,
+[data-theme="light"] .bg-slate-800,
+[data-theme="light"] [class*="bg-slate-7"],
+[data-theme="light"] [class*="bg-slate-8"] {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] .bg-slate-700:hover,
+[data-theme="light"] .bg-slate-800:hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Tab buttons and toggles */
+[data-theme="light"] .user-management-subtab,
+[data-theme="light"] [class*="subtab"] {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .user-management-subtab:hover,
+[data-theme="light"] [class*="subtab"]:hover {
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .user-management-subtab.active {
+    background-color: var(--teradata-orange) !important;
+    color: white !important;
+}
+
+/* Light theme - Icon buttons (round toggle buttons) */
+[data-theme="light"] button.rounded-full.bg-gray-800\/50 {
+    background-color: var(--bg-elevated) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] button.rounded-full.bg-gray-800\/50 svg {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - Session history action buttons (edit, delete, copy) */
+[data-theme="light"] .session-action-button {
+    color: var(--text-muted) !important;
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] .session-action-button:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: #4f46e5 !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15) !important;
+}
+
+[data-theme="light"] .session-delete-button:hover {
+    background: rgba(244, 63, 94, 0.12) !important;
+    color: #e11d48 !important;
+    border-color: rgba(244, 63, 94, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(244, 63, 94, 0.15) !important;
+}
+
+[data-theme="light"] .session-edit-button:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: #4f46e5 !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15) !important;
+}
+
+[data-theme="light"] .session-copy-button:hover {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #059669 !important;
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15) !important;
+}
+
+/* Light theme - Session edit input field */
+[data-theme="light"] .session-edit-input {
+    background-color: var(--input-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+/* Form checkboxes */
+[data-theme="light"] input[type="checkbox"].bg-gray-700 {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Progress bars */
+[data-theme="light"] .bg-gray-700\/50.rounded-full {
+    background-color: var(--bg-elevated) !important;
+}
+
+/* Light theme - Table headers */
+[data-theme="light"] thead.bg-gray-800,
+[data-theme="light"] thead .bg-gray-800 {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] thead th.text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Specific button fixes */
+[data-theme="light"] #reconnect-and-load-btn {
+    background-color: var(--button-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #reconnect-and-load-btn:not(:disabled):hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Repository tabs */
+[data-theme="light"] .repository-tab {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .repository-tab.text-\[\#F15F22\],
+[data-theme="light"] .repository-tab[class*="text-[#F15F22]"] {
+    color: var(--teradata-orange) !important;
+}
+
+[data-theme="light"] .repository-tab.text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .repository-tab:hover {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Category tabs (resource tabs) */
+[data-theme="light"] .category-tab {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .category-tab:hover,
+[data-theme="light"] .category-tab.active {
+    background-color: var(--teradata-orange) !important;
+    color: white !important;
+}
+
+/* Light theme - Resource tabs */
+[data-theme="light"] .resource-tab {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .resource-tab.active {
+    color: var(--teradata-orange) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+/* Light theme - View switch buttons in sidebar */
+[data-theme="light"] .view-switch-button.text-gray-200 {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - Connected accounts cards */
+[data-theme="light"] .bg-slate-800\/50 {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .border-slate-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .link-provider-btn {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Modal and overlay backgrounds */
+[data-theme="light"] .bg-gray-900,
+[data-theme="light"] .bg-gray-900\/50,
+[data-theme="light"] .bg-gray-800\/50,
+[data-theme="light"] .bg-gray-700\/50 {
+    background-color: var(--bg-tertiary) !important;
+}
+
+/* Light theme - Dividers and borders */
+[data-theme="light"] .divide-white\/10 > * + * {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .border-t.border-white\/10,
+[data-theme="light"] .border-b.border-white\/10 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Scrollbar in sidebar */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+/* Light theme - Welcome screen specific */
+[data-theme="light"] #welcome-screen {
+    color: var(--text-primary);
+}
+
+[data-theme="light"] #welcome-screen .text-white,
+[data-theme="light"] .welcome-uderia-title .text-white,
+[data-theme="light"] .welcome-tagline .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Fix welcome screen tagline - override the white gradient */
+[data-theme="light"] #welcome-screen h1 {
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+[data-theme="light"] .welcome-tagline h1 {
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+[data-theme="light"] #welcome-screen .text-gray-400,
+[data-theme="light"] #welcome-screen .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="light"] #welcome-screen .border-white\/10 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Session list */
+[data-theme="light"] .session-item {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .session-item:hover {
+    background: var(--card-bg-hover) !important;
+}
+
+[data-theme="light"] .session-item .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .session-item .text-gray-400,
+[data-theme="light"] .session-item .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .session-item.active {
+    background: rgba(241, 95, 34, 0.08) !important;
+    border-left: 3px solid var(--teradata-orange) !important;
+}
+
+/* Light theme - Industrial History header */
+[data-theme="light"] #session-history-panel .header-title {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - Session profile tags (inline styles use color:white, needs !important override) */
+[data-theme="light"] .session-models span {
+    color: var(--text-primary) !important;
+}
+
+/* Keep model fallback tags visible */
+[data-theme="light"] .session-models .bg-gray-700 {
+    background: var(--bg-elevated) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - Dropdown menus */
+[data-theme="light"] [id$="-dropdown"],
+[data-theme="light"] .dropdown-menu {
+    background: var(--modal-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Hover states for interactive elements */
+[data-theme="light"] .hover\:bg-white\/10:hover {
+    background-color: var(--hover-bg) !important;
+}
+
+[data-theme="light"] .hover\:bg-white\/20:hover {
+    background-color: var(--hover-bg-strong) !important;
+}
+
+/* Light theme - Focus rings */
+[data-theme="light"] .focus\:ring-white:focus {
+    --tw-ring-color: var(--border-focus) !important;
+}
+
+/* Light theme - Profile tag selector (@ dropdown) */
+[data-theme="light"] #profile-tag-selector,
+[data-theme="light"] #rag-suggestions-container {
+    background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(248, 250, 252, 0.99) 100%) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15),
+                0 0 0 1px var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-tag-selector::before,
+[data-theme="light"] #rag-suggestions-container::before {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(241, 95, 34, 0.8) 50%,
+        transparent 100%) !important;
+}
+
+[data-theme="light"] .profile-tag-item {
+    border-bottom-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .profile-tag-item .profile-tag-name {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-tag-item .profile-tag-description {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .profile-tag-item.profile-tag-highlighted {
+    background: rgba(241, 95, 34, 0.1) !important;
+}
+
+[data-theme="light"] .profile-tag-item.profile-tag-highlighted .profile-tag-name {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-tag-item:not(.profile-tag-highlighted):hover {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+[data-theme="light"] .profile-default-indicator {
+    color: var(--status-warning) !important;
+}
+
+/* Light theme - MCP Resource panel (Tools, Prompts, Resources) */
+[data-theme="light"] .resource-item {
+    background: rgba(248, 250, 252, 0.95) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .resource-item summary {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .resource-item summary:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] .resource-item .text-gray-300,
+[data-theme="light"] .resource-item p {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .resource-item .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .resource-item .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Parameter items in resource panel */
+[data-theme="light"] .resource-item li {
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="light"] .resource-item .text-cyan-400 {
+    color: #0891b2 !important;
+    background: rgba(8, 145, 178, 0.1) !important;
+}
+
+[data-theme="light"] .resource-item .text-rose-400 {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] .resource-item .text-teradata-orange,
+[data-theme="light"] .resource-item code {
+    color: #c2410c !important;
+}
+
+/* Border dividers in resource panel */
+[data-theme="light"] .resource-item .border-gray-700\/60 {
+    border-color: var(--border-secondary) !important;
+}
+
+/* Resource item buttons */
+[data-theme="light"] .resource-item .bg-gray-600 {
+    background: var(--button-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .resource-item .bg-gray-600:hover {
+    background: var(--button-bg-hover) !important;
+}
+
+/* RAG suggestion items */
+[data-theme="light"] .rag-suggestion-item {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .rag-suggestion-item.rag-suggestion-highlighted {
+    background: rgba(241, 95, 34, 0.08) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Chat footer (for sticky positioning on touch devices) */
+[data-theme="light"] #chat-footer {
+    background: rgba(255, 255, 255, 0.98) !important;
+    border-top-color: var(--border-primary) !important;
+}
+
+/* Light theme - Message profile badges (conversation pane) */
+[data-theme="light"] .message-profile-badge {
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Unified profile tag status modifiers (enhanced contrast) */
+[data-theme="light"] .profile-tag--status-pending {
+    --profile-tag-text: #5b21b6;
+    --profile-tag-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.15));
+    --profile-tag-border: rgba(139, 92, 246, 0.5);
+}
+
+[data-theme="light"] .profile-tag--status-selected {
+    --profile-tag-text: #4c1d95;
+    --profile-tag-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(139, 92, 246, 0.22));
+    --profile-tag-border: rgba(139, 92, 246, 0.65);
+}
+
+[data-theme="light"] .profile-tag--status-completed {
+    --profile-tag-text: #065f46;
+    --profile-tag-bg: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15));
+    --profile-tag-border: rgba(16, 185, 129, 0.5);
+}
+
+[data-theme="light"] .profile-tag--status-error {
+    --profile-tag-text: #991b1b;
+    --profile-tag-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15));
+    --profile-tag-border: rgba(239, 68, 68, 0.5);
+}
+
+/* Light theme - Tables in message bubbles */
+[data-theme="light"] .message-bubble table {
+    background: rgba(248, 250, 252, 0.95) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .message-bubble thead {
+    background: linear-gradient(135deg,
+        rgba(241, 95, 34, 0.15) 0%,
+        rgba(241, 95, 34, 0.08) 100%) !important;
+}
+
+[data-theme="light"] .message-bubble th {
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--teradata-orange) !important;
+}
+
+[data-theme="light"] .message-bubble td {
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .message-bubble tbody tr:hover {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+/* Light theme - Response cards */
+[data-theme="light"] .response-card {
+    background: linear-gradient(135deg,
+        rgba(248, 250, 252, 0.95) 0%,
+        rgba(255, 255, 255, 0.98) 100%) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .response-card:hover {
+    background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(248, 250, 252, 0.95) 100%) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Light theme - Copy table button */
+[data-theme="light"] .copy-table-btn,
+[data-theme="light"] [class*="copy-table"],
+[data-theme="light"] button[title*="Copy"] {
+    background-color: var(--button-bg) !important;
+    color: var(--teradata-orange) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .copy-table-btn:hover,
+[data-theme="light"] [class*="copy-table"]:hover {
+    background-color: var(--button-bg-hover) !important;
+    color: var(--teradata-orange-dark) !important;
+}
+
+/* Light theme - Collateral/Details sections */
+[data-theme="light"] details,
+[data-theme="light"] .collateral-section {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] details summary,
+[data-theme="light"] .collateral-header {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Code badges in headers */
+[data-theme="light"] .message-bubble code:not(pre code) {
+    background: rgba(15, 23, 42, 0.08) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Feedback buttons */
+[data-theme="light"] .feedback-btn {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .feedback-btn:hover {
+    color: var(--text-primary) !important;
+    background-color: var(--hover-bg) !important;
+}
+
+/* Light theme - Message bubble assistant */
+[data-theme="light"] .message-bubble.assistant {
+    background: var(--message-assistant-bg) !important;
+    border-color: var(--message-assistant-border) !important;
+}
+
+/* Light theme - Key metrics and summary cards */
+[data-theme="light"] .key-metric,
+[data-theme="light"] .summary-value {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .key-metric-label,
+[data-theme="light"] .summary-label {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - Copy button */
+[data-theme="light"] .copy-button {
+    background-color: var(--button-bg) !important;
+    color: var(--teradata-orange) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] .copy-button:hover {
+    background-color: var(--button-bg-hover) !important;
+    color: var(--teradata-orange-dark) !important;
+}
+
+[data-theme="light"] .copy-button.copied {
+    background-color: var(--status-success) !important;
+    color: white !important;
+}
+
+/* Light theme - Table container */
+[data-theme="light"] .table-container {
+    border-color: var(--border-primary) !important;
+    background: var(--bg-secondary) !important;
+}
+
+/* Light theme - Assistant tables */
+[data-theme="light"] .assistant-table th,
+[data-theme="light"] .assistant-table td {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .assistant-table th {
+    background-color: rgba(241, 95, 34, 0.12) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .assistant-table td {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .assistant-table tr:nth-child(even) {
+    background-color: rgba(148, 163, 184, 0.08) !important;
+}
+
+[data-theme="light"] .assistant-table tr:hover {
+    background-color: rgba(241, 95, 34, 0.06) !important;
+}
+
+/* Light theme - Response card headers */
+[data-theme="light"] .response-card h4,
+[data-theme="light"] .response-card h5 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .response-card .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - SQL code blocks (keep dark) */
+[data-theme="light"] .sql-code-block {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+}
+
+[data-theme="light"] .sql-code-block code {
+    color: #d4d4d4 !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - STATUS PANEL / LIVE STATUS
+   ============================================================================ */
+
+/* Status step base styling */
+[data-theme="light"] .status-step {
+    background: rgba(148, 163, 184, 0.08) !important;
+}
+
+[data-theme="light"] .status-step:hover {
+    background: rgba(148, 163, 184, 0.12) !important;
+}
+
+/* Status step states */
+[data-theme="light"] .status-step.active {
+    background: linear-gradient(90deg,
+        rgba(241, 95, 34, 0.12) 0%,
+        rgba(241, 95, 34, 0.04) 100%) !important;
+}
+
+[data-theme="light"] .status-step.completed {
+    background: linear-gradient(90deg,
+        rgba(16, 185, 129, 0.08) 0%,
+        rgba(248, 250, 252, 0.5) 100%) !important;
+}
+
+/* Status step text */
+[data-theme="light"] .status-step h4,
+[data-theme="light"] .status-step .font-bold {
+    color: var(--text-primary) !important;
+}
+
+/* Status key-value pairs */
+[data-theme="light"] #status-window-content .status-kv-key,
+[data-theme="light"] .status-kv-key {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #status-window-content .status-kv-value,
+[data-theme="light"] .status-kv-value {
+    color: var(--text-secondary) !important;
+}
+
+/* Status code badges */
+[data-theme="light"] #status-window-content .status-code,
+[data-theme="light"] .status-code {
+    background-color: rgba(241, 95, 34, 0.1) !important;
+    color: var(--teradata-orange-dark) !important;
+    border: 1px solid rgba(241, 95, 34, 0.2) !important;
+}
+
+/* Status details section */
+[data-theme="light"] .status-details {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .status-details summary {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .status-details summary:hover {
+    color: var(--text-primary) !important;
+}
+
+/* Status window content area */
+[data-theme="light"] #status-window-content {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #status-window-content .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #status-window-content .text-gray-300,
+[data-theme="light"] #status-window-content .text-gray-400,
+[data-theme="light"] #status-window-content .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Full text boxes in status (like "what is the system version?") */
+[data-theme="light"] .status-step .bg-gray-800,
+[data-theme="light"] .status-step .bg-gray-900,
+[data-theme="light"] .status-step pre {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Status text blocks (Full Text content boxes) */
+[data-theme="light"] #status-window-content .status-text-block {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Status phase containers (Generated Plan steps) */
+[data-theme="light"] .status-phase-container {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-phase-container summary {
+    color: var(--text-primary) !important;
+}
+
+/* Plan step boxes inside status */
+[data-theme="light"] .status-step .plan-step-box,
+[data-theme="light"] .status-step [class*="bg-gray-900"],
+[data-theme="light"] .status-step .bg-gray-900\/50 {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Status phase cards (Step 1, Step 2, etc.) */
+[data-theme="light"] .status-phase-card {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+}
+
+[data-theme="light"] .status-phase-card .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+/* Phase headers (Phase 1/2, Phase 2/2 Completed, etc.) */
+[data-theme="light"] .status-phase-header {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .status-phase-header.phase-end {
+    background-color: var(--bg-elevated) !important;
+    border-top-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-phase-header.phase-start {
+    border-bottom-color: var(--border-primary) !important;
+}
+
+/* Phase content border */
+[data-theme="light"] .status-phase-content {
+    border-left-color: var(--border-primary) !important;
+}
+
+/* Generated plan steps */
+[data-theme="light"] .status-step details {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-step .space-y-3 > div {
+    background: var(--bg-tertiary) !important;
+    border-radius: var(--radius-sm);
+    padding: 0.5rem;
+}
+
+/* Phase indicators */
+[data-theme="light"] .phase-indicator {
+    color: var(--text-muted) !important;
+}
+
+/* Lifecycle events (start/complete) */
+[data-theme="light"] .status-step.lifecycle {
+    background: var(--bg-secondary) !important;
+}
+
+/* Genie status steps */
+[data-theme="light"] .genie-status-step {
+    background: rgba(147, 51, 234, 0.06) !important;
+}
+
+/* Slate color overrides for status panels (Question to @RAG, etc.) */
+[data-theme="light"] .status-step .bg-slate-900\/50,
+[data-theme="light"] .status-step [class*="bg-slate-900"] {
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="light"] .status-step .border-slate-600\/30,
+[data-theme="light"] .status-step [class*="border-slate"] {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-step .text-slate-200,
+[data-theme="light"] .status-step .text-slate-300,
+[data-theme="light"] .status-step [class*="text-slate-2"],
+[data-theme="light"] .status-step [class*="text-slate-3"] {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .status-step .text-slate-400,
+[data-theme="light"] .status-step .text-slate-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Response and error boxes in Genie status */
+[data-theme="light"] .status-step .bg-emerald-900\/20,
+[data-theme="light"] .status-step [class*="bg-emerald-900"] {
+    background: rgba(16, 185, 129, 0.1) !important;
+}
+
+[data-theme="light"] .status-step .bg-rose-900\/30,
+[data-theme="light"] .status-step [class*="bg-rose-900"] {
+    background: rgba(244, 63, 94, 0.1) !important;
 }
 
 /* ============================================================================

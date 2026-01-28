@@ -183,13 +183,16 @@
                     <div class="my-1" style="border-top: 1px solid var(--border-primary);"></div>
                     <!-- Theme Section -->
                     <div class="px-3 py-2">
-                        <p class="text-xs text-gray-400 mb-2">Theme</p>
+                        <p class="text-xs mb-2" style="color: var(--text-muted);">Theme</p>
                         <div class="flex gap-2">
-                            <button id="theme-legacy" class="theme-selector flex-1 px-2 py-1.5 text-xs text-gray-200 rounded border transition-colors" data-theme="legacy" style="border-color: var(--border-primary);" onmouseover="this.style.backgroundColor='var(--hover-bg)'" onmouseout="this.style.backgroundColor='transparent'">
+                            <button id="theme-legacy" class="theme-selector flex-1 px-2 py-1.5 text-xs rounded border transition-colors hover:bg-gray-200" data-theme="legacy">
                                 Legacy
                             </button>
-                            <button id="theme-modern" class="theme-selector flex-1 px-2 py-1.5 text-xs text-gray-200 rounded border transition-colors" data-theme="modern" style="border-color: var(--border-primary);" onmouseover="this.style.backgroundColor='var(--hover-bg)'" onmouseout="this.style.backgroundColor='transparent'">
+                            <button id="theme-modern" class="theme-selector flex-1 px-2 py-1.5 text-xs rounded border transition-colors hover:bg-gray-200" data-theme="modern">
                                 Modern
+                            </button>
+                            <button id="theme-light" class="theme-selector flex-1 px-2 py-1.5 text-xs rounded border transition-colors hover:bg-gray-200" data-theme="light">
+                                Light
                             </button>
                         </div>
                     </div>
@@ -288,21 +291,21 @@
                         </button>
                         <!-- Divider -->
                         <div class="h-6 w-px bg-white/20"></div>
-                        <!-- Default Profile Badge -->
-                        <div id="header-default-profile" class="hidden flex items-center gap-x-2 px-3 py-1 rounded-lg backdrop-blur-md border border-white/20">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+                        <!-- Default Profile Badge - uses unified profile tag system -->
+                        <div id="header-default-profile" class="hidden profile-tag profile-tag--md profile-tag--header">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="profile-tag__icon" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                             </svg>
-                            <span id="header-default-profile-tag" class="text-sm font-semibold text-white"></span>
-                            <span class="text-xs text-white/70">default</span>
+                            <span id="header-default-profile-tag"></span>
+                            <span class="profile-tag__label">default</span>
                         </div>
-                        <!-- Temporary Override Badge -->
-                        <div id="header-override-profile" class="hidden flex items-center gap-x-2 px-3 py-1 rounded-lg backdrop-blur-md border-2 animate-pulse-border">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+                        <!-- Temporary Override Badge - uses unified profile tag system -->
+                        <div id="header-override-profile" class="hidden profile-tag profile-tag--md profile-tag--header">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="profile-tag__icon" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
                             </svg>
-                            <span id="header-override-profile-tag" class="text-sm font-semibold text-white"></span>
-                            <span class="text-xs text-white/70">override</span>
+                            <span id="header-override-profile-tag"></span>
+                            <span class="profile-tag__label">override</span>
                         </div>
                         <!-- ============================================= -->
                         <!-- CONVERSATION-LEVEL BANNER SYSTEM             -->
@@ -3489,6 +3492,7 @@
                                                         <select id="default-theme-selector" name="default_theme" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22]">
                                                             <option value="legacy">Legacy Theme</option>
                                                             <option value="modern">Modern Theme</option>
+                                                            <option value="light">Light Theme</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -6651,7 +6655,7 @@
         // ============================================================================
         const ThemeManager = {
             STORAGE_KEY: 'tda-theme',
-            DEFAULT_THEME: 'legacy',
+            DEFAULT_THEME: 'modern',
             
             /**
              * Initialize theme on page load

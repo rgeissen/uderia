@@ -49,11 +49,14 @@ function showReconfigurationNotification(data) {
     title.textContent = 'Application Reconfigured';
 
     const message = document.createElement('p');
-    message.className = 'text-gray-300 mb-4';
+    message.className = 'mb-4';
+    message.style.color = 'var(--text-secondary)';
     message.textContent = data.message;
 
     const configDetails = document.createElement('pre');
-    configDetails.className = 'bg-gray-900/50 p-4 rounded-md text-xs text-gray-300 overflow-x-auto';
+    configDetails.className = 'p-4 rounded-md text-xs overflow-x-auto';
+    configDetails.style.backgroundColor = 'var(--bg-tertiary)';
+    configDetails.style.color = 'var(--text-secondary)';
     configDetails.textContent = JSON.stringify(data.config, null, 2);
 
     const buttonContainer = document.createElement('div');

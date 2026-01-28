@@ -118,7 +118,7 @@ function getProfileTagColor(profileTag, profileType) {
 }
 
 /**
- * Render a profile tag with the correct profile type color.
+ * Render a profile tag with the correct profile type color using unified styling.
  * @param {string} tag - The profile tag (without @)
  * @param {string} profileType - Optional profile type for color lookup
  * @param {string} additionalClasses - Optional additional CSS classes
@@ -126,7 +126,7 @@ function getProfileTagColor(profileTag, profileType) {
  */
 function renderProfileTag(tag, profileType, additionalClasses = '') {
     const color = getProfileTagColor(tag, profileType);
-    return `<code class="status-code ${additionalClasses}" style="color: white; border-color: ${color}40; background: ${color}15;">@${tag}</code>`;
+    return `<span class="profile-tag profile-tag--sm ${additionalClasses}" style="--profile-tag-bg: linear-gradient(135deg, ${color}25, ${color}12); --profile-tag-border: ${color}40;">@${tag}</span>`;
 }
 
 // ============================================================================
@@ -681,7 +681,9 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     const icon = document.createElement('div');
     icon.className = 'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg';
     icon.textContent = role === 'user' ? 'U' : 'A';
-    icon.classList.add(role === 'user' ? 'bg-gray-700' : 'bg-[#F15F22]');
+    icon.style.background = role === 'user' ? 'var(--avatar-bg, #4b5563)' : 'var(--teradata-orange, #F15F22)';
+    // Add role-specific class for selector compatibility
+    icon.classList.add(role === 'user' ? 'user-avatar' : 'assistant-avatar-icon');
 
     if (role === 'assistant' && turnId) {
         icon.classList.add('assistant-avatar');
@@ -725,11 +727,11 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     let profileBadge = null;
     if (role === 'user' && profileTag) {
         profileBadge = document.createElement('div');
-        profileBadge.className = 'flex items-center gap-x-2 px-3 py-1 rounded-lg backdrop-blur-md border border-white/20 shadow-lg flex-shrink-0';
+        profileBadge.className = 'profile-tag profile-tag--md message-profile-badge flex-shrink-0';
         profileBadge.textContent = `@${profileTag}`;
         profileBadge.title = `Executed with profile: ${profileTag}`;
-        
-        // Apply profile-specific colors if available
+
+        // Apply profile-specific colors via CSS custom properties
         if (window.configState?.profiles) {
             const profile = window.configState.profiles.find(p => p.tag === profileTag);
             if (profile && profile.color) {
@@ -739,16 +741,10 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
                     const b = parseInt(hex.slice(5, 7), 16);
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 };
-                const color1 = hexToRgba(profile.color, 0.3);
-                const color2 = hexToRgba(profile.color, 0.15);
-                const borderColor = hexToRgba(profile.color, 0.5);
-                profileBadge.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-                profileBadge.style.borderColor = borderColor;
+                profileBadge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, 0.25)}, ${hexToRgba(profile.color, 0.12)})`);
+                profileBadge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, 0.4));
             }
         }
-        profileBadge.style.fontSize = '0.875rem';
-        profileBadge.style.fontWeight = '600';
-        profileBadge.style.color = 'white';
         profileBadge.style.alignSelf = 'flex-start';
         profileBadge.style.marginRight = '12px';
     }
@@ -756,7 +752,7 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     const author = document.createElement('p');
     author.className = 'font-bold mb-2 text-sm';
     author.textContent = role === 'user' ? 'You' : 'Assistant';
-    author.classList.add(role === 'user' ? 'text-gray-300' : 'text-[#F15F22]');
+    author.style.color = role === 'user' ? 'var(--text-secondary, #d1d5db)' : 'var(--teradata-orange, #F15F22)';
     messageContainer.appendChild(author);
 
     if (role === 'user' && source === 'rest') {
@@ -934,11 +930,11 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
 
 
         // --- Find previous User message and add badge/click handler ---
-        const userBubbles = DOM.chatLog.querySelectorAll('.message-bubble:has(.bg-gray-700)');
+        const userBubbles = DOM.chatLog.querySelectorAll('.message-bubble:has(.user-avatar)');
         const lastUserBubble = userBubbles.length > 0 ? userBubbles[userBubbles.length - 1] : null;
 
         if (lastUserBubble) {
-            const userAvatarIcon = lastUserBubble.querySelector('.bg-gray-700');
+            const userAvatarIcon = lastUserBubble.querySelector('.user-avatar');
             if (userAvatarIcon) {
                 // 1. Make the User Avatar clickable (REGARDLESS of context)
                 userAvatarIcon.classList.add('clickable-avatar');
@@ -1026,36 +1022,40 @@ export function updateLastUserMessageProfileTag(profileTag) {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
 
-    // Get profile colors if available
-    let bgStyle = 'rgba(55, 65, 81, 0.5)';
-    let borderColor = 'rgba(255, 255, 255, 0.2)';
+    // Get profile colors if available - use CSS custom properties
+    let bgStyleValue = null;
+    let borderColorValue = null;
     if (window.configState?.profiles) {
         const profile = window.configState.profiles.find(p => p.tag === profileTag);
         if (profile && profile.color) {
-            const color1 = hexToRgba(profile.color, 0.3);
-            const color2 = hexToRgba(profile.color, 0.15);
-            bgStyle = `linear-gradient(135deg, ${color1}, ${color2})`;
-            borderColor = hexToRgba(profile.color, 0.5);
+            const color1 = hexToRgba(profile.color, 0.25);
+            const color2 = hexToRgba(profile.color, 0.12);
+            bgStyleValue = `linear-gradient(135deg, ${color1}, ${color2})`;
+            borderColorValue = hexToRgba(profile.color, 0.4);
         }
     }
 
     if (existingBadge) {
-        // Update existing badge
+        // Update existing badge - ensure it has unified classes
+        if (!existingBadge.classList.contains('profile-tag')) {
+            existingBadge.className = 'profile-tag profile-tag--md message-profile-badge flex-shrink-0';
+        }
         existingBadge.textContent = `@${profileTag}`;
         existingBadge.title = `Executed with profile: ${profileTag}`;
-        existingBadge.style.background = bgStyle;
-        existingBadge.style.borderColor = borderColor;
+        if (bgStyleValue) {
+            existingBadge.style.setProperty('--profile-tag-bg', bgStyleValue);
+            existingBadge.style.setProperty('--profile-tag-border', borderColorValue);
+        }
     } else {
-        // Create new badge and insert it
+        // Create new badge with unified classes
         const profileBadge = document.createElement('div');
-        profileBadge.className = 'flex items-center gap-x-2 px-3 py-1 rounded-lg backdrop-blur-md border border-white/20 shadow-lg flex-shrink-0';
+        profileBadge.className = 'profile-tag profile-tag--md message-profile-badge flex-shrink-0';
         profileBadge.textContent = `@${profileTag}`;
         profileBadge.title = `Executed with profile: ${profileTag}`;
-        profileBadge.style.background = bgStyle;
-        profileBadge.style.borderColor = borderColor;
-        profileBadge.style.fontSize = '0.875rem';
-        profileBadge.style.fontWeight = '600';
-        profileBadge.style.color = 'white';
+        if (bgStyleValue) {
+            profileBadge.style.setProperty('--profile-tag-bg', bgStyleValue);
+            profileBadge.style.setProperty('--profile-tag-border', borderColorValue);
+        }
         profileBadge.style.alignSelf = 'flex-start';
         profileBadge.style.marginRight = '12px';
 
@@ -1439,7 +1439,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
                                 ${details.slave_profiles.map(p => {
                                     const slaveColor = getProfileTagColor(p.tag, p.profile_type);
-                                    return `<span class="genie-tag" style="color: white; border-color: ${slaveColor}40; background: ${slaveColor}15;">@${p.tag}</span>`;
+                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-pending" style="--profile-tag-bg: linear-gradient(135deg, ${slaveColor}25, ${slaveColor}12); --profile-tag-border: ${slaveColor}40;">@${p.tag}</span>`;
                                 }).join('')}
                             </div>
                         </details>
@@ -1481,7 +1481,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     ` : ''}
                     ${details.selected_profiles && details.selected_profiles.length > 0 ? `
                         <div class="mt-2 flex flex-wrap gap-1">
-                            ${details.selected_profiles.map(tag => `<span class="genie-tag selected">@${tag}</span>`).join('')}
+                            ${details.selected_profiles.map(tag => `<span class="profile-tag profile-tag--sm profile-tag--status-selected">@${tag}</span>`).join('')}
                         </div>
                     ` : ''}
                 `;
@@ -1501,12 +1501,12 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     const needsExpand = query.length > 100;
                     queryHtml = needsExpand ? `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to <span style="color: ${slaveTagColor};">@${profileTag}</span></summary>
+                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></summary>
                             <div class="mt-1 p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
                         </details>
                     ` : `
                         <div class="mt-2">
-                            <div class="text-slate-400 text-xs font-medium mb-1">Question to <span style="color: ${slaveTagColor};">@${profileTag}</span></div>
+                            <div class="text-slate-400 text-xs font-medium mb-1">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></div>
                             <div class="p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
                         </div>
                     `;
@@ -1562,7 +1562,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     // Show result collapsed by default - user can expand to see details
                     resultHtml = `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from <span style="color: ${slaveTagColor};">@${profileTag}</span></summary>
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></summary>
                             <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(result)}</div>
                         </details>
                     `;
@@ -1572,7 +1572,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 if (details.error) {
                     errorHtml = `
                         <div class="mt-2">
-                            <div class="text-rose-400 text-xs font-medium mb-1">Error from <span style="color: ${slaveTagColor};">@${profileTag}</span></div>
+                            <div class="text-rose-400 text-xs font-medium mb-1">Error from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></div>
                             <div class="p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${escapeHtml(details.error)}</div>
                         </div>
                     `;
@@ -1606,7 +1606,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="mt-2 flex flex-wrap gap-1">
                             ${details.profiles_consulted.map(tag => {
                                 const tagColor = getProfileTagColor(tag);
-                                return `<span class="genie-tag" style="background: ${tagColor}30; color: white; border-color: ${tagColor}40;">@${tag}</span>`;
+                                return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${tagColor}25, ${tagColor}12); --profile-tag-border: ${tagColor}40;">@${tag}</span>`;
                             }).join('')}
                         </div>
                     ` : ''}
@@ -1663,7 +1663,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <div class="genie-profile-tags flex flex-wrap gap-1">
                                 ${details.profiles_used.map(tag => {
                                     const tagColor = getProfileTagColor(tag);
-                                    return `<span class="genie-tag" style="background: ${tagColor}30; color: white; border-color: ${tagColor}40;">@${tag}</span>`;
+                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-completed" style="--profile-tag-bg: linear-gradient(135deg, ${tagColor}25, ${tagColor}12); --profile-tag-border: ${tagColor}40;">@${tag}</span>`;
                                 }).join('')}
                             </div>
                         </div>

@@ -1,0 +1,54 @@
+name: uderia
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    # Web framework
+    - quart==0.20.0
+    - quart-cors==0.8.0
+    - hypercorn==0.17.3
+    - python-dotenv==1.1.1
+    - aiofiles==24.1.0
+
+    # LLM providers
+    - google-generativeai==0.8.5
+    - anthropic>=0.75.0,<1.0.0
+    - boto3==1.40.5
+    - openai>=1.109.1,<3.0.0
+
+    # LangChain ecosystem
+    - langchain-mcp-adapters>=0.2.0
+    - langchain-openai==1.1.7
+    - langchain-anthropic==1.3.1
+    - langchain-google-genai==4.1.3
+    - langgraph>=0.2.0
+
+    # RAG and embeddings
+    - chromadb==1.3.5
+    - sentence-transformers==5.1.2
+
+    # Utilities
+    - cryptography==45.0.3
+    - google-cloud==0.34.0
+    - google-cloud-texttospeech==2.33.0
+    - jsonschema>=4.0.0
+    - litellm>=1.0.0
+    - uv>=0.5.0
+
+    # Document processing
+    - PyPDF2==3.0.1
+    - python-docx==1.1.2
+
+    # Authentication
+    - bcrypt==5.0.0
+    - pyjwt==2.10.1
+    - sqlalchemy==2.0.44
+    - email-validator==2.3.0
+    - authlib>=1.3.0
+    - httpx>=0.24.0
+
+    # Install package in editable mode
+    - -e .

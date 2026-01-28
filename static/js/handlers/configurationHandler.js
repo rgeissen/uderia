@@ -2608,8 +2608,8 @@ function renderProfileCard(profile) {
                                     };
                                     const tagColor = profileTypeColors[profile.profile_type] || profile.color || '#F15F22';
                                     return `
-                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono font-semibold border"
-                                      style="background: linear-gradient(135deg, ${tagColor}30, ${tagColor}15); border-color: ${tagColor}50; color: white;">
+                                <span class="profile-tag profile-tag--md"
+                                      style="--profile-tag-bg: linear-gradient(135deg, ${tagColor}40, ${tagColor}25); --profile-tag-border: ${tagColor}60;">
                                     @${escapeHtml(profile.tag)}
                                 </span>`;
                                 })()}
@@ -2722,7 +2722,7 @@ function renderProfileCard(profile) {
                                     const slaveProfile = configState.profiles.find(p => p.id === slaveId);
                                     if (!slaveProfile) return '<span class="text-gray-400">Unknown</span>';
                                     const color = profileTypeColors[slaveProfile.profile_type] || '#9ca3af';
-                                    return `<span style="color: white; font-weight: 500; background: ${color}15; border: 1px solid ${color}40; padding: 1px 6px; border-radius: 4px;">@${escapeHtml(slaveProfile.tag)}</span>`;
+                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${color}35, ${color}20); --profile-tag-border: ${color}55;">@${escapeHtml(slaveProfile.tag)}</span>`;
                                 });
                                 return slaveTags.join(', ');
                             })()}</p>
