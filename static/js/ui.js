@@ -5630,8 +5630,8 @@ function appendCollectionRows(newRows) {
         }
         
         tr.innerHTML = `
-            <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis">${r.id}</td>
-            <td class="px-2 py-2 text-gray-200 whitespace-nowrap overflow-hidden text-ellipsis">${escapeHtml(r.user_query || '')}</td>
+            <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.id)}">${escapeHtml(r.id)}</td>
+            <td class="px-2 py-2 text-gray-200 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.user_query || '')}">${escapeHtml(r.user_query || '')}</td>
             <td class="px-2 py-2 text-gray-300 whitespace-nowrap">${r.strategy_type || ''}</td>
             <td class="px-2 py-2 whitespace-nowrap">${efficientBadge}</td>
             <td class="px-2 py-2 whitespace-nowrap">${feedbackBadge}</td>
@@ -5701,8 +5701,8 @@ function renderCollectionRows(rows, total, query, collectionName) {
             }
             
             tr.innerHTML = `
-                <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis">${r.id}</td>
-                <td class="px-2 py-2 text-gray-200 whitespace-nowrap overflow-hidden text-ellipsis">${escapeHtml(r.user_query || '')}</td>
+                <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.id)}">${escapeHtml(r.id)}</td>
+                <td class="px-2 py-2 text-gray-200 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.user_query || '')}">${escapeHtml(r.user_query || '')}</td>
                 <td class="px-2 py-2 text-gray-300 whitespace-nowrap">${r.strategy_type || ''}</td>
                 <td class="px-2 py-2 whitespace-nowrap">${efficientBadge}</td>
                 <td class="px-2 py-2 whitespace-nowrap">${feedbackBadge}</td>
@@ -5832,8 +5832,8 @@ function updateTableHeaderForPlanner() {
     if (!thead) return;
     
     thead.innerHTML = `
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id">ID <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_query">User Query <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="width: 200px;">ID <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_query" style="width: 300px;">User Query <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="strategy_type">Strategy <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="is_most_efficient">Efficient <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_feedback_score">Feedback <span class="text-xs text-gray-500">↕</span></th>
