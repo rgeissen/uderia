@@ -486,6 +486,12 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     state.currentPhaseContainerEl = null; // Reset phase container reference
     state.pendingSubtaskPlanningEvents = []; // Clear any pending events
 
+    // Hide knowledge banner by default when loading a turn
+    const knowledgeBanner = document.getElementById('knowledge-banner');
+    if (knowledgeBanner && !knowledgeRetrievalEvent) {
+        knowledgeBanner.classList.add('hidden');
+    }
+
     // 1. Add a title
     const titleEl = document.createElement('h3');
     titleEl.className = 'text-lg font-bold text-white mb-4 p-3 bg-gray-900/50 rounded-md';
@@ -2848,6 +2854,13 @@ export function resetStatusWindowForNewTask() {
     // Remove any existing scroll spacer
     const existingSpacer = document.getElementById('status-scroll-spacer');
     if (existingSpacer) existingSpacer.remove();
+
+    // Hide knowledge banner when starting a new task
+    const knowledgeBanner = document.getElementById('knowledge-banner');
+    if (knowledgeBanner) {
+        knowledgeBanner.classList.add('hidden');
+    }
+
     state.currentStatusId = 0;
     state.isRestTaskActive = false;
     state.activeRestTaskId = null;

@@ -6986,7 +6986,7 @@
                         if (buttonText === 'Configure Application') {
                             // Profile needs configuration - go to credentials view
                             console.log('[Welcome Button] Configure Application clicked - switching to credentials view');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
                             handleViewSwitch('credentials-view');
                             return;
                         }
@@ -7008,7 +7008,7 @@
                             // Import required modules
                             const { checkServerStatus } = await import('/static/js/api.js');
                             const { finalizeConfiguration } = await import('/static/js/handlers/configManagement.js');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
                             
                             // Get current config from status
                             const status = await checkServerStatus();
@@ -7083,7 +7083,7 @@
                             } catch (validationError) {
                                 console.error('[Welcome Button] Session creation/validation failed:', validationError);
                                 // Credentials may be invalid - redirect to configuration
-                                const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
+                                const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
                                 handleViewSwitch('credentials-view');
                                 return;
                             }
@@ -7107,7 +7107,7 @@
                         } catch (error) {
                             console.error('[Welcome Button] Error initializing:', error);
                             // Redirect to configuration on any error
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
                             handleViewSwitch('credentials-view');
                         }
                     });
