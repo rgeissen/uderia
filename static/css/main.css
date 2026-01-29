@@ -2554,7 +2554,7 @@ button[data-action="delete-mcp"]:hover {
 
 /* Adjust user input padding when tag badge is active */
 #user-input.has-tag {
-    padding-left: 120px !important;
+    padding-left: 100px !important;
 }
 
 /* RAG suggestions and profile tag selector shared base styling - enhanced */
@@ -2971,8 +2971,9 @@ input[type="checkbox"]:disabled:hover {
     display: flex !important;
 }
 
+/* Removed hardcoded backgrounds - let JavaScript CSS variables handle colors */
 #header-default-profile {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+    /* background removed to allow --profile-tag-bg CSS variable to work */
 }
 
 #header-override-profile {

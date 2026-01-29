@@ -490,9 +490,15 @@
     border-color: var(--border-primary) !important;
 }
 
-[data-theme="light"] #header-default-profile {
-    background: rgba(241, 95, 34, 0.08) !important;
-    border-color: rgba(241, 95, 34, 0.2) !important;
+/* Light mode: Session header profile tags - text color only, let JavaScript handle backgrounds */
+[data-theme="light"] #header-default-profile,
+[data-theme="light"] #header-override-profile {
+    color: #000000 !important; /* Black text for readability in light mode */
+}
+
+[data-theme="light"] #header-default-profile span,
+[data-theme="light"] #header-override-profile span {
+    color: #000000 !important; /* Ensure span text is also black */
 }
 
 [data-theme="light"] #sidebar,
@@ -1290,6 +1296,33 @@
 [data-theme="light"] #welcome-screen .text-gray-400,
 [data-theme="light"] #welcome-screen .text-gray-500 {
     color: var(--text-tertiary) !important;
+}
+
+/* Welcome screen title styling for all themes */
+.welcome-title-main {
+    color: white;
+}
+
+.welcome-title-sub {
+    color: #9ca3af; /* gray-400 */
+}
+
+/* Light theme overrides */
+[data-theme="light"] .welcome-title-main {
+    color: #1e293b !important; /* slate-800 */
+}
+
+[data-theme="light"] .welcome-title-sub {
+    color: #64748b !important; /* slate-500 */
+}
+
+/* Legacy theme styling */
+[data-theme="legacy"] .welcome-title-main {
+    color: white;
+}
+
+[data-theme="legacy"] .welcome-title-sub {
+    color: #9ca3af;
 }
 
 [data-theme="light"] #welcome-screen .border-white\/10 {

@@ -51,9 +51,10 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     if (defaultProfile && defaultProfile.tag) {
         headerDefaultProfileTag.textContent = `@${defaultProfile.tag}`;
         if (defaultProfile.color) {
-            const color1 = hexToRgba(defaultProfile.color, isLightMode ? 0.90 : 0.25);
-            const color2 = hexToRgba(defaultProfile.color, isLightMode ? 0.75 : 0.12);
-            const borderColor = hexToRgba(defaultProfile.color, isLightMode ? 0.95 : 0.4);
+            // Use same opacity as session history for consistent visuals across themes
+            const color1 = hexToRgba(defaultProfile.color, 0.25);
+            const color2 = hexToRgba(defaultProfile.color, 0.12);
+            const borderColor = hexToRgba(defaultProfile.color, 0.4);
             headerDefaultProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
             headerDefaultProfile.style.setProperty('--profile-tag-border', borderColor);
             headerDefaultProfile.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
@@ -70,9 +71,10 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     if (overrideProfile && overrideProfile.tag) {
         headerOverrideProfileTag.textContent = `@${overrideProfile.tag}`;
         if (overrideProfile.color) {
-            const color1 = hexToRgba(overrideProfile.color, isLightMode ? 0.90 : 0.25);
-            const color2 = hexToRgba(overrideProfile.color, isLightMode ? 0.75 : 0.12);
-            const borderColor = hexToRgba(overrideProfile.color, isLightMode ? 0.95 : 0.4);
+            // Use same opacity as session history for consistent visuals across themes
+            const color1 = hexToRgba(overrideProfile.color, 0.25);
+            const color2 = hexToRgba(overrideProfile.color, 0.12);
+            const borderColor = hexToRgba(overrideProfile.color, 0.4);
             headerOverrideProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
             headerOverrideProfile.style.setProperty('--profile-tag-border', borderColor);
             headerOverrideProfile.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
@@ -206,8 +208,8 @@ async function initializeRAGAutoCompletion() {
     });
 
     function showActiveTagBadge(profile) {
-        // Add unified profile tag classes
-        activeProfileTag.className = 'profile-tag profile-tag--lg profile-tag--removable';
+        // Add unified profile tag classes - use --md for better visibility in question box
+        activeProfileTag.className = 'profile-tag profile-tag--md profile-tag--removable';
         activeProfileTag.innerHTML = `
             <span>@${profile.tag}</span>
             <span class="profile-tag__remove" title="Remove profile override">×</span>
@@ -222,13 +224,18 @@ async function initializeRAGAutoCompletion() {
                 return `rgba(${r}, ${g}, ${b}, ${alpha})`;
             };
 
-            // Detect light mode for higher contrast
+            // Detect light mode for text color and opacity compensation
             const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
 
-            // Adjust opacity based on theme - light mode needs near-opaque colors for visibility (especially for light colors like cyan)
-            const color1 = hexToRgba(profile.color, isLightMode ? 0.90 : 0.25);
-            const color2 = hexToRgba(profile.colorSecondary, isLightMode ? 0.75 : 0.12);
-            const borderColor = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
+            // Question box tag needs higher opacity in light mode to compensate for glass-panel washout
+            // In light mode, the glass-panel has rgba(255, 255, 255, 0.85) which desaturates colors
+            const primaryOpacity = isLightMode ? 0.50 : 0.25;
+            const secondaryOpacity = isLightMode ? 0.30 : 0.12;
+            const borderOpacity = isLightMode ? 0.65 : 0.4;
+
+            const color1 = hexToRgba(profile.color, primaryOpacity);
+            const color2 = hexToRgba(profile.color, secondaryOpacity);
+            const borderColor = hexToRgba(profile.color, borderOpacity);
 
             activeProfileTag.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
             activeProfileTag.style.setProperty('--profile-tag-border', borderColor);
@@ -467,35 +474,12 @@ async function initializeRAGAutoCompletion() {
             
             // Set up the badge and store the tag prefix
             activeTagPrefix = `@${profile.tag} `;
-            activeProfileTag.innerHTML = `
-                <span style="font-size: 13px;">@${profile.tag}</span>
-                <span class="tag-remove" title="Remove profile override">×</span>
-            `;
 
-            // Apply provider color with light mode support
-            if (profile.color && profile.colorSecondary) {
-                const hexToRgba = (hex, alpha) => {
-                    const r = parseInt(hex.slice(1, 3), 16);
-                    const g = parseInt(hex.slice(3, 5), 16);
-                    const b = parseInt(hex.slice(5, 7), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                };
+            // Use the unified showActiveTagBadge function for consistent styling
+            showActiveTagBadge(profile);
 
-                // Detect light mode for higher contrast
-                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
-
-                const color1 = hexToRgba(profile.color, isLightMode ? 0.90 : 0.25);
-                const color2 = hexToRgba(profile.colorSecondary, isLightMode ? 0.75 : 0.15);
-                activeProfileTag.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-                activeProfileTag.style.boxShadow = `0 2px 10px ${hexToRgba(profile.color, 0.2)}`;
-                activeProfileTag.style.color = isLightMode ? '#1e293b' : 'white';
-            }
-            
-            activeProfileTag.classList.remove('hidden');
-            userInput.classList.add('has-tag');
-            
             // Add click handler for remove button
-            const removeBtn = activeProfileTag.querySelector('.tag-remove');
+            const removeBtn = activeProfileTag.querySelector('.profile-tag__remove');
             removeBtn.addEventListener('click', () => {
                 activeTagPrefix = '';
                 hideActiveTagBadge();
