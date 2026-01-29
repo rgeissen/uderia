@@ -40,6 +40,9 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
 
+    // Detect light mode for higher contrast
+    const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
     // Update knowledge indicator based on active profile
     const profile = overrideProfile || defaultProfile;
     updateKnowledgeIndicatorStatus(profile);
@@ -48,34 +51,38 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     if (defaultProfile && defaultProfile.tag) {
         headerDefaultProfileTag.textContent = `@${defaultProfile.tag}`;
         if (defaultProfile.color) {
-            const color1 = hexToRgba(defaultProfile.color, 0.25);
-            const color2 = hexToRgba(defaultProfile.color, 0.12);
-            const borderColor = hexToRgba(defaultProfile.color, 0.4);
+            const color1 = hexToRgba(defaultProfile.color, isLightMode ? 0.90 : 0.25);
+            const color2 = hexToRgba(defaultProfile.color, isLightMode ? 0.75 : 0.12);
+            const borderColor = hexToRgba(defaultProfile.color, isLightMode ? 0.95 : 0.4);
             headerDefaultProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
             headerDefaultProfile.style.setProperty('--profile-tag-border', borderColor);
+            headerDefaultProfile.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
         }
         headerDefaultProfile.classList.remove('hidden');
     } else {
         headerDefaultProfile.classList.add('hidden');
         headerDefaultProfile.style.removeProperty('--profile-tag-bg');
         headerDefaultProfile.style.removeProperty('--profile-tag-border');
+        headerDefaultProfile.style.removeProperty('--profile-tag-text');
     }
 
     // Update override profile - use CSS custom properties for theme compliance
     if (overrideProfile && overrideProfile.tag) {
         headerOverrideProfileTag.textContent = `@${overrideProfile.tag}`;
         if (overrideProfile.color) {
-            const color1 = hexToRgba(overrideProfile.color, 0.25);
-            const color2 = hexToRgba(overrideProfile.color, 0.12);
-            const borderColor = hexToRgba(overrideProfile.color, 0.4);
+            const color1 = hexToRgba(overrideProfile.color, isLightMode ? 0.90 : 0.25);
+            const color2 = hexToRgba(overrideProfile.color, isLightMode ? 0.75 : 0.12);
+            const borderColor = hexToRgba(overrideProfile.color, isLightMode ? 0.95 : 0.4);
             headerOverrideProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
             headerOverrideProfile.style.setProperty('--profile-tag-border', borderColor);
+            headerOverrideProfile.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
         }
         headerOverrideProfile.classList.remove('hidden');
     } else {
         headerOverrideProfile.classList.add('hidden');
         headerOverrideProfile.style.removeProperty('--profile-tag-bg');
         headerOverrideProfile.style.removeProperty('--profile-tag-border');
+        headerOverrideProfile.style.removeProperty('--profile-tag-text');
     }
 }
 
@@ -214,12 +221,19 @@ async function initializeRAGAutoCompletion() {
                 const b = parseInt(hex.slice(5, 7), 16);
                 return `rgba(${r}, ${g}, ${b}, ${alpha})`;
             };
-            const color1 = hexToRgba(profile.color, 0.25);
-            const color2 = hexToRgba(profile.colorSecondary, 0.12);
-            const borderColor = hexToRgba(profile.color, 0.4);
+
+            // Detect light mode for higher contrast
+            const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+            // Adjust opacity based on theme - light mode needs near-opaque colors for visibility (especially for light colors like cyan)
+            const color1 = hexToRgba(profile.color, isLightMode ? 0.90 : 0.25);
+            const color2 = hexToRgba(profile.colorSecondary, isLightMode ? 0.75 : 0.12);
+            const borderColor = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
+
             activeProfileTag.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
             activeProfileTag.style.setProperty('--profile-tag-border', borderColor);
             activeProfileTag.style.setProperty('--profile-tag-shadow', `0 2px 8px ${hexToRgba(profile.color, 0.15)}`);
+            activeProfileTag.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
         }
 
         activeProfileTag.classList.remove('hidden');
@@ -265,6 +279,7 @@ async function initializeRAGAutoCompletion() {
         activeProfileTag.style.removeProperty('--profile-tag-bg');
         activeProfileTag.style.removeProperty('--profile-tag-border');
         activeProfileTag.style.removeProperty('--profile-tag-shadow');
+        activeProfileTag.style.color = '';  // Reset direct color style
         userInput.classList.remove('has-tag');
 
         // Clear session header override and restore default
@@ -456,8 +471,8 @@ async function initializeRAGAutoCompletion() {
                 <span style="font-size: 13px;">@${profile.tag}</span>
                 <span class="tag-remove" title="Remove profile override">×</span>
             `;
-            
-            // Apply provider color
+
+            // Apply provider color with light mode support
             if (profile.color && profile.colorSecondary) {
                 const hexToRgba = (hex, alpha) => {
                     const r = parseInt(hex.slice(1, 3), 16);
@@ -465,10 +480,15 @@ async function initializeRAGAutoCompletion() {
                     const b = parseInt(hex.slice(5, 7), 16);
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 };
-                const color1 = hexToRgba(profile.color, 0.25);
-                const color2 = hexToRgba(profile.colorSecondary, 0.15);
+
+                // Detect light mode for higher contrast
+                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+                const color1 = hexToRgba(profile.color, isLightMode ? 0.90 : 0.25);
+                const color2 = hexToRgba(profile.colorSecondary, isLightMode ? 0.75 : 0.15);
                 activeProfileTag.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
                 activeProfileTag.style.boxShadow = `0 2px 10px ${hexToRgba(profile.color, 0.2)}`;
+                activeProfileTag.style.color = isLightMode ? '#1e293b' : 'white';
             }
             
             activeProfileTag.classList.remove('hidden');
@@ -585,8 +605,13 @@ async function initializeRAGAutoCompletion() {
                     const b = parseInt(hex.slice(5, 7), 16);
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 };
-                badge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, 0.25)}, ${hexToRgba(profile.color, 0.12)})`);
-                badge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, 0.4));
+
+                // Detect light mode for higher contrast
+                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+                badge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.90 : 0.25)}, ${hexToRgba(profile.color, isLightMode ? 0.75 : 0.12)})`);
+                badge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, isLightMode ? 0.95 : 0.4));
+                badge.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
             }
 
             const name = document.createElement('span');

@@ -741,8 +741,13 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
                     const b = parseInt(hex.slice(5, 7), 16);
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 };
-                profileBadge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, 0.25)}, ${hexToRgba(profile.color, 0.12)})`);
-                profileBadge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, 0.4));
+
+                // Detect light mode for higher contrast
+                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+                profileBadge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.90 : 0.25)}, ${hexToRgba(profile.color, isLightMode ? 0.75 : 0.12)})`);
+                profileBadge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, isLightMode ? 0.95 : 0.4));
+                profileBadge.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
             }
         }
         profileBadge.style.alignSelf = 'flex-start';
@@ -766,9 +771,32 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     if (isSessionPrimer) {
         const primerTag = document.createElement('span');
         primerTag.className = 'primer-tag text-xs px-2 py-0.5 rounded ml-2';
-        primerTag.style.background = 'rgba(6, 182, 212, 0.3)';
-        primerTag.style.color = 'rgb(103, 232, 249)';
-        primerTag.style.border = '1px solid rgba(6, 182, 212, 0.4)';
+
+        // Detect light mode for proper contrast
+        const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+        if (isLightMode) {
+            // Light mode: use nearly opaque colors with proper !important syntax
+            primerTag.style.setProperty('background', 'rgba(6, 182, 212, 0.95)', 'important');
+            primerTag.style.setProperty('color', '#000000', 'important');
+            primerTag.style.setProperty('border', '1px solid rgba(6, 182, 212, 1.0)', 'important');
+            primerTag.style.padding = '0.125rem 0.5rem';
+            primerTag.style.borderRadius = '0.25rem';
+            primerTag.style.marginLeft = '0.5rem';
+            primerTag.style.fontSize = '0.75rem';
+            primerTag.style.lineHeight = '1rem';
+        } else {
+            // Dark mode: use lighter colors
+            primerTag.style.background = 'rgba(6, 182, 212, 0.3)';
+            primerTag.style.color = 'rgb(103, 232, 249)';
+            primerTag.style.border = '1px solid rgba(6, 182, 212, 0.4)';
+            primerTag.style.padding = '0.125rem 0.5rem';
+            primerTag.style.borderRadius = '0.25rem';
+            primerTag.style.marginLeft = '0.5rem';
+            primerTag.style.fontSize = '0.75rem';
+            primerTag.style.lineHeight = '1rem';
+        }
+
         primerTag.textContent = 'Primer';
         primerTag.title = 'Session initialization message';
         author.appendChild(primerTag);
@@ -1022,16 +1050,20 @@ export function updateLastUserMessageProfileTag(profileTag) {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
 
+    // Detect light mode for higher contrast
+    const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
     // Get profile colors if available - use CSS custom properties
     let bgStyleValue = null;
     let borderColorValue = null;
+    let textColorValue = isLightMode ? '#000000' : 'white';
     if (window.configState?.profiles) {
         const profile = window.configState.profiles.find(p => p.tag === profileTag);
         if (profile && profile.color) {
-            const color1 = hexToRgba(profile.color, 0.25);
-            const color2 = hexToRgba(profile.color, 0.12);
+            const color1 = hexToRgba(profile.color, isLightMode ? 0.90 : 0.25);
+            const color2 = hexToRgba(profile.color, isLightMode ? 0.75 : 0.12);
             bgStyleValue = `linear-gradient(135deg, ${color1}, ${color2})`;
-            borderColorValue = hexToRgba(profile.color, 0.4);
+            borderColorValue = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
         }
     }
 
@@ -1045,6 +1077,7 @@ export function updateLastUserMessageProfileTag(profileTag) {
         if (bgStyleValue) {
             existingBadge.style.setProperty('--profile-tag-bg', bgStyleValue);
             existingBadge.style.setProperty('--profile-tag-border', borderColorValue);
+            existingBadge.style.setProperty('--profile-tag-text', textColorValue);
         }
     } else {
         // Create new badge with unified classes
@@ -1055,6 +1088,7 @@ export function updateLastUserMessageProfileTag(profileTag) {
         if (bgStyleValue) {
             profileBadge.style.setProperty('--profile-tag-bg', bgStyleValue);
             profileBadge.style.setProperty('--profile-tag-border', borderColorValue);
+            profileBadge.style.setProperty('--profile-tag-text', textColorValue);
         }
         profileBadge.style.alignSelf = 'flex-start';
         profileBadge.style.marginRight = '12px';
@@ -3949,21 +3983,27 @@ export function addSessionToList(session, isActive = false) {
                     const b = parseInt(hex.slice(5, 7), 16);
                     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                 };
-                const color1 = hexToRgba(profile.color, 0.2);
-                const color2 = hexToRgba(profile.color, 0.08);
-                const borderColor = hexToRgba(profile.color, 0.4);
+
+                // Detect light mode for higher contrast
+                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+                const color1 = hexToRgba(profile.color, isLightMode ? 0.85 : 0.2);
+                const color2 = hexToRgba(profile.color, isLightMode ? 0.70 : 0.08);
+                const borderColor = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
+                const textColor = isLightMode ? '#1e293b' : 'white';
+
                 tagSpan.style.cssText = `
                     background: linear-gradient(135deg, ${color1}, ${color2});
                     border: 1px solid ${borderColor};
-                    color: white;
+                    color: ${textColor};
                     box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
                     backdrop-filter: blur(4px);
                 `;
 
                 // Add hover effect (no translateY to prevent layout shift)
                 tagSpan.addEventListener('mouseenter', () => {
-                    tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, 0.3)}, ${hexToRgba(profile.color, 0.12)})`;
-                    tagSpan.style.borderColor = hexToRgba(profile.color, 0.6);
+                    tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.92 : 0.3)}, ${hexToRgba(profile.color, isLightMode ? 0.78 : 0.12)})`;
+                    tagSpan.style.borderColor = hexToRgba(profile.color, isLightMode ? 0.98 : 0.6);
                     tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
                 });
                 tagSpan.addEventListener('mouseleave', () => {
@@ -4049,21 +4089,27 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
                         const b = parseInt(hex.slice(5, 7), 16);
                         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
                     };
-                    const color1 = hexToRgba(profile.color, 0.2);
-                    const color2 = hexToRgba(profile.color, 0.08);
-                    const borderColor = hexToRgba(profile.color, 0.4);
+
+                    // Detect light mode for higher contrast
+                    const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+                    const color1 = hexToRgba(profile.color, isLightMode ? 0.85 : 0.2);
+                    const color2 = hexToRgba(profile.color, isLightMode ? 0.70 : 0.08);
+                    const borderColor = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
+                    const textColor = isLightMode ? '#1e293b' : 'white';
+
                     tagSpan.style.cssText = `
                         background: linear-gradient(135deg, ${color1}, ${color2});
                         border: 1px solid ${borderColor};
-                        color: white;
+                        color: ${textColor};
                         box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
                         backdrop-filter: blur(4px);
                     `;
 
                     // Add hover effect
                     tagSpan.addEventListener('mouseenter', () => {
-                        tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, 0.3)}, ${hexToRgba(profile.color, 0.12)})`;
-                        tagSpan.style.borderColor = hexToRgba(profile.color, 0.6);
+                        tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.92 : 0.3)}, ${hexToRgba(profile.color, isLightMode ? 0.78 : 0.12)})`;
+                        tagSpan.style.borderColor = hexToRgba(profile.color, isLightMode ? 0.98 : 0.6);
                         tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
                         tagSpan.style.transform = 'translateY(-1px)';
                     });

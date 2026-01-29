@@ -380,6 +380,18 @@
     --profile-tag-border-hover: rgba(241, 95, 34, 0.7);
 }
 
+/* Force black text on all profile tags in light mode - FIX for readability issue */
+[data-theme="light"] .profile-tag,
+[data-theme="light"] .profile-tag span {
+    --profile-tag-text: #000000 !important;
+    color: #000000 !important;
+}
+
+/* Force black text on primer tag in light mode */
+[data-theme="light"] .primer-tag {
+    color: #000000 !important;
+}
+
 /* Light theme code block overrides - keep dark background */
 [data-theme="light"] .message-bubble pre {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -1328,6 +1340,53 @@
 /* Light theme - Focus rings */
 [data-theme="light"] .focus\:ring-white:focus {
     --tw-ring-color: var(--border-focus) !important;
+}
+
+/* Legacy theme - Profile tag selector (@ dropdown) */
+[data-theme="legacy"] #profile-tag-selector,
+[data-theme="legacy"] #rag-suggestions-container {
+    background: linear-gradient(135deg,
+        rgba(51, 51, 51, 0.95) 0%,
+        rgba(38, 38, 38, 0.98) 100%) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+[data-theme="legacy"] #profile-tag-selector::before,
+[data-theme="legacy"] #rag-suggestions-container::before {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(241, 95, 34, 0.6) 50%,
+        transparent 100%) !important;
+}
+
+[data-theme="legacy"] .profile-tag-item {
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="legacy"] .profile-tag-item .profile-tag-name {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .profile-tag-item .profile-tag-description {
+    color: #999999 !important;
+}
+
+[data-theme="legacy"] .profile-tag-item.profile-tag-highlighted {
+    background: rgba(241, 95, 34, 0.12) !important;
+}
+
+[data-theme="legacy"] .profile-tag-item.profile-tag-highlighted .profile-tag-name {
+    color: #ffffff !important;
+}
+
+[data-theme="legacy"] .profile-tag-item:not(.profile-tag-highlighted):hover {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+[data-theme="legacy"] .profile-default-indicator {
+    color: #fbbf24 !important;
 }
 
 /* Light theme - Profile tag selector (@ dropdown) */

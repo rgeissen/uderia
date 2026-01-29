@@ -47,7 +47,9 @@
       "Bash(/opt/miniconda3/bin/conda env list:*)",
       "Bash(/opt/miniconda3/bin/conda env remove:*)",
       "Bash(/opt/miniconda3/bin/conda create:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(conda env:*)",
+      "Bash(/opt/anaconda3/bin/conda create:*)"
     ]
   }
 }

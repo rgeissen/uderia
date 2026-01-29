@@ -2540,8 +2540,9 @@ button[data-action="delete-mcp"]:hover {
 /* Visual styling now inherited from .profile-tag base class */
 #active-profile-tag {
     position: absolute;
-    top: 10px;
-    left: 14px;
+    top: 50%;
+    left: 12px;
+    transform: translateY(-50%);
     z-index: 20;
     display: none;
     /* Background and box-shadow applied dynamically via JavaScript based on provider */
@@ -2553,7 +2554,7 @@ button[data-action="delete-mcp"]:hover {
 
 /* Adjust user input padding when tag badge is active */
 #user-input.has-tag {
-    padding-left: 110px !important;
+    padding-left: 120px !important;
 }
 
 /* RAG suggestions and profile tag selector shared base styling - enhanced */
@@ -2811,10 +2812,11 @@ button[data-action="delete-mcp"]:hover {
     color: #ffffff;
 }
 
-/* Highlighted/hover states - uses CSS variables for theme compliance */
+/* Highlighted state - keep native profile badge colors (don't override with orange) */
 .profile-tag-item.profile-tag-highlighted .profile-tag-badge {
-    background: var(--profile-tag-bg-hover);
-    border-color: var(--profile-tag-border-hover);
+    /* Removed background and border-color overrides to preserve native profile colors */
+    transform: scale(1.05);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
 /* Hover state text (only when not highlighted) */
