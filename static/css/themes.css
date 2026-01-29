@@ -387,6 +387,13 @@
     color: #000000 !important;
 }
 
+/* Force black text on active profile tag in question box (higher specificity) */
+[data-theme="light"] #active-profile-tag,
+[data-theme="light"] #active-profile-tag span {
+    --profile-tag-text: #000000 !important;
+    color: #000000 !important;
+}
+
 /* Force black text on primer tag in light mode */
 [data-theme="light"] .primer-tag {
     color: #000000 !important;
