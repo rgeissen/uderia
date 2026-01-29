@@ -2153,6 +2153,20 @@ The application provides a multi-panel interface accessible through the left sid
 5. **Setup** - Configure LLM providers, MCP Servers, and profiles
 6. **Administration** - User management and system settings (admin only)
 
+#### Appearance & Themes
+
+Customize the application's visual appearance to suit your preferences or working environment. Access theme settings from the user dropdown menu in the top-right corner.
+
+**Available Themes:**
+
+* **Legacy Theme:** Classic dark gray color palette with warm tones. Best for users familiar with the original interface.
+
+* **Modern Theme:** Contemporary dark blue/slate design with glass-panel effects and refined depth. The default theme for new installations.
+
+* **Light Theme:** Clean, professional light mode with high contrast for well-lit environments or accessibility preferences.
+
+Theme preferences are saved per user and persist across sessions.
+
 #### The Conversation Panel
 
 When you select the **Conversations** panel, the interface is organized into several key areas:
@@ -2777,6 +2791,9 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **29-Jan-2026:** Light Theme - Full light mode support with proper contrast and visibility across all components
+*   **25-Jan-2026:** Legacy Theme - Fixed color bleeding issues with opaque backgrounds and consistent gray palette
+*   **20-Jan-2026:** Modern Theme - Enhanced glass-panel effects and refined slate/blue color palette
 *   **17-Jan-2026:** Genie Profiles - Hierarchical AI Organizations with multi-level autonomous coordination (Parent → Child agents)
 *   **14-Jan-2026:** Session Primer - Auto-initialize sessions with domain knowledge, transforming generic LLMs into pre-educated specialists
 *   **12-Jan-2026:** Genie Profile Type (Beta) - Multi-profile coordination with LangChain orchestration
