@@ -105,10 +105,10 @@
         <div class="grid md:grid-cols-2 gap-8 lg:gap-12 items-center">
             
             <!-- Left Side - Branding -->
-            <div class="hidden md:flex flex-col justify-center space-y-8">
+            <div class="hidden md:flex flex-col items-center justify-center space-y-8">
                 <!-- Logo & Brand -->
-                <div class="text-center md:text-left">
-                    <div class="flex items-center justify-center md:justify-start gap-8 mb-8">
+                <div class="text-center">
+                    <div class="flex flex-col items-center justify-center gap-6 mb-8">
                         <div class="w-32 h-32 flex items-center justify-center" style="filter: drop-shadow(0 20px 50px rgba(241, 95, 34, 0.5));">
                             <img src="/static/images/Uderia_Logo_Light.svg" alt="Uderia Platform" class="w-full h-full">
                         </div>
@@ -119,16 +119,21 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- Decorative Separator -->
+                <div class="w-full flex justify-center my-12">
+                    <div class="relative">
+                        <div class="w-48 h-px bg-gradient-to-r from-transparent via-[#F15F22] to-transparent opacity-60"></div>
+                        <div class="absolute inset-0 w-48 h-px bg-gradient-to-r from-transparent via-[#F15F22] to-transparent blur-sm"></div>
+                    </div>
+                </div>
+
                 <!-- Hero Tagline -->
-                <div class="space-y-6 max-w-lg">
-                    <h2 class="text-4xl font-light text-white leading-tight" style="letter-spacing: -0.02em;">
+                <div class="w-full flex justify-center">
+                    <h2 class="text-3xl font-light text-white leading-tight text-center" style="letter-spacing: -0.02em;">
                         Cloud-Level Reasoning.<br>
                         <span class="font-bold bg-gradient-to-r from-[#F15F22] via-[#FF8C50] to-[#F15F22] bg-clip-text text-transparent" style="filter: drop-shadow(0 0 20px rgba(241, 95, 34, 0.3));">Zero-Trust Privacy.</span>
                     </h2>
-                    <p class="text-2xl text-white font-normal leading-relaxed">
-                        Finally, an AI platform that doesn't force you to choose.
-                    </p>
                 </div>
             </div>
             

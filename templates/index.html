@@ -21,8 +21,8 @@
         }
     </style>
     <script src="https://unpkg.com/@antv/g2plot@latest/dist/g2plot.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}?v=1.1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v=1.1">
 </head>
 <!-- MODIFICATION: Body remains the 100vh flex-col container -->
 <body class="flex h-screen flex-col" data-theme="modern">
@@ -1108,13 +1108,13 @@
                                 </span>
                             </div>
                             <!-- Knowledge Banner -->
-                            <div id="knowledge-banner" class="hidden mt-2 px-3 py-1.5 bg-blue-500/20 border border-blue-400/40 rounded-md text-xs text-blue-200">
+                            <div id="knowledge-banner" class="hidden mt-2 px-3 py-1.5 knowledge-banner rounded-md text-xs">
                                 <div class="flex items-center gap-x-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0 knowledge-banner-icon" viewBox="0 0 20 20" fill="currentColor">
                                         <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/>
                                     </svg>
-                                    <span class="font-medium">Knowledge:</span>
-                                    <span id="knowledge-collections-list" class="text-blue-100"></span>
+                                    <span class="font-medium knowledge-banner-label">Knowledge:</span>
+                                    <span id="knowledge-collections-list" class="knowledge-banner-text"></span>
                                 </div>
                             </div>
                             <div id="token-usage-display" class="text-xs text-gray-400 mt-2 w-full">
@@ -6986,7 +6986,7 @@
                         if (buttonText === 'Configure Application') {
                             // Profile needs configuration - go to credentials view
                             console.log('[Welcome Button] Configure Application clicked - switching to credentials view');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.0');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
                             handleViewSwitch('credentials-view');
                             return;
                         }
@@ -7008,7 +7008,7 @@
                             // Import required modules
                             const { checkServerStatus } = await import('/static/js/api.js');
                             const { finalizeConfiguration } = await import('/static/js/handlers/configManagement.js');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.0');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
                             
                             // Get current config from status
                             const status = await checkServerStatus();
@@ -7083,7 +7083,7 @@
                             } catch (validationError) {
                                 console.error('[Welcome Button] Session creation/validation failed:', validationError);
                                 // Credentials may be invalid - redirect to configuration
-                                const { handleViewSwitch } = await import('/static/js/ui.js?v=3.0');
+                                const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
                                 handleViewSwitch('credentials-view');
                                 return;
                             }
@@ -7107,7 +7107,7 @@
                         } catch (error) {
                             console.error('[Welcome Button] Error initializing:', error);
                             // Redirect to configuration on any error
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.0');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.1');
                             handleViewSwitch('credentials-view');
                         }
                     });

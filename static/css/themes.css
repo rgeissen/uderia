@@ -4474,3 +4474,166 @@ button[aria-label]:active {
 [data-theme="light"] #profile-content-intelligence .text-gray-200 {
     color: var(--text-primary) !important;
 }
+
+/* ============================================================================
+   Theme-Aware Application Banner System
+   ============================================================================ */
+
+/* Dark theme (default) - Vibrant colors on dark background */
+.app-banner-success {
+    background-color: rgba(34, 197, 94, 0.9); /* green-600 */
+    color: white;
+}
+
+.app-banner-error {
+    background-color: rgba(220, 38, 38, 0.9); /* red-600 */
+    color: white;
+}
+
+.app-banner-warning {
+    background-color: rgba(234, 179, 8, 0.9); /* yellow-600 */
+    color: white;
+}
+
+.app-banner-info {
+    background-color: rgba(37, 99, 235, 0.9); /* blue-600 */
+    color: white;
+}
+
+/* Light theme - Softer, more subtle colors */
+[data-theme="light"] .app-banner-success {
+    background-color: rgba(22, 163, 74, 0.95); /* green-700 */
+    color: white;
+}
+
+[data-theme="light"] .app-banner-error {
+    background-color: rgba(185, 28, 28, 0.95); /* red-700 */
+    color: white;
+}
+
+[data-theme="light"] .app-banner-warning {
+    background-color: rgba(161, 98, 7, 0.95); /* yellow-700 */
+    color: white;
+}
+
+[data-theme="light"] .app-banner-info {
+    background-color: rgba(29, 78, 216, 0.95); /* blue-700 */
+    color: white;
+}
+
+/* Legacy theme - Classic colors */
+[data-theme="legacy"] .app-banner-success {
+    background-color: rgba(34, 197, 94, 0.9); /* green-600 */
+    color: white;
+}
+
+[data-theme="legacy"] .app-banner-error {
+    background-color: rgba(220, 38, 38, 0.9); /* red-600 */
+    color: white;
+}
+
+[data-theme="legacy"] .app-banner-warning {
+    background-color: rgba(234, 179, 8, 0.9); /* yellow-600 */
+    color: white;
+}
+
+[data-theme="legacy"] .app-banner-info {
+    background-color: rgba(37, 99, 235, 0.9); /* blue-600 */
+    color: white;
+}
+
+/* ===================================================================
+   RAG Source Document Probability Score Badges
+   =================================================================== */
+
+/* Default (Dark theme) - High score badge (>= 0.8) */
+.rag-score-high {
+    background-color: rgba(21, 128, 61, 0.9); /* green-700 */
+    color: white;
+}
+
+/* Default (Dark theme) - Low score badge (< 0.8) */
+.rag-score-low {
+    background-color: rgba(161, 98, 7, 0.9); /* yellow-700 */
+    color: white;
+}
+
+/* Light theme - Darker backgrounds for better contrast */
+[data-theme="light"] .rag-score-high {
+    background-color: rgba(21, 128, 61, 0.95); /* green-700 with higher opacity */
+    color: white;
+}
+
+[data-theme="light"] .rag-score-low {
+    background-color: rgba(180, 83, 9, 0.95); /* amber-700 for better visibility */
+    color: white;
+}
+
+/* Legacy theme - Classic colors */
+[data-theme="legacy"] .rag-score-high {
+    background-color: rgba(21, 128, 61, 0.9); /* green-700 */
+    color: white;
+}
+
+[data-theme="legacy"] .rag-score-low {
+    background-color: rgba(161, 98, 7, 0.9); /* yellow-700 */
+    color: white;
+}
+
+/* ===================================================================
+   Knowledge Repository Banner (Status Panel)
+   =================================================================== */
+
+/* Default (Dark theme) */
+.knowledge-banner {
+    background-color: rgba(59, 130, 246, 0.2); /* blue-500/20 */
+    border: 1px solid rgba(96, 165, 250, 0.4); /* blue-400/40 */
+}
+
+.knowledge-banner-icon {
+    color: rgba(147, 197, 253, 1); /* blue-300 */
+}
+
+.knowledge-banner-label {
+    color: rgba(191, 219, 254, 1); /* blue-200 */
+}
+
+.knowledge-banner-text {
+    color: rgba(219, 234, 254, 1); /* blue-100 */
+}
+
+/* Light theme - Darker colors for better contrast */
+[data-theme="light"] .knowledge-banner {
+    background-color: rgba(59, 130, 246, 0.15); /* blue-500 with lower opacity */
+    border: 1px solid rgba(37, 99, 235, 0.4); /* blue-600 */
+}
+
+[data-theme="light"] .knowledge-banner-icon {
+    color: rgba(37, 99, 235, 1); /* blue-600 */
+}
+
+[data-theme="light"] .knowledge-banner-label {
+    color: rgba(29, 78, 216, 1); /* blue-700 */
+}
+
+[data-theme="light"] .knowledge-banner-text {
+    color: rgba(30, 64, 175, 1); /* blue-800 - much darker for readability */
+}
+
+/* Legacy theme */
+[data-theme="legacy"] .knowledge-banner {
+    background-color: rgba(59, 130, 246, 0.2); /* blue-500/20 */
+    border: 1px solid rgba(96, 165, 250, 0.4); /* blue-400/40 */
+}
+
+[data-theme="legacy"] .knowledge-banner-icon {
+    color: rgba(147, 197, 253, 1); /* blue-300 */
+}
+
+[data-theme="legacy"] .knowledge-banner-label {
+    color: rgba(191, 219, 254, 1); /* blue-200 */
+}
+
+[data-theme="legacy"] .knowledge-banner-text {
+    color: rgba(219, 234, 254, 1); /* blue-100 */
+}

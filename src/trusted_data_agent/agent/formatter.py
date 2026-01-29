@@ -1039,14 +1039,14 @@ class OutputFormatter:
             preview_html = self._process_inline_markdown(preview)
             full_content_html = self._render_standard_markdown(content)
 
-            score_color = "bg-green-700" if similarity_score >= 0.8 else "bg-yellow-700"
+            score_class = "rag-score-high" if similarity_score >= 0.8 else "rag-score-low"
 
             html_parts.append(f"""
 <div class="rag-source-card bg-gray-900/50 rounded-lg p-4 border border-gray-800">
     <div class="flex items-start justify-between mb-2">
         <div class="flex-1">
             <span class="text-sm font-semibold text-white">{source_name}</span>
-            <span class="text-xs px-2 py-0.5 rounded {score_color} text-white ml-2">
+            <span class="text-xs px-2 py-0.5 rounded {score_class} ml-2">
                 {similarity_score:.2f}
             </span>
             <div class="text-xs text-gray-400">Collection: {collection_name}</div>

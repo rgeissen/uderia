@@ -29,24 +29,25 @@ export function showAppBanner(message, type = 'info', duration = 5000) {
         console.warn('[AppBanner] Element not found. Message:', message);
         return;
     }
-    
+
+    // Theme-aware colors using Tailwind classes that work with all themes
     const colors = {
-        success: 'bg-green-600/90',
-        error: 'bg-red-600/90',
-        warning: 'bg-yellow-600/90',
-        info: 'bg-blue-600/90'
+        success: 'app-banner-success',
+        error: 'app-banner-error',
+        warning: 'app-banner-warning',
+        info: 'app-banner-info'
     };
-    
+
     // Clear any existing timeout
     if (statusElement.hideTimeout) {
         clearTimeout(statusElement.hideTimeout);
     }
-    
+
     // Set the message and style
     statusElement.textContent = message;
-    statusElement.className = `text-sm px-3 py-1 rounded-md transition-all duration-300 ${colors[type] || colors.info} text-white`;
+    statusElement.className = `text-sm px-3 py-1 rounded-md transition-all duration-300 ${colors[type] || colors.info}`;
     statusElement.style.opacity = '1';
-    
+
     // Auto-hide after specified duration
     statusElement.hideTimeout = setTimeout(() => {
         statusElement.style.opacity = '0';

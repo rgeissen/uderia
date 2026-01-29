@@ -4630,10 +4630,7 @@ export function updateKnowledgeIndicator(collections, documentCount) {
     knowledgeDot.classList.remove('knowledge-idle', 'knowledge-active');
     knowledgeDot.classList.add('knowledge-configured');
 
-    // Hide banner after 8 seconds
-    setTimeout(() => {
-        knowledgeBanner.classList.add('hidden');
-    }, 8000);
+    // Keep banner visible (removed auto-hide to maintain visibility throughout session)
 }
 
 export function closeChatModal() {
