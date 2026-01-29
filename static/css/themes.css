@@ -3725,3 +3725,556 @@ button[aria-label]:active {
 [data-theme="modern"] .admin-tab-content .grid .glass-panel {
     background: rgba(30, 41, 59, 0.7) !important;
 }
+
+/* ============================================================================
+   LIGHT THEME - Notification Banners & Messages
+   ============================================================================ */
+
+/* Delete Confirmation Banner */
+[data-theme="light"] #delete-confirmation-banner {
+    background: rgba(239, 68, 68, 0.15) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+[data-theme="light"] #delete-confirmation-banner .text-red-200 {
+    color: #991b1b !important; /* dark red for contrast */
+}
+
+[data-theme="light"] #delete-confirmation-banner svg {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] #delete-confirmation-cancel {
+    background: #64748b !important;
+    color: white !important;
+}
+
+[data-theme="light"] #delete-confirmation-cancel:hover {
+    background: #475569 !important;
+}
+
+/* Profile Override Warning Banner */
+[data-theme="light"] #profile-override-warning-banner {
+    background: rgba(234, 179, 8, 0.15) !important;
+    border-color: rgba(234, 179, 8, 0.4) !important;
+}
+
+[data-theme="light"] #profile-override-warning-banner .text-yellow-200,
+[data-theme="light"] #profile-override-warning-banner .text-yellow-300,
+[data-theme="light"] #profile-override-warning-banner .text-yellow-400 {
+    color: #92400e !important; /* dark amber for contrast */
+}
+
+/* Knowledge Banner */
+[data-theme="light"] #knowledge-banner {
+    background: rgba(59, 130, 246, 0.12) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+[data-theme="light"] #knowledge-banner.text-blue-200 {
+    color: #1e40af !important; /* dark blue */
+}
+
+/* Consumption Warning Banners */
+[data-theme="light"] #consumption-warning-80 .text-yellow-400 {
+    color: #92400e !important;
+}
+
+[data-theme="light"] #consumption-warning-80 .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #consumption-warning-95 .text-orange-400 {
+    color: #9a3412 !important;
+}
+
+[data-theme="light"] #consumption-warning-95 .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #consumption-warning-100 .text-red-400 {
+    color: #991b1b !important;
+}
+
+[data-theme="light"] #consumption-warning-100 .text-gray-300,
+[data-theme="light"] #consumption-warning-100 .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* General red text in light mode */
+[data-theme="light"] .text-red-200 {
+    color: #991b1b !important;
+}
+
+[data-theme="light"] .text-red-300 {
+    color: #b91c1c !important;
+}
+
+[data-theme="light"] .text-red-400 {
+    color: #dc2626 !important;
+}
+
+/* General yellow/amber text in light mode */
+[data-theme="light"] .text-yellow-200,
+[data-theme="light"] .text-yellow-300 {
+    color: #92400e !important;
+}
+
+[data-theme="light"] .text-yellow-400 {
+    color: #b45309 !important;
+}
+
+/* General blue text in light mode */
+[data-theme="light"] .text-blue-200,
+[data-theme="light"] .text-blue-300 {
+    color: #1e40af !important;
+}
+
+/* General green text in light mode */
+[data-theme="light"] .text-green-200,
+[data-theme="light"] .text-green-300 {
+    color: #166534 !important;
+}
+
+[data-theme="light"] .text-green-400 {
+    color: #15803d !important;
+}
+
+/* General purple text in light mode */
+[data-theme="light"] .text-purple-200,
+[data-theme="light"] .text-purple-300 {
+    color: #6b21a8 !important;
+}
+
+[data-theme="light"] .text-purple-400 {
+    color: #7c3aed !important;
+}
+
+/* General cyan text in light mode */
+[data-theme="light"] .text-cyan-200,
+[data-theme="light"] .text-cyan-300 {
+    color: #0e7490 !important;
+}
+
+[data-theme="light"] .text-cyan-400 {
+    color: #0891b2 !important;
+}
+
+/* Header Status Message */
+[data-theme="light"] #header-status-message {
+    color: var(--text-primary) !important;
+}
+
+/* MCP Classification Progress Banner */
+[data-theme="light"] #mcp-classification-progress {
+    background: rgba(234, 179, 8, 0.12) !important;
+    border-color: rgba(234, 179, 8, 0.3) !important;
+}
+
+[data-theme="light"] #mcp-classification-progress .text-yellow-200,
+[data-theme="light"] #mcp-classification-progress .text-yellow-300 {
+    color: #92400e !important;
+}
+
+/* System Prompts Tier Notice */
+[data-theme="light"] #system-prompts-tier-notice {
+    background: rgba(234, 179, 8, 0.12) !important;
+    border-color: rgba(234, 179, 8, 0.3) !important;
+}
+
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-200,
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-300 {
+    color: #92400e !important;
+}
+
+/* Notification Banner (general) */
+[data-theme="light"] .notification-banner {
+    background: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - Toggle Switches (Global)
+   ============================================================================ */
+
+/* Toggle switch track (unchecked state) - needs visible contrast */
+[data-theme="light"] .peer ~ div.bg-gray-700,
+[data-theme="light"] .peer ~ div.bg-gray-600,
+[data-theme="light"] div.bg-gray-700.rounded-full,
+[data-theme="light"] div.bg-gray-600.rounded-full {
+    background: #94a3b8 !important; /* slate-400 for visible track */
+}
+
+/* Toggle switch track when checked - keep brand orange */
+[data-theme="light"] .peer:checked ~ div.bg-gray-700,
+[data-theme="light"] .peer:checked ~ div.bg-gray-600,
+[data-theme="light"] .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
+    background: #F15F22 !important;
+}
+
+/* Toggle switch track when checked (blue variant for disabled/special) */
+[data-theme="light"] .peer:checked ~ div.peer-checked\:bg-blue-500 {
+    background: #3b82f6 !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - Profile Card Dropdown Menus
+   ============================================================================ */
+
+/* Classification button - ensure white text on orange background */
+[data-theme="light"] button[data-action="toggle-classification-menu"] {
+    color: white !important;
+}
+
+/* Profile dropdown menu */
+[data-theme="light"] .profile-menu {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+[data-theme="light"] .profile-menu button {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-menu button:hover {
+    background: rgba(241, 95, 34, 0.08) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-menu button svg {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .profile-menu button[data-action="delete-profile"] {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] .profile-menu button[data-action="delete-profile"]:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #b91c1c !important;
+}
+
+[data-theme="light"] .profile-menu .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Classification dropdown menu */
+[data-theme="light"] .classification-menu {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+[data-theme="light"] .classification-menu button {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .classification-menu button:hover {
+    background: rgba(241, 95, 34, 0.08) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .classification-menu button svg {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .classification-menu button.text-amber-300 {
+    color: #b45309 !important;
+    background: rgba(245, 158, 11, 0.1) !important;
+}
+
+[data-theme="light"] .classification-menu button.text-orange-300 {
+    color: #c2410c !important;
+    background: rgba(249, 115, 22, 0.1) !important;
+}
+
+[data-theme="light"] .classification-menu .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - Profile Modal Styles
+   ============================================================================ */
+
+/* Profile Modal Container */
+[data-theme="light"] #profile-modal .glass-panel {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Modal Header */
+[data-theme="light"] #profile-modal .bg-gradient-to-r {
+    background: linear-gradient(to right, #f1f5f9, #e2e8f0) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+[data-theme="light"] #profile-modal-title {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-modal .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* Input fields */
+[data-theme="light"] #profile-modal input[type="text"],
+[data-theme="light"] #profile-modal select,
+[data-theme="light"] #profile-modal textarea {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-modal input::placeholder,
+[data-theme="light"] #profile-modal textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Labels */
+[data-theme="light"] #profile-modal .text-gray-300,
+[data-theme="light"] #profile-modal label.text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Tab Container Background */
+[data-theme="light"] #profile-modal .bg-gradient-to-br {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal .bg-gray-900\/60 {
+    background: rgba(241, 245, 249, 0.95) !important;
+}
+
+/* Tab Buttons - Inactive State */
+[data-theme="light"] #profile-tab-mcp-resources,
+[data-theme="light"] #profile-tab-intelligence,
+[data-theme="light"] #profile-tab-system-prompts {
+    color: var(--text-secondary) !important;
+    background: transparent !important;
+}
+
+/* Tab Buttons - Active State */
+[data-theme="light"] #profile-tab-mcp-resources.border-\[\#F15F22\],
+[data-theme="light"] #profile-tab-intelligence.border-\[\#F15F22\],
+[data-theme="light"] #profile-tab-system-prompts.border-\[\#F15F22\] {
+    color: var(--teradata-orange) !important;
+    background: rgba(241, 95, 34, 0.08) !important;
+}
+
+/* Tab Buttons - Hover State */
+[data-theme="light"] #profile-tab-mcp-resources:hover,
+[data-theme="light"] #profile-tab-intelligence:hover,
+[data-theme="light"] #profile-tab-system-prompts:hover {
+    color: var(--text-primary) !important;
+    background: var(--hover-bg) !important;
+}
+
+/* Tab Content Panels */
+[data-theme="light"] #profile-modal .border-gray-700\/50,
+[data-theme="light"] #profile-modal .border-gray-700\/30 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Section Headers - Available Tools, Available Prompts */
+[data-theme="light"] #profile-modal .text-blue-400,
+[data-theme="light"] #profile-modal .text-green-400,
+[data-theme="light"] #profile-modal .text-purple-400 {
+    filter: brightness(0.7) saturate(1.2);
+}
+
+/* Tool/Prompt Lists */
+[data-theme="light"] #profile-modal .bg-gray-800\/40,
+[data-theme="light"] #profile-modal .bg-gray-800\/30 {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* Planner/Knowledge Repositories Section */
+[data-theme="light"] #profile-modal .from-orange-900\/20,
+[data-theme="light"] #profile-modal .from-purple-900\/20,
+[data-theme="light"] #profile-modal .bg-gradient-to-br.from-gray-800\/50 {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+[data-theme="light"] #profile-modal .text-orange-400 {
+    color: #c2410c !important;
+}
+
+/* Repository description text */
+[data-theme="light"] #profile-modal .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Table Headers */
+[data-theme="light"] #profile-modal thead,
+[data-theme="light"] #profile-modal .bg-gray-700\/30 {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #profile-modal th {
+    color: var(--text-secondary) !important;
+}
+
+/* Table Rows */
+[data-theme="light"] #profile-modal tbody tr {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-modal tbody tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #profile-modal td {
+    color: var(--text-primary) !important;
+}
+
+/* Toggle Switches Background */
+[data-theme="light"] #profile-modal .bg-gray-600 {
+    background: #cbd5e1 !important;
+}
+
+/* Generate Tag Button */
+[data-theme="light"] #profile-modal-generate-tag {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal-generate-tag:hover {
+    background: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Session Primer Section */
+[data-theme="light"] #profile-modal .from-cyan-900\/10 {
+    background: rgba(6, 182, 212, 0.08) !important;
+}
+
+/* Scrollbar in modal */
+[data-theme="light"] #profile-modal ::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+[data-theme="light"] #profile-modal ::-webkit-scrollbar-thumb {
+    background: var(--border-primary);
+}
+
+/* Footer buttons */
+[data-theme="light"] #profile-modal .bg-gray-700 {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Intelligence Collections Tab - Repository Sections */
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/40 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/60 {
+    background: rgba(241, 95, 34, 0.08) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/50 {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/50 {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence h4.text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .border-gray-700\/40,
+[data-theme="light"] #profile-content-intelligence .border-gray-700\/50 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Info message at bottom of Advanced Settings */
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/30 {
+    background: rgba(241, 95, 34, 0.08) !important;
+    border-color: rgba(241, 95, 34, 0.2) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/30 .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/30 .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Form inputs in Advanced Settings */
+[data-theme="light"] #profile-content-intelligence input[type="number"] {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Locked badges */
+[data-theme="light"] #profile-content-intelligence .bg-gray-600 {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* Help text under inputs */
+[data-theme="light"] #profile-content-intelligence .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Collection row items */
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/30 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .hover\:bg-gray-800\/50:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Toggle switch tracks - make visible in light mode */
+[data-theme="light"] #profile-content-intelligence .bg-gray-700 {
+    background: #94a3b8 !important; /* slate-400 - visible gray */
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-600 {
+    background: #94a3b8 !important;
+}
+
+/* Toggle switch when checked - keep orange */
+[data-theme="light"] #profile-content-intelligence .peer-checked\:bg-\[\#F15F22\] {
+    background: #F15F22 !important;
+}
+
+/* Collection name text */
+[data-theme="light"] #profile-content-intelligence .text-gray-200 {
+    color: var(--text-primary) !important;
+}

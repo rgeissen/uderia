@@ -5635,6 +5635,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         mcpResourcesTab.onclick = () => switchToTab(mcpResourcesTab, mcpResourcesContent);
         intelligenceTab.onclick = () => switchToTab(intelligenceTab, intelligenceContent);
         systemPromptsTab.onclick = () => switchToTab(systemPromptsTab, systemPromptsContent);
+
+        // CRITICAL FIX: Reset to MCP Resources tab as default every time modal opens
+        // This ensures tab visual state matches content visibility when reopening the modal
+        switchToTab(mcpResourcesTab, mcpResourcesContent);
     }
 
     // Attach event listeners for uncheck all buttons
