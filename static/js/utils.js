@@ -300,13 +300,32 @@ export function setupPanelToggle(button, panel, checkbox, collapseIcon, expandIc
     
     // Panel is visible - ensure it's shown (remove inline display:none)
     panel.style.display = 'block';
-    
+
+    // Determine icon behavior based on panel location
+    // Status panel (right side): swapped icons (collapsed shows <<, expanded shows >>)
+    // History (left) and Header (top): standard icons (collapsed shows >>/v, expanded shows <</^)
+    const useSwappedIcons = panel.id === 'status-window';
+
     const toggle = (isOpen, saveState = true) => {
         const isCollapsed = !isOpen;
         panel.classList.toggle('collapsed', isCollapsed);
-        if (collapseIcon) collapseIcon.classList.toggle('hidden', isCollapsed);
-        if (expandIcon) expandIcon.classList.toggle('hidden', !isCollapsed);
-        if (checkbox) checkbox.checked = isOpen;
+
+        // Get current icon elements (in case button was cloned)
+        const currentCollapseIcon = collapseIcon?.id ? document.getElementById(collapseIcon.id) : collapseIcon;
+        const currentExpandIcon = expandIcon?.id ? document.getElementById(expandIcon.id) : expandIcon;
+        const currentCheckbox = checkbox?.id ? document.getElementById(checkbox.id) : checkbox;
+
+        // Icon logic based on panel location
+        if (useSwappedIcons) {
+            // Status panel: collapsed shows collapse icon, expanded shows expand icon
+            if (currentCollapseIcon) currentCollapseIcon.classList.toggle('hidden', !isCollapsed);
+            if (currentExpandIcon) currentExpandIcon.classList.toggle('hidden', isCollapsed);
+        } else {
+            // History and Header panels: collapsed shows expand icon, expanded shows collapse icon
+            if (currentCollapseIcon) currentCollapseIcon.classList.toggle('hidden', isCollapsed);
+            if (currentExpandIcon) currentExpandIcon.classList.toggle('hidden', !isCollapsed);
+        }
+        if (currentCheckbox) currentCheckbox.checked = isOpen;
         
         // Save state to localStorage only if user can toggle
         if (saveState && storageKey && userCanToggle) {
