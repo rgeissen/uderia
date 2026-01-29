@@ -43,7 +43,11 @@
       "Bash(conda env create:*)",
       "Bash(mdfind:*)",
       "Bash(/opt/anaconda3/bin/conda env create:*)",
-      "Bash(/opt/anaconda3/bin/conda env:*)"
+      "Bash(/opt/anaconda3/bin/conda env:*)",
+      "Bash(/opt/miniconda3/bin/conda env list:*)",
+      "Bash(/opt/miniconda3/bin/conda env remove:*)",
+      "Bash(/opt/miniconda3/bin/conda create:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

@@ -2074,6 +2074,224 @@
 }
 
 /* ============================================================================
+   LIGHT THEME - VIEW PROMPT AND RAG CASE MODALS
+   ============================================================================ */
+
+/* View Prompt Modal - code preview area */
+[data-theme="light"] #view-prompt-modal-content .bg-gray-800\/80 {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #view-prompt-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #view-prompt-modal-text {
+    color: var(--text-primary) !important;
+}
+
+/* RAG Case Modal - code preview area */
+[data-theme="light"] #rag-case-modal-content .bg-gray-800\/80 {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-case-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-case-modal-json {
+    color: var(--text-primary) !important;
+}
+
+/* Modal close button hover in light mode */
+[data-theme="light"] #rag-case-modal-close:hover {
+    background: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Chat Modal - log area */
+[data-theme="light"] #chat-modal-log {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #chat-modal-input {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #chat-modal-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Prompt Input Modal */
+[data-theme="light"] #prompt-input-modal-input {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #prompt-input-modal-label {
+    color: var(--text-secondary) !important;
+}
+
+/* System Prompt Editor Modal */
+[data-theme="light"] #prompt-editor-textarea {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Modal buttons in light mode */
+[data-theme="light"] #prompt-input-modal-cancel,
+[data-theme="light"] #prompt-editor-close,
+[data-theme="light"] #prompt-editor-reset,
+[data-theme="light"] #rag-case-modal-copy {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #prompt-input-modal-cancel:hover,
+[data-theme="light"] #prompt-editor-close:hover,
+[data-theme="light"] #prompt-editor-reset:hover,
+[data-theme="light"] #rag-case-modal-copy:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - WARNING/STATUS TEXT COLORS
+   ============================================================================ */
+
+/* Yellow warning text - needs darker shade for light mode contrast */
+[data-theme="light"] .text-yellow-400,
+[data-theme="light"] .text-yellow-500 {
+    color: #b45309 !important; /* amber-700 - better contrast on light backgrounds */
+}
+
+/* Orange text (like "Inherits from" badges) - needs darker shade */
+[data-theme="light"] .text-orange-300,
+[data-theme="light"] .text-orange-400 {
+    color: #c2410c !important; /* orange-700 - better contrast on light backgrounds */
+}
+
+/* Orange badge backgrounds - slightly more opaque for light mode */
+[data-theme="light"] .bg-orange-500\/20 {
+    background-color: rgba(249, 115, 22, 0.15) !important;
+}
+
+[data-theme="light"] .border-orange-400\/30 {
+    border-color: rgba(251, 146, 60, 0.5) !important;
+}
+
+/* Green info boxes (like "Share your knowledge" in marketplace) */
+[data-theme="light"] .text-green-200,
+[data-theme="light"] .text-green-300 {
+    color: #166534 !important; /* green-800 - better contrast on light backgrounds */
+}
+
+[data-theme="light"] .text-green-400 {
+    color: #15803d !important; /* green-700 - better contrast for icons */
+}
+
+[data-theme="light"] .bg-green-900\/20 {
+    background-color: rgba(22, 163, 74, 0.12) !important; /* green-600 with low opacity */
+}
+
+[data-theme="light"] .border-green-500\/30 {
+    border-color: rgba(22, 163, 74, 0.4) !important;
+}
+
+/* Import Collection modal - button description text */
+[data-theme="light"] .bg-blue-600 .text-gray-300,
+[data-theme="light"] .bg-blue-500 .text-gray-300 {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+[data-theme="light"] #import-from-path-btn {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #import-from-path-btn:hover {
+    background-color: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #import-from-path-btn .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+/* Intelligence/Performance tabs - ensure proper contrast in light mode */
+[data-theme="light"] #intel-tab-my-performance,
+[data-theme="light"] #intel-tab-system-performance,
+[data-theme="light"] #tab-my-performance,
+[data-theme="light"] #tab-system-performance {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #intel-tab-my-performance.text-\[\#F15F22\],
+[data-theme="light"] #intel-tab-system-performance.text-\[\#F15F22\],
+[data-theme="light"] #tab-my-performance.text-\[\#F15F22\],
+[data-theme="light"] #tab-system-performance.text-\[\#F15F22\] {
+    color: #c2410c !important; /* darker orange for better contrast */
+}
+
+/* Tab container border in light mode */
+[data-theme="light"] #intelligence-tabs-container .border-gray-700,
+[data-theme="light"] #performance-tabs-container .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - PANE VISIBILITY CONFIGURATION TABLE
+   ============================================================================ */
+
+[data-theme="light"] #pane-config-tab .glass-panel {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table thead .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table tbody tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .divide-gray-700 {
+    --tw-divide-opacity: 1;
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .bg-gray-600 {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .bg-gray-600:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
    THEME APPLICATION TO BODY
    Enhanced with sophisticated gradients and depth
    ============================================================================ */
