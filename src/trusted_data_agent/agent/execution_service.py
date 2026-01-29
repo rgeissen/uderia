@@ -364,9 +364,13 @@ async def _run_genie_execution(
             for msg in history_messages[-10:]:
                 msg_content = msg.get("content", "")
 
+                # Handle content that may be a list (Google Gemini multimodal format)
+                if isinstance(msg_content, list):
+                    msg_content = ' '.join(str(part) for part in msg_content if part)
+
                 # Skip messages marked as invalid (purged or toggled off)
                 if msg.get("isValid") is False:
-                    app_logger.debug(f"[Genie] Skipping invalid message: {msg_content[:50]}...")
+                    app_logger.debug(f"[Genie] Skipping invalid message: {msg_content[:50] if msg_content else ''}...")
                     continue
 
                 if msg_content in priming_messages:

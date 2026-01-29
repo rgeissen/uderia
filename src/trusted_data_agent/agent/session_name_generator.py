@@ -139,7 +139,13 @@ async def _generate_via_langchain(
     response = await llm_instance.ainvoke([system_msg, human_msg])
 
     # Extract text and tokens
-    name_text = response.content if hasattr(response, 'content') else str(response)
+    # Handle Google Gemini which may return content as a list of parts
+    raw_content = response.content if hasattr(response, 'content') else str(response)
+    if isinstance(raw_content, list):
+        # Extract text from list of content parts (Google Gemini multimodal format)
+        name_text = ' '.join(str(part) for part in raw_content if part)
+    else:
+        name_text = str(raw_content) if raw_content else ""
     cleaned_name = name_text.strip().strip('"\'')
 
     # Extract token usage from response (handles multiple provider formats)
