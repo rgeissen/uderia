@@ -7,6 +7,7 @@ ensuring consistency between default profile initialization and temporary profil
 
 from typing import Dict, Any, Tuple
 from openai import AsyncOpenAI, AsyncAzureOpenAI
+import asyncio
 import boto3
 import httpx
 
@@ -52,23 +53,24 @@ async def create_llm_client(provider: str, model: str, credentials: Dict[str, An
     elif provider == "Friendli":
         friendli_api_key = credentials.get("friendli_token")
         endpoint_url = credentials.get("friendli_endpoint_url")
-        
+
         if not friendli_api_key:
             raise ValueError("Friendli API token is required but not provided")
-        
+
+        # Set a 30-second timeout to prevent hanging on unavailable models
         if endpoint_url:
             # Dedicated endpoint
-            client = AsyncOpenAI(api_key=friendli_api_key, base_url=endpoint_url)
+            client = AsyncOpenAI(api_key=friendli_api_key, base_url=endpoint_url, timeout=30.0)
             if validate:
                 validation_url = f"{endpoint_url.rstrip('/')}/v1/models"
                 headers = {"Authorization": f"Bearer {friendli_api_key}"}
-                async with httpx.AsyncClient() as http_client:
+                async with httpx.AsyncClient(timeout=30.0) as http_client:
                     response = await http_client.get(validation_url, headers=headers)
                     response.raise_for_status()
             return client
         else:
             # Serverless endpoint
-            client = AsyncOpenAI(api_key=friendli_api_key, base_url="https://api.friendli.ai/serverless/v1")
+            client = AsyncOpenAI(api_key=friendli_api_key, base_url="https://api.friendli.ai/serverless/v1", timeout=30.0)
             if validate:
                 await client.chat.completions.create(
                     model=model,
@@ -185,11 +187,18 @@ async def test_llm_credentials(provider: str, model: str, credentials: Dict[str,
                 return True, f"LLM connection successful ({provider} {model})."
                 
         elif provider in ["OpenAI", "Friendli", "Azure"]:
-            response = await llm_instance.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=5
-            )
+            # Use timeout wrapper to prevent hanging on unavailable models
+            try:
+                response = await asyncio.wait_for(
+                    llm_instance.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": "test"}],
+                        max_tokens=5
+                    ),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                return False, f"Connection timed out testing {provider} model '{model}'. The model may not be available."
             if response.choices:
                 return True, f"LLM connection successful ({provider} {model})."
                 

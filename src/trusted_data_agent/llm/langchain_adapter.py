@@ -286,7 +286,8 @@ def _create_friendli_llm(model: str, credentials: dict, temperature: float) -> A
             model=model,
             api_key=friendli_token,
             base_url=base_url,
-            temperature=temperature
+            temperature=temperature,
+            timeout=60  # 60 second timeout to prevent hanging on unavailable models
         )
     except ImportError:
         raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")

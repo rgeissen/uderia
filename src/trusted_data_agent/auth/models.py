@@ -1080,3 +1080,64 @@ class RecommendedModel(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+class ProviderAvailableModel(Base):
+    """
+    Available models for LLM providers that don't have dynamic model listing APIs.
+
+    Initially designed for Friendli serverless models, but extensible to other providers.
+    Models can have different billing types (token-based, time-based, free) and statuses.
+
+    This table controls which models appear in the UI dropdown. It is separate from
+    llm_model_costs which handles pricing - a model can be deprecated (hidden from dropdown)
+    while still having cost data for historical tracking.
+    """
+
+    __tablename__ = 'provider_available_models'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    provider = Column(String(50), nullable=False, index=True)  # e.g., "Friendli"
+    model_id = Column(String(200), nullable=False, index=True)  # e.g., "meta-llama/Llama-3.3-70B-Instruct"
+    display_name = Column(String(200), nullable=True)  # Human-readable name for UI
+
+    # Billing and availability
+    billing_type = Column(String(20), nullable=False, default='token')  # 'token', 'time', 'free'
+    status = Column(String(20), nullable=False, default='active')  # 'active', 'deprecated', 'coming_soon'
+    endpoint_type = Column(String(20), nullable=False, default='serverless')  # 'serverless', 'dedicated', 'both'
+
+    # Metadata
+    notes = Column(Text, nullable=True)  # Additional info about the model
+    source = Column(String(50), nullable=False, default='config_default')  # 'config_default', 'manual', 'api_sync'
+    is_active = Column(Boolean, nullable=False, default=True)  # Soft delete support
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
+                       onupdate=lambda: datetime.now(timezone.utc))
+
+    # Unique constraint: one entry per provider/model/endpoint_type combination
+    __table_args__ = (
+        Index('idx_provider_model_endpoint', 'provider', 'model_id', 'endpoint_type', unique=True),
+        Index('idx_provider_status', 'provider', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<ProviderAvailableModel(provider='{self.provider}', model='{self.model_id}', status='{self.status}')>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'provider': self.provider,
+            'model_id': self.model_id,
+            'display_name': self.display_name,
+            'billing_type': self.billing_type,
+            'status': self.status,
+            'endpoint_type': self.endpoint_type,
+            'notes': self.notes,
+            'source': self.source,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }

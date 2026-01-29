@@ -926,6 +926,47 @@ def _is_model_recommended(model_name: str, recommended_list: list[str]) -> bool:
             return True
     return False
 
+
+def _get_friendli_serverless_models() -> list[str]:
+    """
+    Gets active Friendli serverless models from the database.
+
+    Falls back to a minimal hardcoded list if database is empty or unavailable
+    (e.g., during fresh install before bootstrap runs).
+    """
+    try:
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import ProviderAvailableModel
+
+        with get_db_session() as session:
+            models = session.query(ProviderAvailableModel).filter_by(
+                provider='Friendli',
+                endpoint_type='serverless',
+                is_active=True
+            ).filter(
+                ProviderAvailableModel.status != 'deprecated'
+            ).all()
+
+            if models:
+                app_logger.info(f"Loaded {len(models)} Friendli serverless models from database")
+                return [m.model_id for m in models]
+
+            # Fallback: Database empty - return minimal list
+            app_logger.warning("No Friendli models in database, using fallback list")
+            return [
+                "meta-llama/Llama-3.3-70B-Instruct",
+                "meta-llama/Llama-3.1-8B-Instruct",
+            ]
+
+    except Exception as e:
+        app_logger.warning(f"Failed to query Friendli models from database: {e}, using fallback list")
+        # Fallback on error
+        return [
+            "meta-llama/Llama-3.3-70B-Instruct",
+            "meta-llama/Llama-3.1-8B-Instruct",
+        ]
+
+
 async def list_models(provider: str, credentials: dict) -> list[dict]:
     """
     Lists available models for a given provider and checks if they are recommended.
@@ -986,35 +1027,9 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
                 data = response.json()
             model_names = [model.get("id") for model in data if model.get("id")]
         else:
-            # Friendli.ai Serverless mode: No model listing API available
-            # Return hardcoded list of all available serverless models (updated Jan 2026)
-            app_logger.info("Friendli.ai Serverless mode: Returning all available serverless models.")
-            model_names = [
-                # Token-Based Billing Models
-                "meta-llama/Llama-3.3-70B-Instruct",
-                "meta-llama/Llama-3.1-8B-Instruct",
-                "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                "LGAI-EXAONE/EXAONE-4.0.1-32B",
-                "MiniMaxAI/MiniMax-M2.1",
-                "zai-org/GLM-4.7",
-                # Time-Based Billing Models
-                "deepseek-ai/DeepSeek-V3.1",
-                "deepseek-ai/DeepSeek-R1-0528",
-                "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
-                "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-                "Qwen/Qwen3-235B-A22B-Thinking-2507",
-                "Qwen/Qwen3-30B-A3B",
-                "Qwen/Qwen3-32B",
-                "zai-org/GLM-4.6",
-                "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
-                "mistralai/Magistral-Small-2506",
-                "mistralai/Devstral-Small-2505",
-                "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B",
-                "skt/A.X-4.0",
-                "skt/A.X-31",
-                # Free (Limited Time)
-                "LGAI-EXAONE/K-EXAONE-236B-A23B",
-            ]
+            # Friendli.ai Serverless mode: Query database for available models
+            app_logger.info("Friendli.ai Serverless mode: Querying database for available models.")
+            model_names = _get_friendli_serverless_models()
 
     elif provider == "Amazon":
         bedrock_client = boto3.client(

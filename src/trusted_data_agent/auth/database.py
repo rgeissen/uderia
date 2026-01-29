@@ -113,6 +113,9 @@ def init_database():
         # Bootstrap recommended models from tda_config.json
         _bootstrap_recommended_models()
 
+        # Bootstrap provider-available models (e.g., Friendli serverless)
+        _bootstrap_provider_models()
+
         return True
     except Exception as e:
         logger.error(f"Failed to initialize authentication database: {e}", exc_info=True)
@@ -957,6 +960,79 @@ def _bootstrap_recommended_models():
 
     except Exception as e:
         logger.error(f"Failed to bootstrap recommended models: {e}", exc_info=True)
+
+
+def _bootstrap_provider_models():
+    """
+    Bootstrap provider-available models from tda_config.json if they don't exist.
+
+    Initially supports Friendli serverless models, but extensible to other providers
+    that don't have dynamic model listing APIs.
+
+    Models are stored with source='config_default' and can be managed via the
+    maintenance/update_friendli_models.py script.
+    """
+    try:
+        import json
+        from pathlib import Path
+        from trusted_data_agent.auth.models import ProviderAvailableModel
+
+        # Load tda_config.json
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if not config_path.exists():
+            logger.warning("tda_config.json not found, skipping provider models bootstrap")
+            return
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        # Bootstrap Friendli serverless models
+        friendli_models = config.get('friendli_serverless_models', [])
+        if not friendli_models:
+            logger.info("No friendli_serverless_models defined in tda_config.json")
+            return
+
+        with get_db_session() as session:
+            bootstrapped_count = 0
+            for model_data in friendli_models:
+                model_id = model_data.get('model_id')
+
+                if not model_id:
+                    logger.warning(f"Skipping invalid model entry (no model_id): {model_data}")
+                    continue
+
+                # Check if this provider/model/endpoint_type combination already exists
+                existing = session.query(ProviderAvailableModel).filter_by(
+                    provider='Friendli',
+                    model_id=model_id,
+                    endpoint_type='serverless'
+                ).first()
+
+                if existing:
+                    continue  # Skip if already exists (idempotent)
+
+                # Create new model entry
+                model = ProviderAvailableModel(
+                    provider='Friendli',
+                    model_id=model_id,
+                    display_name=model_data.get('display_name'),
+                    billing_type=model_data.get('billing_type', 'token'),
+                    status=model_data.get('status', 'active'),
+                    endpoint_type='serverless',
+                    notes=model_data.get('notes', ''),
+                    source='config_default',
+                    is_active=True
+                )
+                session.add(model)
+                bootstrapped_count += 1
+                logger.info(f"Bootstrapped Friendli model: {model_id}")
+
+            if bootstrapped_count > 0:
+                session.commit()
+                logger.info(f"✅ Bootstrapped {bootstrapped_count} Friendli serverless models")
+
+    except Exception as e:
+        logger.error(f"Failed to bootstrap provider models: {e}", exc_info=True)
 
 
 # Initialize database on module import (authentication is always enabled)
