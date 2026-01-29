@@ -501,6 +501,14 @@
     border-color: var(--sidebar-border) !important;
 }
 
+/* Light mode: Muted orange palette for reduced visual intensity */
+[data-theme="light"] {
+    --teradata-orange-light-mode: #D9501A;      /* Primary (20% darker than #F15F22) */
+    --teradata-orange-light-hover: #C2410C;     /* Hover/accent */
+    --teradata-orange-light-focus: rgba(217, 80, 26, 0.4);  /* Focus rings */
+    --teradata-orange-light-border: #D9501A;    /* Tab borders */
+}
+
 /* Light theme - Top navigation bar */
 [data-theme="light"] body > nav,
 [data-theme="light"] nav.bg-black\/30 {
@@ -1192,7 +1200,7 @@
 
 [data-theme="light"] .category-tab:hover,
 [data-theme="light"] .category-tab.active {
-    background-color: var(--teradata-orange) !important;
+    background-color: var(--teradata-orange-light-mode) !important;
     color: white !important;
 }
 
@@ -2338,11 +2346,100 @@
     color: var(--text-muted) !important;
 }
 
-[data-theme="light"] #intel-tab-my-performance.text-\[\#F15F22\],
-[data-theme="light"] #intel-tab-system-performance.text-\[\#F15F22\],
+/* Light mode: Tone down orange in all tab elements */
+
+/* Performance tabs (Execution + Intelligence sections) - text color */
 [data-theme="light"] #tab-my-performance.text-\[\#F15F22\],
-[data-theme="light"] #tab-system-performance.text-\[\#F15F22\] {
-    color: #c2410c !important; /* darker orange for better contrast */
+[data-theme="light"] #tab-system-performance.text-\[\#F15F22\],
+[data-theme="light"] #intel-tab-my-performance.text-\[\#F15F22\],
+[data-theme="light"] #intel-tab-system-performance.text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Tab borders - use muted orange instead of bright */
+[data-theme="light"] #tab-my-performance.border-\[\#F15F22\],
+[data-theme="light"] #tab-system-performance.border-\[\#F15F22\],
+[data-theme="light"] #intel-tab-my-performance.border-\[\#F15F22\],
+[data-theme="light"] #intel-tab-system-performance.border-\[\#F15F22\],
+[data-theme="light"] .border-\[\#F15F22\] {
+    border-color: var(--teradata-orange-light-border) !important;
+}
+
+/* Generic tab text/border overrides for dynamically created tabs */
+[data-theme="light"] button.text-\[\#F15F22\],
+[data-theme="light"] div.text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Light mode: Tone down orange button backgrounds */
+[data-theme="light"] .bg-\[\#F15F22\],
+[data-theme="light"] button.bg-\[\#F15F22\],
+[data-theme="light"] .bg-teradata-orange {
+    background: var(--teradata-orange-light-mode) !important;
+}
+
+/* Button hover states */
+[data-theme="light"] .bg-\[\#F15F22\]:hover,
+[data-theme="light"] button.bg-\[\#F15F22\]:hover,
+[data-theme="light"] .bg-teradata-orange:hover {
+    background: var(--teradata-orange-light-hover) !important;
+}
+
+/* Welcome CTA button gradient */
+[data-theme="light"] .welcome-cta-button {
+    background: linear-gradient(135deg, var(--teradata-orange-light-mode) 0%, var(--teradata-orange-light-hover) 100%) !important;
+}
+
+/* Light mode: Muted orange for form element focus states */
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus {
+    border-color: var(--teradata-orange-light-mode) !important;
+    --tw-ring-color: var(--teradata-orange-light-focus) !important;
+}
+
+/* Input focus classes */
+[data-theme="light"] .focus\:ring-\[\#F15F22\]:focus,
+[data-theme="light"] .focus\:border-\[\#F15F22\]:focus {
+    --tw-ring-color: var(--teradata-orange-light-focus) !important;
+    border-color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Checkboxes */
+[data-theme="light"] input[type="checkbox"]:checked {
+    background: var(--teradata-orange-light-mode) !important;
+    border-color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Radio buttons */
+[data-theme="light"] input[type="radio"]:checked {
+    color: var(--teradata-orange-light-mode) !important;
+    background-color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Toggle switches */
+[data-theme="light"] .peer:checked ~ div.bg-gray-700,
+[data-theme="light"] .peer:checked ~ div.bg-gray-600,
+[data-theme="light"] .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
+    background: var(--teradata-orange-light-mode) !important;
+}
+
+/* Genie badges and status indicators */
+[data-theme="light"] .genie-parent-badge,
+[data-theme="light"] .genie-child-badge,
+[data-theme="light"] .genie-slave-count {
+    background: var(--teradata-orange-light-mode) !important;
+}
+
+/* Profile type indicators */
+[data-theme="light"] .profile-type-indicator {
+    border-color: rgba(217, 80, 26, 0.5) !important;
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Light mode: Tone down welcome screen orange text */
+[data-theme="light"] .welcome-content .text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
 }
 
 /* Tab container border in light mode */
