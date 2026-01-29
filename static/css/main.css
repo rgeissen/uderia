@@ -1740,7 +1740,7 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
 /* --- MODIFICATION START: Styles for New Platform Layout --- */
 /* Base style for the new vertical side navigation */
 #app-side-nav {
-    width: 288px; /* 18rem */
+    width: 200px; /* Compact expanded width */
     flex-shrink: 0;
     overflow-x: hidden;
     transition: width 0.3s ease-in-out;
