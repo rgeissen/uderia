@@ -70,7 +70,7 @@
     {
       "name": "Friendli - Llama 3.3",
       "provider": "Friendli",
-      "model": "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
       "credentials": {},
       "id": "1763819257483-fluhef2vk"
     },
@@ -2467,140 +2467,91 @@
       "display_name": "Llama 3.3 70B Instruct",
       "billing_type": "token",
       "status": "active",
-      "notes": "Best quality/price ratio for general tasks"
+      "notes": "$0.6/1M tokens"
     },
     {
       "model_id": "meta-llama/Llama-3.1-8B-Instruct",
       "display_name": "Llama 3.1 8B Instruct",
       "billing_type": "token",
       "status": "active",
-      "notes": "Fast and cost-effective"
+      "notes": "$0.1/1M tokens"
     },
     {
       "model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
       "display_name": "Qwen3 235B Instruct",
       "billing_type": "token",
       "status": "active",
-      "notes": "Large context, strong reasoning"
+      "notes": "Input $0.2 / Output $0.8 per 1M tokens"
     },
     {
       "model_id": "LGAI-EXAONE/EXAONE-4.0.1-32B",
       "display_name": "EXAONE 4.0.1 32B",
       "billing_type": "token",
       "status": "active",
-      "notes": "Korean/English bilingual"
+      "notes": "Input $0.6 / Output $1 per 1M tokens"
     },
     {
       "model_id": "MiniMaxAI/MiniMax-M2.1",
       "display_name": "MiniMax M2.1",
       "billing_type": "token",
       "status": "active",
-      "notes": "Efficient multimodal model"
+      "notes": "Input $0.3 / Output $1.2 per 1M tokens"
     },
     {
       "model_id": "zai-org/GLM-4.7",
       "display_name": "GLM-4.7",
       "billing_type": "token",
       "status": "active",
-      "notes": "ChatGLM latest token-based"
+      "notes": "Input $0.6 / Output $2.2 per 1M tokens"
     },
     {
       "model_id": "deepseek-ai/DeepSeek-V3.1",
       "display_name": "DeepSeek V3.1",
       "billing_type": "time",
       "status": "active",
-      "notes": "Time-based billing @ $0.004/sec"
-    },
-    {
-      "model_id": "deepseek-ai/DeepSeek-R1-0528",
-      "display_name": "DeepSeek R1 (May 2025)",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "Reasoning model, time-based @ $0.004/sec"
+      "notes": "$0.004/sec"
     },
     {
       "model_id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
       "display_name": "Llama 4 Maverick 128E",
       "billing_type": "time",
       "status": "active",
-      "notes": "Llama 4 MoE variant"
+      "notes": "$0.004/sec"
     },
     {
       "model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
       "display_name": "Llama 4 Scout 16E",
       "billing_type": "time",
       "status": "active",
-      "notes": "Llama 4 scout variant"
+      "notes": "$0.002/sec"
     },
     {
       "model_id": "Qwen/Qwen3-235B-A22B-Thinking-2507",
       "display_name": "Qwen3 235B Thinking",
       "billing_type": "time",
       "status": "active",
-      "notes": "Reasoning variant"
+      "notes": "$0.004/sec"
     },
     {
       "model_id": "Qwen/Qwen3-30B-A3B",
       "display_name": "Qwen3 30B A3B",
       "billing_type": "time",
       "status": "active",
-      "notes": "Efficient MoE"
+      "notes": "$0.002/sec"
     },
     {
       "model_id": "Qwen/Qwen3-32B",
       "display_name": "Qwen3 32B",
       "billing_type": "time",
       "status": "active",
-      "notes": "Dense model"
+      "notes": "$0.002/sec"
     },
     {
       "model_id": "zai-org/GLM-4.6",
       "display_name": "GLM-4.6",
       "billing_type": "time",
       "status": "active",
-      "notes": "Time-based billing"
-    },
-    {
-      "model_id": "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
-      "display_name": "Mistral Small 3.1 24B",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "Mistral Small efficient"
-    },
-    {
-      "model_id": "mistralai/Magistral-Small-2506",
-      "display_name": "Magistral Small (June 2025)",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "Mistral reasoning model"
-    },
-    {
-      "model_id": "mistralai/Devstral-Small-2505",
-      "display_name": "Devstral Small (May 2025)",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "Mistral code model"
-    },
-    {
-      "model_id": "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B",
-      "display_name": "HyperCLOVAX SEED Think 14B",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "Korean reasoning model"
-    },
-    {
-      "model_id": "skt/A.X-4.0",
-      "display_name": "A.X 4.0",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "SK Telecom model"
-    },
-    {
-      "model_id": "skt/A.X-31",
-      "display_name": "A.X 31",
-      "billing_type": "time",
-      "status": "active",
-      "notes": "SK Telecom model"
+      "notes": "$0.004/sec"
     },
     {
       "model_id": "LGAI-EXAONE/K-EXAONE-236B-A23B",
@@ -2610,11 +2561,60 @@
       "notes": "FREE until Feb 12, 2026"
     },
     {
+      "model_id": "deepseek-ai/DeepSeek-R1-0528",
+      "display_name": "DeepSeek R1 (May 2025)",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
+      "model_id": "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+      "display_name": "Mistral Small 3.1 24B",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
+      "model_id": "mistralai/Magistral-Small-2506",
+      "display_name": "Magistral Small (June 2025)",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
+      "model_id": "mistralai/Devstral-Small-2505",
+      "display_name": "Devstral Small (May 2025)",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
+      "model_id": "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B",
+      "display_name": "HyperCLOVAX SEED Think 14B",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
+      "model_id": "skt/A.X-4.0",
+      "display_name": "A.X 4.0",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
+      "model_id": "skt/A.X-31",
+      "display_name": "A.X 31",
+      "billing_type": "time",
+      "status": "deprecated",
+      "notes": "DEPRECATED 2026-01-29 - No longer on Friendli serverless"
+    },
+    {
       "model_id": "google/gemma-3-27b-it",
       "display_name": "Gemma 3 27B IT",
       "billing_type": "token",
       "status": "deprecated",
-      "notes": "DEPRECATED - Discontinued Jan 2026, kept for historical cost tracking"
+      "notes": "DEPRECATED - Discontinued Jan 2026"
     }
   ],
   "global_parameters": {
