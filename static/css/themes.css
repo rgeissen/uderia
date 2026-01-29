@@ -643,6 +643,17 @@
     color: var(--text-primary) !important;
 }
 
+/* Light theme - Logout button */
+[data-theme="light"] #user-logout-button,
+[data-theme="light"] #user-dropdown-menu .text-red-400 {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] #user-logout-button:hover {
+    background-color: rgba(220, 38, 38, 0.1) !important;
+    color: #b91c1c !important;
+}
+
 /* Theme selector buttons - base styles for all themes */
 .theme-selector {
     color: var(--text-secondary);
@@ -655,16 +666,46 @@
     color: var(--text-primary);
 }
 
-/* Light theme - Theme selector buttons */
-[data-theme="light"] .theme-selector {
-    color: var(--text-primary) !important;
-    background-color: var(--bg-secondary) !important;
-    border-color: var(--border-primary) !important;
+/* Legacy theme - Theme selector buttons (inactive) */
+[data-theme="legacy"] .theme-selector {
+    color: #F0F0F0 !important;
+    background-color: #404040 !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
-[data-theme="light"] .theme-selector:hover {
-    background-color: rgba(148, 163, 184, 0.25) !important;
-    color: var(--text-primary) !important;
+[data-theme="legacy"] .theme-selector:hover {
+    background-color: #4a4a4a !important;
+    color: #FFFFFF !important;
+}
+
+/* Modern theme - Theme selector buttons (inactive) */
+[data-theme="modern"] .theme-selector {
+    color: #e2e8f0 !important;
+    background-color: rgba(51, 65, 85, 0.5) !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+[data-theme="modern"] .theme-selector:hover {
+    background-color: rgba(51, 65, 85, 0.8) !important;
+    color: #FFFFFF !important;
+}
+
+/* Light theme - Theme selector buttons (inactive) - use IDs for higher specificity */
+[data-theme="light"] .theme-selector,
+[data-theme="light"] #theme-legacy,
+[data-theme="light"] #theme-modern {
+    color: #0f172a !important;
+    background-color: #e2e8f0 !important;
+    border-color: rgba(148, 163, 184, 0.4) !important;
+}
+
+/* Override Tailwind hover:bg-gray-200 which makes text invisible */
+[data-theme="light"] .theme-selector:hover,
+[data-theme="light"] #theme-legacy:hover,
+[data-theme="light"] #theme-modern:hover {
+    background-color: #cbd5e1 !important;
+    color: #0f172a !important;
+    border-color: rgba(148, 163, 184, 0.6) !important;
 }
 
 /* Active theme button styling */
@@ -2292,6 +2333,94 @@
 }
 
 /* ============================================================================
+   LIGHT THEME - ALL ADMIN TABLES (comprehensive)
+   ============================================================================ */
+
+/* Generic table styling for all admin tabs */
+[data-theme="light"] .admin-tab-content table {
+    background: var(--bg-primary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table thead th {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table tbody {
+    background: var(--bg-primary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table tbody tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table tbody td {
+    color: var(--text-primary) !important;
+}
+
+/* Specific table body IDs */
+[data-theme="light"] #users-table-body,
+[data-theme="light"] #user-consumption-table-body,
+[data-theme="light"] #features-table-body,
+[data-theme="light"] #profiles-table-body,
+[data-theme="light"] #panes-table-body,
+[data-theme="light"] #parameters-table-body,
+[data-theme="light"] #versions-table-body {
+    background: var(--bg-primary) !important;
+}
+
+[data-theme="light"] #users-table-body tr,
+[data-theme="light"] #user-consumption-table-body tr,
+[data-theme="light"] #features-table-body tr,
+[data-theme="light"] #profiles-table-body tr,
+[data-theme="light"] #panes-table-body tr,
+[data-theme="light"] #parameters-table-body tr,
+[data-theme="light"] #versions-table-body tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #users-table-body td,
+[data-theme="light"] #user-consumption-table-body td,
+[data-theme="light"] #features-table-body td,
+[data-theme="light"] #profiles-table-body td,
+[data-theme="light"] #panes-table-body td,
+[data-theme="light"] #parameters-table-body td,
+[data-theme="light"] #versions-table-body td {
+    color: var(--text-primary) !important;
+}
+
+/* Document Upload Config Table */
+[data-theme="light"] #document-upload-config-container {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #document-upload-config-container table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #document-upload-config-container table tbody {
+    background: var(--bg-primary) !important;
+}
+
+/* Table headers with bg-gray-700/50 */
+[data-theme="light"] .admin-tab-content thead.bg-gray-700\/50 {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Sticky headers */
+[data-theme="light"] .admin-tab-content thead.sticky {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Table dividers */
+[data-theme="light"] .admin-tab-content .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--border-secondary) !important;
+}
+
+/* ============================================================================
    THEME APPLICATION TO BODY
    Enhanced with sophisticated gradients and depth
    ============================================================================ */
@@ -2829,4 +2958,770 @@ button[class*="icon-button"]:active,
 button[aria-label]:active {
     transform: scale(0.95);
     transition-duration: var(--duration-instant);
+}
+
+/* ============================================================================
+   LEGACY THEME OVERRIDES
+   Ensures legacy theme uses its own color palette instead of modern theme defaults
+   ============================================================================ */
+
+/* ============================================================================
+   LEGACY THEME - HARDCODED TEXT COLOR OVERRIDES
+   ============================================================================ */
+
+/* Gray text classes - use legacy text variables */
+[data-theme="legacy"] .text-gray-100,
+[data-theme="legacy"] .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] .text-gray-400,
+[data-theme="legacy"] .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="legacy"] .text-gray-600 {
+    color: var(--text-muted) !important;
+}
+
+/* Slate text classes - convert to legacy grays */
+[data-theme="legacy"] .text-slate-100,
+[data-theme="legacy"] .text-slate-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] .text-slate-300,
+[data-theme="legacy"] .text-slate-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] .text-slate-500 {
+    color: var(--text-tertiary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - HARDCODED BACKGROUND OVERRIDES
+   ============================================================================ */
+
+[data-theme="legacy"] .bg-gray-700 {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="legacy"] .bg-gray-800 {
+    background-color: var(--bg-primary) !important;
+}
+
+[data-theme="legacy"] .bg-gray-900 {
+    background-color: #1a1a1a !important;
+}
+
+[data-theme="legacy"] .bg-slate-700 {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="legacy"] .bg-slate-800 {
+    background-color: var(--bg-primary) !important;
+}
+
+[data-theme="legacy"] .bg-slate-900 {
+    background-color: #1a1a1a !important;
+}
+
+/* Glass panel for legacy theme - OPAQUE backgrounds to prevent color bleeding */
+/* CRITICAL: Must be opaque (#333333) not semi-transparent (rgba) to prevent modern theme blue from showing through */
+[data-theme="legacy"] .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] .glass-panel-strong {
+    background: #404040 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - ALL TABLES (Admin, RAG, Costs, System Prompts)
+   ============================================================================ */
+
+/* CRITICAL: Override entire table element background */
+[data-theme="legacy"] table {
+    background: #333333 !important;
+}
+
+/* Table container overrides - ensure overflow wrappers don't bleed colors */
+[data-theme="legacy"] .overflow-x-auto {
+    background: transparent !important;
+}
+
+[data-theme="legacy"] .admin-tab-content .overflow-x-auto {
+    background: #333333 !important;
+}
+
+/* Table header backgrounds - override modern slate with legacy gray */
+[data-theme="legacy"] table thead,
+[data-theme="legacy"] table thead tr {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] thead.bg-gray-700\/50,
+[data-theme="legacy"] thead.bg-gray-800,
+[data-theme="legacy"] .bg-gray-700\/50,
+[data-theme="legacy"] .bg-gray-700\/90 {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] thead th.bg-gray-700\/90 {
+    background: #404040 !important;
+}
+
+/* Admin tab specific table headers with higher specificity */
+[data-theme="legacy"] .admin-tab-content table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] .admin-tab-content thead.bg-gray-700\/50 {
+    background: #404040 !important;
+}
+
+/* Table header text */
+[data-theme="legacy"] table thead th {
+    color: #CCCCCC !important;
+}
+
+/* Table body backgrounds */
+[data-theme="legacy"] table tbody {
+    background: #333333 !important;
+}
+
+/* Admin tab specific table bodies with higher specificity */
+[data-theme="legacy"] .admin-tab-content table tbody {
+    background: #333333 !important;
+}
+
+/* Table row backgrounds */
+[data-theme="legacy"] table tbody tr {
+    background: #333333 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Table cell text */
+[data-theme="legacy"] table tbody td {
+    color: #F0F0F0 !important;
+}
+
+/* Sticky headers */
+[data-theme="legacy"] thead.sticky,
+[data-theme="legacy"] .sticky.top-0.bg-gray-800,
+[data-theme="legacy"] .admin-tab-content thead.sticky {
+    background: #404040 !important;
+}
+
+/* Specific table IDs for comprehensive coverage */
+[data-theme="legacy"] #rag-collection-table-wrapper {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="legacy"] #users-table-body,
+[data-theme="legacy"] #user-consumption-table-body,
+[data-theme="legacy"] #features-table-body,
+[data-theme="legacy"] #panes-table-body,
+[data-theme="legacy"] #profiles-table-body,
+[data-theme="legacy"] #costs-table-body,
+[data-theme="legacy"] #parameters-table-body,
+[data-theme="legacy"] #versions-table-body {
+    background: #333333 !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - BORDER OVERRIDES
+   ============================================================================ */
+
+[data-theme="legacy"] .border-gray-600,
+[data-theme="legacy"] .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] .border-gray-800 {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="legacy"] .border-slate-600,
+[data-theme="legacy"] .border-slate-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - MODAL OVERRIDES
+   ============================================================================ */
+
+/* View Prompt Modal */
+[data-theme="legacy"] #view-prompt-modal-content .bg-gray-800\/80 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #view-prompt-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #view-prompt-modal-text {
+    color: var(--text-primary) !important;
+}
+
+/* RAG Case Modal */
+[data-theme="legacy"] #rag-case-modal-content .bg-gray-800\/80 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-case-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-case-modal-json {
+    color: var(--text-primary) !important;
+}
+
+/* Chat Modal */
+[data-theme="legacy"] #chat-modal-log {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #chat-modal-input {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #chat-modal-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Prompt Input Modal */
+[data-theme="legacy"] #prompt-input-modal-input {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #prompt-input-modal-label {
+    color: var(--text-secondary) !important;
+}
+
+/* System Prompt Editor Modal */
+[data-theme="legacy"] #prompt-editor-textarea {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Modal buttons */
+[data-theme="legacy"] #prompt-input-modal-cancel,
+[data-theme="legacy"] #prompt-editor-close,
+[data-theme="legacy"] #prompt-editor-reset,
+[data-theme="legacy"] #rag-case-modal-copy {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #prompt-input-modal-cancel:hover,
+[data-theme="legacy"] #prompt-editor-close:hover,
+[data-theme="legacy"] #prompt-editor-reset:hover,
+[data-theme="legacy"] #rag-case-modal-copy:hover {
+    background: var(--bg-elevated) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - IMPORT COLLECTION MODAL
+   ============================================================================ */
+
+[data-theme="legacy"] #import-from-path-btn {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #import-from-path-btn:hover {
+    background-color: var(--bg-elevated) !important;
+}
+
+[data-theme="legacy"] #import-from-path-btn .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - WARNING/STATUS TEXT COLORS
+   ============================================================================ */
+
+/* Yellow warning text - keep visible on dark background */
+[data-theme="legacy"] .text-yellow-400,
+[data-theme="legacy"] .text-yellow-500 {
+    color: var(--status-warning) !important;
+}
+
+/* Orange text */
+[data-theme="legacy"] .text-orange-300,
+[data-theme="legacy"] .text-orange-400 {
+    color: #fb923c !important; /* orange-400 - visible on dark */
+}
+
+/* Green info text */
+[data-theme="legacy"] .text-green-200,
+[data-theme="legacy"] .text-green-300 {
+    color: #86efac !important; /* green-300 - visible on dark */
+}
+
+[data-theme="legacy"] .text-green-400 {
+    color: var(--status-success) !important;
+}
+
+/* Green info boxes */
+[data-theme="legacy"] .bg-green-900\/20 {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+[data-theme="legacy"] .border-green-500\/30 {
+    border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Orange badges */
+[data-theme="legacy"] .bg-orange-500\/20 {
+    background-color: rgba(249, 115, 22, 0.2) !important;
+}
+
+[data-theme="legacy"] .border-orange-400\/30 {
+    border-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - INTELLIGENCE/PERFORMANCE TABS
+   ============================================================================ */
+
+[data-theme="legacy"] #intel-tab-my-performance,
+[data-theme="legacy"] #intel-tab-system-performance,
+[data-theme="legacy"] #tab-my-performance,
+[data-theme="legacy"] #tab-system-performance {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="legacy"] #intel-tab-my-performance.text-\[\#F15F22\],
+[data-theme="legacy"] #intel-tab-system-performance.text-\[\#F15F22\],
+[data-theme="legacy"] #tab-my-performance.text-\[\#F15F22\],
+[data-theme="legacy"] #tab-system-performance.text-\[\#F15F22\] {
+    color: var(--teradata-orange) !important;
+}
+
+[data-theme="legacy"] #intelligence-tabs-container .border-gray-700,
+[data-theme="legacy"] #performance-tabs-container .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - PANE VISIBILITY CONFIGURATION TABLE
+   ============================================================================ */
+
+[data-theme="legacy"] #pane-config-tab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table thead .text-gray-400 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table tbody {
+    background: #333333 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table tbody tr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .bg-gray-600 {
+    background: #404040 !important;
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .bg-gray-600:hover {
+    background: #4a4a4a !important;
+}
+
+/* Toggle switch backgrounds - make track visible in legacy theme */
+/* The toggle track needs a lighter background to be visible against #333333 table background */
+[data-theme="legacy"] #pane-config-tab .bg-gray-700 {
+    background-color: #5a5a5a !important;
+}
+
+/* Toggle switch track - needs more contrast against dark background */
+[data-theme="legacy"] #panes-table-body .bg-gray-700 {
+    background-color: #5a5a5a !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* All toggle switches in admin panels - make tracks visible */
+[data-theme="legacy"] .admin-tab-content label .bg-gray-700 {
+    background-color: #5a5a5a !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Toggle switch track when inside a table row */
+[data-theme="legacy"] .admin-tab-content tr .bg-gray-700.rounded-full {
+    background-color: #5a5a5a !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Progress bars in tables - different styling (keep them darker) */
+[data-theme="legacy"] .admin-tab-content .bg-gray-700.h-1\.5 {
+    background-color: #404040 !important;
+    border: none !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - FEATURE CONFIGURATION TABLE
+   ============================================================================ */
+
+[data-theme="legacy"] #feature-config-tab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #feature-config-tab .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table thead .text-gray-400 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table tbody {
+    background: #333333 !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table tbody tr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #feature-config-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - CONSUMPTION PROFILES TABLE
+   ============================================================================ */
+
+[data-theme="legacy"] #consumption-profiles-tab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table thead .text-gray-400 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table tbody {
+    background: #333333 !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table tbody tr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - ADMIN PANEL COMPONENTS
+   ============================================================================ */
+
+/* User management subtabs */
+[data-theme="legacy"] .user-management-subtab {
+    background-color: #404040 !important;
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] .user-management-subtab:hover {
+    background-color: #4a4a4a !important;
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .user-management-subtab.active {
+    background-color: #F15F22 !important;
+    color: white !important;
+}
+
+/* Status filter buttons */
+[data-theme="legacy"] .user-status-filter-btn {
+    background-color: #262626 !important;
+    color: #999999 !important;
+}
+
+[data-theme="legacy"] .user-status-filter-btn:hover {
+    background-color: #333333 !important;
+}
+
+[data-theme="legacy"] .user-status-filter-btn.bg-gray-600 {
+    background-color: #404040 !important;
+    color: #F0F0F0 !important;
+}
+
+/* Admin view container - ensure correct background for legacy */
+[data-theme="legacy"] #admin-view {
+    background: #262626 !important;
+}
+
+[data-theme="legacy"] #admin-view .app-view {
+    background: #262626 !important;
+}
+
+/* Admin tab content panels - OPAQUE backgrounds */
+[data-theme="legacy"] .admin-tab-content .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] .admin-tab-content .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .admin-tab-content .text-gray-400 {
+    color: #999999 !important;
+}
+
+/* User management specific overrides */
+[data-theme="legacy"] #user-management-tab .glass-panel,
+[data-theme="legacy"] #user-tier-subtab .glass-panel,
+[data-theme="legacy"] #user-consumption-subtab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Consumption statistics cards */
+[data-theme="legacy"] #user-consumption-subtab .grid .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Input fields in admin panels */
+[data-theme="legacy"] .admin-tab-content input[type="text"],
+[data-theme="legacy"] .admin-tab-content input[type="email"],
+[data-theme="legacy"] .admin-tab-content input[type="password"],
+[data-theme="legacy"] .admin-tab-content select,
+[data-theme="legacy"] .admin-tab-content textarea {
+    background-color: #404040 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .admin-tab-content input::placeholder,
+[data-theme="legacy"] .admin-tab-content textarea::placeholder {
+    color: #666666 !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - HEADER AND SIDEBAR
+   ============================================================================ */
+
+[data-theme="legacy"] .header-title {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #conversation-header {
+    background: transparent !important;
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Sidebar items */
+[data-theme="legacy"] .sidebar-item {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] .sidebar-item:hover {
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] .sidebar-item.active {
+    background-color: var(--active-bg) !important;
+    color: var(--teradata-orange) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - CARDS AND PANELS
+   ============================================================================ */
+
+[data-theme="legacy"] .card,
+[data-theme="legacy"] [class*="card"] {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* KPI cards in Intelligence Performance */
+[data-theme="legacy"] .kpi-card {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Repository cards */
+[data-theme="legacy"] .repository-card {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] .repository-card:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
+   MODERN THEME OVERRIDES
+   Ensures modern theme uses its slate/blue color palette consistently
+   ============================================================================ */
+
+/* ============================================================================
+   MODERN THEME - ALL TABLES
+   ============================================================================ */
+
+/* Glass panels for modern theme */
+[data-theme="modern"] .glass-panel {
+    background: rgba(30, 41, 59, 0.7) !important;
+    border-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+/* Generic table styling for all admin tabs */
+[data-theme="modern"] .admin-tab-content table {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table thead th {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table tbody tr {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table tbody td {
+    color: var(--text-primary) !important;
+}
+
+/* Specific table body IDs */
+[data-theme="modern"] #users-table-body,
+[data-theme="modern"] #user-consumption-table-body,
+[data-theme="modern"] #features-table-body,
+[data-theme="modern"] #profiles-table-body,
+[data-theme="modern"] #panes-table-body,
+[data-theme="modern"] #parameters-table-body,
+[data-theme="modern"] #versions-table-body,
+[data-theme="modern"] #costs-table-body,
+[data-theme="modern"] #rag-collection-table-body {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="modern"] #users-table-body tr,
+[data-theme="modern"] #user-consumption-table-body tr,
+[data-theme="modern"] #features-table-body tr,
+[data-theme="modern"] #profiles-table-body tr,
+[data-theme="modern"] #panes-table-body tr,
+[data-theme="modern"] #parameters-table-body tr,
+[data-theme="modern"] #versions-table-body tr,
+[data-theme="modern"] #costs-table-body tr {
+    border-color: var(--border-primary) !important;
+}
+
+/* Table headers */
+[data-theme="modern"] thead.bg-gray-700\/50,
+[data-theme="modern"] thead.bg-gray-800 {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="modern"] thead th {
+    color: var(--text-secondary) !important;
+}
+
+/* Document Upload Config Table */
+[data-theme="modern"] #document-upload-config-container {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="modern"] #document-upload-config-container table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="modern"] #document-upload-config-container table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+/* RAG Collection Table */
+[data-theme="modern"] #rag-collection-table-wrapper {
+    background: rgba(30, 41, 59, 0.7) !important;
+}
+
+[data-theme="modern"] #rag-collection-table-wrapper thead {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Sticky headers */
+[data-theme="modern"] thead.sticky {
+    background: var(--bg-tertiary) !important;
+}
+
+/* KPI/Stats cards */
+[data-theme="modern"] .admin-tab-content .grid .glass-panel {
+    background: rgba(30, 41, 59, 0.7) !important;
 }
