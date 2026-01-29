@@ -510,7 +510,24 @@ RESPONSE FORMAT:
                         for msg in reversed(output["messages"]):
                             if hasattr(msg, 'content') and hasattr(msg, 'type'):
                                 if msg.type == 'ai' and msg.content:
-                                    final_response = msg.content
+                                    content = msg.content
+                                    # Handle extended thinking format where content is a list of blocks
+                                    # e.g., [{"type": "thinking", ...}, {"type": "text", "text": "..."}]
+                                    if isinstance(content, list):
+                                        # Extract text from content blocks
+                                        text_parts = []
+                                        for block in content:
+                                            if isinstance(block, dict):
+                                                if block.get("type") == "text":
+                                                    text_parts.append(block.get("text", ""))
+                                                elif block.get("type") == "thinking":
+                                                    # Skip thinking blocks in final response
+                                                    pass
+                                            elif isinstance(block, str):
+                                                text_parts.append(block)
+                                        final_response = "\n".join(text_parts)
+                                    else:
+                                        final_response = content
                                     break
 
                         # Sum up token usage from ALL AI messages (each LLM call has its own usage)

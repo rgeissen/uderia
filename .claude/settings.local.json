@@ -50,7 +50,8 @@
       "Bash(pip install:*)",
       "Bash(conda env:*)",
       "Bash(/opt/anaconda3/bin/conda create:*)",
-      "WebFetch(domain:uderia.com)"
+      "WebFetch(domain:uderia.com)",
+      "WebFetch(domain:friendli.ai)"
     ]
   }
 }

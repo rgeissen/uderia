@@ -471,7 +471,6 @@ async def get_app_config():
     })
     
     return jsonify({
-        "all_models_unlocked": APP_CONFIG.ALL_MODELS_UNLOCKED,
         "charting_enabled": APP_CONFIG.CHARTING_ENABLED,
         "allow_synthesis_from_history": APP_CONFIG.ALLOW_SYNTHESIS_FROM_HISTORY,
         "default_charting_intensity": APP_CONFIG.DEFAULT_CHARTING_INTENSITY,

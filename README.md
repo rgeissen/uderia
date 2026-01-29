@@ -1761,7 +1761,7 @@ View consumption details through:
 
 #### Standard Mode
 
-For standard operation with the certified models:
+For standard operation:
 
 ```
 python -m trusted_data_agent.main
@@ -1772,16 +1772,14 @@ python -m trusted_data_agent.main
 
 ---
 
-## Developer Mode: Unlocking Models
+## Model Selection: Recommended vs All Models
 
-To enable all discovered models for testing and development purposes, start the server with the `--all-models` flag.
+When adding or editing LLM configurations, you can switch between **Recommended** and **All** models using the toggle in the model selection UI:
 
-```
-python -m trusted_data_agent.main --all-models
+- **Recommended (default):** Shows only tested and recommended models enabled for selection. Non-recommended models are visible but disabled.
+- **All:** Enables all available models from the provider for selection.
 
-```
-
-**Note:** **No Ollama models are currently certified.** For testing purposes, Ollama models can be evaluated by starting the server with the `--all-models` developer flag.
+**Note:** Ollama models are community-maintained. When connecting to Ollama, you can use the "All" toggle to select any locally installed model.
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
@@ -1801,7 +1799,6 @@ python -m trusted_data_agent.main [OPTIONS]
 |--------|-------------|---------|
 | `--host` | Host address to bind the server to. Use `0.0.0.0` for Docker deployments. | `127.0.0.1` |
 | `--port` | Port to bind the server to. | `5050` |
-| `--all-models` | Enable all discovered models including uncertified ones (developer mode). | Disabled |
 | `--nogitcall` | Disable GitHub API calls to fetch repository star count. | Enabled |
 | `--offline` | Use cached HuggingFace models only (skip remote version checks). Useful when internet is slow or unavailable. | Disabled |
 
@@ -1810,11 +1807,6 @@ python -m trusted_data_agent.main [OPTIONS]
 **Standard production deployment:**
 ```bash
 python -m trusted_data_agent.main
-```
-
-**Development with all models:**
-```bash
-python -m trusted_data_agent.main --all-models
 ```
 
 **Offline mode (use cached models):**
@@ -1829,7 +1821,7 @@ python -m trusted_data_agent.main --host 0.0.0.0 --port 5050
 
 **Combined options:**
 ```bash
-python -m trusted_data_agent.main --all-models --offline --nogitcall
+python -m trusted_data_agent.main --offline --nogitcall
 ```
 
 ### Offline Mode Details
@@ -2791,6 +2783,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **29-Jan-2026:** All Models Available - Access all provider models with ★ recommended highlights
 *   **29-Jan-2026:** Light Theme - Full light mode support with proper contrast and visibility across all components
 *   **25-Jan-2026:** Legacy Theme - Fixed color bleeding issues with opaque backgrounds and consistent gray palette
 *   **20-Jan-2026:** Modern Theme - Enhanced glass-panel effects and refined slate/blue color palette

@@ -250,8 +250,8 @@ Response includes:
   "profile_id": "profile-1763993711628-vvbh23q09",
   "profile_tags_used": ["GOGET", "FRGOT"],
   "models_used": [
-    "Google/gemini-2.0-flash",
-    "Friendli/google/gemma-3-27b-it"
+    "Google/gemini-2.5-flash",
+    "Friendli/meta-llama/Llama-3.3-70B-Instruct"
   ],
   ...
 }

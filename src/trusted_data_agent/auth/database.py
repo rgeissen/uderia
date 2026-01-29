@@ -110,6 +110,9 @@ def init_database():
         # Bootstrap prompt management system
         _bootstrap_prompt_system()
 
+        # Bootstrap recommended models from tda_config.json
+        _bootstrap_recommended_models()
+
         return True
     except Exception as e:
         logger.error(f"Failed to initialize authentication database: {e}", exc_info=True)
@@ -891,6 +894,69 @@ def _bootstrap_prompt_system():
         
     except Exception as e:
         logger.error(f"Failed to bootstrap prompt system: {e}", exc_info=True)
+
+
+def _bootstrap_recommended_models():
+    """
+    Bootstrap recommended models from tda_config.json if they don't exist.
+    These models appear as "Recommended" in the model selection UI.
+    """
+    try:
+        import json
+        from pathlib import Path
+        from trusted_data_agent.auth.models import RecommendedModel
+
+        # Load tda_config.json
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if not config_path.exists():
+            logger.warning("tda_config.json not found, skipping recommended models bootstrap")
+            return
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        models_config = config.get('recommended_models', [])
+        if not models_config:
+            logger.info("No recommended models defined in tda_config.json")
+            return
+
+        with get_db_session() as session:
+            bootstrapped_count = 0
+            for model_data in models_config:
+                provider = model_data.get('provider')
+                model_pattern = model_data.get('model_pattern')
+
+                if not provider or not model_pattern:
+                    logger.warning(f"Skipping invalid recommended model entry: {model_data}")
+                    continue
+
+                # Check if this provider/pattern combination already exists
+                existing = session.query(RecommendedModel).filter_by(
+                    provider=provider,
+                    model_pattern=model_pattern
+                ).first()
+
+                if existing:
+                    continue
+
+                # Create new recommended model entry
+                recommended = RecommendedModel(
+                    provider=provider,
+                    model_pattern=model_pattern,
+                    notes=model_data.get('notes', ''),
+                    is_active=True,
+                    source='config_default'
+                )
+                session.add(recommended)
+                bootstrapped_count += 1
+                logger.info(f"Bootstrapped recommended model: {provider}/{model_pattern}")
+
+            if bootstrapped_count > 0:
+                session.commit()
+                logger.info(f"✅ Bootstrapped {bootstrapped_count} recommended models")
+
+    except Exception as e:
+        logger.error(f"Failed to bootstrap recommended models: {e}", exc_info=True)
 
 
 # Initialize database on module import (authentication is always enabled)

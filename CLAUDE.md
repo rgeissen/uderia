@@ -11,15 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Running the Application
 
 ```bash
-# Standard mode (certified models only)
 python -m trusted_data_agent.main
-
-# Developer mode (all models including uncertified)
-python -m trusted_data_agent.main --all-models
 
 # Access at: http://localhost:5050
 # Default credentials: admin / admin (CHANGE IMMEDIATELY!)
 ```
+
+**Note:** When adding LLM configurations, use the model filter toggle (Recommended/All) to switch between recommended models and all available models from the provider.
 
 ### Installation & Setup
 

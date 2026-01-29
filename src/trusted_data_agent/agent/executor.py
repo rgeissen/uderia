@@ -1309,11 +1309,6 @@ class PlanExecutor:
                                     "total_output": updated_session.get("output_tokens", 0),
                                     "call_id": "session_name_generation"
                                 }, "token_update")
-                            # Update turn token counts in workflow_history for reload
-                            await session_manager.update_turn_token_counts(
-                                self.user_uuid, self.session_id, self.current_turn_number,
-                                self.turn_input_tokens, self.turn_output_tokens
-                            )
 
                         if new_name and new_name != "New Chat":
                             await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
@@ -2982,6 +2977,7 @@ The following domain knowledge may be relevant to this conversation:
                                         "call_id": "session_name_generation"
                                     }, "token_update")
                                 # Update turn token counts in workflow_history for reload
+                                # (turn_summary was saved before session name generation in rag_focused path)
                                 await session_manager.update_turn_token_counts(
                                     self.user_uuid, self.session_id, self.current_turn_number,
                                     self.turn_input_tokens, self.turn_output_tokens

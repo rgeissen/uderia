@@ -8474,7 +8474,7 @@ async def add_manual_model_cost():
     Request body:
     {
         "provider": "Google",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "input_cost": 0.075,
         "output_cost": 0.30,
         "notes": "From official pricing page"

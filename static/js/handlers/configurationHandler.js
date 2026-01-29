@@ -1372,15 +1372,30 @@ export async function showLLMConfigurationModal(configId = null) {
                         <!-- Credentials fields will be inserted here -->
                     </div>
                     <div id="llm-modal-model-container">
-                        <label class="block text-sm font-medium text-gray-300 mb-1">Model</label>
+                        <label class="block text-sm font-medium mb-1" style="color: var(--text-secondary);">Model</label>
                         <div class="flex items-center gap-2">
-                            <select id="llm-modal-model" class="flex-1 min-w-0 p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none">
-                                <option value="">-- Select a model --</option>
-                                ${config?.model ? `<option value="${escapeHtml(config.model)}" selected>${escapeHtml(config.model)}</option>` : ''}
-                            </select>
-                            <button type="button" id="llm-modal-refresh-models" 
-                                class="flex-shrink-0 p-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors">
-                                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <!-- Custom Model Dropdown -->
+                            <div id="llm-modal-model-dropdown" class="relative flex-1 min-w-0">
+                                <input type="hidden" id="llm-modal-model" value="${config?.model || ''}">
+                                <button type="button" id="llm-modal-model-trigger"
+                                    class="w-full p-2 rounded-md text-left flex items-center justify-between transition-colors"
+                                    style="background-color: var(--input-bg); border: 1px solid var(--border-primary); color: var(--text-primary);">
+                                    <span id="llm-modal-model-display" class="truncate">${config?.model ? escapeHtml(config.model) : '-- Select a model --'}</span>
+                                    <svg id="llm-modal-model-chevron" class="w-4 h-4 ml-2 flex-shrink-0 transition-transform" style="color: var(--text-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                <div id="llm-modal-model-list" class="hidden absolute z-50 w-full bottom-full mb-1 rounded-md shadow-lg max-h-48 overflow-y-auto"
+                                    style="background-color: var(--modal-bg); border: 1px solid var(--border-primary); box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.1), 0 -2px 4px -1px rgba(0,0,0,0.06);">
+                                    <!-- Model options will be rendered here -->
+                                </div>
+                            </div>
+                            <button type="button" id="llm-modal-refresh-models"
+                                class="flex-shrink-0 p-2 rounded-md transition-colors"
+                                style="background-color: var(--input-bg); border: 1px solid var(--border-primary);"
+                                onmouseover="this.style.backgroundColor='var(--hover-bg)'"
+                                onmouseout="this.style.backgroundColor='var(--input-bg)'">
+                                <svg class="w-5 h-5" style="color: var(--text-secondary);" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.691L7.985 5.356m0 0v4.992m0 0h4.992m0 0l3.181-3.183a8.25 8.25 0 0111.667 0l3.181 3.183" />
                                 </svg>
                             </button>
@@ -1405,10 +1420,51 @@ export async function showLLMConfigurationModal(configId = null) {
     const providerSelect = modal.querySelector('#llm-modal-provider');
     const credentialsContainer = modal.querySelector('#llm-modal-credentials-container');
     const refreshBtn = modal.querySelector('#llm-modal-refresh-models');
-    const modelSelect = modal.querySelector('#llm-modal-model');
+    const modelInput = modal.querySelector('#llm-modal-model');
+    const modelTrigger = modal.querySelector('#llm-modal-model-trigger');
+    const modelDisplay = modal.querySelector('#llm-modal-model-display');
+    const modelList = modal.querySelector('#llm-modal-model-list');
     const errorBanner = modal.querySelector('#llm-modal-error');
     const errorText = modal.querySelector('#llm-modal-error-text');
-    
+
+    // Store fetched models for re-rendering
+    let cachedModels = [];
+    let dropdownOpen = false;
+
+    // Toggle dropdown
+    const chevron = modal.querySelector('#llm-modal-model-chevron');
+    function toggleDropdown(open) {
+        dropdownOpen = open !== undefined ? open : !dropdownOpen;
+        if (dropdownOpen) {
+            modelList.classList.remove('hidden');
+            modelTrigger.style.borderColor = 'var(--primary-color, #F15F22)';
+            chevron.style.transform = 'rotate(180deg)';
+        } else {
+            modelList.classList.add('hidden');
+            modelTrigger.style.borderColor = 'var(--border-primary)';
+            chevron.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    // Select a model
+    function selectModel(modelName, isRecommended) {
+        modelInput.value = modelName;
+        modelDisplay.innerHTML = isRecommended
+            ? `<span class="inline-flex items-center"><span class="mr-1.5" style="color: var(--primary-color, #F15F22);">★</span>${escapeHtml(modelName)}</span>`
+            : escapeHtml(modelName);
+        toggleDropdown(false);
+    }
+
+    // Click outside to close
+    function handleClickOutside(e) {
+        if (!modal.querySelector('#llm-modal-model-dropdown').contains(e.target)) {
+            toggleDropdown(false);
+        }
+    }
+
+    modelTrigger.addEventListener('click', () => toggleDropdown());
+    document.addEventListener('click', handleClickOutside);
+
     // Helper functions for error banner
     function showModalError(message) {
         errorText.textContent = message;
@@ -1518,38 +1574,15 @@ export async function showLLMConfigurationModal(configId = null) {
             }
 
             if (data.models && data.models.length > 0) {
-                const certifiedModels = data.models.filter(model => {
-                    return typeof model === 'string' || model.certified !== false;
-                });
-                const firstCertifiedModel = certifiedModels.length > 0 
-                    ? (typeof certifiedModels[0] === 'string' ? certifiedModels[0] : certifiedModels[0].name)
-                    : null;
-                
-                // Clear and rebuild options without affecting select element styling
-                modelSelect.innerHTML = '';
-                
-                const defaultOption = document.createElement('option');
-                defaultOption.value = '';
-                defaultOption.textContent = '-- Select a model --';
-                modelSelect.appendChild(defaultOption);
-                
-                data.models.forEach(model => {
-                    const modelName = typeof model === 'string' ? model : model.name;
-                    const certified = typeof model === 'object' ? model.certified : true;
-                    const label = certified ? modelName : `${modelName} (support evaluated)`;
-                    const selected = modelName === firstCertifiedModel;
-                    
-                    const option = document.createElement('option');
-                    option.value = modelName;
-                    option.textContent = label;
-                    if (!certified) option.disabled = true;
-                    if (selected) option.selected = true;
-                    
-                    modelSelect.appendChild(option);
-                });
-                
-                showNotification('success', `Found ${data.models.length} models${firstCertifiedModel ? ` - selected ${firstCertifiedModel}` : ''}`);
+                // Cache models for re-filtering without re-fetching
+                cachedModels = data.models;
+                // Render models based on current filter mode
+                renderModelOptions();
+
+                const recommendedCount = data.models.filter(m => typeof m === 'object' ? m.recommended : true).length;
+                showNotification('success', `Found ${data.models.length} models (${recommendedCount} recommended)`);
             } else {
+                cachedModels = [];
                 showNotification('warning', 'No models found');
             }
         } catch (error) {
@@ -1560,6 +1593,104 @@ export async function showLLMConfigurationModal(configId = null) {
         }
     }
 
+    // Function to render model options based on current filter mode
+    function renderModelOptions() {
+        const currentValue = modelInput.value;
+        modelList.innerHTML = '';
+
+        // Separate recommended and other models
+        const recommendedModels = [];
+        const otherModels = [];
+
+        cachedModels.forEach(model => {
+            const modelName = typeof model === 'string' ? model : model.name;
+            const recommended = typeof model === 'object' ? model.recommended : true;
+            if (recommended) {
+                recommendedModels.push({ name: modelName, recommended: true });
+            } else {
+                otherModels.push({ name: modelName, recommended: false });
+            }
+        });
+
+        const firstRecommendedModel = recommendedModels.length > 0 ? recommendedModels[0].name : null;
+
+        // Helper to create a model item
+        function createModelItem(modelName, isRecommended) {
+            const item = document.createElement('div');
+            item.className = 'px-3 py-2 cursor-pointer transition-colors';
+            item.style.cssText = 'color: var(--text-primary);';
+
+            // Hover effect
+            item.addEventListener('mouseenter', () => {
+                item.style.backgroundColor = 'var(--hover-bg)';
+            });
+            item.addEventListener('mouseleave', () => {
+                item.style.backgroundColor = 'transparent';
+            });
+
+            if (isRecommended) {
+                item.innerHTML = `<span class="inline-flex items-center"><span class="mr-1.5" style="color: var(--primary-color, #F15F22);">★</span>${escapeHtml(modelName)}</span>`;
+            } else {
+                item.innerHTML = `<span style="color: var(--text-muted);">${escapeHtml(modelName)}</span>`;
+            }
+
+            item.addEventListener('click', () => selectModel(modelName, isRecommended));
+
+            return item;
+        }
+
+        // Add "Recommended" section header if there are recommended models
+        if (recommendedModels.length > 0) {
+            const header = document.createElement('div');
+            header.className = 'px-3 py-1.5 text-xs font-semibold uppercase tracking-wider';
+            header.style.cssText = 'color: var(--text-muted); background-color: var(--hover-bg); border-bottom: 1px solid var(--border-primary);';
+            header.textContent = 'Recommended';
+            modelList.appendChild(header);
+
+            // Add recommended models
+            recommendedModels.forEach(model => {
+                modelList.appendChild(createModelItem(model.name, true));
+            });
+        }
+
+        // Add "All Models" section header if there are other models
+        if (otherModels.length > 0) {
+            const header = document.createElement('div');
+            header.className = 'px-3 py-1.5 text-xs font-semibold uppercase tracking-wider';
+            header.style.cssText = 'color: var(--text-muted); background-color: var(--hover-bg); border-bottom: 1px solid var(--border-primary);';
+            if (recommendedModels.length > 0) {
+                header.style.borderTop = '1px solid var(--border-primary)';
+            }
+            header.textContent = 'All Models';
+            modelList.appendChild(header);
+
+            // Add other models
+            otherModels.forEach(model => {
+                modelList.appendChild(createModelItem(model.name, false));
+            });
+        }
+
+        // If no models at all, show empty state
+        if (recommendedModels.length === 0 && otherModels.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'px-3 py-4 text-center';
+            emptyState.style.cssText = 'color: var(--text-muted);';
+            emptyState.textContent = 'No models available. Click refresh to load models.';
+            modelList.appendChild(emptyState);
+        }
+
+        // Auto-select first recommended model if no value is set
+        if (!currentValue && firstRecommendedModel) {
+            selectModel(firstRecommendedModel, true);
+        } else if (currentValue) {
+            // Update display for current value
+            const isCurrentRecommended = recommendedModels.some(m => m.name === currentValue);
+            modelDisplay.innerHTML = isCurrentRecommended
+                ? `<span class="inline-flex items-center"><span class="mr-1.5" style="color: var(--primary-color, #F15F22);">★</span>${escapeHtml(currentValue)}</span>`
+                : escapeHtml(currentValue);
+        }
+    }
+
     // Initial render of credential fields
     renderCredentialFields(selectedProvider);
 
@@ -1567,23 +1698,38 @@ export async function showLLMConfigurationModal(configId = null) {
     if (!isEdit) {
         providerSelect.addEventListener('change', () => {
             renderCredentialFields(providerSelect.value);
-            // Clear model selection when provider changes
-            modelSelect.innerHTML = '<option value="">-- Select a model --</option>';
+            // Clear model selection and cached models when provider changes
+            modelInput.value = '';
+            modelDisplay.textContent = '-- Select a model --';
+            modelList.innerHTML = '';
+            cachedModels = [];
         });
     }
 
     // Refresh models button
     refreshBtn.addEventListener('click', refreshModels);
 
+    // Auto-refresh models when editing (credentials are already set)
+    if (isEdit && config?.credentials && Object.keys(config.credentials).length > 0) {
+        // Small delay to ensure modal is visible
+        setTimeout(() => refreshModels(), 100);
+    }
+
+    // Cleanup function for event listeners
+    function cleanupModal() {
+        document.removeEventListener('click', handleClickOutside);
+        modal.remove();
+    }
+
     // Cancel button
-    modal.querySelector('#llm-modal-cancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#llm-modal-cancel').addEventListener('click', cleanupModal);
 
     // Save button
     modal.querySelector('#llm-modal-save').addEventListener('click', async () => {
         const saveBtn = modal.querySelector('#llm-modal-save');
         const name = modal.querySelector('#llm-modal-name').value.trim();
         const provider = providerSelect.value;
-        const model = modelSelect.value;
+        const model = modelInput.value;
         
         // Clear any previous errors
         hideModalError();
@@ -1659,10 +1805,10 @@ export async function showLLMConfigurationModal(configId = null) {
                 }
                 
                 // Credentials are now stored in encrypted database only (no localStorage)
-                
+
                 renderLLMProviders();
                 showNotification('success', `LLM configuration ${isEdit ? 'updated' : 'added'} successfully with validated credentials`);
-                modal.remove();
+                cleanupModal();
                 
             } catch (testError) {
                 // Test failed with exception - remove the config if it was new

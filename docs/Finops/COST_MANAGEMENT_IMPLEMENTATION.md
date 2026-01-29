@@ -143,13 +143,13 @@ cost_manager = get_cost_manager()
 # Calculate cost for a turn
 cost = cost_manager.calculate_cost(
     provider="Google",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     input_tokens=1000,
     output_tokens=500
 )
 
 # Get pricing for a model
-costs = cost_manager.get_model_cost("Google", "gemini-2.0-flash")
+costs = cost_manager.get_model_cost("Google", "gemini-2.5-flash")
 # Returns: (input_cost_per_million, output_cost_per_million)
 
 # Sync from LiteLLM

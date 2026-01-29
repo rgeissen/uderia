@@ -536,13 +536,35 @@ export async function handleRefreshModelsClick() {
     try {
         const result = await API.fetchModels();
         DOM.llmModelSelect.innerHTML = '';
-        result.models.forEach(model => {
+
+        // Separate recommended and other models
+        const recommendedModels = result.models.filter(m => m.recommended);
+        const otherModels = result.models.filter(m => !m.recommended);
+
+        // Add recommended models first (with star)
+        recommendedModels.forEach(model => {
             const option = document.createElement('option');
             option.value = model.name;
-            option.textContent = model.name + (model.certified ? '' : ' (support evaluated)');
-            option.disabled = !model.certified;
+            option.textContent = `★ ${model.name}`;
             DOM.llmModelSelect.appendChild(option);
         });
+
+        // Add separator if there are both types
+        if (recommendedModels.length > 0 && otherModels.length > 0) {
+            const separator = document.createElement('option');
+            separator.disabled = true;
+            separator.textContent = '─────────────────';
+            DOM.llmModelSelect.appendChild(separator);
+        }
+
+        // Add other models (all selectable)
+        otherModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            DOM.llmModelSelect.appendChild(option);
+        });
+
         setConfigStatus(`Successfully fetched ${result.models.length} models.`, 'text-sm text-green-400 text-center');
         if (DOM.llmModelSelect.value) {
             await handleModelChange();

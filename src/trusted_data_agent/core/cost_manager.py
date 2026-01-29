@@ -198,7 +198,7 @@ class CostManager:
         
         Args:
             provider: Provider name (e.g., 'Google', 'Anthropic', 'Amazon')
-            model: Model name (e.g., 'gemini-2.0-flash', ARN, or inference profile)
+            model: Model name (e.g., 'gemini-2.5-flash', ARN, or inference profile)
         
         Returns:
             Tuple of (input_cost_per_million, output_cost_per_million) or None if not found

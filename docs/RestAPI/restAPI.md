@@ -509,7 +509,7 @@ Initializes and validates the agent's core services, including the LLM provider 
 ```json
 {
   "provider": "Friendli",
-  "model": "google/gemma-3-27b-it",
+  "model": "meta-llama/Llama-3.3-70B-Instruct",
   "credentials": {
     "apiKey": "YOUR_FRIENDLI_API_KEY",
     "friendli_endpoint_url": "YOUR_FRIENDLI_ENDPOINT_URL" 

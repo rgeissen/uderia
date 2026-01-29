@@ -1,6 +1,6 @@
 {
     "provider": "Ollama",
-    "model": "gemma-3-27b-it",
+    "model": "llama3.1:8b-instruct-q8_0",
     "credentials": {},
     "ollama_base_url": "http://localhost:11434",
     "mcp_server": {

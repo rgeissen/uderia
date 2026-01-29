@@ -75,6 +75,12 @@ def create_langchain_llm(
         return _create_google_llm(model, decrypted_creds, temperature)
     elif provider == "Azure":
         return _create_azure_llm(model, decrypted_creds, llm_config, temperature)
+    elif provider == "Friendli":
+        return _create_friendli_llm(model, decrypted_creds, temperature)
+    elif provider == "Ollama":
+        return _create_ollama_llm(model, decrypted_creds, temperature)
+    elif provider == "Amazon":
+        return _create_amazon_llm(model, decrypted_creds, temperature)
     else:
         raise ValueError(f"Unsupported provider for LangChain: {provider}")
 
@@ -112,7 +118,16 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
         logger.error(f"Error loading stored credentials: {e}", exc_info=True)
 
     # Fall back to environment variables if no credentials found
-    if not credentials.get("apiKey") and not credentials.get("api_key"):
+    # Check for provider-specific credential keys, not just generic apiKey
+    has_credentials = (
+        credentials.get("apiKey") or
+        credentials.get("api_key") or
+        credentials.get("friendli_token") or  # Friendli
+        credentials.get("azure_api_key") or   # Azure
+        credentials.get("aws_access_key_id")  # Amazon
+        # Ollama doesn't require credentials
+    )
+    if not has_credentials:
         logger.info(f"No credentials in store, checking environment variables for {provider}")
         if provider == "Google":
             env_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -129,6 +144,29 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
             if env_key:
                 credentials["apiKey"] = env_key
                 logger.info("Loaded OpenAI API key from environment")
+        elif provider == "Friendli":
+            env_key = os.environ.get("FRIENDLI_TOKEN")
+            if env_key:
+                credentials["friendli_token"] = env_key
+                logger.info("Loaded Friendli token from environment")
+        elif provider == "Ollama":
+            env_host = os.environ.get("OLLAMA_HOST")
+            if env_host:
+                credentials["host"] = env_host
+                logger.info("Loaded Ollama host from environment")
+        elif provider == "Amazon":
+            # AWS credentials from environment
+            env_access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+            env_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+            env_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+            if env_access_key:
+                credentials["aws_access_key_id"] = env_access_key
+            if env_secret_key:
+                credentials["aws_secret_access_key"] = env_secret_key
+            if env_region:
+                credentials["aws_region"] = env_region
+            if env_access_key or env_secret_key:
+                logger.info("Loaded AWS credentials from environment")
 
     return credentials
 
@@ -215,9 +253,103 @@ def _create_azure_llm(model: str, credentials: dict, llm_config: dict, temperatu
         raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")
 
 
+def _create_friendli_llm(model: str, credentials: dict, temperature: float) -> Any:
+    """
+    Create LangChain ChatOpenAI instance configured for Friendli.
+
+    Friendli uses an OpenAI-compatible API, so we use ChatOpenAI with
+    the Friendli base URL and token.
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+
+        friendli_token = credentials.get("friendli_token")
+        endpoint_url = credentials.get("friendli_endpoint_url")
+
+        if not friendli_token:
+            raise ValueError("Friendli token not found in credentials")
+
+        # Use dedicated endpoint if provided, otherwise use serverless
+        if endpoint_url:
+            base_url = f"{endpoint_url.rstrip('/')}/v1"
+        else:
+            # Friendli serverless endpoint - note the /serverless/ path
+            base_url = "https://api.friendli.ai/serverless/v1"
+
+        logger.info(f"Creating Friendli LLM with base_url={base_url}, model={model}")
+
+        # Note: stream_options={"include_usage": True} is NOT included here because
+        # it causes 422 errors when the LLM is used with ainvoke() (non-streaming).
+        # The Friendli API only accepts stream_options when stream=true.
+        # Token usage for streaming calls is handled by LangChain's callback system.
+        return ChatOpenAI(
+            model=model,
+            api_key=friendli_token,
+            base_url=base_url,
+            temperature=temperature
+        )
+    except ImportError:
+        raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")
+
+
+def _create_ollama_llm(model: str, credentials: dict, temperature: float) -> Any:
+    """Create LangChain ChatOllama instance for local Ollama."""
+    try:
+        from langchain_ollama import ChatOllama
+
+        host = credentials.get("host") or credentials.get("ollama_host") or "http://localhost:11434"
+
+        logger.info(f"Creating Ollama LLM with host={host}, model={model}")
+
+        return ChatOllama(
+            model=model,
+            base_url=host,
+            temperature=temperature
+        )
+    except ImportError:
+        raise ImportError("langchain-ollama package not installed. Run: pip install langchain-ollama")
+
+
+def _create_amazon_llm(model: str, credentials: dict, temperature: float) -> Any:
+    """
+    Create LangChain ChatBedrockConverse instance for Amazon Bedrock.
+
+    Uses the newer ChatBedrockConverse which supports tool calling and
+    the unified Bedrock Converse API.
+    """
+    try:
+        from langchain_aws import ChatBedrockConverse
+        import boto3
+
+        aws_access_key_id = credentials.get("aws_access_key_id")
+        aws_secret_access_key = credentials.get("aws_secret_access_key")
+        aws_region = credentials.get("aws_region", "us-east-1")
+
+        if not aws_access_key_id or not aws_secret_access_key:
+            raise ValueError("AWS credentials not found")
+
+        logger.info(f"Creating Amazon Bedrock LLM with region={aws_region}, model={model}")
+
+        # Create boto3 client with explicit credentials
+        bedrock_client = boto3.client(
+            service_name="bedrock-runtime",
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=aws_region
+        )
+
+        return ChatBedrockConverse(
+            model=model,
+            client=bedrock_client,
+            temperature=temperature
+        )
+    except ImportError:
+        raise ImportError("langchain-aws package not installed. Run: pip install langchain-aws")
+
+
 def get_supported_providers() -> list:
     """Get list of providers supported for LangChain integration."""
-    return ["OpenAI", "Anthropic", "Google", "Azure"]
+    return ["OpenAI", "Anthropic", "Google", "Azure", "Friendli", "Ollama", "Amazon"]
 
 
 def is_provider_supported(provider: str) -> bool:

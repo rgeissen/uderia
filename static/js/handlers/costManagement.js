@@ -551,7 +551,7 @@ class CostManagementHandler {
         const provider = prompt('Enter provider name (e.g., Friendli, Google, Anthropic):\n\nNote: Manual entries are protected from LiteLLM sync and will appear at the top of the list.');
         if (!provider || !provider.trim()) return;
 
-        const model = prompt(`Enter model name for ${provider} (e.g., gemma-3-27b-it, gpt-4):`);
+        const model = prompt(`Enter model name for ${provider} (e.g., Llama-3.3-70B-Instruct, gpt-4):`);
         if (!model || !model.trim()) return;
 
         const inputCost = prompt(`Enter INPUT cost per 1M tokens for ${provider}/${model}:\n\nExample: 0.09 means $0.09 per 1 million input tokens`);

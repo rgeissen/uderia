@@ -11,7 +11,6 @@ class AppConfig:
     These values are typically set at startup and rarely change during runtime.
     """
     # --- Feature Flags & Behavior ---
-    ALL_MODELS_UNLOCKED = False # If True, bypasses model certification checks, allowing all models from a provider to be used.
     GITHUB_API_ENABLED = False # If True, enables GitHub API calls to fetch star count. Default is False to avoid rate limiting during development.
     CHARTING_ENABLED = True # Master switch to enable or disable the agent's ability to generate charts.
     DEFAULT_CHARTING_INTENSITY = "medium" # Controls how proactively the agent suggests charts. Options: "none", "medium", "heavy".
@@ -161,17 +160,8 @@ APP_STATE = {
     "llm_instance_pool": {},  # {pool_key: llm_instance}
 }
 
-# Whitelists for models that are officially supported.
-# The ALL_MODELS_UNLOCKED flag bypasses these checks.
-CERTIFIED_GOOGLE_MODELS = ["gemini-2.0-flash"]
-CERTIFIED_ANTHROPIC_MODELS = ["*claude-3-5-haiku-2024102*"]
-CERTIFIED_AMAZON_MODELS = ["*nova-lite*"]
-CERTIFIED_AMAZON_PROFILES = ["*nova-lite*"]
-CERTIFIED_OLLAMA_MODELS = ["llama3.1:8b-instruct-q8_0"]
-CERTIFIED_OPENAI_MODELS = ["*gpt-4o-mini"]
-CERTIFIED_AZURE_MODELS = ["*gpt-4o*"]
-CERTIFIED_FRIENDLI_MODELS = ["google/gemma-3-27b-it"]
-
+# Note: Recommended models are now stored in the database (recommended_models table)
+# and bootstrapped from tda_config.json. See auth/database.py:_bootstrap_recommended_models()
 
 # ==============================================================================
 # USER CONFIGURATION HELPERS
@@ -224,7 +214,7 @@ def get_user_model(user_uuid: str) -> str:
         user_uuid: User UUID (required)
 
     Returns:
-        Model name (e.g., "gemini-2.0-flash", "claude-3-5-haiku")
+        Model name (e.g., "gemini-2.5-flash", "claude-3-5-haiku")
 
     Raises:
         ValueError: If user_uuid is not provided
@@ -603,7 +593,7 @@ def get_llm_pool_key(provider: str, model: str, credentials: dict, user_uuid: st
 
     Args:
         provider: LLM provider name (e.g., 'google', 'anthropic')
-        model: Model identifier (e.g., 'gemini-2.0-flash')
+        model: Model identifier (e.g., 'gemini-2.5-flash')
         credentials: Credentials dictionary
         user_uuid: User UUID for isolation
 

@@ -1557,7 +1557,8 @@ class RAGRetriever:
                     # --- MODIFICATION END ---
                     if isinstance(action_meta, dict) and action_meta.get("type") == "workaround": had_tactical_improvements = True
                     if tool_name == "TDA_SystemLog" and isinstance(action_args, dict) and action_args.get("message") == "System Correction":
-                        if "Planner" in action_args.get("details", {}).get("summary", ""): had_plan_improvements = True
+                        details = action_args.get("details", {})
+                        if isinstance(details, dict) and "Planner" in details.get("summary", ""): had_plan_improvements = True
                 
                 # --- MODIFICATION START: Stricter error tracking ---
                 if result_is_dict and result.get("status") == "error":

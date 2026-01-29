@@ -613,7 +613,7 @@ class LLMModelCost(Base):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     provider = Column(String(50), nullable=False, index=True)  # Google, Anthropic, OpenAI, Amazon, Azure, Friendli, Ollama
-    model = Column(String(100), nullable=False, index=True)  # Model name (e.g., gemini-2.0-flash, claude-3-5-haiku)
+    model = Column(String(100), nullable=False, index=True)  # Model name (e.g., gemini-2.5-flash, claude-3-5-haiku)
     
     # Pricing in USD per 1 million tokens
     input_cost_per_million = Column(Integer, nullable=False)  # Input token cost per 1M
@@ -799,7 +799,7 @@ class UserConsumption(Base):
     peak_requests_per_day = Column(Integer, nullable=False, default=0)
     
     # === MODEL USAGE ===
-    models_used = Column(Text, nullable=True)  # JSON object: {"gemini-2.0-flash": 150, "claude-3-5-haiku": 75}
+    models_used = Column(Text, nullable=True)  # JSON object: {"gemini-2.5-flash": 150, "claude-3-5-haiku": 75}
     providers_used = Column(Text, nullable=True)  # JSON object: {"Google": 150, "Anthropic": 75}
     
     # === SESSION TRACKING ===
@@ -1035,4 +1035,48 @@ class ConsumptionPeriodsArchive(Base):
             'period_started_at': self.period_started_at.isoformat() if self.period_started_at else None,
             'period_ended_at': self.period_ended_at.isoformat() if self.period_ended_at else None,
             'archived_at': self.archived_at.isoformat() if self.archived_at else None
+        }
+
+
+class RecommendedModel(Base):
+    """Recommended models for each LLM provider.
+
+    These are the models that appear as "Recommended" in the model selection UI.
+    Models can be recommended globally or for specific use cases.
+    """
+
+    __tablename__ = 'recommended_models'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    provider = Column(String(50), nullable=False, index=True)  # Google, Anthropic, OpenAI, Amazon, Azure, Friendli, Ollama
+    model_pattern = Column(String(200), nullable=False)  # Model name or pattern with wildcards (e.g., "*gpt-4o-mini", "gemini-2.5-flash")
+
+    # Metadata
+    notes = Column(Text, nullable=True)  # Description of why this model is recommended
+    is_active = Column(Boolean, nullable=False, default=True)  # Can be disabled without deletion
+    source = Column(String(50), nullable=False, default='config_default')  # 'config_default', 'manual'
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Unique constraint: one entry per provider/pattern combination
+    __table_args__ = (
+        Index('idx_recommended_provider_pattern', 'provider', 'model_pattern', unique=True),
+    )
+
+    def __repr__(self):
+        return f"<RecommendedModel(provider='{self.provider}', pattern='{self.model_pattern}', active={self.is_active})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'provider': self.provider,
+            'model_pattern': self.model_pattern,
+            'notes': self.notes,
+            'is_active': self.is_active,
+            'source': self.source,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

@@ -1,6 +1,6 @@
 {
     "provider": "Google",
-    "model": "gemini-2.0-flash",
+    "model": "gemini-2.5-flash",
     "credentials": {
         "apiKey": "<YOUR_GOOGLE_API_KEY>"
     },

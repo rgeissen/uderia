@@ -22,12 +22,8 @@ from trusted_data_agent.core.config import get_user_provider, get_user_model
 from trusted_data_agent.core.session_manager import get_session, update_token_count
 # --- MODIFICATION END ---
 from trusted_data_agent.agent.prompts import CHARTING_INSTRUCTIONS, PROVIDER_SYSTEM_PROMPTS
-from trusted_data_agent.core.config import (
-    CERTIFIED_GOOGLE_MODELS, CERTIFIED_ANTHROPIC_MODELS,
-    CERTIFIED_AMAZON_MODELS, CERTIFIED_AMAZON_PROFILES,
-    CERTIFIED_OLLAMA_MODELS, CERTIFIED_OPENAI_MODELS,
-    CERTIFIED_AZURE_MODELS, CERTIFIED_FRIENDLI_MODELS
-)
+from trusted_data_agent.auth.database import get_db_session
+from trusted_data_agent.auth.models import RecommendedModel
 
 llm_logger = logging.getLogger("llm_conversation")
 llm_history_logger = logging.getLogger("llm_conversation_history")
@@ -903,13 +899,28 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
     
     return response_text, input_tokens, output_tokens, actual_provider, actual_model
 
-def _is_model_certified(model_name: str, certified_list: list[str]) -> bool:
+def _get_recommended_patterns(provider: str) -> list[str]:
     """
-    Checks if a model is certified, a supporting wildcards.
+    Gets recommended model patterns for a provider from the database.
+    Returns a list of pattern strings (may include wildcards).
     """
-    if APP_CONFIG.ALL_MODELS_UNLOCKED:
-        return True
-    for pattern in certified_list:
+    try:
+        with get_db_session() as session:
+            recommended = session.query(RecommendedModel).filter_by(
+                provider=provider,
+                is_active=True
+            ).all()
+            return [r.model_pattern for r in recommended]
+    except Exception as e:
+        app_logger.warning(f"Failed to query recommended models for {provider}: {e}")
+        return []
+
+
+def _is_model_recommended(model_name: str, recommended_list: list[str]) -> bool:
+    """
+    Checks if a model is in the recommended list, supporting wildcards.
+    """
+    for pattern in recommended_list:
         regex_pattern = re.escape(pattern).replace('\\*', '.*')
         if re.fullmatch(regex_pattern, model_name):
             return True
@@ -917,13 +928,13 @@ def _is_model_certified(model_name: str, certified_list: list[str]) -> bool:
 
 async def list_models(provider: str, credentials: dict) -> list[dict]:
     """
-    Lists available models for a given provider and checks certification status.
+    Lists available models for a given provider and checks if they are recommended.
     """
-    certified_list = []
     model_names = []
+    # Get recommended patterns from database
+    recommended_list = _get_recommended_patterns(provider)
 
     if provider == "Google":
-        certified_list = CERTIFIED_GOOGLE_MODELS
         api_key = credentials.get("apiKey")
         if not api_key:
             raise ValueError("API key for Google is required.")
@@ -952,19 +963,16 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
                 raise RuntimeError("Could not retrieve model list from Google via API or SDK.") from sdk_e
 
     elif provider == "Anthropic":
-        certified_list = CERTIFIED_ANTHROPIC_MODELS
         client = AsyncAnthropic(api_key=credentials.get("apiKey"))
         models_page = await client.models.list()
         model_names = [model.id for model in models_page.data]
 
     elif provider == "OpenAI":
-        certified_list = CERTIFIED_OPENAI_MODELS
         client = AsyncOpenAI(api_key=credentials.get("apiKey"))
         models_page = await client.models.list()
         model_names = [model.id for model in models_page.data if "gpt" in model.id]
 
     elif provider == "Friendli":
-        certified_list = CERTIFIED_FRIENDLI_MODELS
         friendli_token = credentials.get("friendli_token")
         endpoint_url = credentials.get("friendli_endpoint_url")
 
@@ -978,8 +986,35 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
                 data = response.json()
             model_names = [model.get("id") for model in data if model.get("id")]
         else:
-            app_logger.info("Friendli.ai Serverless mode: No model listing endpoint available. Returning certified list.")
-            model_names = [name.replace('*', '') for name in certified_list]
+            # Friendli.ai Serverless mode: No model listing API available
+            # Return hardcoded list of all available serverless models (updated Jan 2026)
+            app_logger.info("Friendli.ai Serverless mode: Returning all available serverless models.")
+            model_names = [
+                # Token-Based Billing Models
+                "meta-llama/Llama-3.3-70B-Instruct",
+                "meta-llama/Llama-3.1-8B-Instruct",
+                "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                "LGAI-EXAONE/EXAONE-4.0.1-32B",
+                "MiniMaxAI/MiniMax-M2.1",
+                "zai-org/GLM-4.7",
+                # Time-Based Billing Models
+                "deepseek-ai/DeepSeek-V3.1",
+                "deepseek-ai/DeepSeek-R1-0528",
+                "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+                "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+                "Qwen/Qwen3-235B-A22B-Thinking-2507",
+                "Qwen/Qwen3-30B-A3B",
+                "Qwen/Qwen3-32B",
+                "zai-org/GLM-4.6",
+                "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+                "mistralai/Magistral-Small-2506",
+                "mistralai/Devstral-Small-2505",
+                "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B",
+                "skt/A.X-4.0",
+                "skt/A.X-31",
+                # Free (Limited Time)
+                "LGAI-EXAONE/K-EXAONE-236B-A23B",
+            ]
 
     elif provider == "Amazon":
         bedrock_client = boto3.client(
@@ -990,22 +1025,18 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
         )
         loop = asyncio.get_running_loop()
         if credentials.get("listing_method") == "inference_profiles":
-            certified_list = CERTIFIED_AMAZON_PROFILES
             response = await loop.run_in_executor(None, lambda: bedrock_client.list_inference_profiles())
             model_names = [p['inferenceProfileArn'] for p in response['inferenceProfileSummaries']]
         else:
-            certified_list = CERTIFIED_AMAZON_MODELS
             response = await loop.run_in_executor(None, lambda: bedrock_client.list_foundation_models(byOutputModality='TEXT'))
             model_names = [m['modelId'] for m in response['modelSummaries']]
 
     elif provider == "Azure":
-        certified_list = CERTIFIED_AZURE_MODELS
         deployment_name = credentials.get("azure_deployment_name")
         if deployment_name:
             model_names = [deployment_name]
 
     elif provider == "Ollama":
-        certified_list = CERTIFIED_OLLAMA_MODELS
         client = OllamaClient(host=credentials.get("host"))
         models_data = await client.list_models()
         model_names = [m.get("name") for m in models_data]
@@ -1013,7 +1044,7 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
     return [
         {
             "name": name,
-            "certified": _is_model_certified(name, certified_list)
+            "recommended": _is_model_recommended(name, recommended_list)
         }
         for name in model_names
     ]

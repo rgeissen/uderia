@@ -1,6 +1,6 @@
 {
     "provider": "Friendli",
-    "model": "google/gemma-3-27b-it",
+    "model": "meta-llama/Llama-3.3-70B-Instruct",
     "credentials": {
         "friendli_token": "<YOUR_FRIENDLI_TOKEN>",
         "friendli_endpoint_url": "<YOUR_FRIENDLI_ENDPOINT_URL>",

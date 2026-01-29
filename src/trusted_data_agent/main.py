@@ -341,14 +341,9 @@ if __name__ == "__main__":
         default=5050,
         help="Port to bind the server to."
     )
-    parser.add_argument("--all-models", action="store_true", help="Allow selection of all available models.")
     parser.add_argument("--nogitcall", action="store_true", help="Disable GitHub API calls to fetch star count.")
     parser.add_argument("--offline", action="store_true", help="Use cached HuggingFace models only (skip remote version checks).")
     args = parser.parse_args()
-
-    if args.all_models:
-        APP_CONFIG.ALL_MODELS_UNLOCKED = True
-        print("\n--- DEV MODE: All models will be selectable. ---\n")
 
     if args.nogitcall:
         APP_CONFIG.GITHUB_API_ENABLED = False

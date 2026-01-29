@@ -1877,10 +1877,9 @@
     border-color: var(--border-primary) !important;
 }
 
-/* Execution Trace checkboxes */
-[data-theme="light"] #rag-selected-case-trace input[type="checkbox"] {
-    accent-color: var(--teradata-orange);
-}
+/* Execution Trace checkboxes - removed accent-color as it forces native browser
+   checkmark rendering which ignores the custom ::after white checkmark styling.
+   These checkboxes now inherit from the universal light mode checkbox rules. */
 
 /* Loading text */
 [data-theme="light"] #rag-collection-loading {
@@ -2438,10 +2437,59 @@
     border-color: var(--teradata-orange-light-mode) !important;
 }
 
-/* Checkboxes */
+/* ============================================
+   Light Mode Checkbox Fixes - UNIFIED STYLING
+   Forces ALL checkboxes to use consistent appearance
+   ============================================ */
+
+/* Unchecked checkbox - visible border on light background */
+[data-theme="light"] input[type="checkbox"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    border: 2px solid rgba(100, 116, 139, 0.5) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Checked checkbox - dark orange background, NO background-image */
 [data-theme="light"] input[type="checkbox"]:checked {
-    background: var(--teradata-orange-light-mode) !important;
-    border-color: var(--teradata-orange-light-mode) !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-color: #C2410C !important;
+    background-image: none !important;  /* Remove any SVG checkmark */
+    border-color: #9A3412 !important;
+    box-shadow: 0 2px 4px rgba(194, 65, 12, 0.4) !important;
+}
+
+/* White checkmark via ::after - THIS is the only checkmark */
+[data-theme="light"] input[type="checkbox"]:checked::after {
+    content: '' !important;
+    display: block !important;
+    position: absolute !important;
+    left: 4px !important;
+    top: 1px !important;
+    width: 5px !important;
+    height: 9px !important;
+    border: solid #ffffff !important;
+    border-width: 0 2.5px 2.5px 0 !important;
+    transform: rotate(45deg) !important;
+}
+
+/* Remove the ::before gradient overlay in light mode */
+[data-theme="light"] input[type="checkbox"]:checked::before {
+    display: none !important;
+}
+
+/* Hover state for unchecked */
+[data-theme="light"] input[type="checkbox"]:hover:not(:checked) {
+    border-color: rgba(100, 116, 139, 0.7) !important;
+    background-color: #f8fafc !important;
+}
+
+/* Hover state for checked */
+[data-theme="light"] input[type="checkbox"]:checked:hover {
+    background-color: #9A3412 !important;
 }
 
 /* Radio buttons */

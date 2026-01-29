@@ -63,14 +63,14 @@
     {
       "name": "Google Flash",
       "provider": "Google",
-      "model": "gemini-2.0-flash",
+      "model": "gemini-2.5-flash",
       "credentials": {},
       "id": "1763819257473-ivpnukbbe"
     },
     {
-      "name": "Friendli - Gemma",
+      "name": "Friendli - Llama 3.3",
       "provider": "Friendli",
-      "model": "google/gemma-3-27b-it",
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
       "credentials": {},
       "id": "1763819257483-fluhef2vk"
     },
@@ -223,10 +223,10 @@
   "default_model_costs": [
     {
       "provider": "Friendli",
-      "model": "google/gemma-3-27b-it",
-      "input_cost_per_million": 0.03,
-      "output_cost_per_million": 0.03,
-      "notes": "Friendli serverless @ $0.002/sec, ~70 tokens/sec avg"
+      "model": "meta-llama/Llama-3.1-8B-Instruct",
+      "input_cost_per_million": 0.1,
+      "output_cost_per_million": 0.1,
+      "notes": "Friendli serverless @ $0.1/1M tokens"
     },
     {
       "provider": "Friendli",
@@ -234,6 +234,41 @@
       "input_cost_per_million": 0.6,
       "output_cost_per_million": 0.6,
       "notes": "Friendli serverless @ $0.6/1M tokens"
+    },
+    {
+      "provider": "Friendli",
+      "model": "google/gemma-3-27b-it",
+      "input_cost_per_million": 0.2,
+      "output_cost_per_million": 0.2,
+      "notes": "DEPRECATED - Friendli serverless (discontinued Jan 2026) - kept for historical cost tracking"
+    },
+    {
+      "provider": "Friendli",
+      "model": "MiniMaxAI/MiniMax-M2.1",
+      "input_cost_per_million": 0.3,
+      "output_cost_per_million": 1.2,
+      "notes": "Friendli serverless @ $0.3 input, $1.2 output per 1M tokens"
+    },
+    {
+      "provider": "Friendli",
+      "model": "zai-org/GLM-4.7",
+      "input_cost_per_million": 0.6,
+      "output_cost_per_million": 2.2,
+      "notes": "Friendli serverless @ $0.6 input, $2.2 output per 1M tokens"
+    },
+    {
+      "provider": "Friendli",
+      "model": "zai-org/GLM-4.6",
+      "input_cost_per_million": 0.004,
+      "output_cost_per_million": 0.004,
+      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+    },
+    {
+      "provider": "Friendli",
+      "model": "LGAI-EXAONE/K-EXAONE-236B-A23B",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0,
+      "notes": "Friendli serverless - FREE until Feb 12, 2026"
     },
     {
       "provider": "Friendli",
@@ -354,6 +389,43 @@
       "output_cost_per_million": 0.40,
       "is_fallback": true,
       "notes": "Default fallback cost for models not found in pricing table (based on Gemini Flash pricing)"
+    }
+  ],
+  "recommended_models": [
+    {
+      "provider": "Google",
+      "model_pattern": "gemini-2.5-flash",
+      "notes": "Google's recommended flash model for fast, multimodal AI"
+    },
+    {
+      "provider": "Anthropic",
+      "model_pattern": "*claude-3-5-haiku-2024102*",
+      "notes": "Anthropic's fast and efficient Haiku model"
+    },
+    {
+      "provider": "Amazon",
+      "model_pattern": "*nova-lite*",
+      "notes": "Amazon's Nova Lite model for cost-effective inference"
+    },
+    {
+      "provider": "OpenAI",
+      "model_pattern": "*gpt-4o-mini",
+      "notes": "OpenAI's efficient GPT-4o mini model"
+    },
+    {
+      "provider": "Azure",
+      "model_pattern": "*gpt-4o*",
+      "notes": "Azure OpenAI GPT-4o deployments"
+    },
+    {
+      "provider": "Friendli",
+      "model_pattern": "meta-llama/Llama-3.3-70B-Instruct",
+      "notes": "Llama 3.3 70B on Friendli serverless - best quality/price ratio"
+    },
+    {
+      "provider": "Ollama",
+      "model_pattern": "llama3.1:8b-instruct-q8_0",
+      "notes": "Llama 3.1 8B quantized for local inference"
     }
   ],
   "global_parameters": {

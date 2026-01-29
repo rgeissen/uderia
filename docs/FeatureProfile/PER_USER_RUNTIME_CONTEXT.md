@@ -6,7 +6,7 @@ Currently, `APP_CONFIG.CURRENT_PROVIDER`, `CURRENT_MODEL`, and related runtime c
 
 ```python
 # Current problem:
-User A configures: Google/gemini-2.0-flash
+User A configures: Google/gemini-2.5-flash
 User B configures: Anthropic/claude-3-5-haiku
 
 # APP_CONFIG.CURRENT_PROVIDER is SHARED - User B overwrites User A's setting!
@@ -28,7 +28,7 @@ APP_STATE = {
     "user_runtime_contexts": {
         "user-aaa": {
             "provider": "Google",
-            "model": "gemini-2.0-flash",
+            "model": "gemini-2.5-flash",
             "mcp_server_name": "Teradata MCP",
             "mcp_server_id": "server-123",
             "aws_region": None,
@@ -304,7 +304,7 @@ def test_per_user_runtime_context():
     user_b = "user-bbb"
     
     set_user_provider("Google", user_a)
-    set_user_model("gemini-2.0-flash", user_a)
+    set_user_model("gemini-2.5-flash", user_a)
     
     set_user_provider("Anthropic", user_b)
     set_user_model("claude-3-5-haiku", user_b)
@@ -312,7 +312,7 @@ def test_per_user_runtime_context():
     # Verify isolation
     assert get_user_provider(user_a) == "Google"
     assert get_user_provider(user_b) == "Anthropic"
-    assert get_user_model(user_a) == "gemini-2.0-flash"
+    assert get_user_model(user_a) == "gemini-2.5-flash"
     assert get_user_model(user_b) == "claude-3-5-haiku"
 
 
