@@ -677,6 +677,21 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 
 
 export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false) { // eslint-disable-line no-unused-vars
+    // Normalize content - Google Gemini may return content as an array of parts
+    if (Array.isArray(content)) {
+        content = content.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') {
+                // Handle Google Gemini content parts (text, thinking, etc.)
+                return part.text || part.thinking || JSON.stringify(part);
+            }
+            return String(part);
+        }).join(' ');
+    } else if (content && typeof content !== 'string') {
+        content = String(content);
+    }
+    content = content || '';
+
     // Hide welcome screen when adding a message
     if (window.hideWelcomeScreen) {
         window.hideWelcomeScreen();
@@ -5783,6 +5798,17 @@ function renderCollectionRows(rows, total, query, collectionName) {
 }
 
 export function escapeHtml(str) {
+    // Handle non-string input (e.g., arrays from Google Gemini)
+    if (Array.isArray(str)) {
+        str = str.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') return part.text || part.thinking || JSON.stringify(part);
+            return String(part);
+        }).join(' ');
+    } else if (str && typeof str !== 'string') {
+        str = String(str);
+    }
+    if (!str) return '';
     return str.replace(/[&<>"]+/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
