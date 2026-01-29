@@ -5924,6 +5924,8 @@
                         </svg>
                     </div>
                     <h3 class="text-2xl font-bold text-white" id="profile-modal-title">Edit Profile</h3>
+                    <!-- IFOC Profile Type Tag -->
+                    <span id="profile-modal-ifoc-tag" class="ml-3 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide transition-all duration-300"></span>
                 </div>
                 <p class="text-gray-400 text-sm ml-13">Configure your agent profile with LLM, tools, and intelligence resources</p>
             </div>
@@ -5994,66 +5996,6 @@
                                    focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none transition-all
                                    placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50 resize-none"></textarea>
                         <p class="text-xs text-gray-500 mt-2">This question will run automatically before any user input when a new session is created.</p>
-                    </div>
-                </div>
-
-                <!-- Profile Type Selection -->
-                <div class="bg-gradient-to-br from-blue-900/10 to-purple-900/10 rounded-xl p-6 border border-blue-700/20">
-                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
-                        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
-                        </svg>
-                        Profile Type
-                    </h4>
-                    <p class="text-xs text-gray-400 mb-4">Choose the capabilities for this profile</p>
-                    <div class="grid grid-cols-4 gap-3">
-                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-green-500/30 transition-all group">
-                            <input type="radio" name="profile-type" value="llm_only" id="profile-modal-type-llm-only"
-                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Conversation Focused</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-green-500/30 text-green-300 rounded-full border border-green-400/30">LLM</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Conversational AI with optional tools & knowledge</p>
-                            </div>
-                        </label>
-
-                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-orange-500/30 transition-all group">
-                            <input type="radio" name="profile-type" value="tool_enabled" id="profile-modal-type-tool-enabled" checked
-                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Efficiency Focused</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-orange-500/30 text-orange-300 rounded-full border border-orange-400/30">Optimized</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Planner/Executor Architecture</p>
-                            </div>
-                        </label>
-
-                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
-                            <input type="radio" name="profile-type" value="rag_focused" id="profile-modal-type-rag-focused"
-                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Knowledge Focused</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">RAG</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Knowledge base search with LLM synthesis</p>
-                            </div>
-                        </label>
-
-                        <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-amber-500/30 transition-all group">
-                            <input type="radio" name="profile-type" value="genie" id="profile-modal-type-genie"
-                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Genie</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-amber-500/30 text-amber-300 rounded-full border border-amber-400/30">Multi-Profile</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Orchestrates other profiles</p>
-                            </div>
-                        </label>
                     </div>
                 </div>
 

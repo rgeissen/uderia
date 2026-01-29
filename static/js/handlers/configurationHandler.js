@@ -4490,16 +4490,36 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
 
     modal.querySelector('#profile-modal-title').textContent = isEdit ? 'Edit Profile' : 'Add Profile';
 
-    // Set profile type radio button
-    // For new profiles: use defaultProfileType if provided, otherwise default to 'tool_enabled'
+    // Determine profile type
+    // For new profiles: use defaultProfileType (determined by which profile class tab is active)
     // For existing profiles: use the profile's existing type
     const profileType = profile ?
         (profile.profile_type || 'tool_enabled') :
         (defaultProfileType || 'tool_enabled');
-    const profileTypeRadioLLMOnly = modal.querySelector('#profile-modal-type-llm-only');
-    const profileTypeRadioToolEnabled = modal.querySelector('#profile-modal-type-tool-enabled');
-    const profileTypeRadioRAGFocused = modal.querySelector('#profile-modal-type-rag-focused');
-    const profileTypeRadioGenie = modal.querySelector('#profile-modal-type-genie');
+    console.log('[Profile Modal] Profile type determined:', profileType);
+
+    // IFOC Tag configuration
+    const ifocTagConfig = {
+        'llm_only': { label: 'Ideate', color: '#4ade80', bgColor: 'rgba(74, 222, 128, 0.15)' },
+        'rag_focused': { label: 'Focus', color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.15)' },
+        'tool_enabled': { label: 'Optimize', color: '#F15F22', bgColor: 'rgba(241, 95, 34, 0.15)' },
+        'genie': { label: 'Coordinate', color: '#9333ea', bgColor: 'rgba(147, 51, 234, 0.15)' }
+    };
+
+    // Function to update the IFOC tag in the modal header
+    const updateIfocTag = (type) => {
+        const ifocTag = modal.querySelector('#profile-modal-ifoc-tag');
+        if (ifocTag) {
+            const config = ifocTagConfig[type] || ifocTagConfig['tool_enabled'];
+            ifocTag.textContent = config.label;
+            ifocTag.style.color = config.color;
+            ifocTag.style.backgroundColor = config.bgColor;
+            ifocTag.style.border = `1px solid ${config.color}`;
+        }
+    };
+
+    // Set initial IFOC tag
+    updateIfocTag(profileType);
 
     // Function to show/hide tool-related sections based on profile type
     const updateSectionVisibility = (profileType) => {
@@ -4972,77 +4992,6 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         console.log('[Profile Modal] Genie settings loaded - global:', globalSettings, 'profile:', genieConfig);
     }
 
-    // Add event listeners to profile type radio buttons FIRST (before setting checked state)
-    // Clone the radio buttons to remove any existing event listeners
-    const llmOnlyClone = profileTypeRadioLLMOnly.cloneNode(true);
-    const toolEnabledClone = profileTypeRadioToolEnabled.cloneNode(true);
-    const ragFocusedClone = profileTypeRadioRAGFocused.cloneNode(true);
-    const genieClone = profileTypeRadioGenie ? profileTypeRadioGenie.cloneNode(true) : null;
-    profileTypeRadioLLMOnly.parentNode.replaceChild(llmOnlyClone, profileTypeRadioLLMOnly);
-    profileTypeRadioToolEnabled.parentNode.replaceChild(toolEnabledClone, profileTypeRadioToolEnabled);
-    profileTypeRadioRAGFocused.parentNode.replaceChild(ragFocusedClone, profileTypeRadioRAGFocused);
-    if (profileTypeRadioGenie && genieClone) {
-        profileTypeRadioGenie.parentNode.replaceChild(genieClone, profileTypeRadioGenie);
-    }
-
-    // Update references to the cloned elements
-    const cleanLLMOnlyRadio = modal.querySelector('#profile-modal-type-llm-only');
-    const cleanToolEnabledRadio = modal.querySelector('#profile-modal-type-tool-enabled');
-    const cleanRAGFocusedRadio = modal.querySelector('#profile-modal-type-rag-focused');
-    const cleanGenieRadio = modal.querySelector('#profile-modal-type-genie');
-
-    // Add our event listeners to the clean radio buttons
-    cleanLLMOnlyRadio.addEventListener('change', async () => {
-        if (cleanLLMOnlyRadio.checked) {
-            console.log('[Profile Modal] Radio changed to llm_only');
-            updateSectionVisibility('llm_only');
-            // Update System Prompts tab if user is privileged
-            if (Utils.isPrivilegedUser()) {
-                const tempProfile = { ...profile, profile_type: 'llm_only' };
-                await populateSystemPrompts(modal, tempProfile);
-            }
-        }
-    });
-
-    cleanToolEnabledRadio.addEventListener('change', async () => {
-        if (cleanToolEnabledRadio.checked) {
-            console.log('[Profile Modal] Radio changed to tool_enabled');
-            updateSectionVisibility('tool_enabled');
-            // Update System Prompts tab if user is privileged
-            if (Utils.isPrivilegedUser()) {
-                const tempProfile = { ...profile, profile_type: 'tool_enabled' };
-                await populateSystemPrompts(modal, tempProfile);
-            }
-        }
-    });
-
-    cleanRAGFocusedRadio.addEventListener('change', async () => {
-        if (cleanRAGFocusedRadio.checked) {
-            console.log('[Profile Modal] Radio changed to rag_focused');
-            updateSectionVisibility('rag_focused');
-            // Update System Prompts tab if user is privileged
-            if (Utils.isPrivilegedUser()) {
-                const tempProfile = { ...profile, profile_type: 'rag_focused' };
-                await populateSystemPrompts(modal, tempProfile);
-            }
-        }
-    });
-
-    // Add Genie radio button event listener
-    if (cleanGenieRadio) {
-        cleanGenieRadio.addEventListener('change', async () => {
-            if (cleanGenieRadio.checked) {
-                console.log('[Profile Modal] Radio changed to genie');
-                updateSectionVisibility('genie');
-                // Update System Prompts tab if user is privileged
-                if (Utils.isPrivilegedUser()) {
-                    const tempProfile = { ...profile, profile_type: 'genie' };
-                    await populateSystemPrompts(modal, tempProfile);
-                }
-            }
-        });
-    }
-
     // Add event listeners for Conversation Capabilities checkboxes
     const useMcpToolsCheckbox = modal.querySelector('#profile-modal-use-mcp-tools');
     const useKnowledgeCheckbox = modal.querySelector('#profile-modal-use-knowledge');
@@ -5051,8 +5000,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         useMcpToolsCheckbox.addEventListener('change', async () => {
             console.log('[Profile Modal] MCP Tools checkbox changed to:', useMcpToolsCheckbox.checked);
             // Re-run visibility update for llm_only profile type
-            const currentProfileType = modal.querySelector('input[name="profile-type"]:checked')?.value;
-            if (currentProfileType === 'llm_only') {
+            if (profileType === 'llm_only') {
                 updateSectionVisibility('llm_only');
                 // Update System Prompts tab to show correct prompt option (conversation vs conversation_with_tools)
                 if (Utils.isPrivilegedUser()) {
@@ -5067,8 +5015,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         useKnowledgeCheckbox.addEventListener('change', () => {
             console.log('[Profile Modal] Knowledge checkbox changed to:', useKnowledgeCheckbox.checked);
             // Re-run visibility update for llm_only profile type
-            const currentProfileType = modal.querySelector('input[name="profile-type"]:checked')?.value;
-            if (currentProfileType === 'llm_only') {
+            if (profileType === 'llm_only') {
                 updateSectionVisibility('llm_only');
             }
         });
@@ -5082,17 +5029,6 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         if (useKnowledgeCheckbox) {
             useKnowledgeCheckbox.checked = profile.useKnowledgeCollections || false;
         }
-    }
-
-    // NOW set the checked state (won't trigger old listeners since we cloned)
-    if (profileType === 'llm_only') {
-        cleanLLMOnlyRadio.checked = true;
-    } else if (profileType === 'rag_focused') {
-        cleanRAGFocusedRadio.checked = true;
-    } else if (profileType === 'genie' && cleanGenieRadio) {
-        cleanGenieRadio.checked = true;
-    } else {
-        cleanToolEnabledRadio.checked = true;
     }
 
     // Initial visibility update will happen at the END after all async initialization
@@ -5506,7 +5442,6 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const llmConfig = configState.llmConfigurations.find(c => c.id === llmSelect.value);
         const mcpServer = configState.mcpServers.find(s => s.id === mcpSelect.value);
         const profileName = profileNameInput.value.trim();
-        const currentProfileType = modal.querySelector('input[name="profile-type"]:checked')?.value || 'tool_enabled';
 
         // For llm_only and rag_focused profiles, mcpServer is optional
         if (!llmConfig || !profileName) {
@@ -5514,7 +5449,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         }
 
         // For tool_enabled profiles, mcpServer is required
-        if (currentProfileType === 'tool_enabled' && !mcpServer) {
+        if (profileType === 'tool_enabled' && !mcpServer) {
             return '';
         }
 
@@ -5710,9 +5645,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const classificationModeRadio = modal.querySelector('input[name="classification-mode"]:checked');
         const classificationMode = classificationModeRadio ? classificationModeRadio.value : 'full';
 
-        // Get selected profile type FIRST (needed for knowledgeConfig decision)
-        const profileTypeRadio = modal.querySelector('input[name="profile-type"]:checked');
-        const selectedProfileType = profileTypeRadio ? profileTypeRadio.value : 'tool_enabled';
+        // Get selected profile type (determined by the active tab)
+        // profileType was set earlier from profile.profile_type (edit) or defaultProfileType (new)
+        const selectedProfileType = profileType;
 
         // Build knowledgeConfig object with per-collection reranking settings
         // Note: Global knowledge settings (minRelevance, maxDocs, maxTokens) are now in Administration panel
