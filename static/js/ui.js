@@ -372,44 +372,16 @@ export function updateGenieMasterBadges() {
                 const collapseState = getGenieCollapseState();
                 const isCollapsed = collapseState[parentId] || false;
 
+                // Create level badge matching child style
+                const levelBadge = document.createElement('span');
+                levelBadge.className = 'level-badge level-badge-l0';
+                levelBadge.textContent = 'L0';
+                levelBadge.title = 'Level 0 parent session';
+
+                // Container for badge + collapse toggle
                 const genieMasterBadge = document.createElement('span');
-                genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1.5 mt-1 text-xs cursor-pointer';
-                genieMasterBadge.style.cssText = `
-                    background: linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1));
-                    padding: 3px 8px;
-                    border-radius: 6px;
-                    border: 1px solid rgba(241, 95, 34, 0.4);
-                    transition: all 0.2s ease;
-                    box-shadow: 0 2px 4px rgba(241, 95, 34, 0.1);
-                `;
-
-                // Icon
-                const icon = document.createElement('span');
-                icon.style.cssText = `
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 16px;
-                    height: 16px;
-                    background: linear-gradient(135deg, #FF8C00, #F15F22);
-                    border-radius: 4px;
-                    color: white;
-                    font-weight: bold;
-                    font-size: 10px;
-                    box-shadow: 0 0 12px rgba(255, 140, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-                `;
-                icon.textContent = 'G';
-                genieMasterBadge.appendChild(icon);
-
-                // Label
-                const label = document.createElement('span');
-                label.style.cssText = `
-                    color: #F15F22;
-                    font-weight: 600;
-                    text-shadow: 0 1px 2px rgba(241, 95, 34, 0.2);
-                `;
-                label.textContent = 'Parent';
-                genieMasterBadge.appendChild(label);
+                genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-0.5 mt-1 text-xs cursor-pointer';
+                genieMasterBadge.appendChild(levelBadge);
 
                 // Toggle
                 const toggle = document.createElement('span');
@@ -419,7 +391,6 @@ export function updateGenieMasterBadges() {
                     justify-content: center;
                     width: 18px;
                     height: 18px;
-                    margin-left: 4px;
                     color: #F15F22;
                     background: rgba(241, 95, 34, 0.15);
                     border-radius: 4px;
@@ -3270,40 +3241,47 @@ export function moveSessionToTop(sessionId) {
     const sessionItem = document.getElementById(`session-${sessionId}`);
     if (!sessionItem || !DOM.sessionList) return;
 
-    // Check if this is a Genie slave session
-    const isGenieSlave = sessionItem.dataset.genieParentId;
-    const parentSessionId = sessionItem.dataset.genieParentId;
+    // CRITICAL: Check if session has a wrapper (for tree structure)
+    // If it does, move the wrapper instead of the session item
+    const wrapper = sessionItem.closest('.genie-wrapper');
+    const elementToMove = wrapper || sessionItem;
+
+    // Check if this is a Genie slave session (check wrapper first, fallback to item)
+    const isGenieSlave = wrapper ? wrapper.dataset.parentId : sessionItem.dataset.genieParentId;
+    const parentSessionId = wrapper ? wrapper.dataset.parentId : sessionItem.dataset.genieParentId;
 
     if (isGenieSlave && parentSessionId) {
         // For slave sessions, maintain hierarchical order
-        // Find the parent and all its existing slaves
-        const parentElement = document.getElementById(`session-${parentSessionId}`);
+        // Find the parent wrapper or parent element
+        const parentWrapper = document.querySelector(`.genie-wrapper[data-session-id="${parentSessionId}"]`);
+        const parentElement = parentWrapper || document.getElementById(`session-${parentSessionId}`);
+
         if (!parentElement) {
             // Parent not found, fallback to top
-            sessionItem.remove();
-            DOM.sessionList.prepend(sessionItem);
+            elementToMove.remove();
+            DOM.sessionList.prepend(elementToMove);
             return;
         }
 
-        // Find all sibling slaves (same parent)
-        const allSlaves = Array.from(DOM.sessionList.querySelectorAll('.genie-slave-session'))
-            .filter(el => el.dataset.genieParentId === parentSessionId && el.id !== sessionItem.id);
+        // Find all sibling wrappers (same parent)
+        const allSiblingWrappers = Array.from(DOM.sessionList.querySelectorAll(`.genie-wrapper[data-parent-id="${parentSessionId}"]`))
+            .filter(el => el.dataset.sessionId !== sessionId);
 
-        // Remove the session from its current position
-        sessionItem.remove();
+        // Remove the element from its current position
+        elementToMove.remove();
 
-        if (allSlaves.length === 0) {
-            // No other slaves, insert directly after parent
-            parentElement.insertAdjacentElement('afterend', sessionItem);
+        if (allSiblingWrappers.length === 0) {
+            // No other siblings, insert directly after parent
+            parentElement.insertAdjacentElement('afterend', elementToMove);
         } else {
-            // Insert after the last sibling slave
-            const lastSlave = allSlaves[allSlaves.length - 1];
-            lastSlave.insertAdjacentElement('afterend', sessionItem);
+            // Insert after the last sibling
+            const lastSibling = allSiblingWrappers[allSiblingWrappers.length - 1];
+            lastSibling.insertAdjacentElement('afterend', elementToMove);
         }
     } else {
         // Regular session (not a slave) - move to top
-        sessionItem.remove();
-        DOM.sessionList.prepend(sessionItem);
+        elementToMove.remove();
+        DOM.sessionList.prepend(elementToMove);
     }
 }
 
@@ -3580,7 +3558,7 @@ export function highlightResource(resourceName, type) {
     }
 }
 
-export function addSessionToList(session, isActive = false) {
+export function addSessionToList(session, isActive = false, isLastChild = false) {
     const sessionItem = document.createElement('div');
     sessionItem.id = `session-${session.id}`;
     sessionItem.dataset.sessionId = session.id;
@@ -3598,35 +3576,45 @@ export function addSessionToList(session, isActive = false) {
     const isGenieSlave = genieMetadata.is_genie_slave || false;
     const genieParentSessionId = genieMetadata.parent_session_id;
 
+    // Extract hierarchy metadata (needed for badges even if not slave)
+    const nestingLevel = genieMetadata.nesting_level || 0;
+    const slaveSequence = genieMetadata.slave_sequence_number || 0;
+
+    // Prefer metadata value over parameter (backend now sets this)
+    isLastChild = genieMetadata.is_last_child || isLastChild;
+
     // Check if this session is a genie master (has slave sessions pointing to it)
     // This is set by markGenieMasterSessions() after all sessions are loaded
     const isGenieMaster = session._isGenieMaster || false;
 
-    // Simplified: Use CSS classes for Genie connectors (no DOM nodes)
-    // This reduces DOM nodes by 67% per child (6 nodes → 2 nodes)
+    // Simplified: Use wrapper div for indentation (guaranteed to work with any CSS)
+    // Wrapper approach bypasses overflow:hidden and Tailwind conflicts
     if (isGenieSlave) {
         sessionItem.classList.add('genie-slave-session');
         sessionItem.dataset.genieParentId = genieParentSessionId || '';
 
-        // Get nesting level for progressive indentation
-        const nestingLevel = genieMetadata.nesting_level || 0;
+        // Create wrapper div using data-level attribute (CSS handles spacing and colors)
+        const wrapper = document.createElement('div');
+        wrapper.className = 'genie-wrapper';
+        wrapper.dataset.level = nestingLevel;              // Used by CSS for indentation and color
+        wrapper.dataset.sessionId = session.id;            // For path highlighting
+        wrapper.dataset.parentId = genieParentSessionId;   // For lineage traversal
+        wrapper.dataset.sequence = slaveSequence;          // For stagger animation
 
-        // Add nesting level class (CSS handles tree connectors via ::before)
-        if (nestingLevel === 0) {
-            sessionItem.classList.add('genie-child-l0');
-        } else if (nestingLevel === 1) {
-            sessionItem.classList.add('genie-child-l1');
-        } else if (nestingLevel === 2) {
-            sessionItem.classList.add('genie-child-l2');
+        // Add last-child class for connector styling (└ vs ├)
+        if (isLastChild) {
+            wrapper.classList.add('last-child');
         }
-
-        // Note: Hover effects now handled via CSS in main.css (no inline listeners)
 
         // Check if slaves should be hidden (parent is collapsed)
         const collapseState = getGenieCollapseState();
         if (collapseState[genieParentSessionId]) {
             sessionItem.classList.add('genie-slave-hidden');
         }
+
+        // Store original sessionItem for later unwrapping if needed
+        wrapper._originalSession = sessionItem;
+        sessionItem._wrapper = wrapper;
     }
 
     // Mark genie master sessions for later identification
@@ -3652,6 +3640,19 @@ export function addSessionToList(session, isActive = false) {
     const nameSpan = document.createElement('span');
     nameSpan.className = 'session-name-span font-semibold text-sm text-white truncate block';
     nameSpan.textContent = session.name;
+    nameSpan.dataset.fullName = session.name;  // For tooltip on truncation
+
+    // Add text level badge for child sessions (industrial blueprint style)
+    if (isGenieSlave) {
+        const levelBadge = document.createElement('span');
+        levelBadge.className = `level-badge level-badge-l${Math.min(nestingLevel, 3)}`;
+        levelBadge.textContent = `L${nestingLevel}`;
+        levelBadge.title = `Level ${nestingLevel} child session`;
+
+        // Insert badge before name span
+        nameContainer.appendChild(levelBadge);
+    }
+
     nameContainer.appendChild(nameSpan);
     
     // Add utility indicator badge for temporary sessions
@@ -3669,182 +3670,26 @@ export function addSessionToList(session, isActive = false) {
         nameContainer.appendChild(utilityBadge);
     }
 
-    // Add Genie child indicator badge with world-class hierarchical visualization
-    if (isGenieSlave) {
-        // Get nesting metadata (nesting_level, slave_profile_tag)
-        const nestingLevel = genieMetadata.nesting_level || 0;
-        const childProfileTag = genieMetadata.slave_profile_tag || session.profile_tag || 'UNKNOWN';
-        const maxNestingDepth = 3; // TODO: Get from global settings
+    // REMOVED: Genie child indicator badge - using CSS-only tree visualization for minimal screen estate
+    // CSS classes (genie-child-l0/l1/l2) are still applied above for tree connector styling
+    // Tree structure rendered via CSS ::before and ::after pseudo-elements in main.css
 
-        // Determine if this child is itself a Genie (nested Genie)
-        const isNestedGenie = session.profile_type === 'genie';
-
-        // Get profile type color for the child session
-        const childProfileColor = PROFILE_TYPE_COLORS[session.profile_type] || '#94a3b8';
-
-        // Calculate depth warning level
-        const depthWarningLevel = nestingLevel >= maxNestingDepth - 1 ? 'critical' :
-                                   nestingLevel >= maxNestingDepth - 2 ? 'warning' : 'normal';
-
-        const genieBadge = document.createElement('div');
-        genieBadge.className = 'genie-child-badge-container mt-0.5';
-
-        // Ultra-compact industrial design for narrow sidebar - uses child profile type color
-        const badgeHTML = `
-            <div class="inline-flex items-center gap-1 text-xs" style="
-                padding: 2px 6px;
-                border-radius: 4px;
-                background: ${depthWarningLevel === 'critical' ? 'rgba(239, 68, 68, 0.08)' :
-                             depthWarningLevel === 'warning' ? 'rgba(245, 158, 11, 0.08)' :
-                             `${childProfileColor}10`};
-                border-left: 2px solid ${depthWarningLevel === 'critical' ? '#ef4444' :
-                                         depthWarningLevel === 'warning' ? '#f59e0b' :
-                                         `${childProfileColor}66`};
-            ">
-                <!-- Tree connector (minimal) -->
-                <span style="color: rgba(148, 163, 184, 0.4); font-size: 10px; line-height: 1;">├</span>
-
-                <!-- Nesting level badge (ultra-compact) -->
-                <span style="
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 0 3px;
-                    background: ${depthWarningLevel === 'critical' ? 'rgba(239, 68, 68, 0.12)' :
-                                 depthWarningLevel === 'warning' ? 'rgba(245, 158, 11, 0.12)' :
-                                 `${childProfileColor}20`};
-                    border-radius: 2px;
-                    color: ${depthWarningLevel === 'critical' ? '#ef4444' :
-                             depthWarningLevel === 'warning' ? '#f59e0b' :
-                             childProfileColor};
-                    font-weight: 600;
-                    font-size: 9px;
-                    font-family: monospace;
-                    line-height: 1.3;
-                ">L${nestingLevel}</span>
-
-                <!-- Nested Genie indicator (minimal icon) -->
-                ${isNestedGenie ? `<span style="color: ${childProfileColor}99; font-size: 10px; line-height: 1;">⚙</span>` : ''}
-            </div>
-        `;
-
-        genieBadge.innerHTML = badgeHTML;
-
-        const tooltip = isNestedGenie ?
-            `Nested Genie L${nestingLevel} - @${childProfileTag} can coordinate other profiles` :
-            `Child L${nestingLevel} - spawned using @${childProfileTag}`;
-
-        genieBadge.title = tooltip;
-
-        // Add click handler to navigate to parent session with enhanced visual
-        if (genieParentSessionId) {
-            const parentLink = document.createElement('button');
-            parentLink.style.cssText = `
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                width: 18px;
-                height: 18px;
-                margin-left: 4px;
-                color: #F15F22;
-                background: rgba(241, 95, 34, 0.1);
-                border-radius: 4px;
-                border: 1px solid rgba(241, 95, 34, 0.3);
-                transition: all 0.2s ease;
-                font-size: 12px;
-            `;
-            parentLink.innerHTML = '↑';
-            parentLink.title = 'Jump to parent Genie session';
-
-            parentLink.addEventListener('mouseenter', () => {
-                parentLink.style.background = 'rgba(241, 95, 34, 0.3)';
-                parentLink.style.borderColor = '#F15F22';
-                parentLink.style.transform = 'translateY(-1px)';
-            });
-            parentLink.addEventListener('mouseleave', () => {
-                parentLink.style.background = 'rgba(241, 95, 34, 0.1)';
-                parentLink.style.borderColor = 'rgba(241, 95, 34, 0.3)';
-                parentLink.style.transform = 'translateY(0)';
-            });
-
-            parentLink.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const parentItem = document.getElementById(`session-${genieParentSessionId}`);
-                if (parentItem) {
-                    // Flash highlight effect on parent
-                    parentItem.style.transition = 'background 0.3s ease';
-                    parentItem.style.background = 'rgba(241, 95, 34, 0.2)';
-                    setTimeout(() => {
-                        parentItem.style.background = '';
-                    }, 600);
-
-                    parentItem.click();
-                    setTimeout(() => {
-                        parentItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }, 100);
-                }
-            });
-            genieBadge.appendChild(parentLink);
-        }
-        nameContainer.appendChild(genieBadge);
-    }
-
-    // Add Genie master indicator badge with collapse toggle - world-class styling
+    // Add Genie master indicator badge - L0 (consistent with child badges L1/L2/L3)
     if (isGenieMaster) {
-        const genieMasterBadge = document.createElement('span');
-        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-1.5 mt-1 text-xs cursor-pointer';
-
         // Check current collapse state
         const collapseState = getGenieCollapseState();
         const isCollapsed = collapseState[session.id] || false;
 
-        genieMasterBadge.style.cssText = `
-            background: linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1));
-            padding: 3px 8px;
-            border-radius: 6px;
-            border: 1px solid rgba(241, 95, 34, 0.4);
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 4px rgba(241, 95, 34, 0.1);
-        `;
+        // Create level badge matching child style
+        const levelBadge = document.createElement('span');
+        levelBadge.className = 'level-badge level-badge-l0';
+        levelBadge.textContent = 'L0';
+        levelBadge.title = 'Level 0 parent session';
 
-        // Add hover effect
-        genieMasterBadge.addEventListener('mouseenter', () => {
-            genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.3), rgba(255, 140, 0, 0.15))';
-            genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.6)';
-            genieMasterBadge.style.boxShadow = '0 3px 8px rgba(241, 95, 34, 0.2)';
-        });
-        genieMasterBadge.addEventListener('mouseleave', () => {
-            genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1))';
-            genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.4)';
-            genieMasterBadge.style.boxShadow = '0 2px 4px rgba(241, 95, 34, 0.1)';
-        });
-
-        // Icon with crown-like glow
-        const icon = document.createElement('span');
-        icon.style.cssText = `
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            background: linear-gradient(135deg, #FF8C00, #F15F22);
-            border-radius: 4px;
-            color: white;
-            font-weight: bold;
-            font-size: 10px;
-            box-shadow: 0 0 12px rgba(255, 140, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-        `;
-        icon.textContent = 'G';
-        genieMasterBadge.appendChild(icon);
-
-        // Label
-        const label = document.createElement('span');
-        label.style.cssText = `
-            color: #F15F22;
-            font-weight: 600;
-            text-shadow: 0 1px 2px rgba(241, 95, 34, 0.2);
-        `;
-        label.textContent = 'Master';
-        genieMasterBadge.appendChild(label);
+        // Container for badge + collapse toggle
+        const genieMasterBadge = document.createElement('span');
+        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-0.5 mt-1 cursor-pointer';
+        genieMasterBadge.appendChild(levelBadge);
 
         // Collapse toggle with smooth animation
         const toggle = document.createElement('span');
@@ -3855,7 +3700,6 @@ export function addSessionToList(session, isActive = false) {
             justify-content: center;
             width: 18px;
             height: 18px;
-            margin-left: 4px;
             color: #F15F22;
             background: rgba(241, 95, 34, 0.15);
             border-radius: 4px;
@@ -3955,6 +3799,13 @@ export function addSessionToList(session, isActive = false) {
     contentWrapper.appendChild(tagsDiv);
 
     sessionItem.appendChild(contentWrapper);
+
+    // If this is a child session with a wrapper, append sessionItem to wrapper and return wrapper
+    if (sessionItem._wrapper) {
+        const wrapper = sessionItem._wrapper;
+        wrapper.appendChild(sessionItem);
+        return wrapper;
+    }
 
     return sessionItem;
 }

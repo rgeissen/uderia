@@ -215,28 +215,42 @@ export function subscribeToNotifications() {
                 break;
             case 'new_session_created': {
                 const newSession = data.payload;
-                // Add the new session to the UI list, but do not make it active
-                const sessionItem = UI.addSessionToList(newSession, false);
 
-                // Check if this is a genie slave session - insert after parent instead of prepending
+                // Check if this is a genie slave session to determine if it's the last child
                 const genieMetadata = newSession.genie_metadata || {};
                 const parentSessionId = genieMetadata.parent_session_id;
+                let isLastChild = true;  // New session is always the last child when created
+
+                // Add the new session to the UI list, but do not make it active
+                const sessionItem = UI.addSessionToList(newSession, false, isLastChild);
 
                 if (genieMetadata.is_genie_slave && parentSessionId) {
-                    // Find the parent session element
+                    // Find the parent session element (might be wrapped)
                     const parentElement = document.getElementById(`session-${parentSessionId}`);
                     if (parentElement) {
-                        // Find all existing sibling slaves (same parent)
-                        const existingSlaves = Array.from(DOM.sessionList.querySelectorAll('.genie-slave-session'))
-                            .filter(el => el.dataset.genieParentId === parentSessionId);
+                        // Find all existing sibling slaves (same parent) - these are wrapped elements
+                        const existingSlaveWrappers = Array.from(DOM.sessionList.querySelectorAll('.genie-wrapper'))
+                            .filter(wrapper => {
+                                const sessionEl = wrapper.querySelector('.genie-slave-session');
+                                return sessionEl && sessionEl.dataset.genieParentId === parentSessionId;
+                            });
 
-                        if (existingSlaves.length === 0) {
-                            // No existing slaves, insert directly after parent
-                            parentElement.insertAdjacentElement('afterend', sessionItem);
+                        if (existingSlaveWrappers.length === 0) {
+                            // No existing slaves, insert directly after parent (or parent's wrapper)
+                            const insertAfter = parentElement.parentElement && parentElement.parentElement.classList.contains('genie-wrapper')
+                                ? parentElement.parentElement
+                                : parentElement;
+                            insertAfter.insertAdjacentElement('afterend', sessionItem);
                         } else {
-                            // Insert after the last existing slave to maintain order
-                            const lastSlave = existingSlaves[existingSlaves.length - 1];
-                            lastSlave.insertAdjacentElement('afterend', sessionItem);
+                            // Insert after the last existing slave wrapper to maintain order
+                            const lastSlaveWrapper = existingSlaveWrappers[existingSlaveWrappers.length - 1];
+                            lastSlaveWrapper.insertAdjacentElement('afterend', sessionItem);
+
+                            // Update the previous last child to no longer be the last child
+                            // Remove the 'genie-wrapper-last' class so it shows ├─ with vertical line
+                            if (lastSlaveWrapper.classList && lastSlaveWrapper.classList.contains('genie-wrapper-last')) {
+                                lastSlaveWrapper.classList.remove('genie-wrapper-last');
+                            }
                         }
 
                         // Update genie master badges to add collapse toggle to parent if needed

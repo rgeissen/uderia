@@ -120,10 +120,10 @@ export function updateRoutingDecision(payload) {
  * Track slave invocation.
  * Called when genie_slave_invoked event is received.
  */
-export function updateSlaveInvoked(payload) {
+export async function updateSlaveInvoked(payload) {
     if (!genieState.activeCoordination) return;
 
-    const { profile_tag, slave_session_id, profile_id, query } = payload;
+    const { profile_tag, slave_session_id, profile_id, query, parent_session_id } = payload;
 
     // Update or create progress entry
     if (!genieState.slaveProgress[profile_tag]) {
@@ -150,13 +150,106 @@ export function updateSlaveInvoked(payload) {
 }
 
 /**
+ * Efficiently add a single child session to the session list
+ * @param {string} childSessionId - Child session ID
+ * @param {string} parentSessionId - Parent session ID
+ */
+async function addChildSessionToList(childSessionId, parentSessionId) {
+    try {
+        // Check if already in list
+        if (document.getElementById(`session-${childSessionId}`)) {
+            console.log('[GenieHandler] Session already in list:', childSessionId);
+            return;
+        }
+
+        // Fetch recent sessions to find the new child (fetch top 10 to ensure we get it)
+        const response = await fetch(`/sessions?limit=10&offset=0`, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            console.warn('[GenieHandler] Failed to fetch sessions:', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        const sessions = data.sessions || [];
+
+        // Find our new session in the response
+        const newSession = sessions.find(s => s.id === childSessionId);
+        if (!newSession) {
+            console.warn('[GenieHandler] Child session not found in response, will appear on refresh');
+            return;
+        }
+
+        // Verify it has genie_metadata
+        if (!newSession.genie_metadata || !newSession.genie_metadata.is_genie_slave) {
+            console.warn('[GenieHandler] Session metadata not ready yet, will appear on refresh');
+            return;
+        }
+
+        console.log('[GenieHandler] Found child session with metadata:', {
+            id: childSessionId,
+            parent: newSession.genie_metadata.parent_session_id,
+            level: newSession.genie_metadata.nesting_level
+        });
+
+        // Import UI helpers dynamically
+        const { addSessionToList } = await import('../ui.js');
+        const { updateGenieMasterBadges } = await import('./configurationHandler.js');
+
+        // Create session item with tree structure
+        const sessionItem = addSessionToList(newSession, false);
+
+        // Find correct insertion point (after parent or after last sibling)
+        const sessionList = document.getElementById('session-list');
+        const parentWrapper = document.querySelector(`.genie-wrapper[data-session-id="${parentSessionId}"]`) ||
+                            document.getElementById(`session-${parentSessionId}`);
+
+        if (parentWrapper && sessionList) {
+            // Find all existing siblings to insert at the end of sibling group
+            const existingSiblings = document.querySelectorAll(`.genie-wrapper[data-parent-id="${parentSessionId}"]`);
+
+            if (existingSiblings.length > 0) {
+                // Insert after last sibling
+                const lastSibling = existingSiblings[existingSiblings.length - 1];
+                const nextElement = lastSibling.nextElementSibling;
+                if (nextElement) {
+                    sessionList.insertBefore(sessionItem, nextElement);
+                } else {
+                    sessionList.appendChild(sessionItem);
+                }
+            } else {
+                // No siblings yet, insert right after parent
+                const nextElement = parentWrapper.nextElementSibling;
+                if (nextElement) {
+                    sessionList.insertBefore(sessionItem, nextElement);
+                } else {
+                    sessionList.appendChild(sessionItem);
+                }
+            }
+        } else {
+            // Fallback: prepend to top
+            sessionList.prepend(sessionItem);
+        }
+
+        // Update parent's genie master badge
+        updateGenieMasterBadges();
+
+        console.log('[GenieHandler] Successfully added child session with tree structure:', childSessionId);
+    } catch (error) {
+        console.error('[GenieHandler] Error adding child session:', error);
+    }
+}
+
+/**
  * Track slave progress.
  * Called when genie_slave_progress event is received.
  */
 export function updateSlaveProgress(payload) {
     if (!genieState.activeCoordination) return;
 
-    const { profile_tag, status, message, progress_pct } = payload;
+    const { profile_tag, status, message, progress_pct, slave_session_id } = payload;
 
     if (genieState.slaveProgress[profile_tag]) {
         genieState.slaveProgress[profile_tag].message = message;
@@ -164,6 +257,15 @@ export function updateSlaveProgress(payload) {
     }
 
     console.log('[GenieHandler] Slave progress:', profile_tag, message);
+
+    // Add child session to list on first progress event (PUSH approach)
+    if (slave_session_id && status === 'executing') {
+        const parentId = genieState.activeCoordination?.genie_session_id;
+        if (parentId) {
+            // Small delay to ensure backend has written session metadata
+            setTimeout(() => addChildSessionToList(slave_session_id, parentId), 300);
+        }
+    }
 }
 
 /**

@@ -51,7 +51,9 @@
       "Bash(conda env:*)",
       "Bash(/opt/anaconda3/bin/conda create:*)",
       "WebFetch(domain:uderia.com)",
-      "WebFetch(domain:friendli.ai)"
+      "WebFetch(domain:friendli.ai)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:reference.langchain.com)"
     ]
   }
 }

@@ -17,6 +17,8 @@ import { initializeVoiceRecognition } from './voice.js';
 import { subscribeToNotifications } from './notifications.js?v=3.4';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
 import * as capabilitiesModule from './handlers/capabilitiesManagement.js';
+// Import hierarchy helpers for industrial blueprint session tree visualization
+import { initializePathHighlighting } from './hierarchyHelpers.js';
 // Import conversationInitializer early to ensure window.__conversationInitState is available
 import './conversationInitializer.js';
 // Import splitViewHandler for Genie slave session split view (auto-initializes on import)
@@ -1090,7 +1092,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize all event listeners first to ensure they are ready.
     initializeEventListeners();
     initializeVoiceRecognition();
-    
+
+    // Initialize industrial hierarchy path highlighting for session tree
+    initializePathHighlighting();
+
     // Import and wire repository tabs
     const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.4');
     wireRepositoryTabs();

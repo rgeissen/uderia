@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 def create_langchain_llm(
     llm_config_id: str,
     user_uuid: str,
-    temperature: float = 0.7
+    temperature: float = 0.7,
+    disable_thinking: bool = False
 ) -> Any:
     """
     Create a LangChain-compatible LLM instance from Uderia LLM configuration.
@@ -40,6 +41,8 @@ def create_langchain_llm(
     Args:
         llm_config_id: The ID of the LLM configuration in Uderia
         user_uuid: User UUID for accessing encrypted credentials
+        temperature: Temperature parameter for the LLM (default: 0.7)
+        disable_thinking: Disable extended thinking mode for models that support it (default: False)
         temperature: LLM temperature setting (default 0.7)
 
     Returns:
@@ -72,7 +75,7 @@ def create_langchain_llm(
     elif provider == "Anthropic":
         return _create_anthropic_llm(model, decrypted_creds, temperature)
     elif provider == "Google":
-        return _create_google_llm(model, decrypted_creds, temperature)
+        return _create_google_llm(model, decrypted_creds, temperature, disable_thinking)
     elif provider == "Azure":
         return _create_azure_llm(model, decrypted_creds, llm_config, temperature)
     elif provider == "Friendli":
@@ -207,7 +210,7 @@ def _create_anthropic_llm(model: str, credentials: dict, temperature: float) -> 
         raise ImportError("langchain-anthropic package not installed. Run: pip install langchain-anthropic")
 
 
-def _create_google_llm(model: str, credentials: dict, temperature: float) -> Any:
+def _create_google_llm(model: str, credentials: dict, temperature: float, disable_thinking: bool = False) -> Any:
     """Create LangChain ChatGoogleGenerativeAI instance."""
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -216,15 +219,22 @@ def _create_google_llm(model: str, credentials: dict, temperature: float) -> Any
         if not api_key:
             raise ValueError("Google API key not found in credentials")
 
-        # NOTE: include_thoughts=True is required to get usage_metadata from Google API
-        # This is a workaround for a LangChain bug where token usage isn't populated otherwise
-        # See: https://github.com/langchain-ai/langchain-google/issues/957
-        return ChatGoogleGenerativeAI(
-            model=model,
-            google_api_key=api_key,
-            temperature=temperature,
-            include_thoughts=True  # Required for token usage tracking
-        )
+        # Prepare kwargs for ChatGoogleGenerativeAI
+        llm_kwargs = {
+            "model": model,
+            "google_api_key": api_key,
+            "temperature": temperature,
+            "include_thoughts": True  # Required for token usage tracking
+        }
+
+        # Add thinking_budget parameter to disable extended thinking (Gemini 2.x only)
+        # NOTE: include_thoughts=True is still needed for token tracking even with thinking_budget=0
+        # They serve different purposes: thinking_budget controls generation, include_thoughts controls visibility
+        if disable_thinking and model.startswith("gemini-2"):
+            llm_kwargs["thinking_budget"] = 0
+            logger.debug(f"[SessionName] LangChain: Disabling thinking mode for {model} (thinking_budget=0)")
+
+        return ChatGoogleGenerativeAI(**llm_kwargs)
     except ImportError:
         raise ImportError("langchain-google-genai package not installed. Run: pip install langchain-google-genai")
 

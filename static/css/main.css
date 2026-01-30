@@ -807,6 +807,13 @@ details.resource-selected > summary {
     will-change: transform;
 }
 
+/* CRITICAL FIX: Allow hierarchical children to expand beyond parent bounds */
+.session-item.genie-child-l0,
+.session-item.genie-child-l1,
+.session-item.genie-child-l2 {
+    overflow: visible;  /* Override parent's overflow: hidden */
+}
+
 .session-item::before {
     content: '';
     position: absolute;
@@ -864,14 +871,18 @@ details.resource-selected > summary {
     color: rgba(203, 213, 225, 0.9);
 }
 
-/* Container for the buttons */
+/* Container for the buttons - positioned at top-right corner */
 .session-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
     display: flex;
     align-items: center;
     gap: 0.25rem; /* Space between buttons */
     flex-shrink: 0; /* Prevent buttons from shrinking */
     opacity: 0; /* Hidden until hover */
     transition: opacity 0.15s ease-in-out;
+    z-index: 10; /* Ensure buttons appear above other content */
 }
 
 .session-item:hover .session-actions {
@@ -3077,15 +3088,7 @@ button.bg-gray-700.px-2:hover {
     position: relative;
 }
 
-.session-item.genie-slave-session::before {
-    content: '';
-    position: absolute;
-    left: -1rem;
-    top: 50%;
-    width: 0.75rem;
-    height: 1px;
-    background: rgba(241, 95, 34, 0.4);
-}
+/* Old ::before rule removed - replaced by tree connector system below */
 
 /* Genie badge icon (the "G" indicator) */
 .genie-badge-icon {
@@ -3136,9 +3139,23 @@ button.bg-gray-700.px-2:hover {
     display: inline-block;
 }
 
-/* Hidden state for collapsed slave sessions */
+/* Smooth collapse animation for industrial snappy feel */
+.genie-slave-session {
+    max-height: 200px;  /* Enough for typical 2-line session item */
+    overflow: hidden;
+    transition: max-height 0.2s ease,
+                opacity 0.15s ease,
+                margin 0.2s ease;
+    margin-bottom: 0.5rem;
+}
+
+/* Hidden state - smooth collapse */
 .genie-slave-hidden {
-    display: none !important;
+    max-height: 0 !important;
+    opacity: 0 !important;
+    margin-bottom: 0 !important;
+    margin-top: 0 !important;
+    pointer-events: none;
 }
 
 /* Visual indicator for genie parent with collapsed children (class name preserved for compatibility) */
@@ -3157,80 +3174,272 @@ button.bg-gray-700.px-2:hover {
    GENIE HIERARCHY - Filesystem Tree View (Session History)
    ============================================================================ */
 
-/* L0: Direct children of coordinator */
-.genie-child-l0 {
-    padding-left: 1.5rem;
+/* ============================================================================
+   INDUSTRIAL BLUEPRINT HIERARCHY SYSTEM
+   Pure CSS border-based connectors with geometric depth indicators
+   Replaces ASCII connectors and abandoned border system with unified design
+   ============================================================================ */
+
+:root {
+    /* Blueprint Industrial Color System */
+    --blueprint-blue: #3b82f6;
+    --hierarchy-cyan: #06b6d4;
+    --hierarchy-emerald: #10b981;
+    --hierarchy-amber: #f59e0b;
+    --industrial-slate-800: #1e293b;
+
+    /* Connector Variables - Increased visibility */
+    --connector-line: rgba(148, 163, 184, 0.5);
+    --connector-node: rgba(148, 163, 184, 0.7);
+    --connector-hover: rgba(59, 130, 246, 1.0);
+
+    /* Optimized Spacing (50% reduction from 2/4/6rem) */
+    --hierarchy-indent-l1: 1.5rem;   /* 24px - was 32px */
+    --hierarchy-indent-l2: 3rem;     /* 48px - was 64px */
+    --hierarchy-indent-l3: 4.5rem;   /* 72px - was 96px, CAPPED */
+}
+
+/* Base wrapper for all child sessions */
+.genie-wrapper {
+    position: relative;
+    display: block;
+    margin-bottom: 0.5rem;
+    max-height: 5000px;
+    overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.25s ease,
+                margin 0.25s ease;
+}
+
+/* Tree structure connectors - Vertical line + horizontal branch */
+.genie-wrapper {
     position: relative;
 }
 
-.genie-child-l0::before {
-    content: "├─";
+/* Indentation per level - space for connectors + content */
+.genie-wrapper[data-level="0"] {
+    padding-left: 2rem;  /* 0.5rem connector + 1rem branch + 0.5rem spacing */
+}
+
+.genie-wrapper[data-level="1"] {
+    padding-left: 3.5rem;  /* 2rem connector + 1rem branch + 0.5rem spacing */
+}
+
+.genie-wrapper[data-level="2"] {
+    padding-left: 5rem;  /* 3.5rem connector + 1rem branch + 0.5rem spacing */
+}
+
+/* L3+ capped at same indentation to prevent excessive nesting waste */
+.genie-wrapper[data-level="3"],
+.genie-wrapper[data-level="4"],
+.genie-wrapper[data-level="5"] {
+    padding-left: 6.5rem;  /* 5rem connector + 1rem branch + 0.5rem spacing */
+}
+
+/* VERTICAL LINE: Runs from top through children - positioned by level */
+.genie-wrapper::before {
+    content: '';
     position: absolute;
-    left: 0.25rem;
-    top: 0.75rem;
-    color: var(--tree-line-l0);
-    font-family: monospace, "Courier New", Courier;
-    font-size: 14px;
-    line-height: 1;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--connector-line);
+    z-index: 1;
 }
 
-.genie-child-l0:last-of-type::before {
-    content: "└─";
+/* L0: Connector at base position */
+.genie-wrapper[data-level="0"]::before,
+.genie-wrapper[data-level="0"]::after {
+    left: 0.5rem;  /* 8px */
 }
 
-/* Vertical line connecting L0 siblings */
-.genie-child-l0:not(:last-of-type)::after {
-    content: "";
+/* L1: Connector indented by one level */
+.genie-wrapper[data-level="1"]::before,
+.genie-wrapper[data-level="1"]::after {
+    left: 2rem;  /* 32px - shifted right */
+}
+
+/* L2: Connector indented by two levels */
+.genie-wrapper[data-level="2"]::before,
+.genie-wrapper[data-level="2"]::after {
+    left: 3.5rem;  /* 56px - shifted right more */
+}
+
+/* L3+: Connector indented (capped) */
+.genie-wrapper[data-level="3"]::before,
+.genie-wrapper[data-level="3"]::after,
+.genie-wrapper[data-level="4"]::before,
+.genie-wrapper[data-level="4"]::after,
+.genie-wrapper[data-level="5"]::before,
+.genie-wrapper[data-level="5"]::after {
+    left: 5rem;  /* 80px - maximum indent */
+}
+
+/* LAST CHILD: Vertical line stops at middle (└ connector) */
+.genie-wrapper.last-child::before {
+    bottom: 50%;
+}
+
+/* HORIZONTAL BRANCH: Connects vertical line to session */
+.genie-wrapper::after {
+    content: '';
     position: absolute;
-    left: 0.4rem;
-    top: 1.5rem;
-    bottom: -0.5rem;
-    width: 1px;
-    background: var(--tree-line-l0);
-    opacity: 0.5;
+    top: 50%;
+    width: 1rem;       /* 16px horizontal branch */
+    height: 2px;
+    background: var(--connector-line);
+    z-index: 1;
 }
 
-/* L1: Grandchildren (nested under L0) */
-.genie-child-l1 {
-    padding-left: 3rem; /* 1.5rem * 2 */
+/* Session item positioning */
+.genie-wrapper .session-item {
     position: relative;
 }
 
-.genie-child-l1::before {
-    content: "└─";
-    position: absolute;
-    left: 1.75rem;
-    top: 0.75rem;
-    color: var(--tree-line-l1);
-    font-family: monospace, "Courier New", Courier;
-    font-size: 14px;
-    line-height: 1;
-    opacity: 0.8;
+/* ============================================================================
+   DEPTH-BASED COLOR CODING - Blueprint Blue Gradient
+   ============================================================================ */
+
+/* L0: Blueprint Blue - Tree connectors */
+.genie-wrapper[data-level="0"]::before,
+.genie-wrapper[data-level="0"]::after {
+    background: rgba(59, 130, 246, 0.6);
 }
 
-/* L2: Great-grandchildren */
-.genie-child-l2 {
-    padding-left: 4.5rem; /* 1.5rem * 3 */
+/* L1: Cyan - Tree connectors */
+.genie-wrapper[data-level="1"]::before,
+.genie-wrapper[data-level="1"]::after {
+    background: rgba(6, 182, 212, 0.6);
+}
+
+/* L2: Emerald - Tree connectors */
+.genie-wrapper[data-level="2"]::before,
+.genie-wrapper[data-level="2"]::after {
+    background: rgba(16, 185, 129, 0.6);
+}
+
+/* L3+: Amber - Tree connectors */
+.genie-wrapper[data-level="3"]::before,
+.genie-wrapper[data-level="3"]::after,
+.genie-wrapper[data-level="4"]::before,
+.genie-wrapper[data-level="4"]::after,
+.genie-wrapper[data-level="5"]::before,
+.genie-wrapper[data-level="5"]::after {
+    background: rgba(245, 158, 11, 0.6);
+}
+
+/* Extra deep nesting indicator - thicker connectors */
+.genie-wrapper[data-level="4"]::before,
+.genie-wrapper[data-level="5"]::before,
+.genie-wrapper[data-level="6"]::before,
+.genie-wrapper[data-level="7"]::before {
+    width: 3px;  /* Thicker vertical line for deep nesting */
+}
+
+/* ============================================================================
+   HOVER STATES - Interactive Path Highlighting
+   ============================================================================ */
+
+/* Highlight tree connectors on hover - balanced visibility */
+.genie-wrapper:hover::before,
+.genie-wrapper:hover::after {
+    background: var(--connector-hover);
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.4);
+}
+
+.genie-wrapper:hover::before {
+    width: 2.5px;  /* Slightly thicker */
+}
+
+/* Sibling highlighting - subtle but visible */
+.genie-wrapper.path-highlighted::before,
+.genie-wrapper.path-highlighted::after {
+    background: var(--connector-hover);
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.35);
+}
+
+.genie-wrapper.path-highlighted::before {
+    width: 2.5px;  /* Slightly thicker */
+}
+
+/* ============================================================================
+   LEVEL BADGES - Text Indicators
+   ============================================================================ */
+
+.level-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 18px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-right: 8px;
+    font-family: "SF Mono", "Consolas", monospace;
+    border-radius: 3px;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+}
+
+.level-badge-l0 {
+    background: rgba(241, 95, 34, 0.15);
+    color: #F15F22;
+    border: 1px solid rgba(241, 95, 34, 0.3);
+    font-weight: 700;
+}
+
+.level-badge-l1 {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--hierarchy-cyan);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.level-badge-l2 {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--hierarchy-emerald);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.level-badge-l3,
+.level-badge-l4,
+.level-badge-l5 {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--hierarchy-amber);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* ============================================================================
+   COLLAPSE ANIMATIONS - Smooth Staggered Transitions
+   ============================================================================ */
+
+.genie-wrapper.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin: 0;
+    pointer-events: none;
+}
+
+/* Stagger collapse animation for visual cascade effect */
+.genie-wrapper[data-sequence="0"] { transition-delay: 0ms; }
+.genie-wrapper[data-sequence="1"] { transition-delay: 40ms; }
+.genie-wrapper[data-sequence="2"] { transition-delay: 80ms; }
+.genie-wrapper[data-sequence="3"] { transition-delay: 120ms; }
+.genie-wrapper[data-sequence="4"] { transition-delay: 160ms; }
+.genie-wrapper[data-sequence="5"] { transition-delay: 200ms; }
+
+/* Parent session marker */
+.genie-master-session {
     position: relative;
 }
 
-.genie-child-l2::before {
-    content: "└─";
-    position: absolute;
-    left: 3.25rem;
-    top: 0.75rem;
-    color: var(--tree-line-l2);
-    font-family: monospace, "Courier New", Courier;
-    font-size: 14px;
-    line-height: 1;
-    opacity: 0.6;
-}
-
-/* Hover effects for child sessions */
-.genie-child-l0:hover,
-.genie-child-l1:hover,
-.genie-child-l2:hover {
-    background: var(--gradient-hover);
+/* Responsive: Reduce indentation on narrow screens */
+@media (max-width: 768px) {
+    :root {
+        --hierarchy-indent-l1: 1rem;    /* 16px */
+        --hierarchy-indent-l2: 2rem;    /* 32px */
+        --hierarchy-indent-l3: 3rem;    /* 48px */
+    }
 }
 
 /* ============================================================================

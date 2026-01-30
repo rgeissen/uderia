@@ -461,12 +461,22 @@ async def _run_genie_execution(
                         app_logger.info(f"[Genie] Generating session name from first real user query (collecting events for history)")
 
                         from trusted_data_agent.agent.session_name_generator import generate_session_name_with_events
+                        from trusted_data_agent.llm.langchain_adapter import create_langchain_llm
+
+                        # Create a separate LangChain instance with thinking disabled for session name generation
+                        # This ensures we get clean titles (3-5 tokens) instead of thinking blocks (100+ tokens)
+                        session_name_llm = create_langchain_llm(
+                            llm_config_id,
+                            user_uuid,
+                            temperature=0.7,
+                            disable_thinking=True  # Disable extended thinking for session names
+                        )
 
                         async for event_dict, event_type, in_tok, out_tok in generate_session_name_with_events(
                             user_query=user_input,
                             session_id=session_id,
                             llm_interface="langchain",
-                            llm_instance=llm_instance,
+                            llm_instance=session_name_llm,  # Use dedicated instance with thinking disabled
                             emit_events=False  # Don't emit yet, we'll emit after saving to history
                         ):
                             if event_dict is None:

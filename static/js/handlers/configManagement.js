@@ -39,7 +39,7 @@ function showLoadMoreSessionsButton(remainingCount) {
 
     const btn = document.createElement('button');
     btn.id = 'load-more-sessions-btn';
-    btn.className = 'w-full py-2 px-3 mt-2 text-sm text-blue-400 hover:text-blue-300 hover:bg-gray-700/50 rounded-lg transition-colors flex items-center justify-center gap-2 border border-dashed border-gray-600';
+    btn.className = 'w-full py-2 px-3 mt-2 text-sm text-teradata-orange hover:text-white hover:bg-teradata-orange/20 rounded-lg transition-colors flex items-center justify-center gap-2 border border-dashed border-teradata-orange/40';
     btn.innerHTML = `
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
@@ -90,8 +90,32 @@ async function handleLoadMoreSessions() {
         const activeSessions = newSessions.filter(s => !s.archived);
         const sortedSessions = sortSessionsHierarchically(activeSessions);
 
+        // Build parent-to-child map for last-child detection
+        const parentToChildIds = new Map();
         sortedSessions.forEach((session) => {
-            const sessionItem = UI.addSessionToList(session, false);
+            const genieMetadata = session.genie_metadata || {};
+            const parentId = genieMetadata.parent_session_id;
+            if (genieMetadata.is_genie_slave && parentId) {
+                if (!parentToChildIds.has(parentId)) {
+                    parentToChildIds.set(parentId, []);
+                }
+                parentToChildIds.get(parentId).push(session.id);
+            }
+        });
+
+        sortedSessions.forEach((session) => {
+            // Check if this session is the last child of its parent
+            const genieMetadata = session.genie_metadata || {};
+            const parentId = genieMetadata.parent_session_id;
+            let isLastChild = false;
+
+            if (genieMetadata.is_genie_slave && parentId) {
+                const childIds = parentToChildIds.get(parentId) || [];
+                const lastChildId = childIds[childIds.length - 1];
+                isLastChild = session.id === lastChildId;
+            }
+
+            const sessionItem = UI.addSessionToList(session, false, isLastChild);
             DOM.sessionList.appendChild(sessionItem);
         });
 
@@ -268,9 +292,35 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         hideLoadMoreSessionsButton();
 
         if (sortedSessions && Array.isArray(sortedSessions) && sortedSessions.length > 0) {
+            // Build a map of parent_id -> list of child session ids (in sorted order)
+            // This allows us to detect which child is the last child of its parent
+            const parentToChildIds = new Map();
+            sortedSessions.forEach((session) => {
+                const genieMetadata = session.genie_metadata || {};
+                const parentId = genieMetadata.parent_session_id;
+                if (genieMetadata.is_genie_slave && parentId) {
+                    if (!parentToChildIds.has(parentId)) {
+                        parentToChildIds.set(parentId, []);
+                    }
+                    parentToChildIds.get(parentId).push(session.id);
+                }
+            });
+
             sortedSessions.forEach((session) => {
                 const isActive = session.id === currentSessionId;
-                const sessionItem = UI.addSessionToList(session, isActive);
+
+                // Check if this session is the last child of its parent
+                const genieMetadata = session.genie_metadata || {};
+                const parentId = genieMetadata.parent_session_id;
+                let isLastChild = false;
+
+                if (genieMetadata.is_genie_slave && parentId) {
+                    const childIds = parentToChildIds.get(parentId) || [];
+                    const lastChildId = childIds[childIds.length - 1];
+                    isLastChild = session.id === lastChildId;
+                }
+
+                const sessionItem = UI.addSessionToList(session, isActive, isLastChild);
                 DOM.sessionList.appendChild(sessionItem);
             });
 

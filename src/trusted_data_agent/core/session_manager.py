@@ -478,6 +478,11 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0) -
     for parent_id, slaves in slave_sessions_by_parent.items():
         slaves.sort(key=lambda s: s.get("genie_metadata", {}).get("slave_sequence_number", 0))
 
+        # Mark last child for proper connector styling (└─ vs ├─)
+        if slaves:
+            slaves[-1]["genie_metadata"]["is_last_child"] = True
+            app_logger.debug(f"[Session Hierarchy] Marked last child: {slaves[-1].get('id')} for parent {parent_id}")
+
     # Build final list with children inserted after their parents (recursively for nested Genies)
     def add_session_with_children(session_id, sessions_dict, added_ids, depth=0):
         """Recursively add a session and all its children (nested hierarchy support)"""

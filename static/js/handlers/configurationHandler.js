@@ -54,7 +54,7 @@ function showLoadMoreSessionsButton(remainingCount) {
 
     const btn = document.createElement('button');
     btn.id = 'load-more-sessions-btn';
-    btn.className = 'w-full py-2 px-3 mt-2 text-sm text-blue-400 hover:text-blue-300 hover:bg-gray-700/50 rounded-lg transition-colors flex items-center justify-center gap-2 border border-dashed border-gray-600';
+    btn.className = 'w-full py-2 px-3 mt-2 text-sm text-teradata-orange hover:text-white hover:bg-teradata-orange/20 rounded-lg transition-colors flex items-center justify-center gap-2 border border-dashed border-teradata-orange/40';
     btn.innerHTML = `
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
