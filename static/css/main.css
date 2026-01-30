@@ -3156,6 +3156,23 @@ button.bg-gray-700.px-2:hover {
     margin-bottom: 0 !important;
     margin-top: 0 !important;
     pointer-events: none;
+    transition: none !important; /* Disable transitions - let wrapper handle animation */
+}
+
+/* Collapse entire wrapper (including tree connectors) when it contains hidden session */
+.genie-wrapper:has(.genie-slave-hidden) {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Hide tree connectors smoothly when collapsing */
+.genie-wrapper:has(.genie-slave-hidden)::before,
+.genie-wrapper:has(.genie-slave-hidden)::after {
+    opacity: 0;
 }
 
 /* Visual indicator for genie parent with collapsed children (class name preserved for compatibility) */
