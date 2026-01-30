@@ -1372,7 +1372,9 @@ async function handleReloadPlanClick(element) {
 
                 // Pre-process: merge tool_invoked with tool_completed pairs
                 // This prevents duplicate rows - we only show the final state for each tool call
+                console.log('[ReloadPlan] Raw agentEvents:', agentEvents.map(e => e.type));
                 const processedEvents = _mergeToolEvents(agentEvents);
+                console.log('[ReloadPlan] Processed events after merge:', processedEvents.map(e => e.type));
 
                 // Replay each event using the same renderer as live execution
                 processedEvents.forEach((event, index) => {

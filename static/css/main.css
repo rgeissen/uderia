@@ -4396,6 +4396,31 @@ button.bg-gray-700.px-2:hover {
     color: #fca5a5;
 }
 
+/* Light theme overrides for better contrast */
+[data-theme="light"] .conv-agent-tag {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    color: #1e40af;
+}
+
+[data-theme="light"] .conv-agent-tag.executing {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.5);
+    color: #92400e;
+}
+
+[data-theme="light"] .conv-agent-tag.completed {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #065f46;
+}
+
+[data-theme="light"] .conv-agent-tag.error {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #991b1b;
+}
+
 /* convAgentTagPulse animation removed */
 
 /* Knowledge Retrieval Status Step (within conversation agent) */

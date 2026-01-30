@@ -145,18 +145,21 @@ class ConversationAgentExecutor:
                     "type": event_type,
                     "payload": payload
                 }
+                logger.info(f"[ConvAgent] Sending {event_type} event via async_event_handler to SSE queue")
                 # CRITICAL: Await to ensure event gets into SSE queue
                 # The asyncio.sleep(0) calls after _emit_event in the caller allow SSE consumer to process
                 await self.async_event_handler(event_data, "notification")
+                logger.info(f"[ConvAgent] ✓ Event {event_type} successfully sent to SSE queue")
             except Exception as e:
                 logger.warning(f"ConversationAgentExecutor async event handler error: {e}")
-
         # Fallback to sync callback if no async handler
         elif self.event_callback:
             try:
                 self.event_callback(event_type, payload)
             except Exception as e:
                 logger.warning(f"ConversationAgentExecutor event callback error: {e}")
+        else:
+            logger.warning(f"[ConvAgent] No event handler available - event {event_type} will NOT be sent to SSE!")
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt for conversation with tools."""
@@ -300,6 +303,9 @@ RESPONSE FORMAT:
             total_input_tokens = 0
             total_output_tokens = 0
 
+            # Track LLM call timing
+            llm_start_time = None
+
             # Use astream_events to track tool calls in real-time
             async for event in self.agent_executor.astream_events(
                 {"messages": messages},
@@ -308,6 +314,11 @@ RESPONSE FORMAT:
                 event_kind = event.get("event", "")
                 event_name = event.get("name", "")
                 event_data = event.get("data", {})
+
+                # Track LLM start time
+                if event_kind in ("on_llm_start", "on_chat_model_start"):
+                    llm_start_time = time.time()
+                    logger.debug(f"[ConvAgent] LLM call started at {llm_start_time}")
 
                 # Track LLM events - try multiple event types
                 # Some providers emit on_llm_end, others emit on_chat_model_end
@@ -320,21 +331,34 @@ RESPONSE FORMAT:
                     output_tokens = 0
 
                     # Method 1: usage_metadata attribute (newer LangChain format)
-                    if hasattr(output, 'usage_metadata') and output.usage_metadata:
+                    if hasattr(output, 'usage_metadata'):
                         usage = output.usage_metadata
-                        logger.info(f"[ConvAgent] Found usage_metadata: {usage}")
-                        # Handle both dict and object formats
-                        if isinstance(usage, dict):
-                            input_tokens = usage.get('input_tokens', 0) or 0
-                            output_tokens = usage.get('output_tokens', 0) or 0
-                        else:
-                            input_tokens = getattr(usage, 'input_tokens', 0) or 0
-                            output_tokens = getattr(usage, 'output_tokens', 0) or 0
-                        if input_tokens or output_tokens:
-                            total_input_tokens += input_tokens
-                            total_output_tokens += output_tokens
-                            tokens_found = True
-                            logger.info(f"[ConvAgent] Tokens from usage_metadata: input={input_tokens}, output={output_tokens}")
+                        logger.info(f"[ConvAgent] Found usage_metadata (raw): {usage}, type: {type(usage)}")
+                        if not usage:
+                            logger.warning(f"[ConvAgent] usage_metadata exists but is empty/None for FriendliAI")
+                        if usage:
+                            # Handle both dict and object formats
+                            if isinstance(usage, dict):
+                                # Try LangChain standard field names first
+                                input_tokens = usage.get('input_tokens', 0) or 0
+                                output_tokens = usage.get('output_tokens', 0) or 0
+                                # Fallback to OpenAI field names (for FriendliAI and other OpenAI-compatible APIs)
+                                if not input_tokens and not output_tokens:
+                                    input_tokens = usage.get('prompt_tokens', 0) or 0
+                                    output_tokens = usage.get('completion_tokens', 0) or 0
+                            else:
+                                # Try LangChain standard attribute names first
+                                input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                                output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                                # Fallback to OpenAI attribute names (for FriendliAI and other OpenAI-compatible APIs)
+                                if not input_tokens and not output_tokens:
+                                    input_tokens = getattr(usage, 'prompt_tokens', 0) or 0
+                                    output_tokens = getattr(usage, 'completion_tokens', 0) or 0
+                            if input_tokens or output_tokens:
+                                total_input_tokens += input_tokens
+                                total_output_tokens += output_tokens
+                                tokens_found = True
+                                logger.info(f"[ConvAgent] Tokens from usage_metadata: input={input_tokens}, output={output_tokens}")
 
                     # Method 2: response_metadata attribute
                     if not tokens_found and hasattr(output, 'response_metadata') and output.response_metadata:
@@ -363,11 +387,21 @@ RESPONSE FORMAT:
                                 if usage:
                                     # Handle both dict and object formats
                                     if isinstance(usage, dict):
+                                        # Try LangChain standard field names first
                                         input_tokens = usage.get('input_tokens', 0) or 0
                                         output_tokens = usage.get('output_tokens', 0) or 0
+                                        # Fallback to OpenAI field names (for FriendliAI and other OpenAI-compatible APIs)
+                                        if not input_tokens and not output_tokens:
+                                            input_tokens = usage.get('prompt_tokens', 0) or 0
+                                            output_tokens = usage.get('completion_tokens', 0) or 0
                                     else:
+                                        # Try LangChain standard attribute names first
                                         input_tokens = getattr(usage, 'input_tokens', 0) or 0
                                         output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                                        # Fallback to OpenAI attribute names (for FriendliAI and other OpenAI-compatible APIs)
+                                        if not input_tokens and not output_tokens:
+                                            input_tokens = getattr(usage, 'prompt_tokens', 0) or 0
+                                            output_tokens = getattr(usage, 'completion_tokens', 0) or 0
                                     if input_tokens or output_tokens:
                                         total_input_tokens += input_tokens
                                         total_output_tokens += output_tokens
@@ -382,6 +416,12 @@ RESPONSE FORMAT:
                     # Emit LLM step event for Live Status display
                     self.llm_call_count += 1
 
+                    # Calculate LLM call duration
+                    duration_ms = 0
+                    if llm_start_time is not None:
+                        duration_ms = int((time.time() - llm_start_time) * 1000)
+                        logger.debug(f"[ConvAgent] LLM call duration: {duration_ms}ms")
+
                     # Determine step type based on output content
                     # If output has tool_calls, it's Tool Selection; otherwise it's Response Generation
                     has_tool_calls = hasattr(output, 'tool_calls') and output.tool_calls
@@ -395,6 +435,7 @@ RESPONSE FORMAT:
                         "step_name": step_name,
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
+                        "duration_ms": duration_ms,
                         "session_id": self.session_id
                     })
 
@@ -460,7 +501,10 @@ RESPONSE FORMAT:
                         tools_used.append(tool_name)
 
                     # Emit tool completed event
-                    output_preview = str(tool_output)[:200] if tool_output else ""
+                    output_preview = str(tool_output)[:5000] if tool_output else ""
+                    logger.info(f"[ConvAgent] Tool output preview length: {len(output_preview)} chars")
+                    logger.debug(f"[ConvAgent] Tool output preview content: {output_preview[:100]}...")
+
                     await self._emit_event("conversation_tool_completed", {
                         "tool_name": tool_name,
                         "result_preview": output_preview,
@@ -468,6 +512,7 @@ RESPONSE FORMAT:
                         "success": True,
                         "session_id": self.session_id
                     })
+                    logger.info(f"[ConvAgent] ✓ Emitted conversation_tool_completed event with result_preview: {bool(output_preview)}")
 
                     # CRITICAL: Yield control to event loop to allow SSE tasks to run
                     await asyncio.sleep(0)
@@ -542,11 +587,21 @@ RESPONSE FORMAT:
                                         if usage:
                                             # Handle both dict and object formats
                                             if isinstance(usage, dict):
+                                                # Try LangChain standard field names first
                                                 input_t = usage.get('input_tokens', 0) or 0
                                                 output_t = usage.get('output_tokens', 0) or 0
+                                                # Fallback to OpenAI field names (for FriendliAI and other OpenAI-compatible APIs)
+                                                if not input_t and not output_t:
+                                                    input_t = usage.get('prompt_tokens', 0) or 0
+                                                    output_t = usage.get('completion_tokens', 0) or 0
                                             else:
+                                                # Try LangChain standard attribute names first
                                                 input_t = getattr(usage, 'input_tokens', 0) or 0
                                                 output_t = getattr(usage, 'output_tokens', 0) or 0
+                                                # Fallback to OpenAI attribute names (for FriendliAI and other OpenAI-compatible APIs)
+                                                if not input_t and not output_t:
+                                                    input_t = getattr(usage, 'prompt_tokens', 0) or 0
+                                                    output_t = getattr(usage, 'completion_tokens', 0) or 0
                                             chain_input_tokens += input_t
                                             chain_output_tokens += output_t
 

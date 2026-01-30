@@ -1877,6 +1877,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     // When multiple tools run in parallel, we match by tool_name to find the correct step
     if (type === 'conversation_tool_completed') {
         const toolName = details?.tool_name;
+        console.log('[LiveStatus] Received conversation_tool_completed:', {toolName, details, hasResultPreview: !!details?.result_preview});
 
         // Find the executing step for THIS specific tool (not just any active step)
         // Use data-tool-status="executing" to distinguish from already-completed tools
@@ -1885,14 +1886,25 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             lastStep = parentContainer.querySelector(
                 `.status-step[data-tool-name="${toolName}"][data-tool-status="executing"]`
             );
+            console.log('[LiveStatus] querySelector result for tool:', toolName, 'found:', !!lastStep);
         }
 
         // Fallback to any active step (backwards compatibility)
+        // CRITICAL: Only use fallback if it's actually a tool execution step, not an LLM step
         if (!lastStep) {
-            lastStep = parentContainer.querySelector('.status-step.active');
+            const activeStep = parentContainer.querySelector('.status-step.active');
+            // Check if the active step is a tool step (has data-tool-name) or an LLM step
+            // We should NOT overwrite LLM synthesis steps with tool completion data
+            if (activeStep && activeStep.dataset.toolName) {
+                lastStep = activeStep;
+                console.log('[LiveStatus] Fallback to .active tool step, found:', !!lastStep);
+            } else {
+                console.log('[LiveStatus] Fallback skipped - active step is not a tool step (likely LLM synthesis)');
+            }
         }
 
         if (lastStep) {
+            console.log('[LiveStatus] Updating existing step for tool:', toolName);
             // Mark as completed so next completion for same tool finds a different element
             lastStep.dataset.toolStatus = 'completed';
 
@@ -1940,6 +1952,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             // Scroll to updated step
             lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             return; // Exit early - we updated existing step, no need to create new one
+        } else {
+            console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
         }
     }
 
@@ -1965,6 +1979,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     if (type === 'conversation_tool_invoked' && details?.tool_name) {
         stepEl.dataset.toolName = details.tool_name;
         stepEl.dataset.toolStatus = 'executing';
+        console.log('[LiveStatus] Set data attributes on invoked step:', {toolName: details.tool_name, toolStatus: 'executing'});
     }
 
     if (isFinal) {
@@ -2005,7 +2020,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     // Render details based on event type
     if (details && typeof details === 'object') {
         const detailsEl = document.createElement('div');
-        detailsEl.className = 'text-xs';
+        detailsEl.className = 'status-details text-xs';
 
         switch (type) {
             case 'conversation_agent_start': {
@@ -2036,6 +2051,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const stepName = details.step_name || `Step ${stepNumber}`;
                 const inputTokens = details.input_tokens || 0;
                 const outputTokens = details.output_tokens || 0;
+                const durationMs = details.duration_ms || 0;
+                const duration = durationMs > 0 ? `${(durationMs / 1000).toFixed(2)}s` : 'N/A';
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
@@ -2045,6 +2062,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-value text-emerald-400">✓ Complete</div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
                     </div>
                 `;
                 break;
@@ -2052,6 +2071,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
             case 'conversation_tool_invoked': {
                 const toolName = details.tool_name || 'Unknown';
+                console.log('[LiveStatus] Rendering conversation_tool_invoked for tool:', toolName, 'details:', details);
                 let argsHtml = '';
                 if (details.arguments) {
                     try {

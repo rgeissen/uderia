@@ -278,16 +278,16 @@ def _create_friendli_llm(model: str, credentials: dict, temperature: float) -> A
 
         logger.info(f"Creating Friendli LLM with base_url={base_url}, model={model}")
 
-        # Note: stream_options={"include_usage": True} is NOT included here because
-        # it causes 422 errors when the LLM is used with ainvoke() (non-streaming).
-        # The Friendli API only accepts stream_options when stream=true.
-        # Token usage for streaming calls is handled by LangChain's callback system.
+        # CRITICAL FIX: stream_usage=True is required for FriendliAI to populate usage_metadata
+        # When using ChatOpenAI with a custom base_url, stream_usage defaults to False
+        # Without this, usage_metadata will be None/empty even for non-streaming calls
         return ChatOpenAI(
             model=model,
             api_key=friendli_token,
             base_url=base_url,
             temperature=temperature,
-            timeout=60  # 60 second timeout to prevent hanging on unavailable models
+            timeout=60,  # 60 second timeout to prevent hanging on unavailable models
+            stream_usage=True  # Enable token usage tracking for FriendliAI
         )
     except ImportError:
         raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")

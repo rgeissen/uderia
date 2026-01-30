@@ -19,6 +19,184 @@ python -m trusted_data_agent.main
 
 **Note:** When adding LLM configurations, use the model filter toggle (Recommended/All) to switch between recommended models and all available models from the provider.
 
+### Testing Functionality via REST API
+
+The REST API provides a programmatic way to test features without using the UI. This is especially useful for:
+- Automated testing of token counting, cost tracking, and other analytics
+- Validating fixes for specific providers (e.g., FriendliAI, Azure, etc.)
+- Integration testing with external systems
+- Performance benchmarking
+
+#### Quick Test Workflow
+
+```bash
+# 1. Start the server in background
+python -m trusted_data_agent.main > /tmp/uderia_server.log 2>&1 &
+sleep 5  # Wait for startup
+
+# 2. Authenticate and get JWT token
+JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}' | jq -r '.token')
+
+echo "JWT obtained: ${JWT:0:50}..."
+
+# 3. Create a session (uses default profile)
+SESSION_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{}')
+
+SESSION_ID=$(echo "$SESSION_RESPONSE" | jq -r '.session_id')
+echo "Session created: $SESSION_ID"
+
+# 4. Submit a query
+TASK_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "How many databases are on the system?"}')
+
+TASK_ID=$(echo "$TASK_RESPONSE" | jq -r '.task_id')
+echo "Task submitted: $TASK_ID"
+
+# 5. Poll for results (wait for completion)
+sleep 5
+
+RESULT=$(curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $JWT")
+
+# 6. Extract and verify token counts
+echo "$RESULT" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+
+print('\n=== TOKEN COUNTING VERIFICATION ===\n')
+
+# Extract LLM step events
+llm_steps = [e for e in data['events'] if e['event_type'] == 'notification' and
+             e.get('event_data', {}).get('type') == 'conversation_llm_step']
+
+for i, step in enumerate(llm_steps, 1):
+    payload = step['event_data']['payload']
+    print(f'Step #{i}: {payload[\"step_name\"]}')
+    print(f'  Input tokens:  {payload[\"input_tokens\"]:,}')
+    print(f'  Output tokens: {payload[\"output_tokens\"]:,}')
+
+# Extract totals
+token_updates = [e for e in data['events'] if e['event_type'] == 'token_update']
+if token_updates:
+    final = token_updates[-1]['event_data']
+    print(f'\nTOTAL TOKENS: {final[\"total_input\"]:,} in / {final[\"total_output\"]:,} out')
+"
+
+# 7. Cleanup
+pkill -f "python -m trusted_data_agent.main"
+```
+
+#### Testing Specific Features
+
+**Test Token Counting for a Specific Provider:**
+```bash
+# After creating session, check which provider is being used
+curl -s -X GET "http://localhost:5050/api/v1/sessions/$SESSION_ID" \
+  -H "Authorization: Bearer $JWT" | jq '.profile_id, .provider'
+
+# Submit query and verify token counts are non-zero
+# This is especially useful for testing FriendliAI, Azure, or new providers
+```
+
+**Test RAG Collection Retrieval:**
+```bash
+# Create session, then submit a query that should trigger RAG
+TASK_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Show me all products with low inventory"}')
+
+# Check events for champion_cases_retrieved event
+curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "champion_cases_retrieved")'
+```
+
+**Test Profile Override:**
+```bash
+# Submit query with temporary profile override using @TAG syntax
+TASK_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "@CHAT What is the capital of France?"}')
+
+# Verify profile was overridden
+curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "notification") | select(.event_data.type == "user_message_profile_tag")'
+```
+
+**Test Cost Tracking:**
+```bash
+# After query completion, check cost calculation
+curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "notification") | select(.event_data.type == "conversation_agent_complete") | .event_data.payload | {input_tokens, output_tokens}'
+
+# Check server logs for cost calculation
+tail -50 /tmp/uderia_server.log | grep "Cost Tracking"
+```
+
+#### Common Testing Patterns
+
+**Batch Testing Multiple Queries:**
+```bash
+for query in "List databases" "Show tables" "Count rows"; do
+  TASK_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+    -H "Authorization: Bearer $JWT" \
+    -H "Content-Type: application/json" \
+    -d "{\"prompt\": \"$query\"}")
+
+  TASK_ID=$(echo "$TASK_RESPONSE" | jq -r '.task_id')
+  echo "Submitted: $query (Task: $TASK_ID)"
+  sleep 3
+done
+```
+
+**Verify Session Persistence:**
+```bash
+# Submit first query
+curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What databases are available?"}'
+
+sleep 5
+
+# Submit follow-up query (should have context from first)
+curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Show me the tables in the first one"}'
+
+# Check session files for conversation history
+cat tda_sessions/$SESSION_ID/conversation.json | jq '.chat_object | length'
+```
+
+**Debug Server Logs:**
+```bash
+# Watch logs in real-time during testing
+tail -f /tmp/uderia_server.log | grep -E "(Token|usage_metadata|Cost Tracking)"
+
+# Check for specific errors or warnings
+grep -A 5 "ERROR" /tmp/uderia_server.log | tail -30
+grep -A 2 "Found usage_metadata" /tmp/uderia_server.log
+```
+
+#### Prerequisites for REST Testing
+
+Before running REST tests, ensure:
+1. **Default profile is configured** - Set via UI: Setup → Profiles → Set as Default
+2. **LLM credentials are valid** - Test via UI: Setup → LLM Configurations → Test Connection
+3. **MCP server is accessible** - Check logs for "MCP server initialized" message
+4. **Database is bootstrapped** - First run auto-creates schema from `schema/*.sql`
+
+For full REST API documentation, see [docs/RestAPI/restAPI.md](docs/RestAPI/restAPI.md).
+
 ### Installation & Setup
 
 ```bash
