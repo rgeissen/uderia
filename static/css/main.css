@@ -2475,11 +2475,11 @@ button[data-action="delete-mcp"]:hover {
         position: sticky;
         bottom: 0;
         z-index: 50;
-        background: var(--bg-primary, rgba(17, 24, 39, 0.98));
+        background: transparent;
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         padding-bottom: max(1rem, env(safe-area-inset-bottom));
-        border-top: 1px solid rgba(148, 163, 184, 0.1);
+        border-top: none;
     }
 
     /* Ensure chat container accounts for sticky footer */

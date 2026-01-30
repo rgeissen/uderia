@@ -1694,8 +1694,8 @@
 
 /* Light theme - Chat footer (for sticky positioning on touch devices) */
 [data-theme="light"] #chat-footer {
-    background: rgba(255, 255, 255, 0.98) !important;
-    border-top-color: var(--border-primary) !important;
+    background: transparent !important;
+    border-top: none !important;
 }
 
 /* Light theme - Message profile badges - REMOVED !important to allow inline CSS variables */
