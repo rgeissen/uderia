@@ -2911,6 +2911,25 @@ export function resetStatusWindowForNewTask() {
     }
 }
 
+/**
+ * Map profile types to branded agent names (IFOC methodology)
+ */
+function _getBrandedAgentName(profileType) {
+    switch (profileType) {
+        case 'conversation_with_tools':
+        case 'llm_only':
+            return 'Ideate Agent';
+        case 'rag_focused':
+            return 'Focus Agent';
+        case 'tool_enabled':
+            return 'Optimize Agent';
+        case 'genie':
+            return 'Coordinate Agent';
+        default:
+            return 'Agent';
+    }
+}
+
 export function updateStatusWindow(eventData, isFinal = false, source = 'interactive', taskId = null) {
     const { step, details, type, metadata } = eventData;
 
@@ -2943,7 +2962,8 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             state.isRestTaskActive = false;
             updateTaskIdDisplay(null);
         }
-        statusTitle.textContent = 'Live Status - Genie Coordination';
+        const brandedName = _getBrandedAgentName('genie');
+        statusTitle.textContent = `Live Status - ${brandedName}`;
         // Render genie events using custom renderer
         _renderGenieStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus) {
@@ -2964,7 +2984,10 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             state.isGenieCoordinationActive = false;
             updateTaskIdDisplay(null);
         }
-        statusTitle.textContent = 'Live Status - Tool Execution';
+        // Extract profile_type from event details if available (conversation_agent_start event)
+        const profileType = details?.profile_type || 'conversation_with_tools';
+        const brandedName = _getBrandedAgentName(profileType);
+        statusTitle.textContent = `Live Status - ${brandedName}`;
         // Render conversation agent events using custom renderer
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus) {

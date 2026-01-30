@@ -210,6 +210,31 @@ function _mergeToolEvents(events) {
 }
 
 // ============================================================================
+// PROFILE TYPE BRANDING (IFOC Methodology)
+// ============================================================================
+
+/**
+ * Map profile types to branded agent names (IFOC methodology)
+ * @param {string} profileType - Backend profile type
+ * @returns {string} Branded agent name
+ */
+function getBrandedAgentName(profileType) {
+    switch (profileType) {
+        case 'conversation_with_tools':
+        case 'llm_only':
+            return 'Ideate Agent';
+        case 'rag_focused':
+            return 'Focus Agent';
+        case 'tool_enabled':
+            return 'Optimize Agent';
+        case 'genie':
+            return 'Coordinate Agent';
+        default:
+            return 'Agent';
+    }
+}
+
+// ============================================================================
 // HARMONIZED EVENT TITLE GENERATION (Phase 1: Terminology Harmonization)
 // ============================================================================
 
@@ -1269,7 +1294,8 @@ async function handleReloadPlanClick(element) {
                 // Update status title to indicate historical view
                 const statusTitle = DOM.statusTitle || document.getElementById('status-title');
                 if (statusTitle) {
-                    statusTitle.textContent = `Genie Coordination - Turn ${turnId}`;
+                    const brandedName = getBrandedAgentName('genie');
+                    statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
                 }
 
                 // Filter out obsolete events (genie_start, genie_routing are redundant with genie_coordination_start)
@@ -1319,8 +1345,9 @@ async function handleReloadPlanClick(element) {
                 const success = turnData.success !== false;
                 const profileTags = toolsUsed.map(t => t.replace('invoke_', '')).join(', ');
 
+                const brandedName = getBrandedAgentName('genie');
                 genieInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">🔮 Genie Coordination</h4>
+                    <h4 class="font-bold text-sm text-white mb-2">🔮 ${brandedName}</h4>
                     <p class="text-xs text-gray-300 mb-2">${success ? 'Coordination completed successfully.' : 'Coordination encountered errors.'}</p>
                     <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
                         <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
@@ -1367,7 +1394,8 @@ async function handleReloadPlanClick(element) {
                 // Update status title to indicate historical view
                 const statusTitle = DOM.statusTitle || document.getElementById('status-title');
                 if (statusTitle) {
-                    statusTitle.textContent = `Conversation Agent - Turn ${turnId}`;
+                    const brandedName = getBrandedAgentName(turnData.profile_type || 'conversation_with_tools');
+                    statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
                 }
 
                 // Pre-process: merge tool_invoked with tool_completed pairs
@@ -1442,9 +1470,10 @@ async function handleReloadPlanClick(element) {
                 const toolsUsed = turnData.tools_used || [];
                 const toolCount = toolsUsed.length;
                 const success = turnData.status !== 'failed';
+                const brandedName = getBrandedAgentName(turnData.profile_type || 'conversation_with_tools');
 
                 agentInfoEl.innerHTML = `
-                    <h4 class="font-bold text-sm text-white mb-2">Conversation Agent</h4>
+                    <h4 class="font-bold text-sm text-white mb-2">${brandedName}</h4>
                     <p class="text-xs text-gray-300 mb-2">${success ? 'Agent execution completed successfully.' : 'Agent execution encountered errors.'}</p>
                     <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
                         <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
