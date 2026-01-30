@@ -2885,52 +2885,37 @@ input[type="checkbox"] {
     -webkit-appearance: none;
     width: 18px;
     height: 18px;
-    border: 2px solid rgba(148, 163, 184, 0.3);
+    border: 1px solid rgba(148, 163, 184, 0.3);
     border-radius: var(--radius-sm, 4px);
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+    background-color: #334155; /* Solid slate-700 - industrial style */
     cursor: pointer;
     position: relative;
-    transition: all var(--duration-200, 0.2s) var(--ease-out-expo, cubic-bezier(0.19, 1, 0.22, 1));
+    transition: all 0.15s ease; /* Faster, simpler - professional */
     flex-shrink: 0;
-    box-shadow: 
-        0 1px 3px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* Minimal shadow - light aesthetic */
 }
 
 input[type="checkbox"]:hover {
     border-color: rgba(148, 163, 184, 0.5);
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
-    box-shadow: 
-        0 2px 6px rgba(0, 0, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    background-color: #475569; /* Solid slate-600 - slightly lighter on hover */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); /* Minimal shadow */
     transform: translateY(-0.5px);
 }
 
 input[type="checkbox"]:focus {
     outline: none;
     border-color: rgba(241, 95, 34, 0.5);
-    box-shadow: 
-        0 2px 6px rgba(0, 0, 0, 0.4),
-        0 0 0 3px rgba(241, 95, 34, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 0 3px rgba(241, 95, 34, 0.1); /* Clean focus ring only */
 }
 
 input[type="checkbox"]:checked {
-    background: linear-gradient(135deg, var(--teradata-orange, #F15F22), var(--teradata-orange-dark, #D9501A));
-    border-color: rgba(241, 95, 34, 0.6);
-    box-shadow: 
-        0 2px 8px rgba(241, 95, 34, 0.4),
-        0 0 0 1px rgba(255, 255, 255, 0.1) inset,
-        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    background-color: #F15F22; /* Solid Teradata Orange - industrial style */
+    border-color: rgba(241, 95, 34, 0.8); /* Higher opacity for crisp edge */
+    box-shadow: 0 1px 2px rgba(241, 95, 34, 0.2); /* Minimal orange glow */
 }
 
 input[type="checkbox"]:checked::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 60%);
-    border-radius: inherit;
-    pointer-events: none;
+    display: none; /* Remove shine effect for industrial aesthetic */
 }
 
 input[type="checkbox"]:checked::after {
@@ -2941,17 +2926,14 @@ input[type="checkbox"]:checked::after {
     width: 4px;
     height: 8px;
     border: solid #ffffff;
-    border-width: 0 2px 2px 0;
+    border-width: 0 1.5px 1.5px 0; /* Thinner for lighter aesthetic */
     transform: rotate(45deg);
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+    /* No filter/shadow - clean industrial look */
 }
 
 input[type="checkbox"]:checked:hover {
-    background: linear-gradient(135deg, #F15F22, #E85519);
-    box-shadow: 
-        0 4px 12px rgba(241, 95, 34, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.15) inset,
-        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    background-color: #E85519; /* Slightly darker solid orange on hover */
+    box-shadow: 0 1px 3px rgba(241, 95, 34, 0.3); /* Minimal hover shadow */
     transform: translateY(-0.5px);
 }
 

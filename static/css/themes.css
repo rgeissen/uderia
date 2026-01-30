@@ -1399,6 +1399,12 @@
     color: var(--text-secondary) !important;
 }
 
+/* Legacy theme - Session list */
+/* Override active session background to use grey instead of blue */
+[data-theme="legacy"] .session-item.active {
+    background: linear-gradient(90deg, rgba(107, 114, 128, 0.15) 0%, rgba(107, 114, 128, 0.05) 100%);
+}
+
 /* Light theme - Dropdown menus */
 [data-theme="light"] [id$="-dropdown"],
 [data-theme="light"] .dropdown-menu {
@@ -2478,35 +2484,21 @@
     -webkit-appearance: none !important;
     background-color: #ffffff !important;
     background-image: none !important;
-    border: 2px solid rgba(100, 116, 139, 0.5) !important;
+    border: 1px solid rgba(100, 116, 139, 0.5) !important;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
 }
 
-/* Checked checkbox - dark orange background, NO background-image */
+/* Checked checkbox - Teradata orange background, NO background-image */
 [data-theme="light"] input[type="checkbox"]:checked {
     appearance: none !important;
     -webkit-appearance: none !important;
-    background-color: #C2410C !important;
+    background-color: #F15F22 !important; /* Teradata Orange - lighter, high contrast with white checkmark */
     background-image: none !important;  /* Remove any SVG checkmark */
-    border-color: #9A3412 !important;
-    box-shadow: 0 2px 4px rgba(194, 65, 12, 0.4) !important;
+    border-color: #EA580C !important; /* orange-600 border */
+    box-shadow: 0 1px 2px rgba(241, 95, 34, 0.3) !important; /* Minimal shadow - industrial style */
 }
 
-/* White checkmark via ::after - THIS is the only checkmark */
-[data-theme="light"] input[type="checkbox"]:checked::after {
-    content: '' !important;
-    display: block !important;
-    position: absolute !important;
-    left: 4px !important;
-    top: 1px !important;
-    width: 5px !important;
-    height: 9px !important;
-    border: solid #ffffff !important;
-    border-width: 0 2.5px 2.5px 0 !important;
-    transform: rotate(45deg) !important;
-}
-
-/* Remove the ::before gradient overlay in light mode */
+/* Remove the ::before gradient overlay in light mode (already handled in base) */
 [data-theme="light"] input[type="checkbox"]:checked::before {
     display: none !important;
 }
@@ -2519,20 +2511,27 @@
 
 /* Hover state for checked */
 [data-theme="light"] input[type="checkbox"]:checked:hover {
-    background-color: #9A3412 !important;
+    background-color: #EA580C !important; /* orange-600 - slightly darker on hover */
+    border-color: #C2410C !important;     /* orange-700 */
+}
+
+/* Light mode focus ring - orange for brand consistency */
+[data-theme="light"] input[type="checkbox"]:focus {
+    outline: none !important;
+    border-color: #F15F22 !important; /* Teradata orange */
+    box-shadow: 0 0 0 3px rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Light mode checkmark - white for high contrast on dark orange */
+[data-theme="light"] input[type="checkbox"]:checked::after {
+    border-color: #ffffff !important; /* White checkmark on dark orange background */
+    filter: none !important; /* Clean industrial look */
 }
 
 /* Radio buttons */
 [data-theme="light"] input[type="radio"]:checked {
     color: var(--teradata-orange-light-mode) !important;
     background-color: var(--teradata-orange-light-mode) !important;
-}
-
-/* Toggle switches */
-[data-theme="light"] .peer:checked ~ div.bg-gray-700,
-[data-theme="light"] .peer:checked ~ div.bg-gray-600,
-[data-theme="light"] .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
-    background: var(--teradata-orange-light-mode) !important;
 }
 
 /* Genie badges and status indicators */
@@ -4578,25 +4577,29 @@ button[aria-label]:active {
     color: white;
 }
 
-/* Light theme - Softer, more subtle colors */
+/* Light theme - Light backgrounds with dark text for better readability */
 [data-theme="light"] .app-banner-success {
-    background-color: rgba(22, 163, 74, 0.95); /* green-700 */
-    color: white;
+    background-color: rgba(220, 252, 231, 0.95); /* green-100 */
+    color: rgba(21, 128, 61, 1); /* green-700 - dark text */
+    border: 1px solid rgba(187, 247, 208, 1); /* green-200 */
 }
 
 [data-theme="light"] .app-banner-error {
-    background-color: rgba(185, 28, 28, 0.95); /* red-700 */
-    color: white;
+    background-color: rgba(254, 226, 226, 0.95); /* red-100 */
+    color: rgba(185, 28, 28, 1); /* red-700 - dark text */
+    border: 1px solid rgba(254, 202, 202, 1); /* red-200 */
 }
 
 [data-theme="light"] .app-banner-warning {
-    background-color: rgba(161, 98, 7, 0.95); /* yellow-700 */
-    color: white;
+    background-color: rgba(254, 243, 199, 0.95); /* amber-100 */
+    color: rgba(146, 64, 14, 1); /* amber-800 - dark text */
+    border: 1px solid rgba(253, 230, 138, 1); /* amber-200 */
 }
 
 [data-theme="light"] .app-banner-info {
-    background-color: rgba(29, 78, 216, 0.95); /* blue-700 */
-    color: white;
+    background-color: rgba(219, 234, 254, 0.95); /* blue-100 */
+    color: rgba(29, 78, 216, 1); /* blue-700 - dark text */
+    border: 1px solid rgba(191, 219, 254, 1); /* blue-200 */
 }
 
 /* Legacy theme - Classic colors */
@@ -4856,6 +4859,227 @@ button[aria-label]:active {
 
 [data-theme="legacy"] #show-deprecated-checkbox:hover {
     border-color: #d97706;
+}
+
+/* ==========================================
+   Legacy Theme: Profile Modal Overrides
+   Eliminates blue color leakage from modern theme
+   ========================================== */
+
+/* Modal glass panel */
+[data-theme="legacy"] #profile-modal .glass-panel {
+    background: rgba(17, 24, 39, 0.95) !important;
+    border-color: rgba(75, 85, 99, 0.3) !important;
+}
+
+/* Section headers - blue → Teradata orange (very subtle) */
+[data-theme="legacy"] #profile-modal .text-blue-400,
+[data-theme="legacy"] #profile-modal .from-blue-900\/10,
+[data-theme="legacy"] #profile-modal .to-blue-900\/10,
+[data-theme="legacy"] #profile-modal .border-blue-700\/20 {
+    color: rgba(241, 95, 34, 0.9) !important; /* Slightly muted orange */
+    background: linear-gradient(to bottom right, rgba(241, 95, 34, 0.03), rgba(217, 80, 26, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Green section headers (very subtle for Ideate profiles) */
+[data-theme="legacy"] #profile-modal .text-green-400,
+[data-theme="legacy"] #profile-modal .from-green-900\/10,
+[data-theme="legacy"] #profile-modal .to-green-900\/10,
+[data-theme="legacy"] #profile-modal .border-green-700\/20 {
+    color: rgba(74, 222, 128, 0.8) !important; /* Muted green */
+    background: linear-gradient(to bottom right, rgba(74, 222, 128, 0.03), rgba(34, 197, 94, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(74, 222, 128, 0.12) !important;
+}
+
+/* Purple section headers (very subtle for Coordinate profiles) */
+[data-theme="legacy"] #profile-modal .text-purple-400,
+[data-theme="legacy"] #profile-modal .from-purple-900\/10,
+[data-theme="legacy"] #profile-modal .to-purple-900\/10,
+[data-theme="legacy"] #profile-modal .border-purple-700\/20 {
+    color: rgba(168, 85, 247, 0.85) !important; /* Muted purple */
+    background: linear-gradient(to bottom right, rgba(168, 85, 247, 0.03), rgba(147, 51, 234, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(168, 85, 247, 0.12) !important;
+}
+
+/* Orange section headers (very subtle for Optimize profiles) */
+[data-theme="legacy"] #profile-modal .text-orange-400,
+[data-theme="legacy"] #profile-modal .from-orange-900\/10,
+[data-theme="legacy"] #profile-modal .to-orange-900\/10,
+[data-theme="legacy"] #profile-modal .border-orange-700\/20 {
+    color: rgba(241, 95, 34, 0.9) !important; /* Slightly muted orange */
+    background: linear-gradient(to bottom right, rgba(241, 95, 34, 0.03), rgba(217, 80, 26, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Form inputs */
+[data-theme="legacy"] #profile-modal input[type="text"],
+[data-theme="legacy"] #profile-modal select,
+[data-theme="legacy"] #profile-modal textarea {
+    background-color: rgba(31, 41, 55, 0.5) !important;
+    border-color: rgba(75, 85, 99, 0.5) !important;
+    color: #e5e7eb !important;
+}
+
+[data-theme="legacy"] #profile-modal input::placeholder,
+[data-theme="legacy"] #profile-modal textarea::placeholder {
+    color: rgba(156, 163, 175, 0.7) !important;
+}
+
+/* Text colors */
+[data-theme="legacy"] #profile-modal .text-gray-400 {
+    color: #9ca3af !important;
+}
+
+[data-theme="legacy"] #profile-modal .text-gray-300 {
+    color: #d1d5db !important;
+}
+
+[data-theme="legacy"] #profile-modal .text-white {
+    color: #ffffff !important;
+}
+
+[data-theme="legacy"] #profile-modal .text-gray-200 {
+    color: #e5e7eb !important;
+}
+
+/* Background panels */
+[data-theme="legacy"] #profile-modal .bg-gray-800\/40,
+[data-theme="legacy"] #profile-modal .bg-gray-800\/30 {
+    background-color: rgba(31, 41, 55, 0.4) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-900\/60 {
+    background-color: rgba(17, 24, 39, 0.6) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-700 {
+    background-color: rgba(55, 65, 81, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-600 {
+    background-color: rgba(75, 85, 99, 0.5) !important;
+}
+
+/* Table styling */
+[data-theme="legacy"] #profile-modal thead {
+    background-color: rgba(31, 41, 55, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal th {
+    color: #9ca3af !important;
+    border-color: rgba(75, 85, 99, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal tbody tr {
+    border-color: rgba(75, 85, 99, 0.2) !important;
+}
+
+[data-theme="legacy"] #profile-modal tbody tr:hover {
+    background-color: rgba(55, 65, 81, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal td {
+    color: #e5e7eb !important;
+}
+
+/* Scrollbar styling */
+[data-theme="legacy"] #profile-modal ::-webkit-scrollbar-track {
+    background: rgba(31, 41, 55, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal ::-webkit-scrollbar-thumb {
+    background-color: rgba(75, 85, 99, 0.6) !important;
+    border-color: rgba(17, 24, 39, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(107, 114, 128, 0.8) !important;
+}
+
+/* ==========================================
+   Legacy Theme: Blue Badge/Button Overrides
+   Converts blue elements to Teradata orange
+   ========================================== */
+
+/* Blue text classes → Teradata orange */
+[data-theme="legacy"] .text-blue-300,
+[data-theme="legacy"] .text-blue-400 {
+    color: #F15F22 !important;
+}
+
+/* Blue background classes → solid orange */
+[data-theme="legacy"] .bg-blue-500,
+[data-theme="legacy"] .bg-blue-600,
+[data-theme="legacy"] .bg-blue-700,
+[data-theme="legacy"] [class*="bg-blue-5"],
+[data-theme="legacy"] [class*="bg-blue-6"],
+[data-theme="legacy"] [class*="bg-blue-7"] {
+    background-color: #F15F22 !important;
+    color: white !important;
+}
+
+/* Blue background with transparency (badges) */
+[data-theme="legacy"] .bg-blue-500\/20,
+[data-theme="legacy"] .bg-blue-500\/30,
+[data-theme="legacy"] [class*="bg-blue-5"][class*="\/2"],
+[data-theme="legacy"] [class*="bg-blue-5"][class*="\/3"] {
+    background-color: rgba(241, 95, 34, 0.3) !important;
+    color: #F15F22 !important;
+}
+
+/* Blue borders */
+[data-theme="legacy"] .border-blue-400\/30,
+[data-theme="legacy"] [class*="border-blue-4"][class*="\/3"] {
+    border-color: rgba(241, 95, 34, 0.3) !important;
+}
+
+/* Blue button hover states */
+[data-theme="legacy"] .bg-blue-600:hover,
+[data-theme="legacy"] .hover\:bg-blue-700:hover,
+[data-theme="legacy"] [class*="hover:bg-blue-7"]:hover {
+    background-color: #D9501A !important;
+}
+
+/* ==========================================
+   Legacy Theme: Toggle Switch Overrides
+   Ensures toggles use Teradata orange
+   ========================================== */
+
+/* Toggle checked state → Teradata orange */
+[data-theme="legacy"] .peer:checked ~ div.bg-gray-700,
+[data-theme="legacy"] .peer:checked ~ div.bg-gray-600,
+[data-theme="legacy"] .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
+    background: #F15F22 !important;
+}
+
+/* Blue variant toggles → orange */
+[data-theme="legacy"] .peer:checked ~ div.peer-checked\:bg-blue-500,
+[data-theme="legacy"] .peer:checked ~ div.peer-checked\:bg-blue-600 {
+    background: #F15F22 !important;
+}
+
+/* Toggle circle - ensure contrast */
+[data-theme="legacy"] .peer:checked ~ div::after {
+    background: #ffffff !important;
+}
+
+/* ==========================================
+   Legacy Theme: Checkbox/Radio Overrides
+   Complements unified checkbox system
+   ========================================== */
+
+/* Radio buttons → Teradata orange */
+[data-theme="legacy"] input[type="radio"]:checked {
+    color: #F15F22 !important;
+    background-color: #F15F22 !important;
+}
+
+/* Focus states - orange ring */
+[data-theme="legacy"] input[type="checkbox"]:focus,
+[data-theme="legacy"] input[type="radio"]:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(241, 95, 34, 0.3) !important;
 }
 
 [data-theme="light"] #show-deprecated-checkbox:hover {

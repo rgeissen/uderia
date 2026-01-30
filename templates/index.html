@@ -336,25 +336,25 @@
                             <div id="window-dropdown-menu" class="dropdown-menu mt-2 w-56 rounded-md shadow-lg glass-panel p-1">
                                 <label class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-200 rounded-md hover:bg-white/10 cursor-pointer">
                                     <span>History Panel</span>
-                                    <input type="checkbox" id="toggle-history-checkbox" class="h-4 w-4 rounded text-teradata-orange bg-gray-700 border-gray-600 focus:ring-teradata-orange">
+                                    <input type="checkbox" id="toggle-history-checkbox" class="w-4 h-4">
                                 </label>
                                 <label class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-200 rounded-md hover:bg-white/10 cursor-pointer">
                                     <span>Capabilities Panel</span>
-                                    <input type="checkbox" id="toggle-header-checkbox" class="h-4 w-4 rounded text-teradata-orange bg-gray-700 border-gray-600 focus:ring-teradata-orange">
+                                    <input type="checkbox" id="toggle-header-checkbox" class="w-4 h-4">
                                 </label>
                                 <label class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-200 rounded-md hover:bg-white/10 cursor-pointer">
                                     <span>Status Panel</span>
-                                    <input type="checkbox" id="toggle-status-checkbox" class="h-4 w-4 rounded text-teradata-orange bg-gray-700 border-gray-600 focus:ring-teradata-orange">
+                                    <input type="checkbox" id="toggle-status-checkbox" class="w-4 h-4">
                                 </label>
                                 <div class="my-1 border-t border-white/10"></div>
                                 <label class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-200 rounded-md hover:bg-white/10 cursor-pointer">
                                     <span>Show Tooltips</span>
-                                    <input type="checkbox" id="toggle-tooltips-checkbox" class="h-4 w-4 rounded text-teradata-orange bg-gray-700 border-gray-600 focus:ring-teradata-orange">
+                                    <input type="checkbox" id="toggle-tooltips-checkbox" class="w-4 h-4">
                                 </label>
                                 <div class="my-1 border-t border-white/10"></div>
                                 <label class="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-200 rounded-md hover:bg-white/10 cursor-pointer">
                                     <span>Show Welcome Screen</span>
-                                    <input type="checkbox" id="toggle-welcome-screen-checkbox" class="h-4 w-4 rounded text-teradata-orange bg-gray-700 border-gray-600 focus:ring-teradata-orange">
+                                    <input type="checkbox" id="toggle-welcome-screen-checkbox" class="w-4 h-4">
                                 </label>
                             </div>
                         </div>
@@ -374,7 +374,7 @@
                         <!-- Show Utility Sessions Toggle (only visible if utility sessions exist) -->
                         <div id="sidebar-show-utility-sessions-container" class="hidden px-4 py-2 border-b border-white/10">
                             <label class="flex items-center gap-2 cursor-pointer group">
-                                <input type="checkbox" id="sidebar-show-utility-sessions-toggle" checked class="w-4 h-4 text-purple-500 bg-gray-700 border-gray-600 rounded focus:ring-purple-500 focus:ring-2">
+                                <input type="checkbox" id="sidebar-show-utility-sessions-toggle" checked class="w-4 h-4">
                                 <div class="flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 text-purple-400 group-hover:text-purple-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -1180,7 +1180,7 @@
                                 <div class="flex items-center gap-2">
                                     <!-- Auto-refresh Toggle -->
                                     <label class="flex items-center gap-2 px-3 py-2 bg-gray-700/50 rounded-md cursor-pointer hover:bg-gray-700 transition-colors">
-                                        <input type="checkbox" id="execution-auto-refresh-toggle" class="w-4 h-4 rounded border-gray-600 text-teradata-orange focus:ring-teradata-orange focus:ring-offset-gray-800">
+                                        <input type="checkbox" id="execution-auto-refresh-toggle" class="w-4 h-4">
                                         <span class="text-xs text-gray-300">Auto-refresh</span>
                                     </label>
 
@@ -1371,7 +1371,7 @@
                                     <!-- Show Utility Sessions Toggle (only visible if utility sessions exist) -->
                                     <div id="show-utility-sessions-container" class="hidden">
                                         <label class="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition-all group">
-                                            <input type="checkbox" id="show-utility-sessions-toggle" checked class="w-4 h-4 text-purple-500 bg-gray-700 border-gray-600 rounded focus:ring-purple-500 focus:ring-2">
+                                            <input type="checkbox" id="show-utility-sessions-toggle" checked class="w-4 h-4">
                                             <div class="flex items-center gap-2">
                                                 <svg class="w-4 h-4 text-purple-400 group-hover:text-purple-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -1607,7 +1607,7 @@
                         <div class="flex items-center gap-2">
                             <!-- Auto-refresh Toggle -->
                             <label class="flex items-center gap-2 px-3 py-2 bg-gray-700/50 rounded-md cursor-pointer hover:bg-gray-700 transition-colors">
-                                <input type="checkbox" id="intelligence-auto-refresh-toggle" class="w-4 h-4 rounded border-gray-600 text-teradata-orange focus:ring-teradata-orange focus:ring-offset-gray-800">
+                                <input type="checkbox" id="intelligence-auto-refresh-toggle" class="w-4 h-4">
                                 <span class="text-xs text-gray-300">Auto-refresh</span>
                             </label>
 
@@ -3137,7 +3137,7 @@
                                             <!-- RAG Toggle -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-rag-system" name="enable_rag_system" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="enable-rag-system" name="enable_rag_system" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="enable-rag-system" class="block text-sm font-semibold text-white cursor-pointer">Enable RAG (Retrieval-Augmented Generation)</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, users can leverage RAG capabilities for enhanced context retrieval and knowledge base integration. Requires ChromaDB and vector embeddings.</p>
@@ -3148,7 +3148,7 @@
                                             <!-- Voice/TTS Toggle -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-voice-system" name="enable_voice_system" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="enable-voice-system" name="enable_voice_system" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="enable-voice-system" class="block text-sm font-semibold text-white cursor-pointer">Enable Voice Conversation (TTS)</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, users can configure Google TTS credentials for voice-based conversations. Users provide their own TTS API credentials in their personal settings.</p>
@@ -3159,7 +3159,7 @@
                                             <!-- Charting Toggle -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-charting-system" name="enable_charting_system" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="enable-charting-system" name="enable_charting_system" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="enable-charting-system" class="block text-sm font-semibold text-white cursor-pointer">Enable Charting & Visualization</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, users can configure charting intensity (none/medium/heavy) for data visualization. Users control their own charting preferences in personal settings.</p>
@@ -3249,7 +3249,7 @@
 
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="rag-refresh-startup" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="rag-refresh-startup" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="rag-refresh-startup" class="block text-sm font-semibold text-white cursor-pointer">Refresh Vector Store on Startup</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, rebuilds the vector store on each application restart. When disabled, uses cached embeddings. (default: enabled)</p>
@@ -3307,7 +3307,7 @@
 
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="knowledge-rag-enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="knowledge-rag-enabled" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="knowledge-rag-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable Knowledge Repository Retrieval</label>
                                                         <p class="text-xs text-gray-400 mt-1">Master switch for retrieving domain knowledge during planning. Users can still disable it in their profiles. (default: enabled)</p>
@@ -3320,7 +3320,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="knowledge-min-relevance" class="block text-sm font-medium text-gray-300">Minimum Relevance Score</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="knowledge-min-relevance-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <input type="checkbox" id="knowledge-min-relevance-locked" class="w-4 h-4">
                                                         <label for="knowledge-min-relevance-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -3336,7 +3336,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="knowledge-num-docs" class="block text-sm font-medium text-gray-300">Max Documents</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="knowledge-num-docs-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <input type="checkbox" id="knowledge-num-docs-locked" class="w-4 h-4">
                                                         <label for="knowledge-num-docs-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -3349,7 +3349,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="knowledge-max-tokens" class="block text-sm font-medium text-gray-300">Max Tokens</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="knowledge-max-tokens-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <input type="checkbox" id="knowledge-max-tokens-locked" class="w-4 h-4">
                                                         <label for="knowledge-max-tokens-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -3362,12 +3362,12 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label class="block text-sm font-medium text-gray-300">LLM Reranking</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="knowledge-reranking-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                        <input type="checkbox" id="knowledge-reranking-locked" class="w-4 h-4">
                                                         <label for="knowledge-reranking-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="knowledge-reranking-enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="knowledge-reranking-enabled" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="knowledge-reranking-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable LLM Reranking</label>
                                                         <p class="text-xs text-gray-400 mt-1">Use LLM to rerank retrieved documents by relevance. Increases latency. Lock to enforce globally.</p>
@@ -3428,7 +3428,7 @@
                                                 <h4 class="text-sm font-bold text-white">Session History Panel (Left Sidebar)</h4>
                                                 
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="session-history-visible" name="session_history_visible" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="session-history-visible" name="session_history_visible" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="session-history-visible" class="block text-xs font-semibold text-white cursor-pointer">Panel is visible for the user</label>
                                                         <p class="text-xs text-gray-400 mt-0.5">When enabled, the session history panel is available to users</p>
@@ -3447,7 +3447,7 @@
                                                 </div>
                                                 
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="session-history-user-can-toggle" name="session_history_user_can_toggle" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="session-history-user-can-toggle" name="session_history_user_can_toggle" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="session-history-user-can-toggle" class="block text-xs font-semibold text-white cursor-pointer">User can collapse/expand</label>
                                                         <p class="text-xs text-gray-400 mt-0.5">When enabled, user can toggle the panel open/closed</p>
@@ -3460,7 +3460,7 @@
                                                 <h4 class="text-sm font-bold text-white">Resources Panel (Right Sidebar)</h4>
                                                 
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="resources-visible" name="resources_visible" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="resources-visible" name="resources_visible" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="resources-visible" class="block text-xs font-semibold text-white cursor-pointer">Panel is visible for the user</label>
                                                         <p class="text-xs text-gray-400 mt-0.5">When enabled, the resources panel is available to users</p>
@@ -3479,7 +3479,7 @@
                                                 </div>
                                                 
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="resources-user-can-toggle" name="resources_user_can_toggle" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="resources-user-can-toggle" name="resources_user_can_toggle" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="resources-user-can-toggle" class="block text-xs font-semibold text-white cursor-pointer">User can collapse/expand</label>
                                                         <p class="text-xs text-gray-400 mt-0.5">When enabled, user can toggle the panel open/closed</p>
@@ -3492,7 +3492,7 @@
                                                 <h4 class="text-sm font-bold text-white">Live Status Window (Bottom)</h4>
                                                 
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="status-visible" name="status_visible" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="status-visible" name="status_visible" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="status-visible" class="block text-xs font-semibold text-white cursor-pointer">Panel is visible for the user</label>
                                                         <p class="text-xs text-gray-400 mt-0.5">When enabled, the live status window is available to users</p>
@@ -3511,7 +3511,7 @@
                                                 </div>
                                                 
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="status-user-can-toggle" name="status_user_can_toggle" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="status-user-can-toggle" name="status_user_can_toggle" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="status-user-can-toggle" class="block text-xs font-semibold text-white cursor-pointer">User can collapse/expand</label>
                                                         <p class="text-xs text-gray-400 mt-0.5">When enabled, user can toggle the window open/closed</p>
@@ -3522,7 +3522,7 @@
                                             <!-- Always Show Welcome Screen -->
                                             <div class="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="always-show-welcome-screen" name="always_show_welcome_screen" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="always-show-welcome-screen" name="always_show_welcome_screen" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="always-show-welcome-screen" class="block text-sm font-semibold text-white cursor-pointer">Always Show Welcome Screen at Startup</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, the welcome screen will always be displayed in the conversation pane at startup or after browser refresh, regardless of whether the application is configured for the user.</p>
@@ -3548,7 +3548,7 @@
                                             <!-- User Override Control -->
                                             <div class="p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="allow-user-panel-override" name="allow_user_panel_override" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0" checked>
+                                                    <input type="checkbox" id="allow-user-panel-override" name="allow_user_panel_override" class="mt-1 w-4 h-4" checked>
                                                     <div class="flex-1">
                                                         <label for="allow-user-panel-override" class="block text-sm font-semibold text-white cursor-pointer">Allow Users to Override Panel Settings</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, users can toggle panels and save their preferences. When disabled, the above default settings are enforced for all users and panel toggle controls are hidden.</p>
@@ -3684,7 +3684,7 @@
                                             <!-- Classification Toggle -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-mcp-classification" name="enable_mcp_classification" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0" checked>
+                                                    <input type="checkbox" id="enable-mcp-classification" name="enable_mcp_classification" class="mt-1 w-4 h-4" checked>
                                                     <div class="flex-1">
                                                         <label for="enable-mcp-classification" class="block text-sm font-semibold text-white cursor-pointer">Enable Automatic Classification</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, MCP capabilities are automatically categorized during configuration using the LLM. When disabled, generic categories are used for faster configuration.</p>
@@ -3791,7 +3791,7 @@
                                             <!-- Rate Limiting Toggle -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="rate-limit-enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="rate-limit-enabled" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="rate-limit-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable Rate Limiting</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, enforces request limits to prevent abuse. Recommended for production and multi-user deployments. Disabled by default for single-user installations.</p>
@@ -3802,7 +3802,7 @@
                                             <!-- Global Override Toggle -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="rate-limit-global-override" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0" disabled>
+                                                    <input type="checkbox" id="rate-limit-global-override" class="mt-1 w-4 h-4" disabled>
                                                     <div class="flex-1">
                                                         <label for="rate-limit-global-override" class="block text-sm font-semibold text-white cursor-pointer">Global Override</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, the global limits below override individual consumption profile settings for all users. Use for emergency rate limiting.</p>
@@ -4050,7 +4050,7 @@
                                         <div class="mt-4 space-y-4 pl-9">
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="allow-synthesis" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="allow-synthesis" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="allow-synthesis" class="block text-sm font-semibold text-white cursor-pointer">Allow History Synthesis</label>
                                                         <p class="text-xs text-gray-400 mt-1">Let agent answer from conversation history without calling tools (default: enabled)</p>
@@ -4059,7 +4059,7 @@
                                             </div>
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="force-sub-summary" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="force-sub-summary" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="force-sub-summary" class="block text-sm font-semibold text-white cursor-pointer">Force Sub-Executor Summaries</label>
                                                         <p class="text-xs text-gray-400 mt-1">Require sub-executors to generate their own summaries (default: disabled)</p>
@@ -4068,7 +4068,7 @@
                                             </div>
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="condense-prompts" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="condense-prompts" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="condense-prompts" class="block text-sm font-semibold text-white cursor-pointer">Condense System Prompts</label>
                                                         <p class="text-xs text-gray-400 mt-1">Compress tool/prompt lists in subsequent turns to save tokens (default: enabled)</p>
@@ -4099,7 +4099,7 @@
                                         <div class="mt-4 space-y-4 pl-9">
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-sql-consolidation" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                                                    <input type="checkbox" id="enable-sql-consolidation" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
                                                         <label for="enable-sql-consolidation" class="block text-sm font-semibold text-white cursor-pointer">Enable SQL Consolidation</label>
                                                         <p class="text-xs text-gray-400 mt-1">Use LLM to consolidate sequential SQL queries for better performance (default: disabled)</p>
@@ -4133,7 +4133,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="genie-temperature" class="block text-sm font-medium text-gray-300">Temperature</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="genie-temperature-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <input type="checkbox" id="genie-temperature-locked" class="w-4 h-4">
                                                         <label for="genie-temperature-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -4149,7 +4149,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="genie-query-timeout" class="block text-sm font-medium text-gray-300">Query Timeout (seconds)</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="genie-query-timeout-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <input type="checkbox" id="genie-query-timeout-locked" class="w-4 h-4">
                                                         <label for="genie-query-timeout-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -4162,7 +4162,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="genie-max-iterations" class="block text-sm font-medium text-gray-300">Max Iterations</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="genie-max-iterations-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <input type="checkbox" id="genie-max-iterations-locked" class="w-4 h-4">
                                                         <label for="genie-max-iterations-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -4175,7 +4175,7 @@
                                                 <div class="flex items-center justify-between mb-2">
                                                     <label for="genie-max-nesting-depth" class="block text-sm font-medium text-gray-300">Max Nesting Depth</label>
                                                     <div class="flex items-center gap-2">
-                                                        <input type="checkbox" id="genie-max-nesting-depth-locked" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-2 focus:ring-amber-500 focus:ring-offset-0">
+                                                        <input type="checkbox" id="genie-max-nesting-depth-locked" class="w-4 h-4">
                                                         <label for="genie-max-nesting-depth-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
                                                     </div>
                                                 </div>
@@ -4462,7 +4462,7 @@
                                     <div class="flex items-center gap-2">
                                         <!-- Auto-refresh Toggle -->
                                         <label class="flex items-center gap-2 px-3 py-2 bg-gray-700/50 rounded-md cursor-pointer hover:bg-gray-700 transition-colors">
-                                            <input type="checkbox" id="cost-auto-refresh-toggle" class="w-4 h-4 rounded border-gray-600 text-teradata-orange focus:ring-teradata-orange focus:ring-offset-gray-800">
+                                            <input type="checkbox" id="cost-auto-refresh-toggle" class="w-4 h-4">
                                             <span class="text-xs text-gray-300">Auto-refresh</span>
                                         </label>
 
@@ -4621,8 +4621,7 @@
                                     </div>
                                     <!-- Show Deprecated checkbox -->
                                     <label class="flex items-center gap-2 cursor-pointer group">
-                                        <input type="checkbox" id="show-deprecated-checkbox"
-                                            class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-yellow-500 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-0 focus:ring-offset-gray-800 cursor-pointer transition-colors">
+                                        <input type="checkbox" id="show-deprecated-checkbox" class="w-4 h-4 cursor-pointer">
                                         <span class="text-xs text-gray-400 group-hover:text-gray-300 transition-colors select-none">Show Deprecated</span>
                                     </label>
 
@@ -4849,7 +4848,7 @@
                 <!-- Enabled Toggle -->
                 <div class="p-4 bg-gray-700/50 rounded-lg">
                     <div class="flex items-start gap-3">
-                        <input type="checkbox" id="doc-upload-config-enabled" name="enabled" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                        <input type="checkbox" id="doc-upload-config-enabled" name="enabled" class="mt-1 w-4 h-4">
                         <div class="flex-1">
                             <label for="doc-upload-config-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable Document Upload</label>
                             <p class="text-xs text-gray-400 mt-1">Allow this provider to process document uploads</p>
@@ -4860,7 +4859,7 @@
                 <!-- Native Upload Toggle -->
                 <div class="p-4 bg-gray-700/50 rounded-lg">
                     <div class="flex items-start gap-3">
-                        <input type="checkbox" id="doc-upload-config-use-native" name="use_native_upload" class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                        <input type="checkbox" id="doc-upload-config-use-native" name="use_native_upload" class="mt-1 w-4 h-4">
                         <div class="flex-1">
                             <label for="doc-upload-config-use-native" class="block text-sm font-semibold text-white cursor-pointer">Use Native Upload API</label>
                             <p class="text-xs text-gray-400 mt-1">When disabled, forces text extraction fallback instead of native API</p>
@@ -6009,8 +6008,7 @@
                 <!-- Session Primer Section -->
                 <div class="bg-gradient-to-br from-cyan-900/10 to-blue-900/10 rounded-xl p-4 border border-cyan-700/20">
                     <label class="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" id="profile-modal-enable-primer"
-                               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500/50 focus:ring-offset-gray-900">
+                        <input type="checkbox" id="profile-modal-enable-primer" class="w-4 h-4">
                         <div>
                             <span class="text-sm font-bold text-gray-100 group-hover:text-white">Enable Session Primer</span>
                             <p class="text-xs text-gray-400 group-hover:text-gray-300">Auto-execute a question when starting a new session with this profile</p>
@@ -6039,8 +6037,7 @@
                     <p class="text-xs text-gray-400 mb-4">Enhance your conversation profile with additional capabilities</p>
                     <div class="grid grid-cols-2 gap-4">
                         <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
-                            <input type="checkbox" id="profile-modal-use-mcp-tools"
-                                   class="mt-0.5 w-5 h-5 rounded text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900 bg-gray-700 border-gray-600">
+                            <input type="checkbox" id="profile-modal-use-mcp-tools" class="mt-0.5 w-5 h-5">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use MCP Tools</span>
@@ -6051,8 +6048,7 @@
                         </label>
 
                         <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
-                            <input type="checkbox" id="profile-modal-use-knowledge"
-                                   class="mt-0.5 w-5 h-5 rounded text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900 bg-gray-700 border-gray-600">
+                            <input type="checkbox" id="profile-modal-use-knowledge" class="mt-0.5 w-5 h-5">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use Knowledge Collections</span>
@@ -7761,11 +7757,11 @@
                 <!-- Status Toggles -->
                 <div class="flex gap-6">
                     <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="consumption-profile-is-active" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#F15F22] focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-0">
+                        <input type="checkbox" id="consumption-profile-is-active" class="w-4 h-4">
                         <span class="ml-3 text-sm font-medium text-gray-300">Active</span>
                     </label>
                     <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="consumption-profile-is-default" class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0">
+                        <input type="checkbox" id="consumption-profile-is-default" class="w-4 h-4">
                         <span class="ml-3 text-sm font-medium text-gray-300">Default Profile</span>
                     </label>
                 </div>

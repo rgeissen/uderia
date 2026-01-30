@@ -149,9 +149,7 @@
       "prompts": [
         "*"
       ],
-      "ragCollections": [
-        1
-      ],
+      "ragCollections": [],
       "autocompleteCollections": [],
       "useMcpTools": true,
       "useKnowledgeCollections": false,
@@ -1072,14 +1070,8 @@
       "prompts": [
         "base_teradataQuery"
       ],
-      "ragCollections": [
-        1,
-        3
-      ],
-      "autocompleteCollections": [
-        1,
-        3
-      ],
+      "ragCollections": [],
+      "autocompleteCollections": [],
       "classification_results": {
         "tools": {
           "Database Information": [
@@ -2151,13 +2143,8 @@
       "llmConfigurationId": "1763819257483-fluhef2vk",
       "mcpServerId": "1763483266562-a6kulj4xc",
       "knowledgeConfig": {
-        "enabled": true,
-        "collections": [
-          {
-            "id": 2,
-            "reranking": false
-          }
-        ],
+        "enabled": false,
+        "collections": [],
         "minRelevanceScore": 0.4,
         "maxDocs": 10,
         "maxTokens": 2000
@@ -2173,10 +2160,7 @@
       "prompts": [
         "*"
       ],
-      "ragCollections": [
-        1,
-        2
-      ],
+      "ragCollections": [],
       "autocompleteCollections": [],
       "genieConfig": null,
       "useMcpTools": false,
@@ -2218,9 +2202,7 @@
       "prompts": [
         "*"
       ],
-      "ragCollections": [
-        1
-      ],
+      "ragCollections": [],
       "autocompleteCollections": [],
       "knowledgeConfig": {
         "enabled": false,

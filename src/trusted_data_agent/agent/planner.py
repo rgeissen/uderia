@@ -1756,7 +1756,9 @@ Ranking:"""
                         if profile:
                             # Use ragCollections instead of autocompleteCollections for RAG retrieval filtering
                             rag_collections = profile.get("ragCollections", ["*"])
-                            if rag_collections != ["*"]:
+                            # Empty array means "no filtering" (same as "*" wildcard)
+                            # Only filter if ragCollections has specific IDs
+                            if rag_collections and rag_collections != ["*"]:
                                 allowed_collection_ids = set(rag_collections)
                                 app_logger.info(f"RAG retrieval filtered to collections: {allowed_collection_ids} (profile: {profile.get('name')})")
                 except Exception as e:

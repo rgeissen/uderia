@@ -176,17 +176,18 @@ def _ensure_user_default_collection(user_id: str, mcp_servers: list):
 
 def _update_profiles_with_default_collections(user_id: str, collection_ids_by_server: dict) -> bool:
     """
-    Update all user profiles to enable autocomplete for their default collections.
+    Update all user profiles to enable autocomplete and RAG for their default collections.
 
     This function is called during user bootstrap (first login) after default
     planner collections are created. It ensures that each profile's
-    autocompleteCollections array contains the collection ID for its associated
-    MCP server's default collection.
+    autocompleteCollections and ragCollections arrays contain the collection ID
+    for its associated MCP server's default collection.
 
     Mapping Logic:
         - For each profile with mcpServerId != null:
             - Find the default collection for that MCP server
-            - Add collection ID to profile.autocompleteCollections
+            - Add collection ID to profile.autocompleteCollections (all profiles)
+            - Add collection ID to profile.ragCollections (tool_enabled profiles only)
         - Profiles with mcpServerId == null (e.g., @CHAT) are skipped
 
     Args:
@@ -230,6 +231,21 @@ def _update_profiles_with_default_collections(user_id: str, collection_ids_by_se
                     profile["autocompleteCollections"] = autocomplete_colls
                     updated_count += 1
                     logger.info(f"✅ Enabled autocomplete for profile @{profile.get('tag')} → Collection {collection_id}")
+
+                # Also populate ragCollections for tool_enabled profiles
+                # (used for RAG retrieval filtering during strategic planning)
+                profile_type = profile.get("profile_type", "")
+                if profile_type == "tool_enabled":
+                    rag_colls = profile.get("ragCollections", [])
+
+                    # Add collection ID if not already present (idempotent)
+                    if collection_id not in rag_colls:
+                        rag_colls.append(collection_id)
+                        profile["ragCollections"] = rag_colls
+                        logger.info(
+                            f"✅ Added collection {collection_id} to ragCollections "
+                            f"for tool_enabled profile @{profile.get('tag')}"
+                        )
 
         if updated_count > 0:
             success = config_manager.save_profiles(profiles, user_id)
