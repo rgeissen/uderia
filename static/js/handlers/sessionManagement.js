@@ -63,10 +63,6 @@ export async function handleStartNewSession() {
     if (window.activeProfileOverrideId) {
         delete window.activeProfileOverrideId;
     }
-    // Also clear activeTagPrefix to prevent stale state
-    if (window.activeTagPrefix) {
-        window.activeTagPrefix = '';
-    }
     // --- MODIFICATION END ---
 
     // --- MODIFICATION START: Hide header buttons and clear turnId on new session ---

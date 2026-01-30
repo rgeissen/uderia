@@ -1786,7 +1786,8 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <div class="text-gray-500 text-xs mb-1">Profiles Consulted:</div>
                             <div class="genie-profile-tags flex flex-wrap gap-1">
                                 ${details.profiles_used.map(tag => {
-                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-completed">@${tag}</span>`;
+                                    const tagColor = getProfileTagColor(tag);
+                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${tagColor}; --profile-tag-border: ${tagColor}; --profile-tag-text: #FFFFFF;">@${tag}</span>`;
                                 }).join('')}
                             </div>
                         </div>
