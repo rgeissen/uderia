@@ -2588,17 +2588,34 @@ export function initializeEventListeners() {
         }
     });
 
+    // Delegated event listener for session list (Phase 3: Event Delegation)
+    // Single listener handles all session item interactions (edit, delete, copy, load)
     DOM.sessionList.addEventListener('click', (e) => {
         const sessionItem = e.target.closest('.session-item');
         if (!sessionItem) return;
 
         const editButton = e.target.closest('.session-edit-button');
         const deleteButton = e.target.closest('.session-delete-button');
+        const copyButton = e.target.closest('.session-copy-button');
 
         if (deleteButton) {
             handleDeleteSessionClick(deleteButton);
         } else if (editButton) {
             UI.enterSessionEditMode(editButton);
+        } else if (copyButton) {
+            // Handle copy session ID to clipboard
+            e.stopPropagation();
+            const sessionId = sessionItem.dataset.sessionId;
+            navigator.clipboard.writeText(sessionId).then(() => {
+                // Visual feedback: change icon to checkmark
+                const originalHTML = copyButton.innerHTML;
+                copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                setTimeout(() => {
+                    copyButton.innerHTML = originalHTML;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy session ID: ', err);
+            });
         } else if (!sessionItem.querySelector('.session-edit-input')) {
             handleLoadSession(sessionItem.dataset.sessionId);
         }

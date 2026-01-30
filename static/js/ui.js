@@ -3602,117 +3602,25 @@ export function addSessionToList(session, isActive = false) {
     // This is set by markGenieMasterSessions() after all sessions are loaded
     const isGenieMaster = session._isGenieMaster || false;
 
-    // Add visual connector and styling for Genie slave sessions
+    // Simplified: Use CSS classes for Genie connectors (no DOM nodes)
+    // This reduces DOM nodes by 67% per child (6 nodes → 2 nodes)
     if (isGenieSlave) {
         sessionItem.classList.add('genie-slave-session');
         sessionItem.dataset.genieParentId = genieParentSessionId || '';
 
-        // Get nesting level for progressive indentation and color coding
+        // Get nesting level for progressive indentation
         const nestingLevel = genieMetadata.nesting_level || 0;
 
-        // Define color palette for each nesting level
-        const levelColors = {
-            0: { main: '#F15F22', bg: 'rgba(241, 95, 34, 0.06)', border: 'rgba(241, 95, 34, 0.35)' }, // Orange (L0)
-            1: { main: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.06)', border: 'rgba(139, 92, 246, 0.35)' }, // Purple (L1)
-            2: { main: '#10B981', bg: 'rgba(16, 185, 129, 0.06)', border: 'rgba(16, 185, 129, 0.35)' }  // Green (L2)
-        };
-        const colors = levelColors[nestingLevel] || levelColors[0];
+        // Add nesting level class (CSS handles tree connectors via ::before)
+        if (nestingLevel === 0) {
+            sessionItem.classList.add('genie-child-l0');
+        } else if (nestingLevel === 1) {
+            sessionItem.classList.add('genie-child-l1');
+        } else if (nestingLevel === 2) {
+            sessionItem.classList.add('genie-child-l2');
+        }
 
-        // Progressive indentation: each level gets 1rem indent
-        const indentSize = 1.2; // rem per level
-        const totalIndent = (nestingLevel + 1) * indentSize;
-
-        // Create a wrapper with tree connector
-        sessionItem.style.position = 'relative';
-        sessionItem.style.marginLeft = `${totalIndent}rem`;
-        sessionItem.style.paddingLeft = '0.5rem';
-        sessionItem.style.maxWidth = `calc(100% - ${totalIndent}rem)`;
-        sessionItem.style.boxSizing = 'border-box';
-
-        // Add visual tree connector
-        const connector = document.createElement('div');
-        connector.className = 'genie-connector';
-        connector.style.cssText = `
-            position: absolute;
-            left: -${indentSize}rem;
-            top: 0;
-            bottom: 0;
-            width: ${indentSize}rem;
-            pointer-events: none;
-        `;
-
-        // Vertical line (extends from top to middle)
-        const verticalLine = document.createElement('div');
-        verticalLine.style.cssText = `
-            position: absolute;
-            left: ${indentSize * 0.5}rem;
-            top: 0;
-            bottom: 50%;
-            width: 2px;
-            background: linear-gradient(to bottom, ${colors.main} 0%, ${colors.main}40 100%);
-        `;
-        connector.appendChild(verticalLine);
-
-        // Horizontal line (L-shape elbow)
-        const horizontalLine = document.createElement('div');
-        horizontalLine.style.cssText = `
-            position: absolute;
-            left: ${indentSize * 0.5}rem;
-            top: 50%;
-            width: ${indentSize * 0.4}rem;
-            height: 2px;
-            background: ${colors.main};
-            box-shadow: 0 0 4px ${colors.main}80;
-        `;
-        connector.appendChild(horizontalLine);
-
-        sessionItem.appendChild(connector);
-
-        // Add depth-based background and border
-        sessionItem.style.background = colors.bg;
-        sessionItem.style.borderLeft = `3px solid ${colors.border}`;
-        sessionItem.style.transition = 'all 0.2s ease';
-
-        // Add hover effect to highlight the connection (using level-specific colors)
-        sessionItem.addEventListener('mouseenter', () => {
-            // Enhanced background on hover
-            sessionItem.style.background = colors.bg.replace('0.06', '0.15');
-            sessionItem.style.borderLeftColor = colors.main;
-            sessionItem.style.borderLeftWidth = '4px';
-
-            // Highlight the connector lines with glow
-            const lines = sessionItem.querySelectorAll('.genie-connector > div');
-            lines.forEach(line => {
-                line.style.opacity = '1';
-                line.style.filter = `drop-shadow(0 0 3px ${colors.main})`;
-            });
-
-            // Subtle highlight of parent with matching color
-            const parentItem = document.getElementById(`session-${genieParentSessionId}`);
-            if (parentItem) {
-                parentItem.style.boxShadow = `0 0 0 2px ${colors.main}40`;
-                parentItem.style.transform = 'scale(1.01)';
-            }
-        });
-
-        sessionItem.addEventListener('mouseleave', () => {
-            // Reset to normal state
-            sessionItem.style.background = colors.bg;
-            sessionItem.style.borderLeftColor = colors.border;
-            sessionItem.style.borderLeftWidth = '3px';
-
-            const lines = sessionItem.querySelectorAll('.genie-connector > div');
-            lines.forEach(line => {
-                line.style.opacity = '';
-                line.style.filter = '';
-            });
-
-            const parentItem = document.getElementById(`session-${genieParentSessionId}`);
-            if (parentItem) {
-                parentItem.style.boxShadow = '';
-                parentItem.style.transform = '';
-            }
-        });
+        // Note: Hover effects now handled via CSS in main.css (no inline listeners)
 
         // Check if slaves should be hidden (parent is collapsed)
         const collapseState = getGenieCollapseState();
@@ -3993,6 +3901,7 @@ export function addSessionToList(session, isActive = false) {
     editButton.type = 'button';
     editButton.className = 'session-action-button session-edit-button';
     editButton.title = 'Rename session';
+    editButton.dataset.action = 'edit';  // Event delegation attribute
     editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-11.202 11.202a.5.5 0 01-.293.146H3.5a.5.5 0 01-.5-.5v-1.414a.5.5 0 01.146-.293l11.202-11.202zM15.707 2.293a1 1 0 010 1.414L5.414 14H4v-1.414L14.293 2.293a1 1 0 011.414 0z" /></svg>`;
     actionsDiv.appendChild(editButton);
 
@@ -4000,6 +3909,7 @@ export function addSessionToList(session, isActive = false) {
     deleteButton.type = 'button';
     deleteButton.className = 'session-action-button session-delete-button';
     deleteButton.title = 'Delete session';
+    deleteButton.dataset.action = 'delete';  // Event delegation attribute
     deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm2 3a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd" /></svg>`;
     actionsDiv.appendChild(deleteButton);
 
@@ -4007,19 +3917,9 @@ export function addSessionToList(session, isActive = false) {
     copyButton.type = 'button';
     copyButton.className = 'session-action-button session-copy-button';
     copyButton.title = 'Copy session ID';
+    copyButton.dataset.action = 'copy';  // Event delegation attribute
     copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-    copyButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sessionId = sessionItem.dataset.sessionId;
-        navigator.clipboard.writeText(sessionId).then(() => {
-            copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-            setTimeout(() => {
-                copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-            }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy session ID: ', err);
-        });
-    });
+    // Note: Event listener removed - now handled by delegated listener in eventHandlers.js
     actionsDiv.appendChild(copyButton);
 
     topRow.appendChild(actionsDiv);
@@ -4038,73 +3938,19 @@ export function addSessionToList(session, isActive = false) {
     const tagsDiv = document.createElement('div');
     tagsDiv.className = 'session-models text-xs text-gray-400 mt-1 flex flex-wrap gap-1';
 
-    // Prefer profile_tags_used over models_used
+    // Render profile tag badges with proper colors
     if (session.profile_tags_used && Array.isArray(session.profile_tags_used) && session.profile_tags_used.length > 0) {
-        session.profile_tags_used.forEach(tag => {
-            const tagSpan = document.createElement('span');
-            tagSpan.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all duration-200';
-
-            // Find profile by tag to get color
-            const profile = window.configState?.profiles?.find(p => p.tag === tag);
-            if (profile && profile.color) {
-                // Helper to convert hex to rgba
-                const hexToRgba = (hex, alpha) => {
-                    const r = parseInt(hex.slice(1, 3), 16);
-                    const g = parseInt(hex.slice(3, 5), 16);
-                    const b = parseInt(hex.slice(5, 7), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                };
-
-                // Detect light mode for higher contrast
-                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
-
-                const color1 = hexToRgba(profile.color, isLightMode ? 0.85 : 0.2);
-                const color2 = hexToRgba(profile.color, isLightMode ? 0.70 : 0.08);
-                const borderColor = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
-                const textColor = isLightMode ? '#1e293b' : 'white';
-
-                tagSpan.style.cssText = `
-                    background: linear-gradient(135deg, ${color1}, ${color2});
-                    border: 1px solid ${borderColor};
-                    color: ${textColor};
-                    box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
-                    backdrop-filter: blur(4px);
-                `;
-
-                // Add hover effect (no translateY to prevent layout shift)
-                tagSpan.addEventListener('mouseenter', () => {
-                    tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.92 : 0.3)}, ${hexToRgba(profile.color, isLightMode ? 0.78 : 0.12)})`;
-                    tagSpan.style.borderColor = hexToRgba(profile.color, isLightMode ? 0.98 : 0.6);
-                    tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
-                });
-                tagSpan.addEventListener('mouseleave', () => {
-                    tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-                    tagSpan.style.borderColor = borderColor;
-                    tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
-                });
-            } else {
-                // Fallback to indigo (unified palette) if no color
-                tagSpan.style.cssText = `
-                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.08));
-                    border: 1px solid rgba(99, 102, 241, 0.4);
-                    color: white;
-                    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
-                `;
-            }
-
-            const text = document.createElement('span');
-            text.textContent = `@${tag}`;
-            tagSpan.appendChild(text);
-            tagsDiv.appendChild(tagSpan);
-        });
+        // Use badge components with profile type colors
+        const badgesHtml = session.profile_tags_used.map(tag => {
+            return renderProfileTag(tag, session.profile_type);
+        }).join('');
+        tagsDiv.innerHTML = badgesHtml;
     } else if (session.models_used && Array.isArray(session.models_used) && session.models_used.length > 0) {
-        // Fallback to models_used for backwards compatibility
-        session.models_used.forEach(modelString => {
-            const modelSpan = document.createElement('span');
-            modelSpan.className = 'inline-block bg-gray-700 rounded-full px-2 py-0.5 text-xs font-medium text-gray-300';
-            modelSpan.textContent = modelString;
-            tagsDiv.appendChild(modelSpan);
-        });
+        // Fallback to models_used for backwards compatibility (plain text)
+        const textSpan = document.createElement('span');
+        textSpan.className = 'text-xs font-mono text-muted';
+        textSpan.textContent = session.models_used.join(' · ');
+        tagsDiv.appendChild(textSpan);
     }
     contentWrapper.appendChild(tagsDiv);
 
@@ -4143,76 +3989,19 @@ export function updateSessionModels(sessionId, models_used, profile_tags_used = 
             }
         }
         tagsDiv.innerHTML = ''; // Clear existing tags/models
-        
-        // Prefer profile_tags_used over models_used
+
+        // Render profile tag badges with proper colors (matching addSessionToList)
         if (profile_tags_used && Array.isArray(profile_tags_used) && profile_tags_used.length > 0) {
-            profile_tags_used.forEach(tag => {
-                const tagSpan = document.createElement('span');
-                tagSpan.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all duration-200';
-
-                // Find profile by tag to get color
-                const profile = window.configState?.profiles?.find(p => p.tag === tag);
-                if (profile && profile.color) {
-                    // Helper to convert hex to rgba
-                    const hexToRgba = (hex, alpha) => {
-                        const r = parseInt(hex.slice(1, 3), 16);
-                        const g = parseInt(hex.slice(3, 5), 16);
-                        const b = parseInt(hex.slice(5, 7), 16);
-                        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                    };
-
-                    // Detect light mode for higher contrast
-                    const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
-
-                    const color1 = hexToRgba(profile.color, isLightMode ? 0.85 : 0.2);
-                    const color2 = hexToRgba(profile.color, isLightMode ? 0.70 : 0.08);
-                    const borderColor = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
-                    const textColor = isLightMode ? '#1e293b' : 'white';
-
-                    tagSpan.style.cssText = `
-                        background: linear-gradient(135deg, ${color1}, ${color2});
-                        border: 1px solid ${borderColor};
-                        color: ${textColor};
-                        box-shadow: 0 2px 6px ${hexToRgba(profile.color, 0.15)};
-                        backdrop-filter: blur(4px);
-                    `;
-
-                    // Add hover effect
-                    tagSpan.addEventListener('mouseenter', () => {
-                        tagSpan.style.background = `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.92 : 0.3)}, ${hexToRgba(profile.color, isLightMode ? 0.78 : 0.12)})`;
-                        tagSpan.style.borderColor = hexToRgba(profile.color, isLightMode ? 0.98 : 0.6);
-                        tagSpan.style.boxShadow = `0 3px 10px ${hexToRgba(profile.color, 0.25)}`;
-                        tagSpan.style.transform = 'translateY(-1px)';
-                    });
-                    tagSpan.addEventListener('mouseleave', () => {
-                        tagSpan.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
-                        tagSpan.style.borderColor = borderColor;
-                        tagSpan.style.boxShadow = `0 2px 6px ${hexToRgba(profile.color, 0.15)}`;
-                        tagSpan.style.transform = 'translateY(0)';
-                    });
-                } else {
-                    // Fallback to indigo (unified palette) if no color
-                    tagSpan.style.cssText = `
-                        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.08));
-                        border: 1px solid rgba(99, 102, 241, 0.4);
-                        color: white;
-                        box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
-                    `;
-                }
-
-                const text = document.createElement('span');
-                text.textContent = `@${tag}`;
-                tagSpan.appendChild(text);
-                tagsDiv.appendChild(tagSpan);
-            });
+            const badgesHtml = profile_tags_used.map(tag => {
+                return renderProfileTag(tag);
+            }).join('');
+            tagsDiv.innerHTML = badgesHtml;
         } else if (models_used && Array.isArray(models_used) && models_used.length > 0) {
-            // Fallback to models_used for backwards compatibility
-            models_used.forEach(modelString => {
-                const modelSpan = document.createElement('span');
-                modelSpan.className = 'inline-block bg-gray-700 rounded-full px-2 py-0.5 text-xs font-medium text-gray-300';
-                modelSpan.textContent = modelString;
-                tagsDiv.appendChild(modelSpan);
-            });
+            // Fallback to models_used for backwards compatibility (plain text)
+            const textSpan = document.createElement('span');
+            textSpan.className = 'text-xs font-mono text-muted';
+            textSpan.textContent = models_used.join(' · ');
+            tagsDiv.appendChild(textSpan);
         }
 
         if (state.currentSessionId === sessionId) {

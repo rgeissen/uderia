@@ -9,6 +9,30 @@
     --light-text: #F0F0F0;
     --medium-text: #999999;
     --user-avatar-bg: #4b5563;
+
+    /* ===== SESSION HISTORY SHARED VARIABLES (Match Live Status Panel) ===== */
+    /* Status/State Colors */
+    --success-green: #10B981;
+    --error-red: #EF4444;
+    --warning-yellow: #FACC15;
+    --active-indigo: #6366f1;
+    --coordinator-orange: #F15F22;
+
+    /* Layout & Transitions */
+    --radius-sm: 0.375rem;
+    --transition-spring: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    --border-accent-width: 3px;
+
+    /* Gradients (Match Live Status Panel) */
+    --gradient-active: linear-gradient(90deg, rgba(241, 95, 34, 0.15) 0%, rgba(241, 95, 34, 0.05) 100%);
+    --gradient-selected: linear-gradient(90deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.05) 100%);
+    --gradient-success: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%);
+    --gradient-hover: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+
+    /* Genie Tree Line Colors */
+    --tree-line-l0: rgba(241, 95, 34, 0.8);
+    --tree-line-l1: rgba(139, 92, 246, 0.8);
+    --tree-line-l2: rgba(16, 185, 129, 0.8);
 }
 
 /* Fix for iPad/iOS touch events in scrollable tab containers */
@@ -770,28 +794,42 @@ details.resource-selected > summary {
     align-items: center;
     gap: 0.5rem;
 
-    /* World-class glassmorphism base */
+    /* Match Live Status Panel Design */
     position: relative;
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.4) 100%);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(100, 116, 139, 0.2);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: visible;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: var(--border-accent-width) solid transparent;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-spring);
+    overflow: hidden;
+
+    /* Performance Optimizations (Match Live Status) */
+    contain: layout style paint;
+    will-change: transform;
+}
+
+.session-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: transparent;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: background;
 }
 
 .session-item:hover {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.6) 100%);
-    border-color: rgba(99, 102, 241, 0.4);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(99, 102, 241, 0.1);
-    transform: translateX(2px);
+    background: var(--gradient-hover);
 }
 
 .session-item.active {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(79, 70, 229, 0.1) 100%);
-    border-left: 3px solid #6366f1;
-    border-color: rgba(99, 102, 241, 0.5);
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.2),
-                inset 0 0 40px rgba(99, 102, 241, 0.05);
+    background: var(--gradient-selected);
+    border-left-color: #6b7280; /* Gray-500 to exactly match Live Status lifecycle events */
+}
+
+.session-item.active::before {
+    background: #6b7280; /* Match border-left-color for double-layer effect like Live Status */
 }
 
 .session-item .session-name-span {
@@ -832,14 +870,11 @@ details.resource-selected > summary {
     align-items: center;
     gap: 0.25rem; /* Space between buttons */
     flex-shrink: 0; /* Prevent buttons from shrinking */
-    opacity: 0;
+    opacity: 0; /* Hidden until hover */
     transition: opacity 0.15s ease-in-out;
 }
 
 .session-item:hover .session-actions {
-    opacity: 1;
-}
-.session-item.active .session-actions {
     opacity: 1;
 }
 
@@ -3134,6 +3169,86 @@ button.bg-gray-700.px-2:hover {
     background: linear-gradient(135deg, rgba(241, 95, 34, 0.3), rgba(255, 140, 0, 0.2));
     border: 1px solid rgba(241, 95, 34, 0.5);
     color: #F15F22;
+}
+
+/* ============================================================================
+   GENIE HIERARCHY - Filesystem Tree View (Session History)
+   ============================================================================ */
+
+/* L0: Direct children of coordinator */
+.genie-child-l0 {
+    padding-left: 1.5rem;
+    position: relative;
+}
+
+.genie-child-l0::before {
+    content: "├─";
+    position: absolute;
+    left: 0.25rem;
+    top: 0.75rem;
+    color: var(--tree-line-l0);
+    font-family: monospace, "Courier New", Courier;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.genie-child-l0:last-of-type::before {
+    content: "└─";
+}
+
+/* Vertical line connecting L0 siblings */
+.genie-child-l0:not(:last-of-type)::after {
+    content: "";
+    position: absolute;
+    left: 0.4rem;
+    top: 1.5rem;
+    bottom: -0.5rem;
+    width: 1px;
+    background: var(--tree-line-l0);
+    opacity: 0.5;
+}
+
+/* L1: Grandchildren (nested under L0) */
+.genie-child-l1 {
+    padding-left: 3rem; /* 1.5rem * 2 */
+    position: relative;
+}
+
+.genie-child-l1::before {
+    content: "└─";
+    position: absolute;
+    left: 1.75rem;
+    top: 0.75rem;
+    color: var(--tree-line-l1);
+    font-family: monospace, "Courier New", Courier;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.8;
+}
+
+/* L2: Great-grandchildren */
+.genie-child-l2 {
+    padding-left: 4.5rem; /* 1.5rem * 3 */
+    position: relative;
+}
+
+.genie-child-l2::before {
+    content: "└─";
+    position: absolute;
+    left: 3.25rem;
+    top: 0.75rem;
+    color: var(--tree-line-l2);
+    font-family: monospace, "Courier New", Courier;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.6;
+}
+
+/* Hover effects for child sessions */
+.genie-child-l0:hover,
+.genie-child-l1:hover,
+.genie-child-l2:hover {
+    background: var(--gradient-hover);
 }
 
 /* ============================================================================

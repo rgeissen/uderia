@@ -176,6 +176,14 @@
     /* Avatar */
     --avatar-bg: #4b5563;
     --avatar-border: rgba(255, 255, 255, 0.2);
+
+    /* Session History - Legacy Theme Specific (Keeps Gradients) */
+    --gradient-hover: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.6) 100%);
+    --gradient-selected: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(79, 70, 229, 0.1) 100%);
+    --gradient-active: linear-gradient(135deg, rgba(241, 95, 34, 0.15) 0%, rgba(241, 95, 34, 0.08) 100%);
+    --tree-line-l0: rgba(241, 95, 34, 0.8);
+    --tree-line-l1: rgba(139, 92, 246, 0.8);
+    --tree-line-l2: rgba(16, 185, 129, 0.8);
 }
 
 /* ============================================================================
@@ -271,6 +279,14 @@
     --blur-light: blur(8px);
     --blur-medium: blur(16px);
     --blur-strong: blur(24px);
+
+    /* Session History - Modern Theme Specific */
+    --gradient-hover: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+    --gradient-selected: linear-gradient(90deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.05) 100%);
+    --gradient-active: linear-gradient(90deg, rgba(241, 95, 34, 0.15) 0%, rgba(241, 95, 34, 0.05) 100%);
+    --tree-line-l0: rgba(241, 95, 34, 0.8);
+    --tree-line-l1: rgba(139, 92, 246, 0.8);
+    --tree-line-l2: rgba(16, 185, 129, 0.8);
 }
 
 /* ============================================================================
@@ -378,6 +394,14 @@
     --profile-tag-bg-hover: linear-gradient(135deg, rgba(241, 95, 34, 0.35), rgba(241, 95, 34, 0.25));
     --profile-tag-border: rgba(241, 95, 34, 0.55);
     --profile-tag-border-hover: rgba(241, 95, 34, 0.7);
+
+    /* Session History - Light Theme Specific */
+    --gradient-hover: linear-gradient(90deg, rgba(148, 163, 184, 0.06) 0%, transparent 100%);
+    --gradient-selected: linear-gradient(90deg, rgba(99, 102, 241, 0.10) 0%, rgba(99, 102, 241, 0.05) 100%);
+    --gradient-active: linear-gradient(90deg, rgba(241, 95, 34, 0.10) 0%, rgba(241, 95, 34, 0.05) 100%);
+    --tree-line-l0: rgba(241, 95, 34, 0.6);
+    --tree-line-l1: rgba(139, 92, 246, 0.6);
+    --tree-line-l2: rgba(16, 185, 129, 0.6);
 }
 
 /* Force black text on all profile tags in light mode - FIX for readability issue */
@@ -1331,12 +1355,14 @@
 
 /* Light theme - Session list */
 [data-theme="light"] .session-item {
-    background: var(--card-bg) !important;
-    border-color: var(--border-primary) !important;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(226, 232, 240, 0.8); /* slate-200 with transparency */
+    margin-bottom: 0.5rem; /* Add spacing between sessions */
 }
 
 [data-theme="light"] .session-item:hover {
-    background: var(--card-bg-hover) !important;
+    background: var(--gradient-hover);
+    border-color: rgba(148, 163, 184, 0.4); /* slate-400 on hover */
 }
 
 [data-theme="light"] .session-item .text-white {
@@ -1349,8 +1375,12 @@
 }
 
 [data-theme="light"] .session-item.active {
-    background: rgba(241, 95, 34, 0.08) !important;
-    border-left: 3px solid var(--teradata-orange) !important;
+    background: var(--gradient-selected);
+    border-left: 3px solid #6b7280; /* 3px Gray-500 to exactly match Live Status lifecycle events */
+}
+
+[data-theme="light"] .session-item.active::before {
+    background: #6b7280; /* Match border-left-color for double-layer effect like Live Status */
 }
 
 /* Light theme - Industrial History header */
