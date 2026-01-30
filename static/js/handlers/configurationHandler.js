@@ -5001,7 +5001,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                        id="slave-${profile.id}"
                        value="${profile.id}"
                        ${isSelected ? 'checked' : ''}
-                       class="genie-slave-checkbox form-checkbox text-amber-500 rounded border-gray-600 bg-gray-700 focus:ring-amber-500 focus:ring-offset-gray-900">
+                       class="genie-slave-checkbox w-4 h-4">
                 <label for="slave-${profile.id}" class="flex-1 cursor-pointer">
                     ${isGenieType ? '<span class="text-purple-400 mr-1" title="Nested Genie Coordination">🔮</span>' : ''}
                     <span class="font-semibold text-sm text-white">@${profile.tag || 'UNKNOWN'}</span>
