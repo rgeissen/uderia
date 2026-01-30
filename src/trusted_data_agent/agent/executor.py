@@ -4419,14 +4419,18 @@ The following domain knowledge may be relevant to this conversation:
         self.session_name_events = []
         self.session_name_tokens = (0, 0)
 
-        if (self.current_turn_number == 1 and
-            self.execution_depth == 0 and
-            not self.is_delegated_task):
+        # Generate session name on first NON-PRIMER turn only
+        # Note: Primers are regular turns, so first real query might be turn 2+
+        # We check session name not set AND is_session_primer to handle both cases
+        if (self.execution_depth == 0 and
+            not self.is_delegated_task and
+            not self.is_session_primer):  # Skip session primers
             try:
                 session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                 current_name = session_data.get("name", "") if session_data else ""
 
-                if session_data and current_name == "New Chat":
+                # Generate name only if not yet set (works for turn 1 or turn 2+ after primer)
+                if session_data and (not current_name or current_name == "New Chat"):
                     app_logger.info(f"[SessionName] ✅ GENERATING name for session {self.session_id} (AFTER final answer)")
 
                     # Generate and emit events using unified generator
@@ -4491,3 +4495,5 @@ The following domain knowledge may be relevant to this conversation:
                             })
             except Exception as e:
                 app_logger.error(f"[SessionName] ❌ Error during generation: {e}", exc_info=True)
+        elif self.is_session_primer:
+            app_logger.debug(f"[SessionName] ⏭️  Skipping name generation for session primer: {self.original_user_input[:50]}...")

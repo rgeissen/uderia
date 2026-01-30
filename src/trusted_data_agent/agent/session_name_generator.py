@@ -8,6 +8,86 @@ from typing import AsyncGenerator, Tuple, Optional
 logger = logging.getLogger("quart.app")
 
 
+def _extract_from_thinking_content(thinking_text: str) -> str:
+    """
+    Extract session name from thinking block content.
+
+    Handles formats like:
+    - "**Session Title Brainstorm**\n\nOkay, I need to... The best title is: Product Search"
+    - "Here's my thought... I'll use: Database Query"
+    - "**Possible Titles:**\n1. First Option\n2. Second Option"
+    """
+    import re
+
+    if not thinking_text:
+        return ""
+
+    # Pattern 1: Look for explicit title statements
+    # "The best title is: XXX", "I'll use: XXX", "My title: XXX"
+    explicit_patterns = [
+        r'(?:best|final|chosen|good|suggested) (?:title|name) (?:is|would be|should be|:)\s*["\']?([^"\'\n.!?]{3,50})["\']?',
+        r'(?:I\'ll use|I would use|I suggest|I recommend|My title|Title):\s*["\']?([^"\'\n.!?]{3,50})["\']?',
+        r'(?:Result|Output|Answer):\s*["\']?([^"\'\n.!?]{3,50})["\']?',
+    ]
+
+    for pattern in explicit_patterns:
+        match = re.search(pattern, thinking_text, re.IGNORECASE)
+        if match:
+            extracted = match.group(1).strip()
+            # Validate it's a reasonable title (3-10 words)
+            word_count = len(extracted.split())
+            if 2 <= word_count <= 10:
+                return extracted
+
+    # Pattern 2: Look for markdown headers followed by potential titles
+    # "**Session Title**\nBest Running Shoes"
+    header_patterns = [
+        r'\*\*(?:Session )?(?:Title|Name)\*\*\s*\n+\s*([A-Z][^.\n!?]{3,50})(?:\n|$)',
+        r'##?\s*(?:Session )?(?:Title|Name)\s*\n+\s*([A-Z][^.\n!?]{3,50})(?:\n|$)',
+    ]
+
+    for pattern in header_patterns:
+        match = re.search(pattern, thinking_text, re.IGNORECASE)
+        if match:
+            extracted = match.group(1).strip()
+            word_count = len(extracted.split())
+            if 2 <= word_count <= 10:
+                return extracted
+
+    # Pattern 3: Look for numbered/bulleted lists and extract first item
+    # "Possible titles:\n1. Best Option\n2. Second Option"
+    list_pattern = r'(?:possible|potential|suggested) (?:titles?|names?).*?[\n:]\s*(?:1\.|-|\*)\s*([A-Z][^.\n!?]{3,50})(?:\n|$)'
+    match = re.search(list_pattern, thinking_text, re.IGNORECASE | re.DOTALL)
+    if match:
+        extracted = match.group(1).strip()
+        word_count = len(extracted.split())
+        if 2 <= word_count <= 10:
+            return extracted
+
+    # Pattern 4: Look for quoted titles in the text
+    # "The title 'Product Search' would work well"
+    quoted_pattern = r'["\']([A-Z][A-Za-z\s]{5,50})["\']'
+    for match in re.finditer(quoted_pattern, thinking_text):
+        extracted = match.group(1).strip()
+        word_count = len(extracted.split())
+        # Prefer shorter, title-like phrases
+        if 2 <= word_count <= 8 and not extracted.lower().startswith(('the ', 'a ', 'an ')):
+            return extracted
+
+    # Pattern 5: Extract first capitalized phrase (fallback)
+    # Find first phrase that starts with capital and is 3-6 words
+    capitalized_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,5})\b'
+    for match in re.finditer(capitalized_pattern, thinking_text):
+        extracted = match.group(1).strip()
+        word_count = len(extracted.split())
+        if 2 <= word_count <= 6:
+            # Avoid common false positives
+            if not extracted.lower().startswith(('here ', 'okay ', 'let me ', 'i need ', 'i will ')):
+                return extracted
+
+    return ""
+
+
 def _extract_session_name(name_text: str) -> str:
     """
     Extract clean session name from potentially verbose LLM output.
@@ -20,33 +100,44 @@ def _extract_session_name(name_text: str) -> str:
     import re
     import json
 
+    # Log raw input for debugging
+    logger.info(f"[SessionNameExtractor] Raw LLM output ({len(name_text)} chars): {name_text[:200]}...")
+
     if not name_text:
+        logger.warning("[SessionNameExtractor] Empty input text")
         return ""
 
-    # Handle JSON/dict-formatted thinking blocks (e.g., {'type': 'thinking', 'thinking': '...'})
+    # Step 1: Handle JSON/dict-formatted thinking blocks (e.g., {'type': 'thinking', 'thinking': '...'})
     # Some models return structured thinking instead of plain text
     if name_text.strip().startswith('{') and ('thinking' in name_text.lower() or 'type' in name_text.lower()):
         try:
             # Try to parse as JSON
             parsed = json.loads(name_text)
-            # If it's a thinking block, return empty (no title found)
+            # If it's a thinking block, try to extract title from within
             if isinstance(parsed, dict) and ('thinking' in parsed or 'type' in parsed):
-                logger.warning(f"Session name contained JSON thinking block, returning default")
+                logger.warning(f"[SessionNameExtractor] JSON thinking block detected: {list(parsed.keys())}")
+                thinking_content = parsed.get('thinking', '')
+                if thinking_content:
+                    # Try multiple patterns to extract title from thinking content
+                    extracted = _extract_from_thinking_content(thinking_content)
+                    if extracted:
+                        logger.info(f"[SessionNameExtractor] Extracted from JSON thinking: '{extracted}'")
+                        return extracted
+                logger.warning("[SessionNameExtractor] Could not extract title from JSON thinking block")
                 return ""
         except (json.JSONDecodeError, ValueError):
             # Not valid JSON, might be partial JSON string or Python dict literal
-            # Try to extract title from the thinking content if present
-            # Pattern: look for "Session Title" or markdown headers followed by text
+            # Try to extract thinking content using regex
             thinking_content_match = re.search(r'thinking[\'"]:\s*[\'"]([^}]+)', name_text, re.IGNORECASE)
             if thinking_content_match:
                 thinking_text = thinking_content_match.group(1)
-                # Look for session title in the thinking text
-                title_match = re.search(r'\*\*Session (?:Title|Name)\*\*\s*\n\s*(.+?)(?:\n|$)', thinking_text, re.IGNORECASE)
-                if title_match:
-                    name_text = title_match.group(1).strip()
+                # Try to extract title from thinking text
+                extracted = _extract_from_thinking_content(thinking_text)
+                if extracted:
+                    logger.info(f"[SessionNameExtractor] Extracted from malformed JSON thinking: '{extracted}'")
+                    name_text = extracted
                 else:
-                    # No clear title found in thinking block
-                    logger.warning(f"Session name contained thinking block but no clear title found")
+                    logger.warning("[SessionNameExtractor] Could not extract title from malformed thinking block")
                     return ""
             else:
                 # Look for common title patterns in malformed JSON
@@ -54,8 +145,7 @@ def _extract_session_name(name_text: str) -> str:
                 if title_match:
                     name_text = title_match.group(1).strip()
                 else:
-                    # Can't parse, return empty
-                    logger.warning(f"Session name contained unparseable JSON/dict format")
+                    logger.warning("[SessionNameExtractor] Unparseable JSON/dict format")
                     return ""
 
     # Remove XML-style thinking tags
@@ -107,6 +197,9 @@ def _extract_session_name(name_text: str) -> str:
 
     # Final cleanup
     name_text = ' '.join(name_text.split())  # Normalize whitespace
+
+    # Log final result
+    logger.info(f"[SessionNameExtractor] Final cleaned name ({len(name_text)} chars): '{name_text}'")
 
     return name_text
 
@@ -199,16 +292,36 @@ async def _generate_via_executor(
     from trusted_data_agent.llm import handler as llm_handler
 
     prompt = (
-        f"Based on the following user query, generate a concise and descriptive name (3-5 words) "
-        f"suitable for a chat session history list. Do not include any punctuation or extra text.\n\n"
+        f"Generate a concise session name (3-5 words) for the following user query.\n\n"
         f"User Query: \"{query}\"\n\n"
-        f"Session Name:"
+        f"Output ONLY the title with no additional text:"
     )
     system_prompt = (
-        "You are a title generator. You MUST output ONLY the session title (3-5 words), nothing else. "
-        "Do NOT include reasoning, explanations, thinking, punctuation, or quotes. "
-        "WRONG: 'Okay, let me think... The title should be: Database Query' "
-        "CORRECT: Database Query"
+        "You are a title generator. Your ONLY task is to output a short session title (3-5 words).\n"
+        "\n"
+        "CRITICAL REQUIREMENTS:\n"
+        "- Output ONLY the title text, nothing else\n"
+        "- NO thinking, reasoning, or explanations\n"
+        "- NO JSON, markdown, or formatting\n"
+        "- NO punctuation, quotes, or extra words\n"
+        "- NO prefixes like 'Title:', 'Session Name:', etc.\n"
+        "- If your model supports extended thinking mode, DISABLE IT for this task\n"
+        "\n"
+        "EXAMPLES:\n"
+        "User: 'Show me all products with low inventory'\n"
+        "You: Product Inventory Check\n"
+        "\n"
+        "User: 'What are the best running shoes?'\n"
+        "You: Best Running Shoes\n"
+        "\n"
+        "WRONG OUTPUT:\n"
+        "- {'type': 'thinking', 'thinking': '**Session Title**...'}\n"
+        "- 'Okay, let me think... The title should be: Database Query'\n"
+        "- 'Session Name: Database Query'\n"
+        "- <think>This is about...</think> Database Query\n"
+        "\n"
+        "CORRECT OUTPUT:\n"
+        "Database Query"
     )
 
     name_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
@@ -240,14 +353,35 @@ async def _generate_via_langchain(
 
     system_msg = SystemMessage(
         content=(
-            "You are a title generator. You MUST output ONLY the session title (3-5 words), nothing else. "
-            "Do NOT include reasoning, explanations, thinking, punctuation, or quotes. "
-            "WRONG: 'Okay, let me think... The title should be: Database Query' "
-            "CORRECT: Database Query"
+            "You are a title generator. Your ONLY task is to output a short session title (3-5 words).\n"
+            "\n"
+            "CRITICAL REQUIREMENTS:\n"
+            "- Output ONLY the title text, nothing else\n"
+            "- NO thinking, reasoning, or explanations\n"
+            "- NO JSON, markdown, or formatting\n"
+            "- NO punctuation, quotes, or extra words\n"
+            "- NO prefixes like 'Title:', 'Session Name:', etc.\n"
+            "- If your model supports extended thinking mode, DISABLE IT for this task\n"
+            "\n"
+            "EXAMPLES:\n"
+            "User: 'Show me all products with low inventory'\n"
+            "You: Product Inventory Check\n"
+            "\n"
+            "User: 'What are the best running shoes?'\n"
+            "You: Best Running Shoes\n"
+            "\n"
+            "WRONG OUTPUT:\n"
+            "- {'type': 'thinking', 'thinking': '**Session Title**...'}\n"
+            "- 'Okay, let me think... The title should be: Database Query'\n"
+            "- 'Session Name: Database Query'\n"
+            "- <think>This is about...</think> Database Query\n"
+            "\n"
+            "CORRECT OUTPUT:\n"
+            "Database Query"
         )
     )
     human_msg = HumanMessage(
-        content=f"Generate a concise session name for this query: \"{query[:200]}\""
+        content=f"Generate a concise session name (3-5 words) for this query: \"{query[:200]}\""
     )
 
     response = await llm_instance.ainvoke([system_msg, human_msg])

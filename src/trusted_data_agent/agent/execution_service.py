@@ -451,12 +451,14 @@ async def _run_genie_execution(
             session_output_tokens = current_session.get("output_tokens", 0)
 
             # Collect session name generation events (before creating turn_data)
+            # Skip if this is a session primer - only generate from real user queries
             session_name_events = []
-            if turn_number == 1:
+            if not is_session_primer:  # Skip session primers
                 current_session_check = await session_manager.get_session(user_uuid, session_id)
-                if current_session_check and current_session_check.get("name") == "New Chat":
+                # Generate if name not set (works for turn 1 or turn 2+ after primer)
+                if current_session_check and (not current_session_check.get("name") or current_session_check.get("name") == "New Chat"):
                     try:
-                        app_logger.info(f"[Genie] Generating session name for turn 1 (collecting events for history)")
+                        app_logger.info(f"[Genie] Generating session name from first real user query (collecting events for history)")
 
                         from trusted_data_agent.agent.session_name_generator import generate_session_name_with_events
 
@@ -489,6 +491,9 @@ async def _run_genie_execution(
                     session_name_input_tokens = 0
                     session_name_output_tokens = 0
             else:
+                # Session primer - skip name generation
+                if is_session_primer:
+                    app_logger.debug(f"[Genie] ⏭️  Skipping session name generation for session primer: {user_input[:50]}...")
                 session_name = None
                 session_name_input_tokens = 0
                 session_name_output_tokens = 0
