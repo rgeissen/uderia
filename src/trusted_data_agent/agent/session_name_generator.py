@@ -18,9 +18,45 @@ def _extract_session_name(name_text: str) -> str:
     This function extracts just "Database Query".
     """
     import re
+    import json
 
     if not name_text:
         return ""
+
+    # Handle JSON/dict-formatted thinking blocks (e.g., {'type': 'thinking', 'thinking': '...'})
+    # Some models return structured thinking instead of plain text
+    if name_text.strip().startswith('{') and ('thinking' in name_text.lower() or 'type' in name_text.lower()):
+        try:
+            # Try to parse as JSON
+            parsed = json.loads(name_text)
+            # If it's a thinking block, return empty (no title found)
+            if isinstance(parsed, dict) and ('thinking' in parsed or 'type' in parsed):
+                logger.warning(f"Session name contained JSON thinking block, returning default")
+                return ""
+        except (json.JSONDecodeError, ValueError):
+            # Not valid JSON, might be partial JSON string or Python dict literal
+            # Try to extract title from the thinking content if present
+            # Pattern: look for "Session Title" or markdown headers followed by text
+            thinking_content_match = re.search(r'thinking[\'"]:\s*[\'"]([^}]+)', name_text, re.IGNORECASE)
+            if thinking_content_match:
+                thinking_text = thinking_content_match.group(1)
+                # Look for session title in the thinking text
+                title_match = re.search(r'\*\*Session (?:Title|Name)\*\*\s*\n\s*(.+?)(?:\n|$)', thinking_text, re.IGNORECASE)
+                if title_match:
+                    name_text = title_match.group(1).strip()
+                else:
+                    # No clear title found in thinking block
+                    logger.warning(f"Session name contained thinking block but no clear title found")
+                    return ""
+            else:
+                # Look for common title patterns in malformed JSON
+                title_match = re.search(r'(?:title|name)[\'":\s]+([^{}\[\],"\']+)', name_text, re.IGNORECASE)
+                if title_match:
+                    name_text = title_match.group(1).strip()
+                else:
+                    # Can't parse, return empty
+                    logger.warning(f"Session name contained unparseable JSON/dict format")
+                    return ""
 
     # Remove XML-style thinking tags
     name_text = re.sub(r'<think>.*?</think>', '', name_text, flags=re.DOTALL | re.IGNORECASE)
