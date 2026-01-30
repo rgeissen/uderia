@@ -938,22 +938,27 @@ class ConfigurationState {
         let llmConfig = this.getActiveLLMConfiguration();
         let defaultProfile = null;
 
-        // If no global active MCP/LLM, check the default profile's configuration
-        if ((!mcpServer || !llmConfig) && this.defaultProfileId) {
+        // Check if there's a default profile and if it's active
+        if (this.defaultProfileId) {
             defaultProfile = this.profiles.find(p => p.id === this.defaultProfileId);
-            if (defaultProfile) {
-                if (!mcpServer && defaultProfile.mcpServerId) {
-                    mcpServer = this.mcpServers.find(s => s.id === defaultProfile.mcpServerId);
-                }
-                if (!llmConfig && defaultProfile.llmConfigurationId) {
-                    llmConfig = this.llmConfigurations.find(c => c.id === defaultProfile.llmConfigurationId);
-                }
+
+            // CRITICAL: Profile must be activated before allowing connection
+            if (!defaultProfile || !defaultProfile.active_for_consumption) {
+                return false;
             }
+        } else {
+            // No default profile set
+            return false;
         }
 
-        // Get profile type to determine requirements
-        if (!defaultProfile && this.defaultProfileId) {
-            defaultProfile = this.profiles.find(p => p.id === this.defaultProfileId);
+        // If no global active MCP/LLM, check the default profile's configuration
+        if ((!mcpServer || !llmConfig) && defaultProfile) {
+            if (!mcpServer && defaultProfile.mcpServerId) {
+                mcpServer = this.mcpServers.find(s => s.id === defaultProfile.mcpServerId);
+            }
+            if (!llmConfig && defaultProfile.llmConfigurationId) {
+                llmConfig = this.llmConfigurations.find(c => c.id === defaultProfile.llmConfigurationId);
+            }
         }
 
         const profileType = defaultProfile?.profile_type || 'tool_enabled';
@@ -2252,6 +2257,12 @@ export async function reconnectAndLoad() {
 
     if (!defaultProfile) {
         showNotification('error', 'Please set a default profile before connecting.');
+        return;
+    }
+
+    // CRITICAL: Check if profile is activated
+    if (!defaultProfile.active_for_consumption) {
+        showNotification('error', 'Please activate the default profile before connecting. Run a test to validate and activate it.');
         return;
     }
 

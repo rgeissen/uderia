@@ -2651,21 +2651,26 @@
                                     
                                     <!-- Users Table -->
                                     <div class="overflow-x-auto">
-                                        <table class="w-full text-sm text-left">
-                                            <thead class="text-xs uppercase bg-gray-700/50 text-gray-400">
-                                                <tr>
-                                                    <th class="px-6 py-3">Username</th>
-                                                    <th class="px-6 py-3">Email</th>
-                                                    <th class="px-6 py-3">Current Tier</th>
-                                                    <th class="px-6 py-3">Consumption Profile</th>
-                                                    <th class="px-6 py-3">Status</th>
-                                                    <th class="px-6 py-3">Actions</th>
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="text-xs font-bold uppercase text-gray-400 border-b border-gray-700">
+                                                    <th class="px-6 py-4 text-left font-bold">Username</th>
+                                                    <th class="px-6 py-4 text-left font-bold">Email</th>
+                                                    <th class="px-6 py-4 text-left font-bold">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="inline-block w-2 h-2 rounded-full bg-blue-400"></span>
+                                                            Current Tier
+                                                        </div>
+                                                    </th>
+                                                    <th class="px-6 py-4 text-left font-bold">Consumption Profile</th>
+                                                    <th class="px-6 py-4 text-left font-bold">Status</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Actions</th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="users-table-body" class="divide-y divide-gray-700">
+                                            <tbody id="users-table-body" class="divide-y divide-gray-700/50">
                                                 <!-- Users will be dynamically loaded here -->
                                                 <tr>
-                                                    <td colspan="5" class="px-6 py-8 text-center text-gray-400">
+                                                    <td colspan="6" class="px-6 py-8 text-center text-gray-400">
                                                         <svg class="animate-spin h-8 w-8 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -2742,40 +2747,40 @@
 
                                         <!-- Consumption Table -->
                                         <div class="overflow-x-auto">
-                                            <table class="w-full text-sm text-left">
-                                                <thead class="text-xs uppercase bg-gray-700/50 text-gray-400">
-                                                    <tr>
-                                                        <th class="px-6 py-3 cursor-pointer hover:text-white transition-colors" data-sort="username">
-                                                            <div class="flex items-center gap-1">
+                                            <table class="w-full text-sm">
+                                                <thead>
+                                                    <tr class="text-xs font-bold uppercase text-gray-400 border-b border-gray-700">
+                                                        <th class="px-6 py-4 text-left font-bold cursor-pointer hover:text-white transition-colors" data-sort="username">
+                                                            <div class="flex items-center gap-2">
                                                                 Username
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
                                                                 </svg>
                                                             </div>
                                                         </th>
-                                                        <th class="px-6 py-3">Consumption Profile</th>
-                                                        <th class="px-6 py-3 cursor-pointer hover:text-white transition-colors" data-sort="tokens_used_today">
-                                                            <div class="flex items-center gap-1">
+                                                        <th class="px-6 py-4 text-left font-bold">Consumption Profile</th>
+                                                        <th class="px-6 py-4 text-left font-bold cursor-pointer hover:text-white transition-colors" data-sort="tokens_used_today">
+                                                            <div class="flex items-center gap-2">
                                                                 Tokens Used Today
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
                                                                 </svg>
                                                             </div>
                                                         </th>
-                                                        <th class="px-6 py-3">Daily Limit</th>
-                                                        <th class="px-6 py-3 cursor-pointer hover:text-white transition-colors" data-sort="usage_percentage">
-                                                            <div class="flex items-center gap-1">
+                                                        <th class="px-6 py-4 text-left font-bold">Daily Limit</th>
+                                                        <th class="px-6 py-4 text-left font-bold cursor-pointer hover:text-white transition-colors" data-sort="usage_percentage">
+                                                            <div class="flex items-center gap-2">
                                                                 Usage %
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
                                                                 </svg>
                                                             </div>
                                                         </th>
-                                                        <th class="px-6 py-3">Status</th>
-                                                        <th class="px-6 py-3 text-center">Actions</th>
+                                                        <th class="px-6 py-4 text-left font-bold">Status</th>
+                                                        <th class="px-6 py-4 text-center font-bold">Actions</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody id="user-consumption-table-body" class="divide-y divide-gray-700">
+                                                <tbody id="user-consumption-table-body" class="divide-y divide-gray-700/50">
                                                     <!-- Consumption data will be loaded here -->
                                                     <tr>
                                                         <td colspan="7" class="px-6 py-8 text-center text-gray-400">
@@ -2851,16 +2856,21 @@
                                     </div>
 
                                     <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-                                        <table class="w-full text-sm text-left">
-                                            <thead class="text-xs uppercase bg-gray-700/50 text-gray-400 sticky top-0">
+                                        <table class="w-full text-sm">
+                                            <thead class="text-xs font-bold uppercase text-gray-400 border-b border-gray-700">
                                                 <tr>
-                                                    <th class="px-6 py-3">Feature</th>
-                                                    <th class="px-6 py-3">Description</th>
-                                                    <th class="px-6 py-3">Required Tier</th>
-                                                    <th class="px-6 py-3">Category</th>
+                                                    <th class="px-6 py-3 text-left tracking-wider">Feature</th>
+                                                    <th class="px-6 py-3 text-left tracking-wider">Description</th>
+                                                    <th class="px-6 py-3 text-left tracking-wider">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="inline-block w-2 h-2 rounded-full bg-blue-400"></span>
+                                                            Required Tier
+                                                        </div>
+                                                    </th>
+                                                    <th class="px-6 py-3 text-left tracking-wider">Category</th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="features-table-body" class="divide-y divide-gray-700">
+                                            <tbody id="features-table-body" class="divide-y divide-gray-700/50">
                                                 <!-- Features will be dynamically loaded here -->
                                                 <tr>
                                                     <td colspan="4" class="px-6 py-8 text-center text-gray-400">
@@ -2921,24 +2931,24 @@
 
                                     <!-- Pane Configuration Table -->
                                     <div class="overflow-x-auto">
-                                        <table class="w-full text-sm text-left">
-                                            <thead class="text-xs uppercase bg-gray-700/50 text-gray-400">
-                                                <tr>
-                                                    <th class="px-6 py-3">Pane Name</th>
-                                                    <th class="px-6 py-3">Description</th>
-                                                    <th class="px-6 py-3 text-center">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="text-xs font-bold uppercase text-gray-400 border-b border-gray-700">
+                                                    <th class="px-6 py-4 text-left font-bold">Pane Name</th>
+                                                    <th class="px-6 py-4 text-left font-bold">Description</th>
+                                                    <th class="px-6 py-4 text-center font-bold">
                                                         <div class="flex items-center justify-center gap-2">
                                                             <span class="inline-block w-2 h-2 rounded-full bg-blue-400"></span>
                                                             User
                                                         </div>
                                                     </th>
-                                                    <th class="px-6 py-3 text-center">
+                                                    <th class="px-6 py-4 text-center font-bold">
                                                         <div class="flex items-center justify-center gap-2">
                                                             <span class="inline-block w-2 h-2 rounded-full bg-purple-400"></span>
                                                             Developer
                                                         </div>
                                                     </th>
-                                                    <th class="px-6 py-3 text-center">
+                                                    <th class="px-6 py-4 text-center font-bold">
                                                         <div class="flex items-center justify-center gap-2">
                                                             <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
                                                             Admin
@@ -2946,7 +2956,7 @@
                                                     </th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="panes-table-body" class="divide-y divide-gray-700">
+                                            <tbody id="panes-table-body" class="divide-y divide-gray-700/50">
                                                 <!-- Panes will be dynamically loaded here -->
                                                 <tr>
                                                     <td colspan="5" class="px-6 py-8 text-center text-gray-400">
@@ -2999,24 +3009,24 @@
 
                                     <!-- Profiles Table -->
                                     <div class="overflow-x-auto">
-                                        <table class="w-full text-sm text-left">
-                                            <thead class="text-xs uppercase bg-gray-700/50 text-gray-400">
-                                                <tr>
-                                                    <th class="px-6 py-3">Profile Name</th>
-                                                    <th class="px-6 py-3">Description</th>
-                                                    <th class="px-6 py-3 text-center">Prompts/Hour</th>
-                                                    <th class="px-6 py-3 text-center">Prompts/Day</th>
-                                                    <th class="px-6 py-3 text-center">Input Tokens/Month</th>
-                                                    <th class="px-6 py-3 text-center">Output Tokens/Month</th>
-                                                    <th class="px-6 py-3 text-center">Users</th>
-                                                    <th class="px-6 py-3 text-center">Active</th>
-                                                    <th class="px-6 py-3 text-center">Actions</th>
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="text-xs font-bold uppercase text-gray-400 border-b border-gray-700">
+                                                    <th class="px-6 py-4 text-left font-bold">Profile Name</th>
+                                                    <th class="px-6 py-4 text-left font-bold">Description</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Prompts/Hour</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Prompts/Day</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Input Tokens/Month</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Output Tokens/Month</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Users</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Active</th>
+                                                    <th class="px-6 py-4 text-center font-bold">Actions</th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="profiles-table-body" class="divide-y divide-gray-700">
+                                            <tbody id="profiles-table-body" class="divide-y divide-gray-700/50">
                                                 <!-- Profiles will be dynamically loaded here -->
                                                 <tr>
-                                                    <td colspan="5" class="px-6 py-8 text-center text-gray-400">
+                                                    <td colspan="9" class="px-6 py-8 text-center text-gray-400">
                                                         <svg class="animate-spin h-8 w-8 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -4631,15 +4641,15 @@
                                 <!-- Costs Table with Fixed Height -->
                                 <div class="overflow-x-auto border border-gray-700 rounded-lg" style="max-height: 500px; overflow-y: auto;">
                                     <table class="w-full text-sm text-left">
-                                        <thead class="text-xs uppercase bg-gray-700/50 text-gray-400 sticky top-0">
+                                        <thead class="text-xs font-bold uppercase text-gray-400 border-b border-gray-700">
                                             <tr>
-                                                <th class="px-4 py-3 bg-gray-700/90">Provider</th>
-                                                <th class="px-4 py-3 bg-gray-700/90">Model</th>
-                                                <th class="px-4 py-3 bg-gray-700/90">Input Cost (per 1M)</th>
-                                                <th class="px-4 py-3 bg-gray-700/90">Output Cost (per 1M)</th>
-                                                <th class="px-4 py-3 bg-gray-700/90">Source</th>
-                                                <th class="px-4 py-3 bg-gray-700/90">Last Updated</th>
-                                                <th class="px-4 py-3 bg-gray-700/90">Actions</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Provider</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Model</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Input Cost (per 1M)</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Output Cost (per 1M)</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Source</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Last Updated</th>
+                                                <th class="px-4 py-3 text-left tracking-wider">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="costs-table-body" class="divide-y divide-gray-700">

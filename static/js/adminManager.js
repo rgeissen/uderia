@@ -541,28 +541,10 @@ const AdminManager = {
         const tbody = document.getElementById('users-table-body');
         if (!tbody) return;
 
-        // Update table headers to include Status
-        const thead = tbody.parentElement.querySelector('thead');
-        if (thead) {
-            thead.innerHTML = `
-                <tr>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tier</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Profile</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Change Tier</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Assign Profile</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
-                </tr>
-            `;
-        }
-
-
         if (this.currentUsers.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="px-6 py-8 text-center text-gray-400">
+                    <td colspan="6" class="px-6 py-8 text-center text-gray-400">
                         No users found for this filter.
                     </td>
                 </tr>
@@ -575,64 +557,66 @@ const AdminManager = {
                 const defaultProfile = this.currentProfiles.find(p => p.is_default);
                 const userProfileId = user.consumption_profile_id || (defaultProfile ? defaultProfile.id : null);
                 const userProfileName = user.consumption_profile_name || (defaultProfile ? defaultProfile.name : 'None');
-                
-                const profileOptions = this.currentProfiles.map(profile => 
+
+                const profileOptions = this.currentProfiles.map(profile =>
                     `<option value="${profile.id}" ${userProfileId === profile.id ? 'selected' : ''}>${this.escapeHtml(profile.name)}</option>`
                 ).join('');
 
-                const actionButton = user.is_active
-                    ? `<button class="deactivate-user-btn p-2 text-yellow-400 hover:text-yellow-300 transition-colors" data-user-id="${user.id}" title="Deactivate User" ${user.is_current_user ? 'disabled' : ''}>
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd" /></svg>
-                       </button>`
-                    : `<button class="activate-user-btn p-2 text-green-400 hover:text-green-300 transition-colors" data-user-id="${user.id}" title="Activate User" ${user.is_current_user ? 'disabled' : ''}>
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
-                       </button>`;
-                
                 return `
-            <tr class="bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
-                <td class="px-6 py-4 font-medium text-white">${this.escapeHtml(user.username)}</td>
-                <td class="px-6 py-4 text-gray-300">${this.escapeHtml(user.email || '')}</td>
+            <tr class="hover:bg-white/5 transition-colors">
                 <td class="px-6 py-4">
-                    <span class="px-3 py-1 rounded-full text-xs font-semibold ${this.getTierBadgeClass(user.profile_tier)}">
+                    <span class="font-medium text-white">${this.escapeHtml(user.username)}</span>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="text-sm text-gray-400">${this.escapeHtml(user.email || '')}</span>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${this.getTierBadgeClass(user.profile_tier)}">
                         ${user.profile_tier.toUpperCase()}
                     </span>
                 </td>
                 <td class="px-6 py-4">
-                    <span class="px-3 py-1 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(userProfileName)}">${this.escapeHtml(userProfileName)}</span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(userProfileName)}">
+                        ${this.escapeHtml(userProfileName)}
+                    </span>
                 </td>
                 <td class="px-6 py-4">
-                     <span class="px-3 py-1 rounded-full text-xs font-semibold ${user.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${user.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
                         ${user.is_active ? 'Active' : 'Inactive'}
                     </span>
                 </td>
                 <td class="px-6 py-4">
-                    <select
-                        class="tier-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
-                        data-user-id="${user.id}"
-                        ${user.is_current_user ? 'disabled' : ''}
-                    >
-                        <option value="user" ${user.profile_tier === 'user' ? 'selected' : ''}>User</option>
-                        <option value="developer" ${user.profile_tier === 'developer' ? 'selected' : ''}>Developer</option>
-                        <option value="admin" ${user.profile_tier === 'admin' ? 'selected' : ''}>Admin</option>
-                    </select>
-                </td>
-                <td class="px-6 py-4">
-                    <select
-                        class="profile-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
-                        data-user-id="${user.id}"
-                        title="Assign Consumption Profile"
-                    >
-                        ${profileOptions}
-                    </select>
-                </td>
-                <td class="px-6 py-4">
-                    <div class="flex gap-2">
+                    <div class="flex items-center gap-2">
+                        <select
+                            class="tier-select px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none transition-colors"
+                            data-user-id="${user.id}"
+                            title="Change User Tier"
+                            ${user.is_current_user ? 'disabled' : ''}
+                        >
+                            <option value="user" ${user.profile_tier === 'user' ? 'selected' : ''}>User</option>
+                            <option value="developer" ${user.profile_tier === 'developer' ? 'selected' : ''}>Developer</option>
+                            <option value="admin" ${user.profile_tier === 'admin' ? 'selected' : ''}>Admin</option>
+                        </select>
+                        <select
+                            class="profile-select px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none transition-colors"
+                            data-user-id="${user.id}"
+                            title="Assign Consumption Profile"
+                        >
+                            ${profileOptions}
+                        </select>
                         <button class="edit-user-btn p-2 text-blue-400 hover:text-blue-300 transition-colors" data-user-id="${user.id}" title="Edit User">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                         </button>
-                        ${actionButton}
+                        ${user.is_active
+                            ? `<button class="deactivate-user-btn p-2 text-yellow-400 hover:text-yellow-300 transition-colors" data-user-id="${user.id}" title="Deactivate User" ${user.is_current_user ? 'disabled' : ''}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd" /></svg>
+                               </button>`
+                            : `<button class="activate-user-btn p-2 text-green-400 hover:text-green-300 transition-colors" data-user-id="${user.id}" title="Activate User" ${user.is_current_user ? 'disabled' : ''}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
+                               </button>`
+                        }
                     </div>
                 </td>
             </tr>
@@ -855,33 +839,50 @@ const AdminManager = {
         }
 
         tbody.innerHTML = this.currentProfiles.map(profile => `
-            <tr class="bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
-                <td class="px-6 py-4 font-medium text-white">
-                    ${this.escapeHtml(profile.name)}
-                    ${profile.is_default ? '<span class="ml-2 px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">DEFAULT</span>' : ''}
-                </td>
-                <td class="px-6 py-4 text-gray-300 text-sm">${this.escapeHtml(profile.description || '')}</td>
-                <td class="px-6 py-4 text-center text-gray-300">${profile.prompts_per_hour || '∞'}</td>
-                <td class="px-6 py-4 text-center text-gray-300">${profile.prompts_per_day || '∞'}</td>
-                <td class="px-6 py-4 text-center text-gray-300">${this.formatTokens(profile.input_tokens_per_month)}</td>
-                <td class="px-6 py-4 text-center text-gray-300">${this.formatTokens(profile.output_tokens_per_month)}</td>
-                <td class="px-6 py-4 text-center">
-                    <span class="px-3 py-1 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profile.name)}">${profile.user_count || 0}</span>
-                </td>
-                <td class="px-6 py-4 text-center">
-                    <span class="px-2 py-1 rounded text-xs ${profile.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}">
-                        ${profile.is_active ? 'Active' : 'Inactive'}
-                    </span>
+            <tr class="hover:bg-white/5 transition-colors">
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-2">
+                        <span class="font-medium text-white">${this.escapeHtml(profile.name)}</span>
+                        ${profile.is_default ? '<span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">Default</span>' : ''}
+                    </div>
                 </td>
                 <td class="px-6 py-4">
+                    <span class="text-sm text-gray-400">${this.escapeHtml(profile.description || '')}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="text-sm text-gray-300">${profile.prompts_per_hour || '∞'}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="text-sm text-gray-300">${profile.prompts_per_day || '∞'}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="text-sm text-gray-300">${this.formatTokens(profile.input_tokens_per_month)}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="text-sm text-gray-300">${this.formatTokens(profile.output_tokens_per_month)}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profile.name)}">${profile.user_count || 0}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox"
+                            class="profile-active-checkbox sr-only peer"
+                            style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
+                            data-profile-id="${profile.id}"
+                            ${profile.is_active ? 'checked' : ''}>
+                        <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                    </label>
+                </td>
+                <td class="px-6 py-4 text-center">
                     <div class="flex gap-2 justify-center">
                         <button class="edit-profile-btn p-2 text-blue-400 hover:text-blue-300 transition-colors" data-profile-id="${profile.id}" title="Edit Profile">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                         </button>
-                        <button class="delete-profile-btn p-2 text-red-400 hover:text-red-300 transition-colors ${profile.user_count > 0 ? 'opacity-50 cursor-not-allowed' : ''}" 
-                                data-profile-id="${profile.id}" 
+                        <button class="delete-profile-btn p-2 text-red-400 hover:text-red-300 transition-colors ${profile.user_count > 0 ? 'opacity-50 cursor-not-allowed' : ''}"
+                                data-profile-id="${profile.id}"
                                 title="${profile.user_count > 0 ? 'Cannot delete profile with assigned users' : 'Delete Profile'}"
                                 ${profile.user_count > 0 ? 'disabled' : ''}>
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -905,6 +906,14 @@ const AdminManager = {
             btn.addEventListener('click', (e) => {
                 const profileId = parseInt(e.currentTarget.dataset.profileId);
                 this.deleteProfile(profileId);
+            });
+        });
+
+        tbody.querySelectorAll('.profile-active-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', async (e) => {
+                const profileId = parseInt(e.target.dataset.profileId);
+                const isActive = e.target.checked;
+                await this.toggleProfileActive(profileId, isActive);
             });
         });
 
@@ -1263,7 +1272,7 @@ const AdminManager = {
         if (consumptionData.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="px-6 py-8 text-center text-gray-400">
+                    <td colspan="7" class="px-6 py-8 text-center text-gray-400">
                         No consumption data available
                     </td>
                 </tr>
@@ -1273,17 +1282,19 @@ const AdminManager = {
 
         tbody.innerHTML = consumptionData.map(({ user, consumption }) => {
             const profileName = user.consumption_profile_name || consumption?.profile_name || 'Unlimited';
-            
+
             if (!consumption) {
                 return `
-                    <tr class="bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
-                        <td class="px-6 py-4 font-medium text-white">${this.escapeHtml(user.username)}</td>
+                    <tr class="hover:bg-white/5 transition-colors">
                         <td class="px-6 py-4">
-                            <span class="px-3 py-1 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profileName)}">
+                            <span class="font-medium text-white">${this.escapeHtml(user.username)}</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profileName)}">
                                 ${this.escapeHtml(profileName)}
                             </span>
                         </td>
-                        <td colspan="6" class="px-6 py-4 text-center text-gray-500 text-sm">Failed to load consumption data</td>
+                        <td colspan="5" class="px-6 py-4 text-center text-gray-500 text-sm">Failed to load consumption data</td>
                     </tr>
                 `;
             }
@@ -1295,47 +1306,58 @@ const AdminManager = {
             const outputLimit = consumption.output_tokens?.limit;
             const inputPercent = consumption.input_tokens?.percentage_used || 0;
             const outputPercent = consumption.output_tokens?.percentage_used || 0;
-            
+
             const getStatusBadge = () => {
                 if (!inputLimit && !outputLimit) {
-                    return '<span class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400">Unlimited</span>';
+                    return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">Unlimited</span>';
                 }
                 const maxPercent = Math.max(inputPercent, outputPercent);
-                if (maxPercent >= 90) return '<span class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400">Critical</span>';
-                if (maxPercent >= 75) return '<span class="px-2 py-1 rounded text-xs bg-orange-500/20 text-orange-400">Warning</span>';
-                if (maxPercent >= 50) return '<span class="px-2 py-1 rounded text-xs bg-yellow-500/20 text-yellow-400">Moderate</span>';
-                return '<span class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400">Good</span>';
+                if (maxPercent >= 90) return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-400">Critical</span>';
+                if (maxPercent >= 75) return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-400">Warning</span>';
+                if (maxPercent >= 50) return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400">Moderate</span>';
+                return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">Good</span>';
             };
 
             // Calculate max usage percentage
             const maxPercent = Math.max(inputPercent, outputPercent);
-            const limitDisplay = (inputLimit && outputLimit) ? 
-                `${this.formatTokens(Math.max(inputLimit, outputLimit))}` : 
+            const limitDisplay = (inputLimit && outputLimit) ?
+                `${this.formatTokens(Math.max(inputLimit, outputLimit))}` :
                 '<span class="text-gray-500">∞</span>';
 
             return `
-                <tr class="bg-gray-800/50 hover:bg-gray-700/50 transition-colors">
-                    <td class="px-6 py-4 font-medium text-white">${this.escapeHtml(user.username)}</td>
+                <tr class="hover:bg-white/5 transition-colors">
                     <td class="px-6 py-4">
-                        <span class="px-3 py-1 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profileName)}">
+                        <span class="font-medium text-white">${this.escapeHtml(user.username)}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profileName)}">
                             ${this.escapeHtml(profileName)}
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-center text-gray-300 font-semibold">${this.formatTokens(totalTokens)}</td>
-                    <td class="px-6 py-4 text-center text-gray-300">${limitDisplay}</td>
                     <td class="px-6 py-4 text-center">
-                        ${(inputLimit || outputLimit) ? 
+                        <span class="text-sm text-gray-300 font-semibold">${this.formatTokens(totalTokens)}</span>
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="text-sm text-gray-300">${limitDisplay}</span>
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        ${(inputLimit || outputLimit) ?
                             `<div class="flex flex-col items-center">
                                 <span class="text-sm ${maxPercent >= 90 ? 'text-red-400' : maxPercent >= 75 ? 'text-orange-400' : 'text-gray-300'}">${Math.round(maxPercent)}%</span>
                                 <div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">
-                                    <div class="h-1.5 rounded-full ${maxPercent >= 90 ? 'bg-red-500' : maxPercent >= 75 ? 'bg-orange-500' : 'bg-blue-500'}" style="width: ${Math.min(maxPercent, 100)}%"></div>
+                                    <div class="h-1.5 rounded-full ${maxPercent >= 90 ? 'bg-red-500' : maxPercent >= 75 ? 'bg-[#F15F22]' : 'bg-blue-500'}" style="width: ${Math.min(maxPercent, 100)}%"></div>
                                 </div>
-                            </div>` 
+                            </div>`
                             : '<span class="text-gray-500">∞</span>'}
                     </td>
                     <td class="px-6 py-4 text-center">${getStatusBadge()}</td>
                     <td class="px-6 py-4 text-center">
-                        <button class="text-blue-400 hover:text-blue-300 text-sm" onclick="AdminManager.viewUserDetails('${user.id}')">View</button>
+                        <button class="p-2 text-blue-400 hover:text-blue-300 transition-colors" onclick="AdminManager.viewUserDetails('${user.id}')" title="View Details">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                        </button>
                     </td>
                 </tr>
             `;
@@ -1440,6 +1462,42 @@ const AdminManager = {
     },
 
     /**
+     * Toggle profile active status
+     */
+    async toggleProfileActive(profileId, isActive) {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch(`/api/v1/auth/admin/consumption-profiles/${profileId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ is_active: isActive })
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                window.showNotification('success', `Profile ${isActive ? 'activated' : 'deactivated'} successfully`);
+                // Update local state
+                const profile = this.currentProfiles.find(p => p.id === profileId);
+                if (profile) {
+                    profile.is_active = isActive;
+                }
+            } else {
+                window.showNotification('error', data.message || 'Failed to update profile status');
+                // Revert checkbox on error
+                await this.loadProfiles();
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error toggling profile status:', error);
+            window.showNotification('error', 'Failed to update profile status');
+            // Revert checkbox on error
+            await this.loadProfiles();
+        }
+    },
+
+    /**
      * Load all features from API
      */
     async loadFeatures() {
@@ -1486,12 +1544,16 @@ const AdminManager = {
         }
 
         tbody.innerHTML = this.currentFeatures.map(feature => `
-            <tr class="bg-gray-800/50 hover:bg-gray-700/50 transition-colors feature-row" data-feature="${feature.name}" data-tier="${feature.required_tier}" data-category="${feature.category}">
-                <td class="px-6 py-4 font-medium text-white">${this.escapeHtml(feature.display_name)}</td>
-                <td class="px-6 py-4 text-gray-400 text-sm">${this.escapeHtml(feature.description)}</td>
+            <tr class="hover:bg-white/5 transition-colors feature-row" data-feature="${feature.name}" data-tier="${feature.required_tier}" data-category="${feature.category}">
                 <td class="px-6 py-4">
-                    <select 
-                        class="feature-tier-select p-2 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none"
+                    <span class="font-medium text-white">${this.escapeHtml(feature.display_name)}</span>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="text-sm text-gray-400">${this.escapeHtml(feature.description)}</span>
+                </td>
+                <td class="px-6 py-4">
+                    <select
+                        class="feature-tier-select px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none transition-colors"
                         data-feature-name="${feature.name}"
                     >
                         <option value="user" ${feature.required_tier === 'user' ? 'selected' : ''}>User</option>
@@ -1499,7 +1561,9 @@ const AdminManager = {
                         <option value="admin" ${feature.required_tier === 'admin' ? 'selected' : ''}>Admin</option>
                     </select>
                 </td>
-                <td class="px-6 py-4 text-gray-400 text-sm">${this.escapeHtml(feature.category)}</td>
+                <td class="px-6 py-4">
+                    <span class="text-sm text-gray-400">${this.escapeHtml(feature.category)}</span>
+                </td>
             </tr>
         `).join('');
 
@@ -1917,7 +1981,7 @@ const AdminManager = {
 
         tbody.innerHTML = this.currentPanes.map(pane => {
             const isAdminPane = pane.pane_id === 'admin';
-            
+
             return `
                 <tr class="hover:bg-white/5 transition-colors">
                     <td class="px-6 py-4">
@@ -1931,36 +1995,36 @@ const AdminManager = {
                     </td>
                     <td class="px-6 py-4 text-center">
                         <label class="inline-flex items-center cursor-pointer">
-                            <input type="checkbox" 
-                                class="pane-visibility-checkbox sr-only peer" 
+                            <input type="checkbox"
+                                class="pane-visibility-checkbox sr-only peer"
                                 style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
-                                data-pane-id="${pane.pane_id}" 
+                                data-pane-id="${pane.pane_id}"
                                 data-tier="user"
                                 ${pane.visible_to_user ? 'checked' : ''}>
-                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
                         </label>
                     </td>
                     <td class="px-6 py-4 text-center">
                         <label class="inline-flex items-center cursor-pointer">
-                            <input type="checkbox" 
-                                class="pane-visibility-checkbox sr-only peer" 
+                            <input type="checkbox"
+                                class="pane-visibility-checkbox sr-only peer"
                                 style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
-                                data-pane-id="${pane.pane_id}" 
+                                data-pane-id="${pane.pane_id}"
                                 data-tier="developer"
                                 ${pane.visible_to_developer ? 'checked' : ''}>
-                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
                         </label>
                     </td>
                     <td class="px-6 py-4 text-center">
                         <label class="inline-flex items-center cursor-pointer">
-                            <input type="checkbox" 
-                                class="pane-visibility-checkbox sr-only peer" 
+                            <input type="checkbox"
+                                class="pane-visibility-checkbox sr-only peer"
                                 style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
-                                data-pane-id="${pane.pane_id}" 
+                                data-pane-id="${pane.pane_id}"
                                 data-tier="admin"
                                 ${pane.visible_to_admin ? 'checked' : ''}
                                 ${isAdminPane ? 'disabled' : ''}>
-                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600 ${isAdminPane ? 'opacity-50 cursor-not-allowed' : ''}"></div>
+                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22] ${isAdminPane ? 'opacity-50 cursor-not-allowed' : ''}"></div>
                         </label>
                     </td>
                 </tr>

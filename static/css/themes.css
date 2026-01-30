@@ -853,7 +853,7 @@
 
 /* Light theme - Model Cost Configuration table */
 [data-theme="light"] #costs-table-body {
-    background-color: var(--bg-primary) !important;
+    background-color: var(--bg-secondary) !important;
 }
 
 [data-theme="light"] #costs-table-body tr {
@@ -2582,7 +2582,7 @@
 
 /* Generic table styling for all admin tabs */
 [data-theme="light"] .admin-tab-content table {
-    background: var(--bg-primary) !important;
+    background: var(--bg-secondary) !important;
 }
 
 [data-theme="light"] .admin-tab-content table thead {
@@ -2594,7 +2594,7 @@
 }
 
 [data-theme="light"] .admin-tab-content table tbody {
-    background: var(--bg-primary) !important;
+    background: var(--bg-secondary) !important;
 }
 
 [data-theme="light"] .admin-tab-content table tbody tr {
@@ -2613,7 +2613,7 @@
 [data-theme="light"] #panes-table-body,
 [data-theme="light"] #parameters-table-body,
 [data-theme="light"] #versions-table-body {
-    background: var(--bg-primary) !important;
+    background: var(--bg-secondary) !important;
 }
 
 [data-theme="light"] #users-table-body tr,
