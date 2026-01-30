@@ -8,6 +8,73 @@ from typing import AsyncGenerator, Tuple, Optional
 logger = logging.getLogger("quart.app")
 
 
+def _extract_session_name(name_text: str) -> str:
+    """
+    Extract clean session name from potentially verbose LLM output.
+
+    Cheaper models may include reasoning like:
+    "Okay, let me think... The title should be: Database Query"
+
+    This function extracts just "Database Query".
+    """
+    import re
+
+    if not name_text:
+        return ""
+
+    # Remove XML-style thinking tags
+    name_text = re.sub(r'<think>.*?</think>', '', name_text, flags=re.DOTALL | re.IGNORECASE)
+    name_text = re.sub(r'<thinking>.*?</thinking>', '', name_text, flags=re.DOTALL | re.IGNORECASE)
+
+    # Try to extract after common separator phrases
+    separators = [
+        r'Session Name:\s*',
+        r'Title:\s*',
+        r'The title should be:\s*',
+        r'The session name is:\s*',
+        r'I would suggest:\s*',
+        r'Here\'s the title:\s*',
+        r'Result:\s*',
+    ]
+
+    for separator in separators:
+        match = re.search(separator + r'(.+?)(?:\.|$)', name_text, re.IGNORECASE | re.DOTALL)
+        if match:
+            name_text = match.group(1).strip()
+            break
+
+    # Remove common reasoning prefixes
+    reasoning_patterns = [
+        r'^(?:Okay|Sure|Alright|Let me think|Based on)[,.]?\s+',
+        r'^The user (?:asked|wants|is asking)[^.]+\.\s+',
+        r'^(?:I think|I would say|I suggest)[^:]+:\s+',
+    ]
+
+    for pattern in reasoning_patterns:
+        name_text = re.sub(pattern, '', name_text, flags=re.IGNORECASE)
+
+    # Extract the last line if there are multiple lines (reasoning might be on earlier lines)
+    lines = [line.strip() for line in name_text.split('\n') if line.strip()]
+    if lines:
+        name_text = lines[-1]
+
+    # Remove quotes
+    name_text = name_text.strip('\'"')
+
+    # Remove trailing punctuation
+    name_text = name_text.rstrip('.!?,;:')
+
+    # Limit to first 10 words (prompts specify 3-5 words, but allow some buffer)
+    words = name_text.split()
+    if len(words) > 10:
+        name_text = ' '.join(words[:10])
+
+    # Final cleanup
+    name_text = ' '.join(name_text.split())  # Normalize whitespace
+
+    return name_text
+
+
 async def generate_session_name_with_events(
     user_query: str,
     session_id: str,
@@ -101,7 +168,12 @@ async def _generate_via_executor(
         f"User Query: \"{query}\"\n\n"
         f"Session Name:"
     )
-    system_prompt = "You generate short, descriptive titles. Only respond with the title text."
+    system_prompt = (
+        "You are a title generator. You MUST output ONLY the session title (3-5 words), nothing else. "
+        "Do NOT include reasoning, explanations, thinking, punctuation, or quotes. "
+        "WRONG: 'Okay, let me think... The title should be: Database Query' "
+        "CORRECT: Database Query"
+    )
 
     name_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
         dependencies['STATE']['llm'],
@@ -118,7 +190,8 @@ async def _generate_via_executor(
         current_provider=current_provider
     )
 
-    cleaned_name = name_text.strip().strip('"\'')
+    # Clean the name and extract only the final title
+    cleaned_name = _extract_session_name(name_text)
     return cleaned_name or "New Chat", input_tokens, output_tokens
 
 
@@ -130,7 +203,12 @@ async def _generate_via_langchain(
     from langchain_core.messages import HumanMessage, SystemMessage
 
     system_msg = SystemMessage(
-        content="You generate short, descriptive titles (3-5 words). Only respond with the title text, no punctuation or quotes."
+        content=(
+            "You are a title generator. You MUST output ONLY the session title (3-5 words), nothing else. "
+            "Do NOT include reasoning, explanations, thinking, punctuation, or quotes. "
+            "WRONG: 'Okay, let me think... The title should be: Database Query' "
+            "CORRECT: Database Query"
+        )
     )
     human_msg = HumanMessage(
         content=f"Generate a concise session name for this query: \"{query[:200]}\""
@@ -146,7 +224,9 @@ async def _generate_via_langchain(
         name_text = ' '.join(str(part) for part in raw_content if part)
     else:
         name_text = str(raw_content) if raw_content else ""
-    cleaned_name = name_text.strip().strip('"\'')
+
+    # Clean the name and extract only the final title
+    cleaned_name = _extract_session_name(name_text)
 
     # Extract token usage from response (handles multiple provider formats)
     input_tokens = 0
@@ -179,6 +259,7 @@ async def _generate_via_langchain(
     logger.info(f"Session name extracted tokens: {input_tokens} in / {output_tokens} out")
 
     if not cleaned_name or len(cleaned_name) >= 100:
+        logger.warning(f"Session name too long or empty after cleaning: {len(cleaned_name)} chars")
         return "New Chat", input_tokens, output_tokens
 
     return cleaned_name, input_tokens, output_tokens
