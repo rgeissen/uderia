@@ -2760,13 +2760,13 @@ function renderProfileCard(profile) {
                                     const profileTypeColors = {
                                         'llm_only': '#4ade80',      // Green - Ideate
                                         'rag_focused': '#3b82f6',   // Blue - Focus
-                                        'tool_enabled': '#F15F22',  // Orange - Optimize
-                                        'genie': '#9333ea'          // Purple - Coordinate
+                                        'tool_enabled': '#9333ea',  // Purple - Optimize (CORRECTED)
+                                        'genie': '#F15F22'          // Orange - Coordinate (CORRECTED - Teradata brand)
                                     };
                                     const tagColor = profileTypeColors[profile.profile_type] || profile.color || '#F15F22';
                                     return `
                                 <span class="profile-tag profile-tag--md"
-                                      style="--profile-tag-bg: linear-gradient(135deg, ${tagColor}40, ${tagColor}25); --profile-tag-border: ${tagColor}60;">
+                                      style="--profile-tag-bg: ${tagColor}; --profile-tag-border: ${tagColor}; --profile-tag-text: #FFFFFF;">
                                     @${escapeHtml(profile.tag)}
                                 </span>`;
                                 })()}
@@ -2872,14 +2872,14 @@ function renderProfileCard(profile) {
                                 const profileTypeColors = {
                                     'llm_only': '#4ade80',      // Green - Ideate
                                     'rag_focused': '#3b82f6',   // Blue - Focus
-                                    'tool_enabled': '#F15F22',  // Orange - Optimize
-                                    'genie': '#9333ea'          // Purple - Coordinate
+                                    'tool_enabled': '#9333ea',  // Purple - Optimize (CORRECTED)
+                                    'genie': '#F15F22'          // Orange - Coordinate (CORRECTED - Teradata brand)
                                 };
                                 const slaveTags = slaveProfiles.map(slaveId => {
                                     const slaveProfile = configState.profiles.find(p => p.id === slaveId);
                                     if (!slaveProfile) return '<span class="text-gray-400">Unknown</span>';
                                     const color = profileTypeColors[slaveProfile.profile_type] || '#9ca3af';
-                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${color}35, ${color}20); --profile-tag-border: ${color}55;">@${escapeHtml(slaveProfile.tag)}</span>`;
+                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${color}; --profile-tag-border: ${color}; --profile-tag-text: #FFFFFF;">@${escapeHtml(slaveProfile.tag)}</span>`;
                                 });
                                 return slaveTags.join(', ');
                             })()}</p>

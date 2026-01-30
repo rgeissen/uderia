@@ -845,7 +845,7 @@ class ExecutionDashboard {
                 entry.result?.status === 'error'
             );
 
-            // Build profile tag badge if available - using unified profile tag system
+            // Build profile tag badge if available - PURE INDUSTRIAL SOLID COLORS
             let profileBadgeHTML = '';
             if (turn.profile_tag) {
                 // Find profile by tag to get color
@@ -853,17 +853,25 @@ class ExecutionDashboard {
                 let cssVars = '';
 
                 if (profile && profile.color) {
-                    // Helper to convert hex to rgba
-                    const hexToRgba = (hex, alpha) => {
-                        const r = parseInt(hex.slice(1, 3), 16);
-                        const g = parseInt(hex.slice(3, 5), 16);
-                        const b = parseInt(hex.slice(5, 7), 16);
-                        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                    // Helper to adjust color brightness
+                    const adjustBrightness = (hex, percent) => {
+                        hex = hex.replace('#', '');
+                        const r = parseInt(hex.slice(0, 2), 16);
+                        const g = parseInt(hex.slice(2, 4), 16);
+                        const b = parseInt(hex.slice(4, 6), 16);
+                        const factor = 1 + (percent / 100);
+                        const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+                        const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+                        const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+                        const toHex = (n) => n.toString(16).padStart(2, '0');
+                        return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
                     };
-                    const color1 = hexToRgba(profile.color, 0.25);
-                    const color2 = hexToRgba(profile.color, 0.12);
-                    const borderColor = hexToRgba(profile.color, 0.4);
-                    cssVars = `--profile-tag-bg: linear-gradient(135deg, ${color1}, ${color2}); --profile-tag-border: ${borderColor};`;
+
+                    // PURE INDUSTRIAL: Flat monolithic design
+                    const solidBg = profile.color;
+                    const hoverColor = adjustBrightness(profile.color, 10);
+                    // Flat monolithic: border matches background, white text
+                    cssVars = `--profile-tag-bg: ${solidBg}; --profile-tag-border: ${solidBg}; --profile-tag-bg-hover: ${hoverColor}; --profile-tag-text: #FFFFFF;`;
                 }
 
                 profileBadgeHTML = `<span class="profile-tag profile-tag--sm mr-2" style="${cssVars}">@${turn.profile_tag}</span>`;

@@ -19,13 +19,14 @@ import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers
 
 // ============================================================================
 // Profile Type Colors for Status Window Tags
+// CORRECTED IFOC MAPPING: Coordinate=Orange (Teradata brand)
 // ============================================================================
 
 const PROFILE_TYPE_COLORS = {
     'llm_only': '#4ade80',      // Green (IDEATE)
     'rag_focused': '#3b82f6',   // Blue (FOCUS)
-    'tool_enabled': '#F15F22',  // Orange (OPTIMIZE)
-    'genie': '#9333ea'          // Purple (COORDINATE)
+    'tool_enabled': '#9333ea',  // Purple (OPTIMIZE) - CHANGED
+    'genie': '#F15F22'          // Orange (COORDINATE - Teradata brand) - CHANGED
 };
 
 // ============================================================================
@@ -118,7 +119,54 @@ function getProfileTagColor(profileTag, profileType) {
 }
 
 /**
- * Render a profile tag with the correct profile type color using unified styling.
+ * Adjust color brightness by a percentage.
+ * @param {string} hex - Hex color code (e.g., "#F15F22")
+ * @param {number} percent - Percentage to adjust (-100 to 100). Positive = lighter, negative = darker.
+ * @returns {string} Adjusted hex color code
+ */
+function adjustColorBrightness(hex, percent) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    // Adjust brightness
+    const factor = 1 + (percent / 100);
+    const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+    const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+    const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+
+    // Convert back to hex
+    const toHex = (n) => n.toString(16).padStart(2, '0');
+    return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+}
+
+/**
+ * Determine if a color is light (for text contrast calculation).
+ * @param {string} hex - Hex color code (e.g., "#4ade80")
+ * @returns {boolean} True if color is light (needs dark text)
+ */
+function isLightColor(hex) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    // Calculate relative luminance (WCAG formula)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // Return true if luminance > 0.5 (light color needs dark text)
+    return luminance > 0.5;
+}
+
+/**
+ * Render a profile tag with the correct profile type color using PURE INDUSTRIAL SOLID STYLING.
  * @param {string} tag - The profile tag (without @)
  * @param {string} profileType - Optional profile type for color lookup
  * @param {string} additionalClasses - Optional additional CSS classes
@@ -126,7 +174,12 @@ function getProfileTagColor(profileTag, profileType) {
  */
 function renderProfileTag(tag, profileType, additionalClasses = '') {
     const color = getProfileTagColor(tag, profileType);
-    return `<span class="profile-tag profile-tag--sm ${additionalClasses}" style="--profile-tag-bg: linear-gradient(135deg, ${color}25, ${color}12); --profile-tag-border: ${color}40;">@${tag}</span>`;
+
+    // PURE INDUSTRIAL: Solid colors, flat monolithic design
+    // Border matches background (no gradient depth effect)
+    const hoverColor = adjustColorBrightness(color, 10);     // 10% lighter for hover
+
+    return `<span class="profile-tag profile-tag--sm ${additionalClasses}" style="--profile-tag-bg: ${color}; --profile-tag-border: ${color}; --profile-tag-bg-hover: ${hoverColor}; --profile-tag-text: #FFFFFF;">@${tag}</span>`;
 }
 
 // ============================================================================
@@ -764,19 +817,26 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         if (window.configState?.profiles) {
             const profile = window.configState.profiles.find(p => p.tag === profileTag);
             if (profile && profile.color) {
-                const hexToRgba = (hex, alpha) => {
-                    const r = parseInt(hex.slice(1, 3), 16);
-                    const g = parseInt(hex.slice(3, 5), 16);
-                    const b = parseInt(hex.slice(5, 7), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                // PURE INDUSTRIAL SOLID COLORS
+                const adjustBrightness = (hex, percent) => {
+                    hex = hex.replace('#', '');
+                    const r = parseInt(hex.slice(0, 2), 16);
+                    const g = parseInt(hex.slice(2, 4), 16);
+                    const b = parseInt(hex.slice(4, 6), 16);
+                    const factor = 1 + (percent / 100);
+                    const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+                    const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+                    const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+                    const toHex = (n) => n.toString(16).padStart(2, '0');
+                    return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
                 };
 
-                // Detect light mode for higher contrast
-                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
-
-                profileBadge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.90 : 0.25)}, ${hexToRgba(profile.color, isLightMode ? 0.75 : 0.12)})`);
-                profileBadge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, isLightMode ? 0.95 : 0.4));
-                profileBadge.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
+                // PURE INDUSTRIAL: Flat monolithic design
+                profileBadge.style.setProperty('--profile-tag-bg', profile.color);
+                // Flat monolithic: Border matches background (no gradient depth)
+                profileBadge.style.setProperty('--profile-tag-border', profile.color);
+                // Pure industrial: Always white text on solid color backgrounds
+                profileBadge.style.setProperty('--profile-tag-text', '#FFFFFF');
             }
         }
         profileBadge.style.alignSelf = 'flex-start';
@@ -1072,27 +1132,29 @@ export function updateLastUserMessageProfileTag(profileTag) {
     let existingBadge = lastUserWrapper.querySelector('[title^="Executed with profile"]');
 
     // Create or update the badge
-    const hexToRgba = (hex, alpha) => {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    // PURE INDUSTRIAL SOLID COLORS
+    const adjustBrightness = (hex, percent) => {
+        hex = hex.replace('#', '');
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        const factor = 1 + (percent / 100);
+        const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+        const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+        const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+        const toHex = (n) => n.toString(16).padStart(2, '0');
+        return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
     };
 
-    // Detect light mode for higher contrast
-    const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
-
-    // Get profile colors if available - use CSS custom properties
+    // Get profile colors if available - use solid colors
     let bgStyleValue = null;
     let borderColorValue = null;
-    let textColorValue = isLightMode ? '#000000' : 'white';
+    let textColorValue = '#FFFFFF';  // Pure industrial: Always white text
     if (window.configState?.profiles) {
         const profile = window.configState.profiles.find(p => p.tag === profileTag);
         if (profile && profile.color) {
-            const color1 = hexToRgba(profile.color, isLightMode ? 0.90 : 0.25);
-            const color2 = hexToRgba(profile.color, isLightMode ? 0.75 : 0.12);
-            bgStyleValue = `linear-gradient(135deg, ${color1}, ${color2})`;
-            borderColorValue = hexToRgba(profile.color, isLightMode ? 0.95 : 0.4);
+            bgStyleValue = profile.color;  // Solid color
+            borderColorValue = profile.color;  // Flat monolithic: border matches background
         }
     }
 
@@ -1501,8 +1563,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Profiles</summary>
                             <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
                                 ${details.slave_profiles.map(p => {
-                                    const slaveColor = getProfileTagColor(p.tag, p.profile_type);
-                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-pending" style="--profile-tag-bg: linear-gradient(135deg, ${slaveColor}25, ${slaveColor}12); --profile-tag-border: ${slaveColor}40;">@${p.tag}</span>`;
+                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-pending">@${p.tag}</span>`;
                                 }).join('')}
                             </div>
                         </details>
@@ -1564,12 +1625,12 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     const needsExpand = query.length > 100;
                     queryHtml = needsExpand ? `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></summary>
+                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></summary>
                             <div class="mt-1 p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
                         </details>
                     ` : `
                         <div class="mt-2">
-                            <div class="text-slate-400 text-xs font-medium mb-1">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></div>
+                            <div class="text-slate-400 text-xs font-medium mb-1">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></div>
                             <div class="p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
                         </div>
                     `;
@@ -1625,7 +1686,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     // Show result collapsed by default - user can expand to see details
                     resultHtml = `
                         <details class="mt-2">
-                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></summary>
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></summary>
                             <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(result)}</div>
                         </details>
                     `;
@@ -1635,7 +1696,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 if (details.error) {
                     errorHtml = `
                         <div class="mt-2">
-                            <div class="text-rose-400 text-xs font-medium mb-1">Error from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${slaveTagColor}25, ${slaveTagColor}12); --profile-tag-border: ${slaveTagColor}40;">@${profileTag}</span></div>
+                            <div class="text-rose-400 text-xs font-medium mb-1">Error from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></div>
                             <div class="p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${escapeHtml(details.error)}</div>
                         </div>
                     `;
@@ -1669,7 +1730,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="mt-2 flex flex-wrap gap-1">
                             ${details.profiles_consulted.map(tag => {
                                 const tagColor = getProfileTagColor(tag);
-                                return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: linear-gradient(135deg, ${tagColor}25, ${tagColor}12); --profile-tag-border: ${tagColor}40;">@${tag}</span>`;
+                                return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${tagColor}; --profile-tag-border: ${tagColor}; --profile-tag-text: #FFFFFF;">@${tag}</span>`;
                             }).join('')}
                         </div>
                     ` : ''}
@@ -1725,8 +1786,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <div class="text-gray-500 text-xs mb-1">Profiles Consulted:</div>
                             <div class="genie-profile-tags flex flex-wrap gap-1">
                                 ${details.profiles_used.map(tag => {
-                                    const tagColor = getProfileTagColor(tag);
-                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-completed" style="--profile-tag-bg: linear-gradient(135deg, ${tagColor}25, ${tagColor}12); --profile-tag-border: ${tagColor}40;">@${tag}</span>`;
+                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-completed">@${tag}</span>`;
                                 }).join('')}
                             </div>
                         </div>

@@ -27,6 +27,59 @@ import './handlers/splitViewHandler.js';
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
 
+// ============================================================================
+// UTILITY FUNCTIONS - Color Manipulation for Pure Industrial Design
+// ============================================================================
+
+/**
+ * Adjust color brightness by a percentage.
+ * @param {string} hex - Hex color code (e.g., "#F15F22")
+ * @param {number} percent - Percentage to adjust (-100 to 100). Positive = lighter, negative = darker.
+ * @returns {string} Adjusted hex color code
+ */
+function adjustColorBrightness(hex, percent) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    // Adjust brightness
+    const factor = 1 + (percent / 100);
+    const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+    const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+    const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+
+    // Convert back to hex
+    const toHex = (n) => n.toString(16).padStart(2, '0');
+    return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+}
+
+/**
+ * Determine if a color is light (for text contrast calculation).
+ * @param {string} hex - Hex color code (e.g., "#4ade80")
+ * @returns {boolean} True if color is light (needs dark text)
+ */
+function isLightColor(hex) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    // Calculate relative luminance (WCAG formula)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // ADJUSTED THRESHOLD: 0.6 instead of 0.5
+    // Orange #F15F22 has luminance ~0.52 but is visually dark (needs white text)
+    // Green #4ade80 has luminance ~0.66 and is visually light (needs black text)
+    return luminance > 0.6;
+}
+
 // Session header profile display - uses unified profile tag system
 function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     const headerDefaultProfile = document.getElementById('header-default-profile');
@@ -49,17 +102,22 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     const profile = overrideProfile || defaultProfile;
     updateKnowledgeIndicatorStatus(profile);
 
-    // Update default profile - use CSS custom properties for theme compliance
+    // Update default profile - PURE INDUSTRIAL SOLID COLORS
     if (defaultProfile && defaultProfile.tag) {
         headerDefaultProfileTag.textContent = `@${defaultProfile.tag}`;
         if (defaultProfile.color) {
-            // Use same opacity as session history for consistent visuals across themes
-            const color1 = hexToRgba(defaultProfile.color, 0.25);
-            const color2 = hexToRgba(defaultProfile.color, 0.12);
-            const borderColor = hexToRgba(defaultProfile.color, 0.4);
-            headerDefaultProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
-            headerDefaultProfile.style.setProperty('--profile-tag-border', borderColor);
-            headerDefaultProfile.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
+            // PURE INDUSTRIAL: Solid color, flat monolithic design
+            headerDefaultProfile.style.setProperty('--profile-tag-bg', defaultProfile.color);
+
+            // Flat monolithic: Border matches background (no gradient depth)
+            headerDefaultProfile.style.setProperty('--profile-tag-border', defaultProfile.color);
+
+            // Pure industrial: ALWAYS WHITE TEXT (no luminance calculation)
+            headerDefaultProfile.style.setProperty('--profile-tag-text', '#FFFFFF');
+
+            // Hover state (10% lighter)
+            const hoverColor = adjustColorBrightness(defaultProfile.color, 10);
+            headerDefaultProfile.style.setProperty('--profile-tag-bg-hover', hoverColor);
         }
         headerDefaultProfile.classList.remove('hidden');
     } else {
@@ -69,17 +127,22 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
         headerDefaultProfile.style.removeProperty('--profile-tag-text');
     }
 
-    // Update override profile - use CSS custom properties for theme compliance
+    // Update override profile - PURE INDUSTRIAL SOLID COLORS
     if (overrideProfile && overrideProfile.tag) {
         headerOverrideProfileTag.textContent = `@${overrideProfile.tag}`;
         if (overrideProfile.color) {
-            // Use same opacity as session history for consistent visuals across themes
-            const color1 = hexToRgba(overrideProfile.color, 0.25);
-            const color2 = hexToRgba(overrideProfile.color, 0.12);
-            const borderColor = hexToRgba(overrideProfile.color, 0.4);
-            headerOverrideProfile.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
-            headerOverrideProfile.style.setProperty('--profile-tag-border', borderColor);
-            headerOverrideProfile.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
+            // PURE INDUSTRIAL: Solid color, flat monolithic design
+            headerOverrideProfile.style.setProperty('--profile-tag-bg', overrideProfile.color);
+
+            // Flat monolithic: Border matches background (no gradient depth)
+            headerOverrideProfile.style.setProperty('--profile-tag-border', overrideProfile.color);
+
+            // Pure industrial: ALWAYS WHITE TEXT (no luminance calculation)
+            headerOverrideProfile.style.setProperty('--profile-tag-text', '#FFFFFF');
+
+            // Hover state (10% lighter)
+            const hoverColor = adjustColorBrightness(overrideProfile.color, 10);
+            headerOverrideProfile.style.setProperty('--profile-tag-bg-hover', hoverColor);
         }
         headerOverrideProfile.classList.remove('hidden');
     } else {
@@ -239,10 +302,12 @@ async function initializeRAGAutoCompletion() {
             const color2 = hexToRgba(profile.color, secondaryOpacity);
             const borderColor = hexToRgba(profile.color, borderOpacity);
 
-            activeProfileTag.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${color1}, ${color2})`);
-            activeProfileTag.style.setProperty('--profile-tag-border', borderColor);
-            activeProfileTag.style.setProperty('--profile-tag-shadow', `0 2px 8px ${hexToRgba(profile.color, 0.15)}`);
-            activeProfileTag.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
+            // PURE INDUSTRIAL: Flat monolithic design
+            activeProfileTag.style.setProperty('--profile-tag-bg', profile.color);
+            // Flat monolithic: Border matches background (no gradient depth)
+            activeProfileTag.style.setProperty('--profile-tag-border', profile.color);
+            activeProfileTag.style.setProperty('--profile-tag-shadow', '0 2px 4px rgba(0, 0, 0, 0.2)');
+            activeProfileTag.style.setProperty('--profile-tag-text', '#FFFFFF');
         }
 
         activeProfileTag.classList.remove('hidden');
@@ -583,21 +648,20 @@ async function initializeRAGAutoCompletion() {
             badge.className = 'profile-tag profile-tag--md profile-tag-badge';
             badge.textContent = `@${profile.tag}`;
 
-            // Apply provider color via CSS custom properties
-            if (profile.color && profile.colorSecondary) {
-                const hexToRgba = (hex, alpha) => {
-                    const r = parseInt(hex.slice(1, 3), 16);
-                    const g = parseInt(hex.slice(3, 5), 16);
-                    const b = parseInt(hex.slice(5, 7), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                };
+            // Apply PURE INDUSTRIAL SOLID COLORS via CSS custom properties
+            if (profile.color) {
+                // PURE INDUSTRIAL: Flat monolithic design
+                badge.style.setProperty('--profile-tag-bg', profile.color);
 
-                // Detect light mode for higher contrast
-                const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+                // Flat monolithic: Border matches background (no gradient depth)
+                badge.style.setProperty('--profile-tag-border', profile.color);
 
-                badge.style.setProperty('--profile-tag-bg', `linear-gradient(135deg, ${hexToRgba(profile.color, isLightMode ? 0.90 : 0.25)}, ${hexToRgba(profile.color, isLightMode ? 0.75 : 0.12)})`);
-                badge.style.setProperty('--profile-tag-border', hexToRgba(profile.color, isLightMode ? 0.95 : 0.4));
-                badge.style.setProperty('--profile-tag-text', isLightMode ? '#000000' : 'white');
+                // Pure industrial: Always white text on solid color backgrounds
+                badge.style.setProperty('--profile-tag-text', '#FFFFFF');
+
+                // Hover state (10% lighter)
+                const hoverColor = adjustColorBrightness(profile.color, 10);
+                badge.style.setProperty('--profile-tag-bg-hover', hoverColor);
             }
 
             const name = document.createElement('span');

@@ -2515,33 +2515,47 @@ button[data-action="delete-mcp"]:hover {
    Base class and variants for consistent profile tag styling across the app
    ============================================================================ */
 
-/* Base profile tag class */
+/* Base profile tag class - PURE INDUSTRIAL FLAT DESIGN */
 .profile-tag {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--space-1);
 
+    /* Typography - maintain existing */
     font-family: var(--profile-tag-font);
     font-weight: var(--profile-tag-font-weight);
     letter-spacing: var(--profile-tag-letter-spacing);
     text-transform: var(--profile-tag-text-transform);
     line-height: 1;
 
-    border-radius: var(--profile-tag-radius);
-    border: 1px solid var(--profile-tag-border);
+    /* SOLID background - no gradients */
     background: var(--profile-tag-bg);
+
+    /* Industrial 2px border for strength */
+    border: 2px solid var(--profile-tag-border);
+    border-radius: var(--profile-tag-radius);
+
+    /* High contrast text */
     color: var(--profile-tag-text);
+
+    /* Flat shadow - elevation only, NO glow */
     box-shadow: var(--profile-tag-shadow);
 
-    transition: all var(--duration-fast) var(--ease-out-expo);
+    /* Clean, snappy transitions */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
 }
 
 .profile-tag:hover {
+    /* Lighten background on hover */
     background: var(--profile-tag-bg-hover);
     border-color: var(--profile-tag-border-hover);
+
+    /* Slightly stronger shadow */
     box-shadow: var(--profile-tag-shadow-hover);
+
+    /* Subtle lift for tactile feedback */
     transform: translateY(-1px);
 }
 
@@ -2599,29 +2613,29 @@ button[data-action="delete-mcp"]:hover {
     margin-left: var(--space-1);
 }
 
-/* Status modifiers for Genie workflow */
+/* Status modifiers for Genie workflow - SOLID COLORS */
 .profile-tag--status-pending {
-    --profile-tag-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
-    --profile-tag-border: rgba(139, 92, 246, 0.3);
-    --profile-tag-text: #c4b5fd;
+    --profile-tag-bg: #8b5cf6;      /* Solid purple */
+    --profile-tag-border: #7c3aed;
+    --profile-tag-text: #FFFFFF;
 }
 
 .profile-tag--status-selected {
-    --profile-tag-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.15));
-    --profile-tag-border: #8b5cf6;
-    --profile-tag-text: #e9d5ff;
+    --profile-tag-bg: #a855f7;      /* Lighter purple */
+    --profile-tag-border: #9333ea;
+    --profile-tag-text: #FFFFFF;
 }
 
 .profile-tag--status-completed {
-    --profile-tag-bg: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1));
-    --profile-tag-border: rgba(16, 185, 129, 0.3);
-    --profile-tag-text: #6ee7b7;
+    --profile-tag-bg: #10b981;      /* Solid emerald */
+    --profile-tag-border: #059669;
+    --profile-tag-text: #FFFFFF;
 }
 
 .profile-tag--status-error {
-    --profile-tag-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.1));
-    --profile-tag-border: rgba(239, 68, 68, 0.3);
-    --profile-tag-text: #fca5a5;
+    --profile-tag-bg: #ef4444;      /* Solid red */
+    --profile-tag-border: #dc2626;
+    --profile-tag-text: #FFFFFF;
 }
 
 /* ============================================================================
@@ -2908,7 +2922,8 @@ button[data-action="delete-mcp"]:hover {
 .profile-tag-item.profile-tag-highlighted .profile-tag-badge {
     /* Removed background and border-color overrides to preserve native profile colors */
     transform: scale(1.05);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+    /* PURE INDUSTRIAL: Flat shadow only, NO glow */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Hover state text (only when not highlighted) */

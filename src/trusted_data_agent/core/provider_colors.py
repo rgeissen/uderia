@@ -7,7 +7,7 @@ Provider and profile type color mapping for visual identification throughout the
 
 # Profile type color schemes (take priority over provider colors)
 # These ensure consistent visual identification of profile classes
-# Color scheme: Ideate=Green, Focus=Blue, Optimize=Orange, Coordinate=Purple
+# CORRECTED IFOC COLOR MAPPING: Ideate=Green, Focus=Blue, Optimize=Purple, Coordinate=Orange
 PROFILE_TYPE_COLORS = {
     "llm_only": {
         "primary": "#4ade80",     # Green (Ideate - conversation/brainstorming)
@@ -20,13 +20,13 @@ PROFILE_TYPE_COLORS = {
         "name": "Knowledge Focused (RAG)"
     },
     "tool_enabled": {
-        "primary": "#F15F22",     # Orange (Optimize - efficiency/execution)
-        "secondary": "#f97316",   # Lighter orange
+        "primary": "#9333ea",     # Purple (Optimize - efficiency/execution)
+        "secondary": "#a855f7",   # Lighter purple
         "name": "Efficiency Focused (Tool)"
     },
     "genie": {
-        "primary": "#9333ea",     # Purple (Coordinate - multi-profile orchestration)
-        "secondary": "#a855f7",   # Lighter purple
+        "primary": "#F15F22",     # Orange (Coordinate - multi-profile orchestration, Teradata brand)
+        "secondary": "#f97316",   # Lighter orange
         "name": "Genie (Multi-Profile)"
     }
 }
@@ -105,11 +105,11 @@ def get_profile_colors(profile_type: str, provider: str = None) -> dict:
     """
     Get color scheme for a profile based on type.
 
-    All profile types now have explicit colors:
-    - llm_only (Ideate) = Green
-    - rag_focused (Focus) = Blue
-    - tool_enabled (Optimize) = Orange
-    - genie (Coordinate) = Purple
+    CORRECTED IFOC color mapping:
+    - llm_only (Ideate) = Green #4ade80
+    - rag_focused (Focus) = Blue #3b82f6
+    - tool_enabled (Optimize) = Purple #9333ea
+    - genie (Coordinate) = Orange #F15F22 (Teradata brand)
 
     Args:
         profile_type: Profile type ("genie", "rag_focused", "llm_only", "tool_enabled")

@@ -105,16 +105,48 @@
     --profile-tag-font-size-md: 0.6875rem;
     --profile-tag-font-size-lg: 0.75rem;
 
-    /* Default colors (dark themes) */
-    --profile-tag-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.25), rgba(241, 95, 34, 0.12));
-    --profile-tag-border: rgba(241, 95, 34, 0.4);
-    --profile-tag-text: white;
-    --profile-tag-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    /* ========================================================================
+       PURE INDUSTRIAL SOLID COLORS - CORRECTED IFOC MAPPING
+       Genie (COORDINATE) = Orange #F15F22 (Teradata brand)
+       LLM Only (IDEATE) = Green #4ade80
+       RAG Focused (FOCUS) = Blue #3b82f6
+       Tool Enabled (OPTIMIZE) = Purple #9333ea
 
-    /* Hover state */
-    --profile-tag-bg-hover: linear-gradient(135deg, rgba(241, 95, 34, 0.35), rgba(241, 95, 34, 0.18));
-    --profile-tag-border-hover: rgba(241, 95, 34, 0.55);
-    --profile-tag-shadow-hover: 0 3px 10px rgba(0, 0, 0, 0.2);
+       FLAT MONOLITHIC: Border matches background (no gradient effect)
+       ======================================================================== */
+
+    /* Genie (Orange - COORDINATE) - Teradata Brand Color */
+    --profile-tag-bg-genie: #F15F22;
+    --profile-tag-border-genie: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-genie: #FF7A47;
+    --profile-tag-text-genie: #FFFFFF;
+
+    /* LLM Only (Green - IDEATE) - WHITE TEXT on green */
+    --profile-tag-bg-llm: #4ade80;
+    --profile-tag-border-llm: #4ade80;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-llm: #6ee7b7;
+    --profile-tag-text-llm: #FFFFFF;  /* White text - pure industrial design */
+
+    /* RAG Focused (Blue - FOCUS) */
+    --profile-tag-bg-rag: #3b82f6;
+    --profile-tag-border-rag: #3b82f6;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-rag: #60a5fa;
+    --profile-tag-text-rag: #FFFFFF;
+
+    /* Tool Enabled (Purple - OPTIMIZE) */
+    --profile-tag-bg-tool: #9333ea;
+    --profile-tag-border-tool: #9333ea;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-tool: #a855f7;
+    --profile-tag-text-tool: #FFFFFF;
+
+    /* Default fallback (uses dynamic inline styles from JavaScript) */
+    --profile-tag-bg: #F15F22;
+    --profile-tag-border: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-text: white;
+
+    /* Flat shadows - elevation only, NO glow */
+    --profile-tag-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --profile-tag-shadow-hover: 0 3px 6px rgba(0, 0, 0, 0.25);
 }
 
 /* ============================================================================
@@ -184,6 +216,49 @@
     --tree-line-l0: rgba(241, 95, 34, 0.8);
     --tree-line-l1: rgba(139, 92, 246, 0.8);
     --tree-line-l2: rgba(16, 185, 129, 0.8);
+
+    /* ========================================================================
+       PURE INDUSTRIAL SOLID COLORS - CORRECTED IFOC MAPPING (Legacy Theme)
+       Genie (COORDINATE) = Orange #F15F22 (Teradata brand)
+       LLM Only (IDEATE) = Green #4ade80
+       RAG Focused (FOCUS) = Blue #3b82f6
+       Tool Enabled (OPTIMIZE) = Purple #9333ea
+
+       FLAT MONOLITHIC: Border matches background (no gradient effect)
+       ======================================================================== */
+
+    /* Genie (Orange - COORDINATE) - Teradata Brand Color */
+    --profile-tag-bg-genie: #F15F22;
+    --profile-tag-border-genie: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-genie: #FF7A47;
+    --profile-tag-text-genie: #FFFFFF;
+
+    /* LLM Only (Green - IDEATE) - WHITE TEXT on green */
+    --profile-tag-bg-llm: #4ade80;
+    --profile-tag-border-llm: #4ade80;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-llm: #6ee7b7;
+    --profile-tag-text-llm: #FFFFFF;  /* White text - pure industrial design */
+
+    /* RAG Focused (Blue - FOCUS) */
+    --profile-tag-bg-rag: #3b82f6;
+    --profile-tag-border-rag: #3b82f6;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-rag: #60a5fa;
+    --profile-tag-text-rag: #FFFFFF;
+
+    /* Tool Enabled (Purple - OPTIMIZE) */
+    --profile-tag-bg-tool: #9333ea;
+    --profile-tag-border-tool: #9333ea;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-tool: #a855f7;
+    --profile-tag-text-tool: #FFFFFF;
+
+    /* Default fallback (uses dynamic inline styles from JavaScript) */
+    --profile-tag-bg: #F15F22;
+    --profile-tag-border: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-text: white;
+
+    /* Flat shadows - elevation only, NO glow */
+    --profile-tag-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --profile-tag-shadow-hover: 0 3px 6px rgba(0, 0, 0, 0.25);
 }
 
 /* ============================================================================
@@ -386,14 +461,14 @@
     --blur-medium: blur(12px);
     --blur-strong: blur(16px);
 
-    /* Profile Tag - Light Theme Overrides (enhanced contrast) */
-    --profile-tag-text: #1e293b;
-    --profile-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --profile-tag-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.15);
-    --profile-tag-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.25), rgba(241, 95, 34, 0.18));
-    --profile-tag-bg-hover: linear-gradient(135deg, rgba(241, 95, 34, 0.35), rgba(241, 95, 34, 0.25));
-    --profile-tag-border: rgba(241, 95, 34, 0.55);
-    --profile-tag-border-hover: rgba(241, 95, 34, 0.7);
+    /* Profile Tag - Light Theme Defaults (PURE INDUSTRIAL SOLID) */
+    --profile-tag-text: #FFFFFF;  /* White text on all themes */
+    --profile-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    --profile-tag-shadow-hover: 0 2px 5px rgba(0, 0, 0, 0.2);
+    --profile-tag-bg: #F15F22;  /* Solid orange */
+    --profile-tag-bg-hover: #FF7A47;  /* Lighter orange */
+    --profile-tag-border: #F15F22;  /* Flat monolithic */
+    --profile-tag-border-hover: #FF7A47;
 
     /* Session History - Light Theme Specific */
     --gradient-hover: linear-gradient(90deg, rgba(148, 163, 184, 0.06) 0%, transparent 100%);
@@ -404,23 +479,49 @@
     --tree-line-l2: rgba(16, 185, 129, 0.6);
 }
 
-/* Force black text on all profile tags in light mode - FIX for readability issue */
-[data-theme="light"] .profile-tag,
-[data-theme="light"] .profile-tag span {
-    --profile-tag-text: #000000 !important;
-    color: #000000 !important;
+/* CRITICAL FIX: Ensure all profile tag spans inherit text color from parent */
+.profile-tag span,
+.profile-tag__label,
+#header-default-profile-tag,
+#header-override-profile-tag,
+#active-profile-tag span {
+    color: inherit;  /* Inherit from parent .profile-tag which uses --profile-tag-text CSS variable */
 }
 
-/* Force black text on active profile tag in question box (higher specificity) */
-[data-theme="light"] #active-profile-tag,
-[data-theme="light"] #active-profile-tag span {
-    --profile-tag-text: #000000 !important;
-    color: #000000 !important;
-}
-
-/* Force black text on primer tag in light mode */
+/* Keep black text only for primer tags (non-profile elements) */
 [data-theme="light"] .primer-tag {
     color: #000000 !important;
+}
+
+/* Light Theme - PURE INDUSTRIAL SOLID COLORS (100% opacity, WHITE text) */
+[data-theme="light"] {
+    /* Genie (Orange - COORDINATE) - Teradata Brand Color */
+    --profile-tag-bg-genie: #F15F22;
+    --profile-tag-border-genie: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-genie: #FF7A47;
+    --profile-tag-text-genie: #FFFFFF;
+
+    /* LLM Only (Green - IDEATE) - WHITE TEXT on green */
+    --profile-tag-bg-llm: #4ade80;
+    --profile-tag-border-llm: #4ade80;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-llm: #6ee7b7;
+    --profile-tag-text-llm: #FFFFFF;  /* White text - pure industrial design */
+
+    /* RAG Focused (Blue - FOCUS) */
+    --profile-tag-bg-rag: #3b82f6;
+    --profile-tag-border-rag: #3b82f6;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-rag: #60a5fa;
+    --profile-tag-text-rag: #FFFFFF;
+
+    /* Tool Enabled (Purple - OPTIMIZE) */
+    --profile-tag-bg-tool: #9333ea;
+    --profile-tag-border-tool: #9333ea;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-tool: #a855f7;
+    --profile-tag-text-tool: #FFFFFF;
+
+    /* Flat shadows - slightly more subtle for light theme */
+    --profile-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    --profile-tag-shadow-hover: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 /* Light theme code block overrides - keep dark background */
@@ -514,16 +615,9 @@
     border-color: var(--border-primary) !important;
 }
 
-/* Light mode: Session header profile tags - text color only, let JavaScript handle backgrounds */
-[data-theme="light"] #header-default-profile,
-[data-theme="light"] #header-override-profile {
-    color: #000000 !important; /* Black text for readability in light mode */
-}
-
-[data-theme="light"] #header-default-profile span,
-[data-theme="light"] #header-override-profile span {
-    color: #000000 !important; /* Ensure span text is also black */
-}
+/* Light mode: Session header profile tags - removed black text override */
+/* Now using JavaScript inline styles + CSS custom properties for dynamic white text */
+/* This allows --profile-tag-text: #FFFFFF to work correctly */
 
 [data-theme="light"] #sidebar,
 [data-theme="light"] .sidebar {
@@ -1388,9 +1482,10 @@
     color: var(--text-muted) !important;
 }
 
-/* Light theme - Session profile tags (inline styles use color:white, needs !important override) */
-[data-theme="light"] .session-models span {
-    color: var(--text-primary) !important;
+/* Light theme - Session profile tags - REMOVED !important to allow inline CSS variables */
+/* Profile tags use --profile-tag-text CSS variable set via inline styles */
+[data-theme="light"] .session-models span:not(.profile-tag) {
+    color: var(--text-primary);
 }
 
 /* Keep model fallback tags visible */
@@ -1597,35 +1692,32 @@
     border-top-color: var(--border-primary) !important;
 }
 
-/* Light theme - Message profile badges (conversation pane) */
-[data-theme="light"] .message-profile-badge {
-    color: var(--text-primary) !important;
-    border-color: var(--border-primary) !important;
-}
+/* Light theme - Message profile badges - REMOVED !important to allow inline CSS variables */
+/* Profile badges use --profile-tag-text and --profile-tag-border set via inline styles */
 
-/* Light theme - Unified profile tag status modifiers (enhanced contrast) */
+/* Light theme - Unified profile tag status modifiers (SOLID COLORS) */
 [data-theme="light"] .profile-tag--status-pending {
-    --profile-tag-text: #5b21b6;
-    --profile-tag-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.15));
-    --profile-tag-border: rgba(139, 92, 246, 0.5);
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #8b5cf6;          /* Solid purple */
+    --profile-tag-border: #7c3aed;
 }
 
 [data-theme="light"] .profile-tag--status-selected {
-    --profile-tag-text: #4c1d95;
-    --profile-tag-bg: linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(139, 92, 246, 0.22));
-    --profile-tag-border: rgba(139, 92, 246, 0.65);
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #a855f7;          /* Lighter purple */
+    --profile-tag-border: #9333ea;
 }
 
 [data-theme="light"] .profile-tag--status-completed {
-    --profile-tag-text: #065f46;
-    --profile-tag-bg: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15));
-    --profile-tag-border: rgba(16, 185, 129, 0.5);
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #10b981;          /* Solid emerald */
+    --profile-tag-border: #059669;
 }
 
 [data-theme="light"] .profile-tag--status-error {
-    --profile-tag-text: #991b1b;
-    --profile-tag-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15));
-    --profile-tag-border: rgba(239, 68, 68, 0.5);
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #ef4444;          /* Solid red */
+    --profile-tag-border: #dc2626;
 }
 
 /* Light theme - Tables in message bubbles */
