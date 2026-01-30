@@ -1041,6 +1041,12 @@
     stroke: white !important;
 }
 
+/* Light theme - Profile modal buttons must have white text */
+[data-theme="light"] #profile-modal-cancel,
+[data-theme="light"] #profile-modal-save {
+    color: white !important;
+}
+
 /* Green buttons */
 [data-theme="light"] .bg-green-500,
 [data-theme="light"] .bg-green-600,

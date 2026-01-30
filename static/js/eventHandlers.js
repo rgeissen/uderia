@@ -1623,7 +1623,79 @@ async function handleReloadPlanClick(element) {
             return; // Exit early
         }
 
-        // Check if data is valid for tool-enabled profiles
+        // Handle tool_enabled profiles with lifecycle events (execution_start, execution_complete)
+        if (turnData && turnData.profile_type === 'tool_enabled' &&
+            turnData.tool_enabled_events && turnData.tool_enabled_events.length > 0) {
+
+            DOM.statusWindowContent.innerHTML = '';
+
+            // Update status title
+            const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+            if (statusTitle) {
+                const brandedName = getBrandedAgentName('tool_enabled');
+                statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
+            }
+
+            // Replay lifecycle events FIRST (execution_start, execution_complete)
+            turnData.tool_enabled_events.forEach((event, index) => {
+                const isFinal = index === turnData.tool_enabled_events.length - 1;
+
+                const eventData = {
+                    step: _getConversationAgentStepTitle(event.type, event.payload),
+                    details: event.payload,
+                    type: event.type
+                };
+
+                UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+            });
+
+            // Then render execution trace (plan steps + tool executions)
+            UI.renderHistoricalTrace(
+                turnData.original_plan || [],
+                turnData.execution_trace || [],
+                turnId,
+                turnData.user_query,
+                turnData.knowledge_retrieval_event || null,
+                {
+                    turn_input_tokens: turnData.turn_input_tokens || 0,
+                    turn_output_tokens: turnData.turn_output_tokens || 0
+                },
+                turnData.system_events || [],
+                turnData.duration_ms || 0
+            );
+
+            // Update token display
+            const lastStatement = _getLastStatementTokens(turnData);
+            UI.updateTokenDisplay({
+                statement_input: lastStatement.input,
+                statement_output: lastStatement.output,
+                turn_input: turnData.turn_input_tokens || 0,
+                turn_output: turnData.turn_output_tokens || 0,
+                total_input: turnData.session_input_tokens || 0,
+                total_output: turnData.session_output_tokens || 0
+            }, true);
+
+            // Update model display
+            if (turnData.provider && turnData.model) {
+                UI.updateStatusPromptName(turnData.provider, turnData.model, true);
+            }
+
+            // Show replay buttons
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.remove('hidden');
+                DOM.headerReplayPlannedButton.disabled = false;
+                DOM.headerReplayPlannedButton.dataset.turnId = turnId;
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.remove('hidden');
+                DOM.headerReplayOptimizedButton.disabled = false;
+                DOM.headerReplayOptimizedButton.dataset.turnId = turnId;
+            }
+
+            return; // Exit early - don't fall through to default rendering
+        }
+
+        // Check if data is valid for tool-enabled profiles (fallback for old sessions without tool_enabled_events)
         if (!turnData || (!turnData.original_plan && !turnData.execution_trace)) {
             throw new Error("Received empty or invalid turn details from the server.");
         }

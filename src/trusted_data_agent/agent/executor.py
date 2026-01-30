@@ -3413,15 +3413,28 @@ The following domain knowledge may be relevant to this conversation:
 
         # --- PHASE 2: Emit execution_start lifecycle event for tool_enabled ---
         if not is_llm_only and not is_rag_focused:
+            # Initialize event collection array (similar to knowledge_events for RAG)
+            # Events are: 1) Yielded as SSE for live UI updates, 2) Collected for session persistence, 3) Replayed during historical turn reload
+            self.tool_enabled_events = []
+
             try:
-                start_event = self._emit_lifecycle_event("execution_start", {
+                start_event_payload = {
                     "profile_type": "tool_enabled",
                     "profile_tag": profile_tag,
                     "query": self.original_user_input,
                     "has_context": bool(self.previous_turn_data),
                     "is_replay": bool(self.plan_to_execute)
-                })
+                }
+
+                start_event = self._emit_lifecycle_event("execution_start", start_event_payload)
                 yield start_event
+
+                # Collect event for persistence (matches pattern from RAG/Genie profiles)
+                self.tool_enabled_events.append({
+                    "type": "execution_start",
+                    "payload": start_event_payload
+                })
+
                 app_logger.info("✅ Emitted execution_start event for tool_enabled profile")
             except Exception as e:
                 # Silent failure - don't break execution
@@ -3838,6 +3851,7 @@ The following domain knowledge may be relevant to this conversation:
                     "execution_trace": self.turn_action_history,
                     "final_summary": self.final_summary_text,
                     "system_events": system_events,  # Session name generation and other system operations (UI replay only)
+                    "tool_enabled_events": getattr(self, 'tool_enabled_events', []),  # Lifecycle events for tool_enabled profiles (execution_start, execution_complete)
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "provider": self.current_provider, # Add snapshot of provider (for backwards compatibility)
                     "model": self.current_model,       # Add snapshot of model (for backwards compatibility)
@@ -3950,6 +3964,7 @@ The following domain knowledge may be relevant to this conversation:
                 "case_id": getattr(self, 'rag_source_case_id', None),
                 "knowledge_accessed": getattr(self, 'knowledge_accessed', []),
                 "knowledge_retrieval_event": getattr(self, 'knowledge_retrieval_event', None),
+                "tool_enabled_events": getattr(self, 'tool_enabled_events', []),  # Partial lifecycle events for tool_enabled profiles
                 # Status fields for partial data
                 "status": status,  # "cancelled" or "error"
                 "error_message": error_message,
@@ -4396,7 +4411,7 @@ The following domain knowledge may be relevant to this conversation:
                 # Calculate duration from tracked start time
                 duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0
 
-                complete_event = self._emit_lifecycle_event("execution_complete", {
+                complete_event_payload = {
                     "profile_type": "tool_enabled",
                     "profile_tag": self._get_current_profile_tag(),
                     "phases_executed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
@@ -4404,8 +4419,18 @@ The following domain knowledge may be relevant to this conversation:
                     "total_output_tokens": self.turn_output_tokens,
                     "duration_ms": duration_ms,
                     "success": True
-                })
+                }
+
+                complete_event = self._emit_lifecycle_event("execution_complete", complete_event_payload)
                 yield complete_event
+
+                # Collect event for persistence (defensive check in case array wasn't initialized)
+                if hasattr(self, 'tool_enabled_events'):
+                    self.tool_enabled_events.append({
+                        "type": "execution_complete",
+                        "payload": complete_event_payload
+                    })
+
                 app_logger.info("✅ Emitted execution_complete event for tool_enabled profile")
         except Exception as e:
             # Silent failure - don't break execution

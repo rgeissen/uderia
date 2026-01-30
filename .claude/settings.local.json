@@ -54,6 +54,9 @@
       "WebFetch(domain:friendli.ai)",
       "WebFetch(domain:ai.google.dev)",
       "WebFetch(domain:reference.langchain.com)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp"
     ]
   }
 }

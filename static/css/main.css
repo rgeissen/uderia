@@ -4830,3 +4830,29 @@ button.bg-gray-700.px-2:hover {
 }
 
 /* knowledgeStepPulse animation removed */
+
+/*
+ * Modal buttons - Force white text in light theme
+ * CRITICAL: This must override themes.css:962-966 which sets color: var(--text-primary) for button.bg-gray-600
+ *
+ * Specificity breakdown:
+ * - themes.css:962: [data-theme="light"] button.bg-gray-600 = (0,2,1) with !important
+ * - themes.css:1045: [data-theme="light"] #profile-modal-cancel = (1,1,0) with !important
+ * - THIS RULE: [data-theme="light"] button#profile-modal-cancel = (1,1,1) with !important
+ *
+ * (1,1,1) > (1,1,0) > (0,2,1) - This rule has MAXIMUM specificity and loads in main.css (AFTER themes.css)
+ */
+[data-theme="light"] button#profile-modal-cancel,
+[data-theme="light"] button#profile-modal-save,
+[data-theme="light"] button#llm-modal-cancel,
+[data-theme="light"] button#llm-modal-save,
+[data-theme="light"] button#mcp-modal-cancel,
+[data-theme="light"] button#mcp-modal-save {
+    color: white !important;
+}
+
+/* Additional enforcement for orange/colored action buttons in light theme */
+[data-theme="light"] button[class*="bg-[#F15F22]"],
+[data-theme="light"] button[class*="bg-teradata-orange"] {
+    color: white !important;
+}
