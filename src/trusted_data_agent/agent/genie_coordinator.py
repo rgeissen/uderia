@@ -333,6 +333,13 @@ class SlaveSessionTool(BaseTool):
                 if status in ("completed", "complete"):
                     result = status_data.get("result", {})
 
+                    # Forward child CCR events to parent Genie session
+                    child_events = status_data.get("events", [])
+                    for event in child_events:
+                        evt_type = event.get("event_type")
+                        if evt_type == "rag_retrieval":
+                            self._emit_event("rag_retrieval", event.get("event_data", {}))
+
                     # Handle case where result might be a string directly (instead of dict)
                     if isinstance(result, str):
                         logger.info(f"@{self.profile_tag} completed successfully (text length: {len(result)})")

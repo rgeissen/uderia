@@ -380,6 +380,7 @@ export function subscribeToNotifications() {
             }
             // --- MODIFICATION END ---
             case 'rag_retrieval':
+                state.lastRagCaseData = data.payload || data;
                 UI.blinkCcrDot();
                 break;
             // --- Genie Coordination Events ---

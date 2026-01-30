@@ -2383,7 +2383,9 @@
 }
 
 [data-theme="light"] #rag-case-modal-json {
+    background-color: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
 }
 
 /* Modal close button hover in light mode */
@@ -4641,7 +4643,7 @@ button[aria-label]:active {
 }
 
 /* Toggle switch when checked - keep orange */
-[data-theme="light"] #profile-content-intelligence .peer-checked\:bg-\[\#F15F22\] {
+[data-theme="light"] #profile-content-intelligence .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
     background: #F15F22 !important;
 }
 

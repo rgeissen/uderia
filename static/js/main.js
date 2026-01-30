@@ -751,6 +751,16 @@ async function initializeRAGAutoCompletion() {
             }
         }
         
+        // Only show autocomplete for tool_enabled (Efficiency Focused) profiles
+        // Planner repository questions are not relevant for rag_focused or llm_only profiles
+        if (profileId && window.configState?.profiles) {
+            const resolvedProfile = window.configState.profiles.find(p => p.id === profileId);
+            if (resolvedProfile && resolvedProfile.profile_type && resolvedProfile.profile_type !== 'tool_enabled') {
+                showSuggestions([]);
+                return;
+            }
+        }
+
         // Fetch semantically ranked questions from backend
         const questions = await API.fetchRAGQuestions(queryText, profileId, 5);
         showSuggestions(questions);

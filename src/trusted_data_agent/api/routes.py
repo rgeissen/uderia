@@ -112,25 +112,26 @@ async def get_application_status(current_user):
 
     # Check RAG status
     rag_retriever = APP_STATE.get('rag_retriever_instance')
-    
-    # Check database for user's collections (more reliable than in-memory state)
-    # This ensures RAG shows as active even when collections are created but not yet loaded
+
+    # Check database for user's collections (independent of retriever initialization)
+    # The database query doesn't need rag_retriever - it's a pure SQLite lookup
     rag_active = False
-    if rag_retriever and APP_CONFIG.RAG_ENABLED:
+    if APP_CONFIG.RAG_ENABLED:
         try:
             from trusted_data_agent.core.collection_db import get_collection_db
             collection_db = get_collection_db()
             user_collections = collection_db.get_all_collections(user_id=user_uuid)
             # RAG is active if user has at least one collection (enabled or not)
             rag_active = len(user_collections) > 0
-            app_logger.debug(f"RAG Status Check: retriever_exists=True, user_collections={len(user_collections)}, rag_active={rag_active}")
+            app_logger.debug(f"RAG Status Check: retriever_exists={bool(rag_retriever)}, user_collections={len(user_collections)}, rag_active={rag_active}")
         except Exception as e:
             app_logger.warning(f"Failed to check RAG collections from database: {e}")
-            # Fallback to checking in-memory collections
-            rag_active = bool(rag_retriever.collections)
-            app_logger.debug(f"RAG Status Check (fallback): collections_loaded={len(rag_retriever.collections)}, rag_active={rag_active}")
+            # Fallback to checking in-memory collections if retriever is available
+            if rag_retriever:
+                rag_active = bool(rag_retriever.collections)
+                app_logger.debug(f"RAG Status Check (fallback): collections_loaded={len(rag_retriever.collections)}, rag_active={rag_active}")
     else:
-        app_logger.debug(f"RAG Status Check: retriever_exists={bool(rag_retriever)}, rag_enabled={APP_CONFIG.RAG_ENABLED}, rag_active=False")
+        app_logger.debug(f"RAG Status Check: rag_enabled=False, rag_active=False")
     
     if is_configured:
         status_payload = {
@@ -185,6 +186,11 @@ async def get_rag_questions(current_user):
         profile = next((p for p in profiles if p.get("id") == profile_id), None)
         
         if profile:
+            # Only tool_enabled profiles use planner repositories for autocomplete
+            profile_type = profile.get("profile_type", "tool_enabled")
+            if profile_type != "tool_enabled":
+                return jsonify({"questions": []})
+
             autocomplete_collections = profile.get("autocompleteCollections", ["*"])
             if autocomplete_collections != ["*"]:
                 allowed_collection_ids = set(autocomplete_collections)
