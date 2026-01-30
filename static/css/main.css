@@ -800,11 +800,31 @@ details.resource-selected > summary {
     border-left: var(--border-accent-width) solid transparent;
     border-radius: var(--radius-sm);
     transition: all var(--transition-spring);
-    overflow: hidden;
+    overflow: visible;
 
     /* Performance Optimizations (Match Live Status) */
     contain: layout style paint;
     will-change: transform;
+}
+
+/* Small corner triangle - always visible hover indicator */
+.session-item::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 0 12px 12px;
+    border-color: transparent transparent rgba(59, 130, 246, 0.25) transparent;
+    pointer-events: none;
+    transition: border-color 0.2s ease;
+    z-index: 5;
+}
+
+.session-item:hover::after {
+    border-color: transparent transparent rgba(59, 130, 246, 0.4) transparent;
 }
 
 /* CRITICAL FIX: Allow hierarchical children to expand beyond parent bounds */
@@ -871,23 +891,38 @@ details.resource-selected > summary {
     color: rgba(203, 213, 225, 0.9);
 }
 
-/* Container for the buttons - positioned at top-right corner */
+/* Container for the buttons - positioned at bottom-right corner */
+/* Small fixed-size trigger area that expands to cover buttons on hover */
 .session-actions {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem; /* Space between buttons */
-    flex-shrink: 0; /* Prevent buttons from shrinking */
-    opacity: 0; /* Hidden until hover */
-    transition: opacity 0.15s ease-in-out;
-    z-index: 10; /* Ensure buttons appear above other content */
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    z-index: 10;
 }
 
-.session-item:hover .session-actions {
-    opacity: 1;
+/* Expand hover area to cover buttons when they appear */
+.session-actions:hover {
+    width: 8rem; /* Explicit width to cover all 3 buttons (leftmost at 5rem + button width ~2rem + margin) */
+    height: 2.5rem; /* Ensure height covers buttons vertically */
 }
+
+/* Buttons positioned absolutely, offset from trigger */
+.session-actions > * {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    opacity: 0;
+    transform: translateX(8px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Layout buttons horizontally when visible */
+.session-actions > *:nth-child(1) { right: calc(0rem); }
+.session-actions > *:nth-child(2) { right: calc(2.5rem); }
+.session-actions > *:nth-child(3) { right: calc(5rem); }
 
 /* --- MODIFICATION START: Styles for new activity indicator -- */
 .session-item .session-name-span.highlight {
@@ -896,14 +931,17 @@ details.resource-selected > summary {
 }
 
 .new-activity-indicator {
+    position: absolute;
+    top: 4px;
+    left: 4px;
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background-color: var(--teradata-orange);
     box-shadow: 0 0 8px var(--teradata-orange);
     animation: pulse 1.5s infinite ease-in-out;
-    margin-right: 8px; /* Add some space between dot and text */
     flex-shrink: 0;
+    z-index: 10;
 }
 /* --- MODIFICATION END --- */
 
@@ -933,6 +971,14 @@ details.resource-selected > summary {
     color: #fda4af;
     border-color: rgba(244, 63, 94, 0.4);
     box-shadow: 0 2px 8px rgba(244, 63, 94, 0.2);
+}
+
+/* Hide action buttons by default, show on hover with 0.75s grace period */
+.session-actions:hover > * {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+    transition: opacity 0.2s ease 0.75s, transform 0.2s ease 0.75s, pointer-events 0s 0.75s;
 }
 
 /* Specific hover color for edit - Indigo theme */
@@ -3143,9 +3189,9 @@ button.bg-gray-700.px-2:hover {
 .genie-slave-session {
     max-height: 200px;  /* Enough for typical 2-line session item */
     overflow: hidden;
-    transition: max-height 0.2s ease,
-                opacity 0.15s ease,
-                margin 0.2s ease;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                margin 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     margin-bottom: 0.5rem;
 }
 
@@ -3159,19 +3205,23 @@ button.bg-gray-700.px-2:hover {
     transition: none !important; /* Disable transitions - let wrapper handle animation */
 }
 
-/* Collapse entire wrapper (including tree connectors) when it contains hidden session */
-.genie-wrapper:has(.genie-slave-hidden) {
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0;
-    margin-bottom: 0;
+/* Collapse entire wrapper (including tree connectors) - class-based state (no :has() selector) */
+.genie-wrapper-collapsed {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
     pointer-events: none;
     overflow: hidden;
+    display: block;
+    height: 0 !important;
 }
 
 /* Hide tree connectors smoothly when collapsing */
-.genie-wrapper:has(.genie-slave-hidden)::before,
-.genie-wrapper:has(.genie-slave-hidden)::after {
+.genie-wrapper-collapsed::before,
+.genie-wrapper-collapsed::after {
     opacity: 0;
 }
 
@@ -3223,9 +3273,10 @@ button.bg-gray-700.px-2:hover {
     margin-bottom: 0.5rem;
     max-height: 5000px;
     overflow: hidden;
-    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.25s ease,
-                margin 0.25s ease;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                margin 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Tree structure connectors - Vertical line + horizontal branch */
@@ -3262,6 +3313,7 @@ button.bg-gray-700.px-2:hover {
     width: 2px;
     background: var(--connector-line);
     z-index: 1;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* L0: Connector at base position */
@@ -3306,6 +3358,7 @@ button.bg-gray-700.px-2:hover {
     height: 2px;
     background: var(--connector-line);
     z-index: 1;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Session item positioning */

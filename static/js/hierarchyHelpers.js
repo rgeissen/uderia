@@ -132,6 +132,30 @@ export function initializePathHighlighting() {
 }
 
 /**
+ * Sync wrapper collapsed states on page load
+ * Finds all wrappers containing hidden children and applies .genie-wrapper-collapsed class
+ */
+export function syncWrapperStates() {
+    // Find all wrappers
+    const allWrappers = document.querySelectorAll('.genie-wrapper');
+
+    allWrappers.forEach(wrapper => {
+        // Check if this wrapper contains a hidden child
+        const hiddenChild = wrapper.querySelector('.genie-slave-hidden');
+
+        if (hiddenChild) {
+            // Apply collapsed state to wrapper
+            wrapper.classList.add('genie-wrapper-collapsed');
+        } else {
+            // Ensure collapsed state is removed if child is not hidden
+            wrapper.classList.remove('genie-wrapper-collapsed');
+        }
+    });
+
+    console.log('[HierarchyHelpers] Wrapper states synchronized on page load');
+}
+
+/**
  * Get level info for a session (for debugging/tooltips)
  * @param {string} sessionId - Session ID
  * @returns {Object} Level information
@@ -179,6 +203,7 @@ export default {
     highlightSiblings,
     highlightSiblingsDebounced,
     initializePathHighlighting,
+    syncWrapperStates,
     getSessionLevelInfo,
     cascadeCollapseState
 };

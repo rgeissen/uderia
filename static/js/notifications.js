@@ -255,6 +255,11 @@ export function subscribeToNotifications() {
 
                         // Update genie master badges to add collapse toggle to parent if needed
                         UI.updateGenieMasterBadges();
+
+                        // Sync wrapper collapsed states for new child sessions
+                        import('../hierarchyHelpers.js').then(module => {
+                            module.syncWrapperStates();
+                        });
                     } else {
                         // Fallback to prepend if parent not found
                         DOM.sessionList.prepend(sessionItem);

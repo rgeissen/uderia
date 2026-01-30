@@ -122,6 +122,10 @@ async function handleLoadMoreSessions() {
         if (window.updateUtilitySessionsFilter) window.updateUtilitySessionsFilter();
         updateGenieMasterBadges();
 
+        // Sync wrapper states to hide tree connectors for collapsed children
+        const { syncWrapperStates } = await import('../hierarchyHelpers.js');
+        syncWrapperStates();
+
         if (result.has_more) {
             const remaining = result.total_count - newOffset - newSessions.length;
             showLoadMoreSessionsButton(remaining);
@@ -339,6 +343,10 @@ export async function finalizeConfiguration(config, switchToConversationView = t
 
             // Update genie master badges (adds collapse toggles to sessions with slaves)
             updateGenieMasterBadges();
+
+            // Sync wrapper states to hide tree connectors for collapsed children
+            const { syncWrapperStates } = await import('../hierarchyHelpers.js');
+            syncWrapperStates();
 
             // Determine which session to load:
             // 1. If currentSessionId exists (from localStorage), try to load it directly

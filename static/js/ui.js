@@ -195,21 +195,53 @@ export function toggleGenieSlaveVisibility(parentSessionId) {
 
     slaveItems.forEach((item, index) => {
         if (newState) {
-            // Collapsing: fade out and slide up with staggered timing
-            item.style.transition = `opacity 0.2s ease ${index * 0.05}s, max-height 0.3s ease ${index * 0.05}s, margin 0.3s ease ${index * 0.05}s`;
-            item.style.opacity = '0';
-            item.style.maxHeight = '0';
-            item.style.marginTop = '0';
-            item.style.marginBottom = '0';
-            item.style.overflow = 'hidden';
+            // Collapsing: apply class IMMEDIATELY like expand does (no setTimeout)
+            item.classList.add('genie-slave-hidden');
 
-            // After animation completes, hide completely
-            setTimeout(() => {
-                item.classList.add('genie-slave-hidden');
-            }, 300 + (index * 50));
+            // Find wrapper and apply collapsed state via JavaScript (not CSS :has())
+            const wrapper = item.closest('.genie-wrapper');
+            if (wrapper) {
+                wrapper.classList.add('genie-wrapper-collapsed');
+            }
+
+            // Force reflow before animation
+            item.offsetHeight;
+
+            // Use requestAnimationFrame for batched style updates (synchronized timeline)
+            requestAnimationFrame(() => {
+                item.style.transition = `opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.05}s,
+                                         max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.05}s,
+                                         margin 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.05}s`;
+                item.style.opacity = '0';
+                item.style.maxHeight = '0';
+                item.style.marginTop = '0';
+                item.style.marginBottom = '0';
+                item.style.overflow = 'hidden';
+            });
+
+            // Clean up inline styles after animation completes
+            item.addEventListener('transitionend', function cleanup(e) {
+                // Only clean up on the final property (max-height typically finishes last)
+                if (e.propertyName === 'max-height') {
+                    item.style.transition = '';
+                    item.style.opacity = '';
+                    item.style.maxHeight = '';
+                    item.style.margin = '';
+                    item.style.marginTop = '';
+                    item.style.marginBottom = '';
+                    item.style.overflow = '';
+                    item.removeEventListener('transitionend', cleanup);
+                }
+            });
         } else {
-            // Expanding: show first, then fade in and slide down with staggered timing
+            // Expanding: remove classes first
             item.classList.remove('genie-slave-hidden');
+
+            // Remove wrapper collapsed state
+            const wrapper = item.closest('.genie-wrapper');
+            if (wrapper) {
+                wrapper.classList.remove('genie-wrapper-collapsed');
+            }
             item.style.transition = `opacity 0.3s ease ${index * 0.05}s, max-height 0.3s ease ${index * 0.05}s`;
             item.style.overflow = 'hidden';
             item.style.maxHeight = '0';
@@ -226,12 +258,17 @@ export function toggleGenieSlaveVisibility(parentSessionId) {
                 item.style.marginBottom = '';
             });
 
-            // Clean up inline styles after animation
-            setTimeout(() => {
-                item.style.maxHeight = '';
-                item.style.overflow = '';
-                item.style.transition = '';
-            }, 400 + (index * 50));
+            // Clean up inline styles after animation completes
+            item.addEventListener('transitionend', function cleanup(e) {
+                // Only clean up on the final property (max-height typically finishes last)
+                if (e.propertyName === 'max-height') {
+                    item.style.maxHeight = '';
+                    item.style.overflow = '';
+                    item.style.transition = '';
+                    item.style.opacity = '';
+                    item.removeEventListener('transitionend', cleanup);
+                }
+            });
         }
     });
 
@@ -3635,7 +3672,7 @@ export function addSessionToList(session, isActive = false, isLastChild = false)
     topRow.className = 'flex justify-between items-center';
 
     const nameContainer = document.createElement('div');
-    nameContainer.className = 'flex-1 min-w-0';
+    nameContainer.className = 'flex-1 min-w-0 flex items-center gap-2';
     
     const nameSpan = document.createElement('span');
     nameSpan.className = 'session-name-span font-semibold text-sm text-white truncate block';
@@ -3688,7 +3725,7 @@ export function addSessionToList(session, isActive = false, isLastChild = false)
 
         // Container for badge + collapse toggle
         const genieMasterBadge = document.createElement('span');
-        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-0.5 mt-1 cursor-pointer';
+        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-2 mt-1 cursor-pointer';
         genieMasterBadge.appendChild(levelBadge);
 
         // Collapse toggle with smooth animation
@@ -3737,36 +3774,6 @@ export function addSessionToList(session, isActive = false, isLastChild = false)
     }
 
     topRow.appendChild(nameContainer);
-
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'session-actions flex-shrink-0 flex items-center';
-
-    const editButton = document.createElement('button');
-    editButton.type = 'button';
-    editButton.className = 'session-action-button session-edit-button';
-    editButton.title = 'Rename session';
-    editButton.dataset.action = 'edit';  // Event delegation attribute
-    editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-11.202 11.202a.5.5 0 01-.293.146H3.5a.5.5 0 01-.5-.5v-1.414a.5.5 0 01.146-.293l11.202-11.202zM15.707 2.293a1 1 0 010 1.414L5.414 14H4v-1.414L14.293 2.293a1 1 0 011.414 0z" /></svg>`;
-    actionsDiv.appendChild(editButton);
-
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'session-action-button session-delete-button';
-    deleteButton.title = 'Delete session';
-    deleteButton.dataset.action = 'delete';  // Event delegation attribute
-    deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm2 3a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd" /></svg>`;
-    actionsDiv.appendChild(deleteButton);
-
-    const copyButton = document.createElement('button');
-    copyButton.type = 'button';
-    copyButton.className = 'session-action-button session-copy-button';
-    copyButton.title = 'Copy session ID';
-    copyButton.dataset.action = 'copy';  // Event delegation attribute
-    copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-    // Note: Event listener removed - now handled by delegated listener in eventHandlers.js
-    actionsDiv.appendChild(copyButton);
-
-    topRow.appendChild(actionsDiv);
     contentWrapper.appendChild(topRow);
 
     const lastUpdatedSpan = document.createElement('span');
@@ -3799,6 +3806,43 @@ export function addSessionToList(session, isActive = false, isLastChild = false)
     contentWrapper.appendChild(tagsDiv);
 
     sessionItem.appendChild(contentWrapper);
+
+    // Create action buttons toolbar (positioned absolutely at bottom right)
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'session-actions';
+    actionsDiv.style.position = 'absolute';
+    actionsDiv.style.bottom = '0.5rem';
+    actionsDiv.style.right = '0.5rem';
+    actionsDiv.style.display = 'flex';
+    actionsDiv.style.gap = '0.5rem';
+    actionsDiv.style.alignItems = 'center';
+    actionsDiv.style.zIndex = '10';
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'session-action-button session-edit-button';
+    editButton.title = 'Rename session';
+    editButton.dataset.action = 'edit';
+    editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-11.202 11.202a.5.5 0 01-.293.146H3.5a.5.5 0 01-.5-.5v-1.414a.5.5 0 01.146-.293l11.202-11.202zM15.707 2.293a1 1 0 010 1.414L5.414 14H4v-1.414L14.293 2.293a1 1 0 011.414 0z" /></svg>`;
+    actionsDiv.appendChild(editButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'session-action-button session-delete-button';
+    deleteButton.title = 'Delete session';
+    deleteButton.dataset.action = 'delete';
+    deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm2 3a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd" /></svg>`;
+    actionsDiv.appendChild(deleteButton);
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'session-action-button session-copy-button';
+    copyButton.title = 'Copy session ID';
+    copyButton.dataset.action = 'copy';
+    copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    actionsDiv.appendChild(copyButton);
+
+    sessionItem.appendChild(actionsDiv);
 
     // If this is a child session with a wrapper, append sessionItem to wrapper and return wrapper
     if (sessionItem._wrapper) {
