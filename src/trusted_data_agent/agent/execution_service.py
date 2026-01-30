@@ -566,7 +566,11 @@ async def _run_genie_execution(
         await event_handler(final_payload, "final_answer")
 
         # Emit session name events AFTER final answer (events already collected and saved to history)
-        if turn_number == 1 and session_name_events:
+        # Note: Don't gate on turn_number==1 — when a session primer occupies turn 1,
+        # the first real query arrives on turn 2+ and still needs name emission.
+        # The generation guard (line 456-459) already ensures we only generate when
+        # name is unset or "New Chat", so no risk of overwriting an existing name.
+        if session_name_events:
             # Emit the collected session name events via SSE
             # Payload now contains the complete event_dict (step, details, type)
             for event in session_name_events:
