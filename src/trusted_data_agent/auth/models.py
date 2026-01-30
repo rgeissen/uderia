@@ -622,6 +622,7 @@ class LLMModelCost(Base):
     # Metadata
     is_manual_entry = Column(Boolean, nullable=False, default=False)  # True if manually entered by admin
     is_fallback = Column(Boolean, nullable=False, default=False, index=True)  # True for fallback/default pricing
+    is_deprecated = Column(Boolean, nullable=False, default=False, index=True)  # True if model is deprecated/discontinued
     source = Column(String(50), nullable=False)  # 'litellm', 'manual', 'system_default'
     last_updated = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     notes = Column(Text, nullable=True)  # Admin notes
@@ -644,6 +645,7 @@ class LLMModelCost(Base):
             'output_cost_per_million': self.output_cost_per_million,
             'is_manual_entry': self.is_manual_entry,
             'is_fallback': self.is_fallback,
+            'is_deprecated': self.is_deprecated,
             'source': self.source,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None,
             'notes': self.notes

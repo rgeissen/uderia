@@ -39,16 +39,24 @@ class CostManager:
         # Load bootstrap costs from tda_config.json if not already loaded
         self._ensure_bootstrap_costs_loaded()
     
-    def sync_from_litellm(self) -> Dict[str, any]:
+    def sync_from_litellm(self, check_availability: bool = True, user_uuid: str = None) -> Dict[str, any]:
         """
-        Sync pricing data from LiteLLM's model_cost dictionary.
-        
+        Check model availability and sync pricing data.
+
+        Args:
+            check_availability: If True, query provider APIs to mark deprecated models (runs first)
+            user_uuid: User UUID for credential lookup (required if check_availability=True)
+
         Returns:
             Dictionary with sync results: {
                 'synced': int,
                 'errors': List[str],
                 'new_models': List[str],
-                'updated_models': List[str]
+                'updated_models': List[str],
+                'availability_checked': bool,
+                'deprecated_count': int,
+                'undeprecated_count': int,
+                'skipped_providers': List[str]
             }
         """
         if not self._litellm_available:
@@ -58,32 +66,52 @@ class CostManager:
                 'new_models': [],
                 'updated_models': []
             }
-        
+
         results = {
             'synced': 0,
             'errors': [],
             'new_models': [],
-            'updated_models': []
+            'updated_models': [],
+            'availability_checked': check_availability,
+            'deprecated_count': 0,
+            'undeprecated_count': 0,
+            'skipped_providers': []
         }
-        
+
+        # PHASE 1: Provider Availability Check (runs first to mark deprecated models)
+        if check_availability:
+            if not user_uuid:
+                results['errors'].append("check_availability=True requires user_uuid")
+                return results
+
+            logger.info("Phase 1: Checking model availability across providers...")
+            availability_results = self._check_model_availability(user_uuid)
+            results['deprecated_count'] = availability_results['deprecated_count']
+            results['undeprecated_count'] = availability_results['undeprecated_count']
+            results['skipped_providers'] = availability_results['skipped_providers']
+            if availability_results.get('errors'):
+                results['errors'].extend(availability_results['errors'])
+
+        # PHASE 2: LiteLLM Pricing Sync (runs second to update pricing data)
         try:
+            logger.info("Phase 2: Syncing pricing data from LiteLLM...")
             # Access LiteLLM's model cost dictionary
             model_cost_dict = getattr(self._litellm, 'model_cost', {})
-            
+
             if not model_cost_dict:
                 results['errors'].append('LiteLLM model_cost dictionary is empty')
                 return results
-            
+
             with get_db_session() as db:
                 for model_name, cost_info in model_cost_dict.items():
                     try:
                         # Extract pricing info from LiteLLM format
                         input_cost = cost_info.get('input_cost_per_token', 0) * 1_000_000
                         output_cost = cost_info.get('output_cost_per_token', 0) * 1_000_000
-                        
+
                         if input_cost == 0 and output_cost == 0:
                             continue  # Skip models with no pricing info
-                        
+
                         # Determine provider from model name (LiteLLM format: provider/model or just model)
                         if '/' in model_name:
                             provider, model = model_name.split('/', 1)
@@ -91,14 +119,14 @@ class CostManager:
                             # Try to infer provider from model name
                             provider = self._infer_provider_from_model(model_name)
                             model = model_name
-                        
+
                         # Check if entry exists
                         stmt = select(LLMModelCost).where(
                             LLMModelCost.provider == provider,
                             LLMModelCost.model == model
                         )
                         existing = db.execute(stmt).scalar_one_or_none()
-                        
+
                         if existing:
                             # Update only if it's from LiteLLM (not manual or config_default)
                             # This preserves user manual entries and configured defaults
@@ -123,22 +151,22 @@ class CostManager:
                             )
                             db.add(new_cost)
                             results['new_models'].append(f"{provider}/{model}")
-                        
+
                         results['synced'] += 1
-                        
+
                     except Exception as e:
                         error_msg = f"Error processing model {model_name}: {str(e)}"
                         logger.warning(error_msg)
                         results['errors'].append(error_msg)
-                
+
                 db.commit()
                 logger.info(f"LiteLLM sync completed: {results['synced']} models processed")
-                
+
         except Exception as e:
             error_msg = f"Failed to sync from LiteLLM: {str(e)}"
             logger.error(error_msg, exc_info=True)
             results['errors'].append(error_msg)
-        
+
         return results
     
     def _infer_provider_from_model(self, model_name: str) -> str:
@@ -523,6 +551,9 @@ class CostManager:
                     if existing:
                         continue
 
+                    # Read is_deprecated from config (defaults to False if not present)
+                    is_deprecated = cost_entry.get('is_deprecated', False)
+
                     # Insert config default
                     import uuid
                     new_cost = LLMModelCost(
@@ -533,6 +564,7 @@ class CostManager:
                         output_cost_per_million=output_cost,
                         is_manual_entry=False,
                         is_fallback=is_fallback,
+                        is_deprecated=is_deprecated,
                         source='config_default',
                         last_updated=datetime.now(timezone.utc),
                         notes=notes
@@ -544,9 +576,119 @@ class CostManager:
                 
                 if loaded_count > 0:
                     logger.info(f"Loaded {loaded_count} bootstrap costs from tda_config.json")
-                
+
         except Exception as e:
             logger.warning(f"Failed to load bootstrap costs: {e}")
+
+    def _check_model_availability(self, user_uuid: str) -> Dict[str, any]:
+        """
+        Check model availability across providers and update is_deprecated flags.
+
+        Args:
+            user_uuid: User UUID for credential lookup
+
+        Returns:
+            Dictionary with deprecation statistics
+        """
+        import asyncio
+        from trusted_data_agent.auth.encryption import decrypt_credentials
+
+        results = {
+            'deprecated_count': 0,
+            'undeprecated_count': 0,
+            'skipped_providers': [],
+            'errors': []
+        }
+
+        # Providers to check (exclude Friendli, Azure, and Ollama per requirements)
+        CHECKABLE_PROVIDERS = ['Google', 'Anthropic', 'OpenAI', 'Amazon']
+
+        # Import list_models dynamically to avoid circular imports
+        from trusted_data_agent.llm.handler import list_models
+
+        with get_db_session() as db:
+            for provider in CHECKABLE_PROVIDERS:
+                try:
+                    # 1. Get credentials for this provider
+                    credentials = decrypt_credentials(user_uuid, provider)
+                    if not credentials:
+                        logger.warning(f"No credentials for {provider}, skipping availability check")
+                        results['skipped_providers'].append(provider)
+                        continue
+
+                    # 2. Query provider API for available models
+                    # Note: list_models is async, need to run in sync context
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        available_models_response = loop.run_until_complete(
+                            list_models(provider, credentials)
+                        )
+                    finally:
+                        loop.close()
+
+                    # Extract just model names (list_models returns [{"name": ..., "recommended": ...}])
+                    available_model_names = {m['name'] for m in available_models_response}
+
+                    # 3. Query database for all models from this provider
+                    # Exclude: config_default (Friendli), manual entries, fallback
+                    stmt = select(LLMModelCost).where(
+                        LLMModelCost.provider == provider,
+                        LLMModelCost.source != 'config_default',
+                        LLMModelCost.is_manual_entry == False,
+                        LLMModelCost.is_fallback == False
+                    )
+                    db_models = db.execute(stmt).scalars().all()
+
+                    # 4. Update is_deprecated flags based on availability
+                    for db_model in db_models:
+                        model_name = db_model.model
+
+                        # Normalize model names for comparison (handles Bedrock ARNs)
+                        normalized_db_model = self._normalize_model_name(model_name)
+                        normalized_available = {self._normalize_model_name(m) for m in available_model_names}
+
+                        is_available = (
+                            model_name in available_model_names or
+                            normalized_db_model in normalized_available
+                        )
+
+                        # Update deprecation status if changed
+                        if is_available and db_model.is_deprecated:
+                            # Model came back online - un-deprecate
+                            db_model.is_deprecated = False
+                            db_model.last_updated = datetime.now(timezone.utc)
+                            results['undeprecated_count'] += 1
+                            logger.info(f"Un-deprecated {provider}/{model_name} (returned to provider API)")
+
+                        elif not is_available and not db_model.is_deprecated:
+                            # Model disappeared - mark deprecated
+                            db_model.is_deprecated = True
+                            db_model.last_updated = datetime.now(timezone.utc)
+                            if not db_model.notes:
+                                db_model.notes = ''
+                            deprecation_note = f"\n[Auto-deprecated {datetime.now(timezone.utc).isoformat()}]: Not found in provider API"
+                            db_model.notes += deprecation_note
+                            results['deprecated_count'] += 1
+                            logger.info(f"Deprecated {provider}/{model_name} (missing from provider API)")
+
+                    db.commit()
+                    logger.info(f"Completed availability check for {provider}: {len(db_models)} models checked")
+
+                except Exception as e:
+                    error_msg = f"Failed to check availability for {provider}: {str(e)}"
+                    logger.warning(error_msg, exc_info=True)
+                    results['skipped_providers'].append(provider)
+                    results['errors'].append(error_msg)
+                    # Continue with next provider (don't fail entire sync)
+                    continue
+
+        logger.info(
+            f"Availability check completed: {results['deprecated_count']} deprecated, "
+            f"{results['undeprecated_count']} un-deprecated, {len(results['skipped_providers'])} providers skipped"
+        )
+
+        return results
 
 
 # Singleton instance
@@ -558,3 +700,4 @@ def get_cost_manager() -> CostManager:
     if _cost_manager is None:
         _cost_manager = CostManager()
     return _cost_manager
+

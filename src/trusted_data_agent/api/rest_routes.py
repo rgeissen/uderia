@@ -8364,28 +8364,64 @@ async def rate_marketplace_collection(collection_id: int):
 @require_admin
 async def sync_costs_from_litellm():
     """
-    Sync model pricing data from LiteLLM.
+    Sync model pricing data from LiteLLM and check model availability.
     Admin only endpoint.
-    
+
+    Request Body (optional):
+        {
+            "check_availability": true  // Default: true
+        }
+
     Returns:
-        Sync results with counts of new/updated models
+        Comprehensive sync results with pricing and availability stats
     """
     try:
         from trusted_data_agent.core.cost_manager import get_cost_manager
-        
+        from trusted_data_agent.auth.middleware import get_current_user
+
+        # Get request parameters (force=True handles empty body gracefully)
+        data = await request.get_json(force=True, silent=True) or {}
+        check_availability = data.get('check_availability', True)
+
+        # Get admin user UUID for credential lookup
+        admin_user = get_current_user()
+        admin_uuid = admin_user.id
+
+        # Execute sync with availability check
         cost_manager = get_cost_manager()
-        results = cost_manager.sync_from_litellm()
-        
-        app_logger.info(f"LiteLLM cost sync completed: {results['synced']} models, {len(results['errors'])} errors")
-        
-        return jsonify({
+        results = cost_manager.sync_from_litellm(
+            check_availability=check_availability,
+            user_uuid=admin_uuid
+        )
+
+        # Build response
+        response_data = {
             "status": "success",
-            "synced_count": results['synced'],
-            "new_models": results['new_models'],
-            "updated_models": results['updated_models'],
-            "errors": results['errors']
-        }), 200
-        
+            "pricing": {
+                "synced_count": results['synced'],
+                "new_models": results['new_models'],
+                "updated_models": results['updated_models']
+            }
+        }
+
+        if check_availability:
+            response_data["availability"] = {
+                "checked": True,
+                "deprecated_count": results['deprecated_count'],
+                "undeprecated_count": results['undeprecated_count'],
+                "skipped_providers": results['skipped_providers']
+            }
+
+        if results['errors']:
+            response_data["warnings"] = results['errors']
+
+        app_logger.info(
+            f"LiteLLM sync completed: {results['synced']} models synced, "
+            f"{results.get('deprecated_count', 0)} deprecated, {results.get('undeprecated_count', 0)} un-deprecated"
+        )
+
+        return jsonify(response_data), 200
+
     except Exception as e:
         app_logger.error(f"Failed to sync costs: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500

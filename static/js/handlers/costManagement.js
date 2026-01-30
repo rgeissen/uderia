@@ -16,6 +16,7 @@ class CostManagementHandler {
         this.currentPage = 1;
         this.pageSize = 20; // Match HTML default
         this.searchTerm = '';
+        this.showDeprecated = false; // Default: hide deprecated models
         this.isLoadingMore = false;
         this.lastScrollTop = 0;
         this.autoRefreshInterval = null;
@@ -31,6 +32,14 @@ class CostManagementHandler {
         const pageSizeSelect = document.getElementById('costs-page-size');
         if (pageSizeSelect && pageSizeSelect.value) {
             this.pageSize = parseInt(pageSizeSelect.value);
+        }
+
+        // Load show deprecated preference (default: false)
+        const savedShowDeprecated = localStorage.getItem('showDeprecatedModels');
+        this.showDeprecated = savedShowDeprecated === 'true';
+        const showDeprecatedCheckbox = document.getElementById('show-deprecated-checkbox');
+        if (showDeprecatedCheckbox) {
+            showDeprecatedCheckbox.checked = this.showDeprecated;
         }
 
         // Load auto-refresh preference
@@ -90,6 +99,18 @@ class CostManagementHandler {
                 this.pageSize = parseInt(e.target.value);
                 this.currentPage = 1;
                 this.filterAndRenderCosts();
+            });
+        }
+
+        // Show deprecated checkbox
+        const showDeprecatedCheckbox = document.getElementById('show-deprecated-checkbox');
+        if (showDeprecatedCheckbox) {
+            showDeprecatedCheckbox.addEventListener('change', (e) => {
+                this.showDeprecated = e.target.checked;
+                localStorage.setItem('showDeprecatedModels', this.showDeprecated.toString());
+                this.currentPage = 1;
+                this.filterAndRenderCosts();
+                console.log('[CostManagement] Show deprecated:', this.showDeprecated);
             });
         }
 
@@ -156,29 +177,51 @@ class CostManagementHandler {
     async syncFromLiteLLM() {
         const btn = document.getElementById('sync-litellm-costs-btn');
         const originalHTML = btn.innerHTML;
-        
+
         try {
             btn.disabled = true;
-            btn.innerHTML = '<svg class="animate-spin h-5 w-5 inline-block mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Syncing...';
+            btn.innerHTML = '<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
 
             const response = await fetch('/api/v1/costs/sync', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${window.authClient.getToken()}`
-                }
+                },
+                body: JSON.stringify({
+                    check_availability: true
+                })
             });
 
             const data = await response.json();
 
             if (response.ok) {
-                window.showNotification(
-                    `Sync completed: ${data.synced_count} models processed (${data.new_models.length} new, ${data.updated_models.length} updated)`,
-                    data.errors.length > 0 ? 'warning' : 'success'
-                );
+                // Build notification message with availability stats
+                let message = `Pricing: ${data.pricing.synced_count} models synced`;
+                if (data.pricing.new_models.length > 0) {
+                    message += `, ${data.pricing.new_models.length} new`;
+                }
+                if (data.pricing.updated_models.length > 0) {
+                    message += `, ${data.pricing.updated_models.length} updated`;
+                }
 
-                if (data.errors.length > 0) {
-                    console.warn('[CostManagement] Sync errors:', data.errors);
+                if (data.availability && data.availability.checked) {
+                    const parts = [];
+                    if (data.availability.deprecated_count > 0) {
+                        parts.push(`${data.availability.deprecated_count} deprecated`);
+                    }
+                    if (data.availability.undeprecated_count > 0) {
+                        parts.push(`${data.availability.undeprecated_count} restored`);
+                    }
+                    if (parts.length > 0) {
+                        message += ` | Availability: ${parts.join(', ')}`;
+                    }
+                }
+
+                window.showNotification(message, data.pricing.errors && data.pricing.errors.length > 0 ? 'warning' : 'success');
+
+                if (data.pricing.errors && data.pricing.errors.length > 0) {
+                    console.warn('[CostManagement] Sync errors:', data.pricing.errors);
                 }
 
                 // Reload cost data and analytics
@@ -235,17 +278,22 @@ class CostManagementHandler {
 
     filterAndRenderCosts() {
         // Filter costs (exclude fallback)
-        const nonFallbackCosts = this.costs.filter(cost => !cost.is_fallback);
-        
+        let filteredCosts = this.costs.filter(cost => !cost.is_fallback);
+
+        // Apply deprecated filter (if showDeprecated is false, exclude deprecated models)
+        if (!this.showDeprecated) {
+            filteredCosts = filteredCosts.filter(cost => !cost.is_deprecated);
+        }
+
         // Apply search filter
         if (this.searchTerm) {
-            this.filteredCosts = nonFallbackCosts.filter(cost => {
+            this.filteredCosts = filteredCosts.filter(cost => {
                 const provider = cost.provider.toLowerCase();
                 const model = cost.model.toLowerCase();
                 return provider.includes(this.searchTerm) || model.includes(this.searchTerm);
             });
         } else {
-            this.filteredCosts = nonFallbackCosts;
+            this.filteredCosts = filteredCosts;
         }
 
         // Sort: config_default first, then manual entries, then LiteLLM entries
@@ -271,12 +319,18 @@ class CostManagementHandler {
             return a.model.localeCompare(b.model);
         });
 
-        console.log('[CostManagement] Filtered costs:', { 
-            total: this.costs.length, 
-            nonFallback: nonFallbackCosts.length,
+        // Count deprecated models
+        const allNonFallback = this.costs.filter(cost => !cost.is_fallback);
+        const deprecatedCount = allNonFallback.filter(c => c.is_deprecated).length;
+
+        console.log('[CostManagement] Filtered costs:', {
+            total: this.costs.length,
+            nonFallback: allNonFallback.length,
+            deprecated: deprecatedCount,
+            showDeprecated: this.showDeprecated,
             filtered: this.filteredCosts.length,
             manualEntries: this.filteredCosts.filter(c => c.is_manual_entry).length,
-            searchTerm: this.searchTerm 
+            searchTerm: this.searchTerm
         });
 
         this.renderCostsTable();
@@ -378,11 +432,21 @@ class CostManagementHandler {
 
         const sourceColor = sourceColors[cost.source] || 'text-gray-400';
         const lastUpdated = new Date(cost.last_updated).toLocaleDateString();
-        
-        // Highlight manual entries with distinct styling
-        const rowClass = cost.is_manual_entry 
-            ? 'bg-green-500/5 border-l-2 border-l-green-500 hover:bg-green-500/10 transition-colors' 
-            : 'hover:bg-white/5 transition-colors';
+
+        // Highlight manual entries or deprecated models with distinct styling
+        let rowClass = '';
+        if (cost.is_deprecated) {
+            rowClass = 'bg-yellow-500/5 border-l-2 border-l-yellow-500 hover:bg-yellow-500/10 transition-colors opacity-75';
+        } else if (cost.is_manual_entry) {
+            rowClass = 'bg-green-500/5 border-l-2 border-l-green-500 hover:bg-green-500/10 transition-colors';
+        } else {
+            rowClass = 'hover:bg-white/5 transition-colors';
+        }
+
+        // Generate deprecated badge if applicable
+        const deprecatedBadge = cost.is_deprecated
+            ? '<span class="deprecated-badge inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ml-2" title="This model is deprecated or unverified">⚠️ DEPRECATED</span>'
+            : '';
 
         return `
             <tr class="${rowClass}">
@@ -390,7 +454,12 @@ class CostManagementHandler {
                     ${cost.is_manual_entry ? '<span class="inline-block w-2 h-2 bg-green-500 rounded-full mr-2" title="Manual Entry"></span>' : ''}
                     ${this.escapeHtml(cost.provider)}
                 </td>
-                <td class="px-4 py-3 text-gray-300 font-mono text-xs">${this.escapeHtml(cost.model)}</td>
+                <td class="px-4 py-3 text-gray-300 font-mono text-xs">
+                    <div class="flex items-center">
+                        <span>${this.escapeHtml(cost.model)}</span>
+                        ${deprecatedBadge}
+                    </div>
+                </td>
                 <td class="px-4 py-3 text-gray-300">
                     <input type="number" step="0.001" min="0" value="${cost.input_cost_per_million}" 
                         data-cost-id="${cost.id}" data-field="input"

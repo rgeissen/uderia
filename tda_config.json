@@ -2259,161 +2259,184 @@
       "model": "meta-llama/Llama-3.1-8B-Instruct",
       "input_cost_per_million": 0.1,
       "output_cost_per_million": 0.1,
-      "notes": "Friendli serverless @ $0.1/1M tokens"
+      "notes": "Friendli serverless (token-based) @ $0.1/1M tokens - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "meta-llama/Llama-3.3-70B-Instruct",
       "input_cost_per_million": 0.6,
       "output_cost_per_million": 0.6,
-      "notes": "Friendli serverless @ $0.6/1M tokens"
+      "notes": "Friendli serverless (token-based) @ $0.6/1M tokens - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "google/gemma-3-27b-it",
       "input_cost_per_million": 0.2,
       "output_cost_per_million": 0.2,
-      "notes": "DEPRECATED - Friendli serverless (discontinued Jan 2026) - kept for historical cost tracking"
+      "notes": "DEPRECATED - Friendli serverless (discontinued Jan 2026) - kept for historical cost tracking",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "MiniMaxAI/MiniMax-M2.1",
       "input_cost_per_million": 0.3,
       "output_cost_per_million": 1.2,
-      "notes": "Friendli serverless @ $0.3 input, $1.2 output per 1M tokens"
+      "notes": "Friendli serverless (token-based) @ $0.3 input, $1.2 output per 1M tokens - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "zai-org/GLM-4.7",
       "input_cost_per_million": 0.6,
       "output_cost_per_million": 2.2,
-      "notes": "Friendli serverless @ $0.6 input, $2.2 output per 1M tokens"
+      "notes": "Friendli serverless (token-based) @ $0.6 input, $2.2 output per 1M tokens - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "zai-org/GLM-4.6",
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
-      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.004/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "LGAI-EXAONE/K-EXAONE-236B-A23B",
       "input_cost_per_million": 0.0,
       "output_cost_per_million": 0.0,
-      "notes": "Friendli serverless - FREE until Feb 12, 2026"
+      "notes": "Friendli serverless (time-based) @ $0.0/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
       "input_cost_per_million": 0.2,
       "output_cost_per_million": 0.8,
-      "notes": "Friendli serverless @ $0.2 input, $0.8 output per 1M tokens"
+      "notes": "Friendli serverless (token-based) @ $0.2 input, $0.8 output per 1M tokens - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
-      "notes": "Friendli serverless @ $0.004/sec, ~50 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.004/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "mistralai/Magistral-Small-2506",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "mistralai/Devstral-Small-2505",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "Qwen/Qwen3-32B",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.002/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "skt/A.X-31",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "zal-org/GLM-4-6",
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
-      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.002/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "Qwen/Qwen3-30B-A3B",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.002/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
-      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.004/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "deepseek-ai/DeepSeek-V3.1",
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
-      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless (time-based) @ $0.004/sec - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "skt/A.X-4.0",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "naver-hyperclovax/HyperCLOVAX-SEED-Think-14B",
       "input_cost_per_million": 0.002,
       "output_cost_per_million": 0.002,
-      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg"
+      "notes": "Friendli serverless @ $0.002/sec, ~100 tokens/sec avg - UNVERIFIED on official pricing page (Jan 30, 2026) - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Friendli",
       "model": "LGAI-EXAONE/EXAONE-4.0.1-32B",
       "input_cost_per_million": 0.6,
       "output_cost_per_million": 1.0,
-      "notes": "Friendli serverless @ $0.6 input, $1 output per 1M tokens"
+      "notes": "Friendli serverless (token-based) @ $0.6 input, $1.0 output per 1M tokens - verified Jan 30, 2026",
+      "is_deprecated": false
     },
     {
       "provider": "Friendli",
       "model": "deepseek-ai/DeepSeek-R1-0528",
       "input_cost_per_million": 0.004,
       "output_cost_per_million": 0.004,
-      "notes": "Friendli serverless @ $0.004/sec, ~100 tokens/sec avg"
+      "notes": "UNVERIFIED - Not found on official Friendli pricing page (Jan 30, 2026) - may be discontinued or requires special access - kept for historical transparency",
+      "is_deprecated": true
     },
     {
       "provider": "Fallback",

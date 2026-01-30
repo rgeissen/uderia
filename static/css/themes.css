@@ -4685,3 +4685,150 @@ button[aria-label]:active {
 [data-theme="legacy"] .knowledge-banner-text {
     color: rgba(219, 234, 254, 1); /* blue-100 */
 }
+
+/* ============================================================================
+   DEPRECATED MODEL BADGE - Theme-aware styling
+   ============================================================================ */
+
+/* Default (Modern Theme) */
+.deprecated-badge {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.12) 100%);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    color: #fbbf24;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.1);
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+.deprecated-badge:hover {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.18) 100%);
+    border-color: rgba(251, 191, 36, 0.4);
+    box-shadow: 0 4px 8px rgba(251, 191, 36, 0.15);
+}
+
+/* Legacy Theme */
+[data-theme="legacy"] .deprecated-badge {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: rgba(234, 179, 8, 0.35);
+    color: #eab308;
+}
+
+[data-theme="legacy"] .deprecated-badge:hover {
+    background: rgba(234, 179, 8, 0.22);
+    border-color: rgba(234, 179, 8, 0.45);
+}
+
+/* Light Theme */
+[data-theme="light"] .deprecated-badge {
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.12) 0%, rgba(180, 83, 9, 0.08) 100%);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    color: #d97706;
+    backdrop-filter: blur(4px);
+}
+
+[data-theme="light"] .deprecated-badge:hover {
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.18) 0%, rgba(180, 83, 9, 0.14) 100%);
+    border-color: rgba(217, 119, 6, 0.4);
+}
+
+/* Deprecated row styling - theme-aware */
+[data-theme="modern"] tr.bg-yellow-500\/5 {
+    background-color: rgba(234, 179, 8, 0.05);
+}
+
+[data-theme="modern"] tr.bg-yellow-500\/5:hover {
+    background-color: rgba(234, 179, 8, 0.1);
+}
+
+[data-theme="legacy"] tr.bg-yellow-500\/5 {
+    background-color: rgba(234, 179, 8, 0.06);
+}
+
+[data-theme="legacy"] tr.bg-yellow-500\/5:hover {
+    background-color: rgba(234, 179, 8, 0.12);
+}
+
+[data-theme="light"] tr.bg-yellow-500\/5 {
+    background-color: rgba(217, 119, 6, 0.08);
+}
+
+[data-theme="light"] tr.bg-yellow-500\/5:hover {
+    background-color: rgba(217, 119, 6, 0.14);
+}
+
+/* Border accent for deprecated rows */
+[data-theme="modern"] .border-l-yellow-500 {
+    border-left-color: rgba(251, 191, 36, 0.4) !important;
+}
+
+[data-theme="legacy"] .border-l-yellow-500 {
+    border-left-color: rgba(234, 179, 8, 0.45) !important;
+}
+
+[data-theme="light"] .border-l-yellow-500 {
+    border-left-color: rgba(217, 119, 6, 0.5) !important;
+}
+
+
+/* ============================================================================
+   SHOW DEPRECATED CHECKBOX - Theme-aware styling
+   ============================================================================ */
+
+/* Modern Theme (default) */
+#show-deprecated-checkbox {
+    accent-color: #eab308; /* Yellow */
+    cursor: pointer;
+}
+
+#show-deprecated-checkbox:checked {
+    background-color: #eab308;
+    border-color: #eab308;
+}
+
+#show-deprecated-checkbox:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.3);
+}
+
+/* Legacy Theme */
+[data-theme="legacy"] #show-deprecated-checkbox {
+    accent-color: #d97706; /* Darker amber */
+}
+
+[data-theme="legacy"] #show-deprecated-checkbox:checked {
+    background-color: #d97706;
+    border-color: #d97706;
+}
+
+[data-theme="legacy"] #show-deprecated-checkbox:focus {
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.3);
+}
+
+/* Light Theme */
+[data-theme="light"] #show-deprecated-checkbox {
+    accent-color: #ca8a04; /* Darker yellow for light theme */
+    border-color: rgba(148, 163, 184, 0.4);
+}
+
+[data-theme="light"] #show-deprecated-checkbox:checked {
+    background-color: #ca8a04;
+    border-color: #ca8a04;
+}
+
+[data-theme="light"] #show-deprecated-checkbox:focus {
+    box-shadow: 0 0 0 3px rgba(202, 138, 4, 0.2);
+}
+
+/* Hover states */
+#show-deprecated-checkbox:hover {
+    border-color: #eab308;
+}
+
+[data-theme="legacy"] #show-deprecated-checkbox:hover {
+    border-color: #d97706;
+}
+
+[data-theme="light"] #show-deprecated-checkbox:hover {
+    border-color: #ca8a04;
+}
+
