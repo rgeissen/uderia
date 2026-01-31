@@ -4857,3 +4857,137 @@ button.bg-gray-700.px-2:hover {
 [data-theme="light"] button[class*="bg-teradata-orange"] {
     color: white !important;
 }
+
+/* ============================================================================
+   FILE ATTACHMENT UI - Chip Animations, Shimmer, Drop Zone
+   ============================================================================ */
+
+/* Attachment chip base with smooth transitions and theme-aware colors */
+.attachment-chip {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: chipEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+    background: var(--bg-tertiary, rgba(55, 65, 81, 0.8));
+    color: var(--text-primary, #e5e7eb);
+    border-color: var(--border-primary, rgba(75, 85, 99, 1));
+}
+.attachment-chip .chip-icon {
+    color: var(--text-muted, #9ca3af);
+}
+.attachment-chip .chip-filesize {
+    color: var(--text-muted, #9ca3af);
+}
+.attachment-chip .chip-remove-btn {
+    color: var(--text-muted, #9ca3af);
+}
+.attachment-chip .chip-remove-btn:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes chipEnter {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Chip exit animation */
+.attachment-chip-exit {
+    opacity: 0 !important;
+    transform: scale(0.9) !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Shimmer loading effect on chips during upload */
+@keyframes chipShimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.attachment-chip-uploading {
+    background: linear-gradient(90deg,
+        rgba(55, 65, 81, 0.8) 25%,
+        rgba(75, 85, 99, 0.9) 50%,
+        rgba(55, 65, 81, 0.8) 75%) !important;
+    background-size: 200% 100%;
+    animation: chipShimmer 1.5s ease-in-out infinite;
+}
+
+/* Attachment preview container smooth transition */
+.attachment-preview-container {
+    transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.2s ease;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+.attachment-preview-container.visible {
+    max-height: 200px;
+    opacity: 1;
+}
+
+/* Drop zone overlay */
+.drop-zone-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 0.75rem;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(241, 95, 34, 0.08);
+    border: 2px dashed rgba(241, 95, 34, 0.5);
+    backdrop-filter: blur(4px);
+}
+.drop-zone-overlay.visible {
+    opacity: 1;
+}
+
+/* Upload error toast */
+.upload-error-toast {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    z-index: 50;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.9);
+    backdrop-filter: blur(12px);
+    color: white;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+}
+.upload-error-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+/* Spinner animation for attach button */
+.attach-spinner {
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}

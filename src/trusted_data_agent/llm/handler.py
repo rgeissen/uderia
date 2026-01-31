@@ -1,5 +1,6 @@
 # src/trusted_data_agent/llm/handler.py
 import asyncio
+import base64
 import json
 import logging
 import httpx
@@ -503,7 +504,7 @@ def _normalize_bedrock_model_id(model_id: str) -> str:
     return model_id.split(':')[0]
 
     # --- MODIFICATION START: Add user_uuid parameter ---
-async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None) -> tuple[str, int, int, str, str]: # Added provider and model to return type
+async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, multimodal_content: list = None) -> tuple[str, int, int, str, str]: # Added provider and model to return type
 # --- MODIFICATION END ---
     if not llm_instance:
         raise RuntimeError("LLM is not initialized.")
@@ -565,6 +566,39 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
     for attempt in range(max_retries):
         try:
             if APP_CONFIG.CURRENT_PROVIDER == "Google":
+                # --- Native multimodal for Google (Gemini) ---
+                if multimodal_content:
+                    try:
+                        # Build parts list: text + file parts
+                        parts = [prompt]
+                        for block in multimodal_content:
+                            with open(block["path"], "rb") as f:
+                                file_bytes = f.read()
+                            parts.append(genai.types.Part.from_bytes(data=file_bytes, mime_type=block["mime_type"]))
+                            app_logger.info(f"[Multimodal/Google] Added {block['type']} part: {block['filename']} ({block['mime_type']})")
+
+                        google_mm_config = genai.GenerationConfig(max_output_tokens=8192)
+                        # Prepend system prompt for non-session multimodal calls
+                        if system_prompt:
+                            parts.insert(0, system_prompt)
+                        response = await llm_instance.generate_content_async(parts, generation_config=google_mm_config)
+
+                        if not response or not hasattr(response, 'text'):
+                            error_detail = "empty response" if not response else "response missing 'text' attribute"
+                            raise RuntimeError(f"Google multimodal LLM returned an invalid response ({error_detail})")
+
+                        response_text = _sanitize_llm_output(response.text)
+                        if hasattr(response, 'usage_metadata'):
+                            usage = response.usage_metadata
+                            input_tokens = getattr(usage, 'prompt_token_count', 0)
+                            output_tokens = getattr(usage, 'candidates_token_count', 0)
+                        app_logger.info(f"[Multimodal/Google] Success: {input_tokens} in / {output_tokens} out tokens")
+                        break  # Exit retry loop on success
+                    except Exception as mm_err:
+                        app_logger.warning(f"Native multimodal failed for Google, falling back to text: {mm_err}")
+                        multimodal_content = None
+                        # Fall through to existing text-only code path
+
                 # --- MODIFICATION START: Check session_data and chat_object type ---
                 is_session_call = (
                     session_data is not None and
@@ -684,9 +718,34 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     else:
                         app_logger.warning(f"Skipping history message with invalid role ('{role}') or missing content for {APP_CONFIG.CURRENT_PROVIDER}.")
                 # --- MODIFICATION END ---
-                messages_for_api.append({'role': 'user', 'content': prompt})
 
                 if APP_CONFIG.CURRENT_PROVIDER == "Anthropic":
+                    # --- Native multimodal for Anthropic ---
+                    if multimodal_content:
+                        try:
+                            content_blocks = [{"type": "text", "text": prompt}]
+                            for block in multimodal_content:
+                                with open(block["path"], "rb") as f:
+                                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                                if block["type"] == "image":
+                                    content_blocks.append({
+                                        "type": "image",
+                                        "source": {"type": "base64", "media_type": block["mime_type"], "data": b64}
+                                    })
+                                else:  # document (PDF)
+                                    content_blocks.append({
+                                        "type": "document",
+                                        "source": {"type": "base64", "media_type": block["mime_type"], "data": b64}
+                                    })
+                                app_logger.info(f"[Multimodal/Anthropic] Added {block['type']} block: {block['filename']} ({block['mime_type']})")
+                            messages_for_api.append({"role": "user", "content": content_blocks})
+                        except Exception as mm_err:
+                            app_logger.warning(f"Native multimodal failed for Anthropic, falling back to text: {mm_err}")
+                            multimodal_content = None
+                            messages_for_api.append({'role': 'user', 'content': prompt})
+                    else:
+                        messages_for_api.append({'role': 'user', 'content': prompt})
+
                     response = await llm_instance.messages.create(
                         model=APP_CONFIG.CURRENT_MODEL, system=system_prompt, messages=messages_for_api, max_tokens=4096, timeout=120.0
                     )
@@ -699,6 +758,28 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                         input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
 
                 elif APP_CONFIG.CURRENT_PROVIDER in ["OpenAI", "Azure", "Friendli"]:
+                    # --- Native multimodal for OpenAI/Azure (images only) ---
+                    if multimodal_content and APP_CONFIG.CURRENT_PROVIDER in ["OpenAI", "Azure"]:
+                        try:
+                            content_blocks = [{"type": "text", "text": prompt}]
+                            for block in multimodal_content:
+                                if block["type"] == "image":
+                                    with open(block["path"], "rb") as f:
+                                        b64 = base64.b64encode(f.read()).decode("utf-8")
+                                    content_blocks.append({
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:{block['mime_type']};base64,{b64}", "detail": "auto"}
+                                    })
+                                    app_logger.info(f"[Multimodal/OpenAI] Added image block: {block['filename']} ({block['mime_type']})")
+                                # Non-image files (PDFs) are ignored for OpenAI - they use text fallback
+                            messages_for_api.append({"role": "user", "content": content_blocks})
+                        except Exception as mm_err:
+                            app_logger.warning(f"Native multimodal failed for OpenAI/Azure, falling back to text: {mm_err}")
+                            multimodal_content = None
+                            messages_for_api.append({'role': 'user', 'content': prompt})
+                    else:
+                        messages_for_api.append({'role': 'user', 'content': prompt})
+
                     # Prepend system prompt for these providers
                     messages_for_api.insert(0, {'role': 'system', 'content': system_prompt})
                     response = await llm_instance.chat.completions.create(
@@ -713,6 +794,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                         input_tokens, output_tokens = response.usage.prompt_tokens, response.usage.completion_tokens
 
                 elif APP_CONFIG.CURRENT_PROVIDER == "Ollama":
+                    messages_for_api.append({'role': 'user', 'content': prompt})
                     response = await llm_instance.chat(
                         model=APP_CONFIG.CURRENT_MODEL, messages=messages_for_api, system_prompt=system_prompt
                     )
@@ -764,8 +846,35 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                 # --- MODIFICATION END ---
 
                 if bedrock_provider == "anthropic":
-                    # Add current prompt to messages list
-                    bedrock_messages.append({'role': 'user', 'content': prompt})
+                    # --- Native multimodal for Bedrock Anthropic ---
+                    if multimodal_content:
+                        try:
+                            content_blocks = [{"text": prompt}]
+                            for block in multimodal_content:
+                                with open(block["path"], "rb") as f:
+                                    file_bytes = f.read()
+                                if block["type"] == "image":
+                                    fmt = block["mime_type"].split("/")[-1]
+                                    if fmt == "jpeg":
+                                        fmt = "jpeg"
+                                    content_blocks.append({
+                                        "image": {"format": fmt, "source": {"bytes": base64.b64encode(file_bytes).decode("utf-8")}}
+                                    })
+                                else:  # document (PDF)
+                                    fmt = block["mime_type"].split("/")[-1]
+                                    doc_name = block["filename"].rsplit(".", 1)[0][:40]
+                                    content_blocks.append({
+                                        "document": {"format": fmt, "name": doc_name, "source": {"bytes": base64.b64encode(file_bytes).decode("utf-8")}}
+                                    })
+                                app_logger.info(f"[Multimodal/Bedrock] Added {block['type']} block: {block['filename']} ({block['mime_type']})")
+                            bedrock_messages.append({"role": "user", "content": content_blocks})
+                        except Exception as mm_err:
+                            app_logger.warning(f"Native multimodal failed for Bedrock Anthropic, falling back to text: {mm_err}")
+                            multimodal_content = None
+                            bedrock_messages.append({'role': 'user', 'content': prompt})
+                    else:
+                        # Add current prompt to messages list
+                        bedrock_messages.append({'role': 'user', 'content': prompt})
                     body = json.dumps({
                         "anthropic_version": "bedrock-2023-05-31",
                         "max_tokens": 4096,

@@ -572,8 +572,12 @@ async def delete_session(user_uuid: str, session_id: str) -> bool:
             # Save back to file
             async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
                 await f.write(json.dumps(session_data, indent=2, ensure_ascii=False))
-            
+
             app_logger.info(f"Successfully archived session file: {session_path}")
+
+            # Clean up uploads directory for this session
+            _cleanup_session_uploads(user_uuid, session_id)
+
             return True # Indicate success
         else:
             # This case should ideally not be hit if _find_session_path is correct
@@ -583,8 +587,22 @@ async def delete_session(user_uuid: str, session_id: str) -> bool:
         app_logger.error(f"Error archiving session file '{session_path}': {e}", exc_info=True)
         return False # Indicate failure due to error
 
+
+def _cleanup_session_uploads(user_uuid: str, session_id: str):
+    """Remove the uploads directory for a session when it is deleted/archived."""
+    import shutil
+    safe_user_uuid = "".join(c for c in user_uuid if c.isalnum() or c in ['-', '_'])
+    safe_session_id = "".join(c for c in session_id if c.isalnum() or c in ['-', '_'])
+    upload_dir = SESSIONS_DIR / safe_user_uuid / "uploads" / safe_session_id
+    if upload_dir.is_dir():
+        try:
+            shutil.rmtree(upload_dir)
+            app_logger.info(f"Cleaned up uploads directory for session {session_id}")
+        except OSError as e:
+            app_logger.warning(f"Failed to clean up uploads directory for session {session_id}: {e}")
+
 # --- MODIFICATION START: Rename and refactor add_to_history ---
-async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False):
+async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None):
     """
     Adds a message to the appropriate histories, decoupling UI from LLM context.
     - `content` (plain text) is *always* added to the LLM's chat_object.
@@ -628,7 +646,14 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
 
         if is_session_primer:
              message_to_append['is_session_primer'] = True
-        
+
+        if attachments and role == 'user':
+            # Store attachment metadata (not extracted text) for UI display
+            message_to_append['attachments'] = [
+                {k: v for k, v in att.items() if k != 'extracted_text'}
+                for att in attachments
+            ]
+
         session_history.append(message_to_append)
         # --- MODIFICATION END ---
 
@@ -658,12 +683,15 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
                 llm_turn_number = last_llm_turn
 
         # *Always* add the clean, plain text `content` to the LLM's history.
-        chat_object_history.append({
+        llm_message = {
             'role': llm_role,
             'content': content,
             'isValid': True,
             'turn_number': llm_turn_number
-        })
+        }
+        if attachments and role == 'user':
+            llm_message['has_attachments'] = True
+        chat_object_history.append(llm_message)
         # --- MODIFICATION END ---
         # --- MODIFICATION END ---
 

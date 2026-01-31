@@ -287,6 +287,15 @@ Maintain complete control over your data exposure strategy with flexible deploym
   - Hands-free operation with configurable voice modes
   - Key observations handling (autoplay-off, autoplay-on, off)
 
+* **Document Upload & Multimodal Analysis**: Attach documents and images directly in chat conversations:
+  - Native multimodal delivery for capable providers (Google Gemini, Anthropic Claude, OpenAI GPT-4o, Azure, AWS Bedrock Claude)
+  - Automatic text extraction fallback for all other providers (Friendli, Ollama, Bedrock Nova)
+  - Supports PDF, DOCX, TXT, MD, and image formats (JPG, PNG, GIF, WebP)
+  - Drag-and-drop or click-to-attach with image thumbnail previews and Visual/Text processing badges
+  - Provider-aware routing: images sent natively to vision models, documents via base64 or text extraction as appropriate
+  - Up to 5 files per message, 50 MB per file
+  - Full REST API support for programmatic upload workflows
+
 ---
 
 ### 💰 Financial Governance: Track Every Penny, Control Every Cost
@@ -2783,6 +2792,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **31-Jan-2026:** Document Upload & Multimodal Analysis - Attach documents and images in chat with native multimodal delivery and automatic text extraction fallback across all providers
 *   **29-Jan-2026:** All Models Available - Access all provider models with ★ recommended highlights
 *   **29-Jan-2026:** Light Theme - Full light mode support with proper contrast and visibility across all components
 *   **25-Jan-2026:** Legacy Theme - Fixed color bleeding issues with opaque backgrounds and consistent gray palette

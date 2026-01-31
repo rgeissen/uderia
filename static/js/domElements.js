@@ -65,6 +65,11 @@ export const thinkingIndicator = document.getElementById('thinking-indicator');
 export const promptNameDisplay = document.getElementById('prompt-name-display');
 export const inputHint = document.getElementById('input-hint');
 
+// Document upload elements
+export const fileAttachButton = document.getElementById('file-attach-button');
+export const fileAttachInput = document.getElementById('file-attach-input');
+export const fileAttachmentsPreview = document.getElementById('file-attachments-preview');
+
 // Resource tabs
 export const resourceTabs = document.getElementById('resource-tabs');
 

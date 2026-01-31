@@ -23,6 +23,8 @@ import { initializePathHighlighting, syncWrapperStates } from './hierarchyHelper
 import './conversationInitializer.js';
 // Import splitViewHandler for Genie slave session split view (auto-initializes on import)
 import './handlers/splitViewHandler.js';
+// Import document upload initialization for chat conversations
+import { initializeUploadUI, initializeUploadCapabilities } from './handlers/chatDocumentUpload.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -1166,6 +1168,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize all event listeners first to ensure they are ready.
     initializeEventListeners();
     initializeVoiceRecognition();
+    initializeUploadUI();
 
     // Initialize industrial hierarchy path highlighting for session tree
     initializePathHighlighting();
@@ -1236,6 +1239,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             DOM.voiceInputButton.classList.remove('hidden');
             DOM.keyObservationsToggleButton.classList.remove('hidden');
         }
+
+        // Initialize upload button visibility (requires auth token to be available)
+        initializeUploadCapabilities(state.currentSessionId || undefined);
 
         if (DOM.ccrStatusDot) {
             if (!state.appConfig.rag_enabled) {

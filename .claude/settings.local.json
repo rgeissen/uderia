@@ -53,7 +53,8 @@
       "WebFetch(domain:uderia.com)",
       "WebFetch(domain:friendli.ai)",
       "WebFetch(domain:ai.google.dev)",
-      "WebFetch(domain:reference.langchain.com)"
+      "WebFetch(domain:reference.langchain.com)",
+      "Bash(__NEW_LINE_605ad94a90e017c3__ echo \"\")"
     ],
     "additionalDirectories": [
       "/private/tmp"

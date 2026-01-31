@@ -55,7 +55,8 @@ async def run_agent_execution(
     display_message: str = None, # Added optional display message for replays
     task_id: str = None, # Add task_id parameter here
     profile_override_id: str = None, # Add profile override parameter
-    is_session_primer: bool = False # Session primer flag - marks messages as initialization
+    is_session_primer: bool = False, # Session primer flag - marks messages as initialization
+    attachments: list = None  # Document upload attachments [{file_id, filename, ...}]
 ):
 # --- MODIFICATION END ---
     """
@@ -110,7 +111,8 @@ async def run_agent_execution(
                 html_content=None, # User input is plain text
                 source=source,
                 profile_tag=profile_tag,
-                is_session_primer=is_session_primer
+                is_session_primer=is_session_primer,
+                attachments=attachments
             )
             app_logger.debug(f"Added user message to session_history for {session_id}: '{message_to_save}' with profile_tag: {profile_tag}, is_session_primer: {is_session_primer}")
 
@@ -165,7 +167,8 @@ async def run_agent_execution(
                 genie_profile=active_profile,
                 task_id=task_id,
                 disabled_history=disabled_history,  # Pass history context flag
-                is_session_primer=is_session_primer  # Pass session primer flag
+                is_session_primer=is_session_primer,  # Pass session primer flag
+                attachments=attachments  # Pass document upload attachments
             )
             return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
@@ -186,7 +189,8 @@ async def run_agent_execution(
             task_id=task_id, # Pass the task_id here
             profile_override_id=profile_override_id, # Pass the profile override
             event_handler=event_handler,
-            is_session_primer=is_session_primer # Pass the session primer flag
+            is_session_primer=is_session_primer, # Pass the session primer flag
+            attachments=attachments  # Pass document upload attachments
         )
         # --- MODIFICATION END ---
 
@@ -214,7 +218,8 @@ async def _run_genie_execution(
     task_id: str = None,
     disabled_history: bool = False,
     current_nesting_level: int = 0,
-    is_session_primer: bool = False
+    is_session_primer: bool = False,
+    attachments: list = None
 ):
     """
     Execute a query using Genie coordination for SSE streaming.
@@ -385,8 +390,16 @@ async def _run_genie_execution(
 
             app_logger.info(f"[Genie] Built conversation history with {len(conversation_history)} messages")
 
+        # Prepend document context to user_input for genie if attachments present
+        genie_user_input = user_input
+        if attachments:
+            from trusted_data_agent.agent.executor import load_document_context
+            doc_context = load_document_context(user_uuid, session_id, attachments)
+            if doc_context:
+                genie_user_input = f"[User has uploaded documents]\n{doc_context}\n\n[User's question]\n{user_input}"
+
         # Execute coordination with conversation context
-        result = await coordinator.execute(user_input, conversation_history=conversation_history)
+        result = await coordinator.execute(genie_user_input, conversation_history=conversation_history)
 
         # Extract the final response
         coordinator_response = result.get('coordinator_response', '')

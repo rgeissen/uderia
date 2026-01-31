@@ -1818,6 +1818,30 @@
     border-color: var(--message-assistant-border) !important;
 }
 
+/* Light theme - Document attachment chips (white text on dark backgrounds) */
+[data-theme="light"] .bg-gray-700\/60 {
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-gray-700\/60 .text-gray-500 {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+[data-theme="light"] .bg-gray-700\/80 {
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-gray-700\/80 .text-gray-400 {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+[data-theme="light"] .bg-gray-700\/60 .text-blue-400,
+[data-theme="light"] .bg-gray-700\/60 .text-green-400,
+[data-theme="light"] .bg-gray-700\/80 .text-blue-400,
+[data-theme="light"] .bg-gray-700\/80 .text-green-400 {
+    color: #ffffff !important;
+}
+
 /* Light theme - Key metrics and summary cards */
 [data-theme="light"] .key-metric,
 [data-theme="light"] .summary-value {
@@ -4984,10 +5008,10 @@ button[aria-label]:active {
    Eliminates blue color leakage from modern theme
    ========================================== */
 
-/* Modal glass panel */
+/* Modal glass panel - warm neutral */
 [data-theme="legacy"] #profile-modal .glass-panel {
-    background: rgba(17, 24, 39, 0.95) !important;
-    border-color: rgba(75, 85, 99, 0.3) !important;
+    background: rgba(38, 38, 38, 0.98) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Section headers - blue → Teradata orange (very subtle) */
@@ -5030,27 +5054,27 @@ button[aria-label]:active {
     border-color: rgba(241, 95, 34, 0.15) !important;
 }
 
-/* Form inputs */
+/* Form inputs - warm neutral */
 [data-theme="legacy"] #profile-modal input[type="text"],
 [data-theme="legacy"] #profile-modal select,
 [data-theme="legacy"] #profile-modal textarea {
-    background-color: rgba(31, 41, 55, 0.5) !important;
-    border-color: rgba(75, 85, 99, 0.5) !important;
-    color: #e5e7eb !important;
+    background-color: rgba(64, 64, 64, 0.8) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: #F0F0F0 !important;
 }
 
 [data-theme="legacy"] #profile-modal input::placeholder,
 [data-theme="legacy"] #profile-modal textarea::placeholder {
-    color: rgba(156, 163, 175, 0.7) !important;
+    color: rgba(153, 153, 153, 0.7) !important;
 }
 
-/* Text colors */
+/* Text colors - warm neutral */
 [data-theme="legacy"] #profile-modal .text-gray-400 {
-    color: #9ca3af !important;
+    color: #999999 !important;
 }
 
 [data-theme="legacy"] #profile-modal .text-gray-300 {
-    color: #d1d5db !important;
+    color: #CCCCCC !important;
 }
 
 [data-theme="legacy"] #profile-modal .text-white {
@@ -5058,61 +5082,129 @@ button[aria-label]:active {
 }
 
 [data-theme="legacy"] #profile-modal .text-gray-200 {
-    color: #e5e7eb !important;
+    color: #F0F0F0 !important;
 }
 
-/* Background panels */
+/* Background panels - warm neutral */
 [data-theme="legacy"] #profile-modal .bg-gray-800\/40,
 [data-theme="legacy"] #profile-modal .bg-gray-800\/30 {
-    background-color: rgba(31, 41, 55, 0.4) !important;
+    background-color: rgba(51, 51, 51, 0.4) !important;
 }
 
 [data-theme="legacy"] #profile-modal .bg-gray-900\/60 {
-    background-color: rgba(17, 24, 39, 0.6) !important;
+    background-color: rgba(38, 38, 38, 0.6) !important;
 }
 
 [data-theme="legacy"] #profile-modal .bg-gray-700 {
-    background-color: rgba(55, 65, 81, 0.5) !important;
+    background-color: rgba(64, 64, 64, 0.5) !important;
 }
 
 [data-theme="legacy"] #profile-modal .bg-gray-600 {
-    background-color: rgba(75, 85, 99, 0.5) !important;
+    background-color: rgba(74, 74, 74, 0.5) !important;
 }
 
-/* Table styling */
+/* Table styling - warm neutral */
 [data-theme="legacy"] #profile-modal thead {
-    background-color: rgba(31, 41, 55, 0.5) !important;
+    background-color: rgba(51, 51, 51, 0.5) !important;
 }
 
 [data-theme="legacy"] #profile-modal th {
-    color: #9ca3af !important;
-    border-color: rgba(75, 85, 99, 0.3) !important;
+    color: #999999 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 [data-theme="legacy"] #profile-modal tbody tr {
-    border-color: rgba(75, 85, 99, 0.2) !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
 }
 
 [data-theme="legacy"] #profile-modal tbody tr:hover {
-    background-color: rgba(55, 65, 81, 0.3) !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
 [data-theme="legacy"] #profile-modal td {
-    color: #e5e7eb !important;
+    color: #F0F0F0 !important;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - warm neutral */
 [data-theme="legacy"] #profile-modal ::-webkit-scrollbar-track {
-    background: rgba(31, 41, 55, 0.3) !important;
+    background: rgba(51, 51, 51, 0.3) !important;
 }
 
 [data-theme="legacy"] #profile-modal ::-webkit-scrollbar-thumb {
-    background-color: rgba(75, 85, 99, 0.6) !important;
-    border-color: rgba(17, 24, 39, 0.3) !important;
+    background-color: rgba(100, 100, 100, 0.6) !important;
+    border-color: rgba(38, 38, 38, 0.3) !important;
 }
 
 [data-theme="legacy"] #profile-modal ::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(107, 114, 128, 0.8) !important;
+    background-color: rgba(120, 120, 120, 0.8) !important;
+}
+
+/* Modal header gradient - warm neutral */
+[data-theme="legacy"] #profile-modal .bg-gradient-to-r {
+    background: linear-gradient(to right, #333333, #262626) !important;
+}
+
+/* Session Primer section - cyan/blue to warm orange tint */
+[data-theme="legacy"] #profile-modal .from-cyan-900\/10 {
+    background: linear-gradient(to bottom right, rgba(241, 95, 34, 0.03), rgba(217, 80, 26, 0.02)) !important;
+    border-color: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Additional background panels - warm neutral */
+[data-theme="legacy"] #profile-modal .bg-gray-800\/60 {
+    background-color: rgba(51, 51, 51, 0.6) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-800\/50 {
+    background-color: rgba(51, 51, 51, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-900\/50 {
+    background-color: rgba(38, 38, 38, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-900\/30 {
+    background-color: rgba(38, 38, 38, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-700\/40 {
+    background-color: rgba(64, 64, 64, 0.4) !important;
+}
+
+/* Border overrides - warm neutral */
+[data-theme="legacy"] #profile-modal .border-gray-700\/50 {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #profile-modal .border-gray-700\/40 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="legacy"] #profile-modal .border-gray-700\/30 {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="legacy"] #profile-modal .border-gray-600\/50 {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Cyan text → Teradata orange */
+[data-theme="legacy"] #profile-modal .text-cyan-400 {
+    color: rgba(241, 95, 34, 0.9) !important;
+}
+
+/* Cyan focus rings → orange */
+[data-theme="legacy"] #profile-modal .focus\:ring-cyan-500\/50:focus {
+    --tw-ring-color: rgba(241, 95, 34, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .focus\:border-cyan-500\/50:focus {
+    border-color: rgba(241, 95, 34, 0.5) !important;
+}
+
+/* Provider Configuration gradient - warm neutral */
+[data-theme="legacy"] #profile-modal .from-gray-800\/30 {
+    background: linear-gradient(to bottom right, rgba(51, 51, 51, 0.3), rgba(38, 38, 38, 0.3)) !important;
 }
 
 /* ==========================================
@@ -5202,5 +5294,78 @@ button[aria-label]:active {
 
 [data-theme="light"] #show-deprecated-checkbox:hover {
     border-color: #ca8a04;
+}
+
+/* ============================================================================
+   FILE ATTACHMENT CHIP - Theme Overrides
+   ============================================================================ */
+
+/* Light theme - light chip backgrounds with dark text */
+[data-theme="light"] .attachment-chip {
+    background: rgba(241, 245, 249, 0.95) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+[data-theme="light"] .attachment-chip .chip-filesize {
+    color: var(--text-muted) !important;
+}
+[data-theme="light"] .attachment-chip .chip-remove-btn {
+    color: var(--text-muted) !important;
+}
+[data-theme="light"] .attachment-chip .chip-remove-btn:hover {
+    color: #dc2626 !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+[data-theme="light"] .attachment-chip .chip-icon {
+    color: var(--text-tertiary) !important;
+}
+[data-theme="light"] .attachment-chip .bg-green-400\/10 {
+    background: rgba(22, 163, 74, 0.1) !important;
+    color: #16a34a !important;
+}
+[data-theme="light"] .attachment-chip .bg-blue-400\/10 {
+    background: rgba(37, 99, 235, 0.1) !important;
+    color: #2563eb !important;
+}
+/* Light theme - shimmer uses lighter gradient */
+[data-theme="light"] .attachment-chip-uploading {
+    background: linear-gradient(90deg,
+        rgba(241, 245, 249, 0.95) 25%,
+        rgba(226, 232, 240, 0.98) 50%,
+        rgba(241, 245, 249, 0.95) 75%) !important;
+    background-size: 200% 100%;
+}
+/* Light theme - drop zone overlay */
+[data-theme="light"] .drop-zone-overlay {
+    background: rgba(241, 95, 34, 0.05);
+    border-color: rgba(241, 95, 34, 0.4);
+}
+[data-theme="light"] .drop-zone-overlay .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+/* Light theme - upload error toast */
+[data-theme="light"] .upload-error-toast {
+    background: rgba(220, 38, 38, 0.92);
+}
+
+/* Legacy theme - opaque dark chip backgrounds (no blur) */
+[data-theme="legacy"] .attachment-chip {
+    background: #404040 !important;
+    color: #F0F0F0 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="legacy"] .attachment-chip .chip-filesize {
+    color: #999999 !important;
+}
+[data-theme="legacy"] .attachment-chip .chip-remove-btn {
+    color: #999999 !important;
+}
+/* Legacy theme - shimmer uses opaque gradient */
+[data-theme="legacy"] .attachment-chip-uploading {
+    background: linear-gradient(90deg,
+        #404040 25%,
+        #4a4a4a 50%,
+        #404040 75%) !important;
+    background-size: 200% 100%;
 }
 

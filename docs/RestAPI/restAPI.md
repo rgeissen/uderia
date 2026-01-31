@@ -20,6 +20,7 @@
    - [Profile Management](#310-profile-management)
    - [Session Analytics](#311-session-analytics)
    - [System Prompts Management](#312-system-prompts-management)
+   - [Document Upload](#313-document-upload)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -2211,6 +2212,216 @@ curl -X DELETE "http://localhost:5050/api/v1/system-prompts/profiles/profile-123
 # Delete all mappings for profile
 curl -X DELETE http://localhost:5050/api/v1/system-prompts/profiles/profile-123/mappings \
   -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+### 3.13. Document Upload
+
+Upload documents and images to include as context in chat conversations. The platform supports native multimodal processing for providers that support it (Google Gemini, Anthropic Claude, OpenAI GPT-4o, Azure OpenAI, AWS Bedrock Claude) and automatic text extraction fallback for all others.
+
+#### 3.13.1. Get Upload Capabilities
+
+Returns the document upload capabilities for the current user's active profile, including supported formats, size limits, and provider-specific features.
+
+* **Endpoint**: `GET /api/v1/chat/upload-capabilities`
+* **Method**: `GET`
+* **Authentication**: Required (JWT or access token)
+* **Query Parameters**:
+    * `session_id` (string, optional): Session UUID to check provider-specific capabilities
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "status": "success",
+          "capabilities": {
+            "enabled": true,
+            "provider": "Google",
+            "model": "gemini-2.5-flash",
+            "supported_formats": [".doc", ".docx", ".gif", ".jpeg", ".jpg", ".md", ".pdf", ".png", ".txt", ".webp"],
+            "max_file_size_mb": 50,
+            "max_files_per_message": 5,
+            "text_extraction_formats": [".doc", ".docx", ".md", ".pdf", ".txt"],
+            "image_formats": [".gif", ".jpeg", ".jpg", ".png", ".webp"]
+          }
+        }
+        ```
+
+**Example:**
+```bash
+curl -X GET "http://localhost:5050/api/v1/chat/upload-capabilities?session_id=$SESSION_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+#### 3.13.2. Upload Files
+
+Upload one or more files to attach to a chat message. Files are stored server-side and text content is extracted for providers that don't support native document processing. Images are preserved for native multimodal delivery to vision-capable models.
+
+* **Endpoint**: `POST /api/v1/chat/upload`
+* **Method**: `POST`
+* **Authentication**: Required (JWT or access token)
+* **Content-Type**: `multipart/form-data`
+* **Form Parameters**:
+    * `session_id` (string, required): The session UUID to associate files with
+    * `files` (file, required): One or more files to upload (use multiple `files` fields for multiple files)
+* **Constraints**:
+    * Maximum 5 files per upload
+    * Maximum 50 MB per file
+    * Supported formats: `.pdf`, `.txt`, `.docx`, `.doc`, `.md`, `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "status": "success",
+          "files": [
+            {
+              "file_id": "540327ad-1234-5678-abcd-ef0123456789",
+              "original_filename": "report.pdf",
+              "content_type": "application/pdf",
+              "file_size": 45230,
+              "extracted_text_preview": "Quarterly Financial Summary...",
+              "extracted_text_length": 2450,
+              "is_image": false
+            },
+            {
+              "file_id": "6de6b487-abcd-1234-5678-ef0123456789",
+              "original_filename": "chart.png",
+              "content_type": "image/png",
+              "file_size": 4580,
+              "extracted_text_preview": "[Image file: chart.png - visual content not available in text mode]",
+              "extracted_text_length": 67,
+              "is_image": true
+            }
+          ]
+        }
+        ```
+* **Error Responses**:
+    * **Code**: `400 Bad Request` - Missing session_id, no files, unsupported format, file too large, or empty file
+    * **Code**: `401 Unauthorized` - Authentication required
+    * **Code**: `404 Not Found` - Session not found
+    * **Code**: `500 Internal Server Error`
+
+**Example:**
+```bash
+curl -X POST http://localhost:5050/api/v1/chat/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "session_id=$SESSION_ID" \
+  -F "files=@report.pdf" \
+  -F "files=@chart.png"
+```
+
+#### 3.13.3. Delete Uploaded File
+
+Remove a pending file upload before the message is sent. This deletes the file from server storage and removes it from the session manifest.
+
+* **Endpoint**: `DELETE /api/v1/chat/upload/{file_id}`
+* **Method**: `DELETE`
+* **Authentication**: Required (JWT or access token)
+* **URL Parameters**:
+    * `file_id` (string, required): The file UUID returned from the upload endpoint
+* **Query Parameters**:
+    * `session_id` (string, required): The session UUID the file belongs to
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Content**:
+        ```json
+        {
+          "status": "success",
+          "message": "File deleted"
+        }
+        ```
+* **Error Responses**:
+    * **Code**: `400 Bad Request` - Missing session_id
+    * **Code**: `401 Unauthorized` - Authentication required
+    * **Code**: `404 Not Found` - File not found
+    * **Code**: `500 Internal Server Error`
+
+**Example:**
+```bash
+curl -X DELETE "http://localhost:5050/api/v1/chat/upload/$FILE_ID?session_id=$SESSION_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+#### 3.13.4. Submit Query with Attachments
+
+When submitting a query via the SSE streaming endpoint, include the file references from the upload response in the `attachments` field. The platform automatically determines whether to use native multimodal delivery or text extraction based on the active provider's capabilities.
+
+**Request Body (SSE endpoint `/ask_stream`):**
+```json
+{
+  "message": "Analyze this quarterly report and describe the chart",
+  "session_id": "session-uuid",
+  "attachments": [
+    {
+      "file_id": "540327ad-1234-5678-abcd-ef0123456789",
+      "filename": "report.pdf",
+      "content_type": "application/pdf",
+      "is_image": false,
+      "file_size": 45230
+    },
+    {
+      "file_id": "6de6b487-abcd-1234-5678-ef0123456789",
+      "filename": "chart.png",
+      "content_type": "image/png",
+      "is_image": true,
+      "file_size": 4580
+    }
+  ]
+}
+```
+
+**Provider-Specific Processing:**
+
+| Provider | Images | PDFs | Other Documents |
+|----------|--------|------|-----------------|
+| Google Gemini | Native multimodal | Native multimodal | Text extraction |
+| Anthropic Claude | Native base64 | Native base64 | Text extraction |
+| OpenAI GPT-4o | Native image_url | Text extraction | Text extraction |
+| Azure OpenAI (GPT-4o) | Native image_url | Text extraction | Text extraction |
+| AWS Bedrock (Claude) | Native multimodal | Native multimodal | Text extraction |
+| AWS Bedrock (Nova, etc.) | Text extraction | Text extraction | Text extraction |
+| Friendli.AI | Text extraction | Text extraction | Text extraction |
+| Ollama | Text extraction | Text extraction | Text extraction |
+
+**Complete Upload + Query Workflow:**
+```bash
+# 1. Check capabilities
+curl -s -X GET "http://localhost:5050/api/v1/chat/upload-capabilities?session_id=$SESSION_ID" \
+  -H "Authorization: Bearer $TOKEN" | jq '.capabilities'
+
+# 2. Upload files
+UPLOAD_RESULT=$(curl -s -X POST http://localhost:5050/api/v1/chat/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "session_id=$SESSION_ID" \
+  -F "files=@report.pdf" \
+  -F "files=@chart.png")
+
+echo "$UPLOAD_RESULT" | jq '.files[].file_id'
+
+# 3. Extract file references for the query
+FILE1_ID=$(echo "$UPLOAD_RESULT" | jq -r '.files[0].file_id')
+FILE2_ID=$(echo "$UPLOAD_RESULT" | jq -r '.files[1].file_id')
+
+# 4. Submit query with attachments via REST API
+TASK_RESPONSE=$(curl -s -X POST "http://localhost:5050/api/v1/sessions/$SESSION_ID/query" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"prompt\": \"Analyze this report and describe the chart\",
+    \"attachments\": [
+      {\"file_id\": \"$FILE1_ID\", \"filename\": \"report.pdf\", \"content_type\": \"application/pdf\", \"is_image\": false, \"file_size\": 45230},
+      {\"file_id\": \"$FILE2_ID\", \"filename\": \"chart.png\", \"content_type\": \"image/png\", \"is_image\": true, \"file_size\": 4580}
+    ]
+  }")
+
+TASK_ID=$(echo "$TASK_RESPONSE" | jq -r '.task_id')
+
+# 5. Poll for results
+sleep 10
+curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $TOKEN" | jq '.result'
 ```
 
 ---

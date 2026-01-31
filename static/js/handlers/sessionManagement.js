@@ -10,6 +10,7 @@ import * as API from '../api.js';
 import * as UI from '../ui.js';
 import { renameSession, deleteSession } from '../api.js';
 import { updateActiveSessionTitle } from '../ui.js';
+import { renderAttachmentChips, initializeUploadCapabilities } from './chatDocumentUpload.js';
 // NOTE: createHistoricalGenieCard import removed - genie coordination cards
 // are no longer rendered inline. Coordination details shown in Live Status window only.
 // NOTE: createHistoricalAgentCard import removed - conversation agent cards
@@ -194,8 +195,12 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
                     UI.addMessage(msg.role, msg.content, currentTurnId, isValid, msg.source, null, isSessionPrimer);
                     currentTurnId++; // Increment turn ID after an assistant message
                 } else {
-                    // User messages don't need a turn ID, but pass validity, profile tag, and primer flag
-                    UI.addMessage(msg.role, msg.content, null, isValid, msg.source, profileTag, isSessionPrimer);
+                    // User messages: include attachment chips if present
+                    let displayContent = msg.content;
+                    if (msg.attachments && msg.attachments.length > 0) {
+                        displayContent = msg.content + renderAttachmentChips(msg.attachments);
+                    }
+                    UI.addMessage(msg.role, displayContent, null, isValid, msg.source, profileTag, isSessionPrimer);
                 }
             }
             // --- MODIFICATION END ---
@@ -225,6 +230,9 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // This will reset the status display to the globally configured model
         UI.updateStatusPromptName(data.provider, data.model);
         // --- MODIFICATION END ---
+
+        // Initialize upload capabilities for the loaded session's provider
+        initializeUploadCapabilities(sessionId);
 
         // Mark conversation as initialized after successful session load
         if (window.__conversationInitState) {

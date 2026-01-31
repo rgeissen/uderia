@@ -71,7 +71,9 @@ class ConversationAgentExecutor:
         async_event_handler: Optional[Callable] = None,
         max_iterations: int = 5,
         conversation_history: Optional[List[Dict]] = None,
-        knowledge_context: Optional[str] = None
+        knowledge_context: Optional[str] = None,
+        document_context: Optional[str] = None,
+        multimodal_content: Optional[List[Dict]] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -90,6 +92,8 @@ class ConversationAgentExecutor:
             max_iterations: Maximum agent iterations (default: 5)
             conversation_history: Optional list of previous messages for context
             knowledge_context: Optional pre-retrieved knowledge context to inject
+            document_context: Optional extracted text from uploaded documents
+            multimodal_content: Optional list of native multimodal blocks for providers that support it
         """
         self.profile = profile
         self.profile_id = profile.get("id")
@@ -103,6 +107,8 @@ class ConversationAgentExecutor:
         self.max_iterations = max_iterations
         self.conversation_history = conversation_history or []
         self.knowledge_context = knowledge_context
+        self.document_context = document_context
+        self.multimodal_content = multimodal_content
 
         # Collect events during execution for session storage/replay
         self.collected_events = []
@@ -272,9 +278,35 @@ RESPONSE FORMAT:
                 elif role == "assistant":
                     messages.append(AIMessage(content=content))
 
-            # Add current query
-            logger.info(f"[ConvAgent] Adding current query: {query[:100] if query else 'EMPTY'}...")
-            messages.append(HumanMessage(content=query))
+            # Add current query (with document context and/or multimodal content if present)
+            effective_query = query
+            if self.document_context:
+                effective_query = f"[User has uploaded documents]\n{self.document_context}\n\n[User's question]\n{query}"
+                logger.info(f"Prepended document context ({len(self.document_context):,} chars) to query for conversation agent")
+
+            # Build multimodal HumanMessage if native content blocks are available
+            if self.multimodal_content:
+                import base64
+                content_blocks = [{"type": "text", "text": effective_query}]
+                for block in self.multimodal_content:
+                    if block["type"] == "image":
+                        try:
+                            with open(block["path"], "rb") as f:
+                                b64 = base64.b64encode(f.read()).decode("utf-8")
+                            content_blocks.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{block['mime_type']};base64,{b64}"}
+                            })
+                            logger.info(f"[ConvAgent/Multimodal] Added native image: {block['filename']}")
+                        except Exception as img_err:
+                            logger.warning(f"[ConvAgent/Multimodal] Failed to load image {block['filename']}: {img_err}")
+                    # PDFs/documents: LangChain doesn't support universal document blocks
+                    # These are handled by text extraction fallback in document_context
+                logger.info(f"[ConvAgent] Adding multimodal query with {len(content_blocks)} block(s)")
+                messages.append(HumanMessage(content=content_blocks))
+            else:
+                logger.info(f"[ConvAgent] Adding current query: {effective_query[:100] if effective_query else 'EMPTY'}...")
+                messages.append(HumanMessage(content=effective_query))
 
             # Log all HumanMessage contents to identify duplicates
             human_messages = [m.content[:100] for m in messages if isinstance(m, HumanMessage)]

@@ -2105,6 +2105,8 @@ async def ask_stream():
     # --- MODIFICATION START: Receive session primer flag ---
     is_session_primer = data.get("is_session_primer", False) # True if this is a session primer execution
     # --- MODIFICATION END ---
+    # --- Document upload attachments ---
+    attachments = data.get("attachments")  # Optional list of [{file_id, filename, ...}]
 
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
@@ -2350,7 +2352,8 @@ async def ask_stream():
                         display_message=display_message, # Pass the display message
                         task_id=task_id, # Pass the generated task_id
                         profile_override_id=profile_override_id, # Pass the profile override
-                        is_session_primer=is_session_primer # Pass the session primer flag
+                        is_session_primer=is_session_primer, # Pass the session primer flag
+                        attachments=attachments  # Pass document upload attachments
                     )
                 )
                 # --- MODIFICATION END ---
@@ -2773,3 +2776,243 @@ async def update_rag_case_feedback_route(case_id: str):
         app_logger.error(f"Error updating RAG case feedback for case {case_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Failed to update case feedback: {str(e)}"}), 500
 # --- MODIFICATION END ---
+
+
+# =============================================================================
+# Document Upload in Conversations
+# =============================================================================
+
+ALLOWED_UPLOAD_EXTENSIONS = {'.pdf', '.txt', '.docx', '.md', '.jpg', '.jpeg', '.png', '.gif', '.webp'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
+MAX_FILES_PER_UPLOAD = 5
+
+
+def _get_upload_dir(user_uuid: str, session_id: str) -> Path:
+    """Get the upload directory for a session, creating it if needed."""
+    from trusted_data_agent.core.utils import get_project_root
+    upload_dir = get_project_root() / "tda_sessions" / user_uuid / "uploads" / session_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
+
+
+def _load_manifest(upload_dir: Path) -> dict:
+    """Load the upload manifest for a session."""
+    manifest_path = upload_dir / "manifest.json"
+    if manifest_path.exists():
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            return json.loads(f.read())
+    return {}
+
+
+def _save_manifest(upload_dir: Path, manifest: dict):
+    """Save the upload manifest for a session."""
+    manifest_path = upload_dir / "manifest.json"
+    with open(manifest_path, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(manifest, indent=2, ensure_ascii=False))
+
+
+@api_bp.route("/api/v1/chat/upload", methods=["POST"])
+async def chat_upload_file():
+    """
+    Upload files for use in a chat conversation.
+
+    Accepts multipart/form-data with:
+    - files: One or more files to upload
+    - session_id: The session to associate files with
+
+    Returns file references with extracted text previews.
+    """
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        files = await request.files
+        form = await request.form
+        session_id = form.get('session_id')
+
+        if not session_id:
+            return jsonify({"status": "error", "message": "session_id is required"}), 400
+
+        file_list = files.getlist('files')
+        if not file_list:
+            return jsonify({"status": "error", "message": "No files provided"}), 400
+
+        if len(file_list) > MAX_FILES_PER_UPLOAD:
+            return jsonify({"status": "error", "message": f"Maximum {MAX_FILES_PER_UPLOAD} files per upload"}), 400
+
+        # Validate session exists
+        session_data = await session_manager.get_session(user_uuid, session_id)
+        if not session_data:
+            return jsonify({"status": "error", "message": "Session not found"}), 404
+
+        upload_dir = _get_upload_dir(user_uuid, session_id)
+        manifest = _load_manifest(upload_dir)
+        uploaded_files = []
+
+        from trusted_data_agent.llm.document_upload import DocumentUploadHandler
+
+        for file_storage in file_list:
+            filename = file_storage.filename
+            if not filename:
+                continue
+
+            file_ext = os.path.splitext(filename)[1].lower()
+            if file_ext not in ALLOWED_UPLOAD_EXTENSIONS:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Unsupported file format: {file_ext}. Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}"
+                }), 400
+
+            file_content = file_storage.read()
+            file_size = len(file_content)
+
+            if file_size > MAX_UPLOAD_SIZE_BYTES:
+                return jsonify({
+                    "status": "error",
+                    "message": f"File '{filename}' exceeds maximum size of {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB"
+                }), 400
+
+            if file_size == 0:
+                return jsonify({"status": "error", "message": f"File '{filename}' is empty"}), 400
+
+            # Generate file ID and save
+            file_id = str(uuid.uuid4())
+            saved_path = upload_dir / f"{file_id}{file_ext}"
+            with open(saved_path, 'wb') as f:
+                f.write(file_content)
+
+            is_image = file_ext in IMAGE_EXTENSIONS
+
+            # Extract text content
+            if is_image:
+                extracted_text = f"[Image file: {filename} - visual content not available in text mode]"
+            else:
+                doc_handler = DocumentUploadHandler()
+                result = doc_handler.prepare_document_for_llm(
+                    file_path=str(saved_path),
+                    provider_name="Ollama",  # Force text extraction
+                    model_name="",
+                    effective_config={"enabled": True, "use_native_upload": False}
+                )
+                extracted_text = result.get('content', f'[Failed to extract text from {filename}]')
+
+            # Get MIME type
+            doc_handler_for_mime = DocumentUploadHandler()
+            content_type = doc_handler_for_mime._get_mime_type(file_ext)
+
+            # Update manifest
+            manifest[file_id] = {
+                "path": str(saved_path),
+                "filename": filename,
+                "content_type": content_type,
+                "file_size": file_size,
+                "extracted_text": extracted_text,
+                "is_image": is_image
+            }
+
+            # Build response entry
+            preview_text = extracted_text[:200] + "..." if len(extracted_text) > 200 else extracted_text
+            uploaded_files.append({
+                "file_id": file_id,
+                "original_filename": filename,
+                "content_type": content_type,
+                "file_size": file_size,
+                "extracted_text_preview": preview_text,
+                "extracted_text_length": len(extracted_text),
+                "is_image": is_image
+            })
+
+        _save_manifest(upload_dir, manifest)
+
+        app_logger.info(f"Chat upload: {len(uploaded_files)} files uploaded for session {session_id} by user {user_uuid}")
+
+        return jsonify({
+            "status": "success",
+            "files": uploaded_files
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error in chat file upload: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Upload failed: {str(e)}"}), 500
+
+
+@api_bp.route("/api/v1/chat/upload/<file_id>", methods=["DELETE"])
+async def chat_delete_upload(file_id: str):
+    """Delete a pending file upload before sending the message."""
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({"status": "error", "message": "session_id query parameter is required"}), 400
+
+    try:
+        upload_dir = _get_upload_dir(user_uuid, session_id)
+        manifest = _load_manifest(upload_dir)
+
+        if file_id not in manifest:
+            return jsonify({"status": "error", "message": "File not found"}), 404
+
+        # Delete the file from disk
+        file_path = Path(manifest[file_id]["path"])
+        if file_path.exists():
+            file_path.unlink()
+
+        # Remove from manifest
+        del manifest[file_id]
+        _save_manifest(upload_dir, manifest)
+
+        app_logger.info(f"Chat upload deleted: file {file_id} for session {session_id}")
+        return jsonify({"status": "success", "message": "File deleted"}), 200
+
+    except Exception as e:
+        app_logger.error(f"Error deleting chat upload: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Delete failed: {str(e)}"}), 500
+
+
+@api_bp.route("/api/v1/chat/upload-capabilities", methods=["GET"])
+async def chat_upload_capabilities():
+    """
+    Get document upload capabilities for the current user's active profile.
+    Used by the frontend to show/hide the upload button and validate files.
+    """
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        session_id = request.args.get('session_id')
+
+        # Determine provider from active profile
+        provider = APP_CONFIG.CURRENT_PROVIDER or "Unknown"
+        model = APP_CONFIG.CURRENT_MODEL or ""
+
+        # Try to get provider from session's profile
+        if session_id:
+            session_data = await session_manager.get_session(user_uuid, session_id)
+            if session_data and session_data.get("provider"):
+                provider = session_data["provider"]
+
+        return jsonify({
+            "status": "success",
+            "capabilities": {
+                "enabled": True,
+                "provider": provider,
+                "model": model,
+                "supported_formats": sorted(list(ALLOWED_UPLOAD_EXTENSIONS)),
+                "max_file_size_mb": MAX_UPLOAD_SIZE_BYTES // (1024 * 1024),
+                "max_files_per_message": MAX_FILES_PER_UPLOAD,
+                "text_extraction_formats": sorted([ext for ext in ALLOWED_UPLOAD_EXTENSIONS if ext not in IMAGE_EXTENSIONS]),
+                "image_formats": sorted(list(IMAGE_EXTENSIONS))
+            }
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting upload capabilities: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500

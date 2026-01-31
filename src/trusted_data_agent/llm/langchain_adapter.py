@@ -349,11 +349,33 @@ def _create_amazon_llm(model: str, credentials: dict, temperature: float) -> Any
             region_name=aws_region
         )
 
-        return ChatBedrockConverse(
-            model=model,
-            client=bedrock_client,
-            temperature=temperature
-        )
+        # ChatBedrockConverse uses model_id (not model) and provider (not model_provider)
+        # When model is an ARN, the provider parameter is required
+        kwargs = {
+            "model_id": model,
+            "client": bedrock_client,
+            "temperature": temperature,
+        }
+        if model.startswith("arn:"):
+            # Extract provider from ARN: e.g. "eu.amazon.nova-lite-v1:0" -> "amazon"
+            # or "eu.anthropic.claude-3-haiku-v1:0" -> "anthropic"
+            model_lower = model.lower()
+            if "anthropic" in model_lower or "claude" in model_lower:
+                kwargs["provider"] = "anthropic"
+            elif "amazon" in model_lower or "nova" in model_lower:
+                kwargs["provider"] = "amazon"
+            elif "meta" in model_lower or "llama" in model_lower:
+                kwargs["provider"] = "meta"
+            elif "mistral" in model_lower:
+                kwargs["provider"] = "mistral"
+            elif "cohere" in model_lower:
+                kwargs["provider"] = "cohere"
+            else:
+                logger.warning(f"Could not determine provider from ARN: {model}")
+
+            logger.info(f"Using provider='{kwargs.get('provider', 'auto')}' for ARN model")
+
+        return ChatBedrockConverse(**kwargs)
     except ImportError:
         raise ImportError("langchain-aws package not installed. Run: pip install langchain-aws")
 

@@ -606,6 +606,15 @@
                                                     <div class="flex items-start gap-3">
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">31-Jan-2026</p>
+                                                            <p class="text-base text-white font-medium">Document Upload & Multimodal Analysis - Attach documents and images in chat with native provider delivery and drag-and-drop UI</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">29-Jan-2026</p>
                                                             <p class="text-base text-white font-medium">All Models Available - Access all provider models with ★ recommended highlights</p>
                                                         </div>
@@ -1019,8 +1028,37 @@
                                 <div class="max-w-5xl mx-auto relative">
                                     <div id="profile-tag-selector" class="absolute bottom-full mb-2 w-full hidden"></div>
                                     <div id="rag-suggestions-container" class="absolute bottom-full mb-2 w-full hidden"></div>
-                                    <form id="chat-form" class="flex items-center gap-3 glass-panel rounded-xl p-2 relative">
+                                    <!-- File Attachments Preview (shown above chat form when files are pending) -->
+                                    <div id="file-attachments-preview" class="absolute bottom-full mb-2 w-full attachment-preview-container">
+                                        <div class="glass-panel rounded-xl p-2 flex flex-wrap gap-2" id="file-attachments-list"></div>
+                                    </div>
+                                    <form id="chat-form" class="flex items-center gap-2 md:gap-3 glass-panel rounded-xl p-2 relative">
                                         <div id="active-profile-tag" class="hidden"></div>
+                                        <!-- Drop Zone Overlay -->
+                                        <div id="drop-zone-overlay" class="drop-zone-overlay">
+                                            <div class="flex flex-col items-center gap-2">
+                                                <svg class="w-8 h-8 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                                                </svg>
+                                                <span class="text-sm font-medium text-[#F15F22]">Drop files here</span>
+                                                <span class="text-xs text-gray-400">PDF, TXT, DOCX, MD, images</span>
+                                            </div>
+                                        </div>
+                                        <!-- File Attach Button -->
+                                        <button type="button" id="file-attach-button"
+                                            class="p-3 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:bg-gray-700 flex items-center justify-center w-12 h-12 transition-all duration-200 transform hover:scale-110 active:scale-95 hidden"
+                                            title="Attach files to your message">
+                                            <svg id="attach-icon" class="w-6 h-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                                            </svg>
+                                            <svg id="attach-spinner" class="w-6 h-6 text-white attach-spinner hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        </button>
+                                        <input type="file" id="file-attach-input" multiple
+                                            accept=".pdf,.txt,.docx,.md,.jpg,.jpeg,.png,.gif,.webp"
+                                            class="hidden" />
                                         <input type="text" id="user-input" placeholder="Ask about databases, tables, users..."
                                             class="flex-1 p-3 bg-transparent border-none rounded-lg focus:outline-none text-white placeholder-gray-400"
                                             autocomplete="off" disabled />
@@ -1052,7 +1090,7 @@
                                         </button>
                                         <!-- Submit Button -->
                                         <button type="submit" id="submit-button"
-                                            class="p-3 bg-[#F15F22] rounded-lg hover:bg-[#D9501A] disabled:bg-gray-600 flex items-center justify-center w-12 h-12 transition-all duration-200 transform hover:scale-110"
+                                            class="p-3 bg-[#F15F22] rounded-lg hover:bg-[#D9501A] disabled:bg-gray-600 flex items-center justify-center w-12 h-12 transition-all duration-200 transform hover:scale-110 active:scale-95"
                                             disabled>
                                             <!-- Send Icon and Loading Spinner -->
                                             <svg id="send-icon" class="w-6 h-6 text-white flipped" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
@@ -5911,7 +5949,7 @@
     <script src="{{ url_for('static', filename='js/executionDashboard.js') }}?v=2.9"></script>
     <script src="{{ url_for('static', filename='js/templateManager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/adminManager.js') }}?v=3.0"></script>
-    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=4.2"></script>
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=4.3"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/ragCollectionManagement.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/accessTokenManager.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/documentUploadConfigManager.js') }}"></script>

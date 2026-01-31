@@ -21,6 +21,7 @@ import {
 } from './handlers/sessionManagement.js?v=3.2';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
+import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -1017,7 +1018,13 @@ export async function handleStreamRequest(endpoint, body) {
                 const defaultProfile = window.configState.profiles.find(p => p.id === window.configState.defaultProfileId);
                 profileTag = defaultProfile?.tag || null;
             }
-            UI.addMessage('user', body.message, null, true, 'text', profileTag, body.is_session_primer || false);
+            // Build message with attachment chips if files are attached
+            let displayMessage = body.message;
+            if (body.attachments && body.attachments.length > 0) {
+                const chipHtml = renderAttachmentChips(body.attachments);
+                displayMessage = body.message + chipHtml;
+            }
+            UI.addMessage('user', displayMessage, null, true, 'text', profileTag, body.is_session_primer || false);
         } else {
         }
     } else {
@@ -1063,7 +1070,10 @@ export async function handleStreamRequest(endpoint, body) {
 
 export async function handleChatSubmit(e, source = 'text') {
     e.preventDefault();
-    
+
+    // Block submit while files are still uploading
+    if (isUploadInProgress()) return;
+
     // Get the active tag prefix from main.js if badge is showing
     const activeTagPrefix = window.activeTagPrefix || '';
     const rawMessage = DOM.userInput.value.trim();
@@ -1096,13 +1106,22 @@ export async function handleChatSubmit(e, source = 'text') {
         console.log('ℹ️  No @TAG detected or profiles not loaded');
     }
     
+    // Collect pending file attachments
+    const attachments = getPendingAttachments();
+
     handleStreamRequest('/ask_stream', {
         message: cleanedMessage,
         session_id: state.currentSessionId,
         source: source,
-        profile_override_id: profileOverrideId
+        profile_override_id: profileOverrideId,
+        attachments: attachments.length > 0 ? attachments : undefined
         // is_replay is implicitly false here
     });
+
+    // Clear attachments after sending
+    if (attachments.length > 0) {
+        clearPendingAttachments();
+    }
 }
 
 async function handleStopExecutionClick() {
@@ -1776,6 +1795,16 @@ export async function handleReplayQueryClick(buttonEl) {
             throw new Error("Could not retrieve the original query for this turn.");
         }
 
+        // Determine the current active profile override from the UI
+        let profileOverrideId = null;
+        if (window.activeTagPrefix) {
+            const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
+            const overrideProfile = window.configState?.profiles?.find(p => p.tag === tag);
+            if (overrideProfile) {
+                profileOverrideId = overrideProfile.id;
+            }
+        }
+
         const displayMessage = `Replaying **query** from Turn ${turnId}: ${originalQuery}`;
         // Add a message indicating a *query* replay
         UI.addMessage('user', displayMessage, null, true, 'text');
@@ -1787,7 +1816,8 @@ export async function handleReplayQueryClick(buttonEl) {
             session_id: sessionId,
             source: 'text',
             is_replay: true,             // Ensures logging and disables history for planning
-            plan_to_execute: null        // Explicitly null. This forces a new plan.
+            plan_to_execute: null,       // Explicitly null. This forces a new plan.
+            profile_override_id: profileOverrideId // Use current UI profile, not original
         });
 
     } catch (error) {
@@ -1826,6 +1856,16 @@ async function handleReplayPlanClick(buttonEl) {
             throw new Error("Could not retrieve the original plan for this turn.");
         }
 
+        // Determine the current active profile override from the UI
+        let profileOverrideId = null;
+        if (window.activeTagPrefix) {
+            const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
+            const overrideProfile = window.configState?.profiles?.find(p => p.tag === tag);
+            if (overrideProfile) {
+                profileOverrideId = overrideProfile.id;
+            }
+        }
+
         const displayMessage = `Replaying **plan** from Turn ${turnId}: ${originalQuery}`;
         // Add a message indicating a *plan* replay
         UI.addMessage('user', displayMessage, null, true, 'text');
@@ -1837,7 +1877,8 @@ async function handleReplayPlanClick(buttonEl) {
             session_id: sessionId,
             source: 'text',
             is_replay: true,             // Ensures logging and disables history for planning (which is skipped anyway)
-            plan_to_execute: originalPlan  // This tells the backend to skip planning and execute this plan
+            plan_to_execute: originalPlan, // This tells the backend to skip planning and execute this plan
+            profile_override_id: profileOverrideId // Use current UI profile, not original
         });
 
     } catch (error) {

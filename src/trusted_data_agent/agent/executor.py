@@ -38,6 +38,218 @@ from trusted_data_agent.agent.session_name_generator import generate_session_nam
 app_logger = logging.getLogger("quart.app")
 
 
+MAX_DOCUMENT_CONTEXT_CHARS = 50000  # ~12,500 tokens total across all attachments
+MAX_PER_DOCUMENT_CHARS = 20000  # Per-document character limit
+
+
+def load_document_context(user_uuid: str, session_id: str, attachments: list) -> str | None:
+    """
+    Load extracted text from uploaded documents and format as context block.
+
+    This is a module-level function so it can be used by both PlanExecutor and
+    the genie execution path.
+
+    Args:
+        user_uuid: The user's UUID
+        session_id: The session ID
+        attachments: List of attachment dicts with file_id, filename keys
+
+    Returns:
+        Formatted document context string, or None if no attachments
+    """
+    if not attachments:
+        return None
+
+    from pathlib import Path
+    from trusted_data_agent.core.utils import get_project_root
+
+    safe_user = "".join(c for c in user_uuid if c.isalnum() or c in ['-', '_'])
+    safe_session = "".join(c for c in session_id if c.isalnum() or c in ['-', '_'])
+    manifest_path = get_project_root() / "tda_sessions" / safe_user / "uploads" / safe_session / "manifest.json"
+
+    if not manifest_path.exists():
+        app_logger.warning(f"Upload manifest not found for session {session_id}")
+        return None
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.loads(f.read())
+    except Exception as e:
+        app_logger.error(f"Failed to load upload manifest: {e}")
+        return None
+
+    context_parts = []
+    total_chars = 0
+
+    for attachment in attachments:
+        file_id = attachment.get("file_id")
+        if not file_id or file_id not in manifest:
+            app_logger.warning(f"Attachment file_id {file_id} not found in manifest")
+            continue
+
+        entry = manifest[file_id]
+        filename = entry.get("filename", attachment.get("filename", "Unknown"))
+        extracted_text = entry.get("extracted_text", "")
+
+        if not extracted_text:
+            continue
+
+        # Truncate individual documents if needed
+        if len(extracted_text) > MAX_PER_DOCUMENT_CHARS:
+            extracted_text = extracted_text[:MAX_PER_DOCUMENT_CHARS] + \
+                f"\n\n[Document truncated - showing first {MAX_PER_DOCUMENT_CHARS:,} characters of {len(entry.get('extracted_text', '')):,} total]"
+
+        context_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
+        total_chars += len(extracted_text)
+
+        if total_chars > MAX_DOCUMENT_CONTEXT_CHARS:
+            context_parts.append("[Additional documents omitted - context limit reached]")
+            break
+
+    if not context_parts:
+        return None
+
+    app_logger.info(f"Loaded document context: {len(context_parts)} documents, {total_chars:,} chars total")
+    return "\n\n".join(context_parts)
+
+
+def load_multimodal_document_content(
+    user_uuid: str, session_id: str, attachments: list,
+    provider: str, model: str
+) -> tuple[list[dict] | None, str | None]:
+    """
+    Split attachments into native multimodal blocks vs text fallback.
+
+    For providers that support native document/image upload (e.g. Anthropic, Google),
+    binary files are routed as multimodal blocks. Files that can't go native
+    (wrong format, too large, unsupported provider) fall back to text extraction.
+
+    Args:
+        user_uuid: The user's UUID
+        session_id: The session ID
+        attachments: List of attachment dicts with file_id, filename keys
+        provider: LLM provider name (e.g. "Anthropic", "Google", "Friendli")
+        model: Model name for capability filtering
+
+    Returns:
+        (multimodal_blocks, text_fallback) where either can be None.
+        multimodal_blocks: [{"type": "document"|"image", "path": str, "mime_type": str, "filename": str}]
+        text_fallback: formatted text string for files that can't go native
+    """
+    if not attachments:
+        return None, None
+
+    import os
+    from pathlib import Path
+    from trusted_data_agent.core.utils import get_project_root
+    from trusted_data_agent.llm.document_upload import DocumentUploadConfig, DocumentUploadCapability
+
+    safe_user = "".join(c for c in user_uuid if c.isalnum() or c in ['-', '_'])
+    safe_session = "".join(c for c in session_id if c.isalnum() or c in ['-', '_'])
+    upload_dir = get_project_root() / "tda_sessions" / safe_user / "uploads" / safe_session
+    manifest_path = upload_dir / "manifest.json"
+
+    if not manifest_path.exists():
+        app_logger.warning(f"Upload manifest not found for session {session_id}")
+        return None, None
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.loads(f.read())
+    except Exception as e:
+        app_logger.error(f"Failed to load upload manifest: {e}")
+        return None, None
+
+    # Determine provider capabilities
+    capability = DocumentUploadConfig.get_capability(provider, model)
+    native_formats = set(DocumentUploadConfig.get_supported_formats(provider, model))
+    max_file_size = DocumentUploadConfig.get_max_file_size(provider, model)
+    supports_native = capability in [DocumentUploadCapability.NATIVE_FULL, DocumentUploadCapability.NATIVE_VISION_ONLY]
+
+    app_logger.info(f"Multimodal routing: provider={provider}, model={model}, capability={capability.value}, native_formats={native_formats}")
+
+    native_blocks = []
+    text_parts = []
+    total_text_chars = 0
+
+    # MIME type mapping
+    mime_types = {
+        '.pdf': 'application/pdf', '.txt': 'text/plain',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+        '.gif': 'image/gif', '.webp': 'image/webp'
+    }
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+
+    for attachment in attachments:
+        file_id = attachment.get("file_id")
+        if not file_id or file_id not in manifest:
+            app_logger.warning(f"Attachment file_id {file_id} not found in manifest")
+            continue
+
+        entry = manifest[file_id]
+        filename = entry.get("filename", attachment.get("filename", "Unknown"))
+        file_ext = os.path.splitext(filename)[1].lower()
+        binary_path = upload_dir / entry.get("stored_filename", f"{file_id}{file_ext}")
+
+        # Check if this file qualifies for native multimodal upload
+        can_go_native = False
+        if supports_native and file_ext in native_formats and binary_path.exists():
+            file_size = binary_path.stat().st_size
+            if max_file_size == 0 or file_size <= max_file_size:
+                can_go_native = True
+            else:
+                app_logger.info(f"File {filename} ({file_size:,} bytes) exceeds native size limit ({max_file_size:,} bytes), falling back to text")
+
+        if can_go_native:
+            mime_type = mime_types.get(file_ext, 'application/octet-stream')
+            block_type = "image" if file_ext in image_extensions else "document"
+            native_blocks.append({
+                "type": block_type,
+                "path": str(binary_path),
+                "mime_type": mime_type,
+                "filename": filename
+            })
+            app_logger.info(f"Native multimodal block: {filename} ({block_type}, {mime_type})")
+
+            # For document-type files (not images), ALSO extract text as fallback.
+            # This ensures paths that can't send native document blocks (e.g. LangChain)
+            # still have the text content available via document_context.
+            if block_type == "document":
+                extracted_text = entry.get("extracted_text", "")
+                if extracted_text:
+                    if len(extracted_text) > MAX_PER_DOCUMENT_CHARS:
+                        extracted_text = extracted_text[:MAX_PER_DOCUMENT_CHARS] + \
+                            f"\n\n[Document truncated - showing first {MAX_PER_DOCUMENT_CHARS:,} characters]"
+                    text_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
+                    total_text_chars += len(extracted_text)
+                    app_logger.info(f"Also extracted text for native document {filename} (fallback for non-multimodal paths)")
+        else:
+            # Fall back to text extraction
+            extracted_text = entry.get("extracted_text", "")
+            if not extracted_text:
+                continue
+            if len(extracted_text) > MAX_PER_DOCUMENT_CHARS:
+                extracted_text = extracted_text[:MAX_PER_DOCUMENT_CHARS] + \
+                    f"\n\n[Document truncated - showing first {MAX_PER_DOCUMENT_CHARS:,} characters]"
+            text_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
+            total_text_chars += len(extracted_text)
+            if total_text_chars > MAX_DOCUMENT_CONTEXT_CHARS:
+                text_parts.append("[Additional documents omitted - context limit reached]")
+                break
+
+    multimodal_blocks = native_blocks if native_blocks else None
+    text_fallback = "\n\n".join(text_parts) if text_parts else None
+
+    if multimodal_blocks:
+        app_logger.info(f"Multimodal result: {len(native_blocks)} native block(s) for {provider}")
+    if text_fallback:
+        app_logger.info(f"Text fallback: {len(text_parts)} document(s), {total_text_chars:,} chars")
+
+    return multimodal_blocks, text_fallback
+
+
 class DefinitiveToolError(Exception):
     """Custom exception for unrecoverable tool errors."""
     def __init__(self, message, friendly_message):
@@ -155,7 +367,7 @@ class PlanExecutor:
         return None
 
     # --- MODIFICATION START: Add plan_to_execute and is_replay ---
-    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False):
+    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None):
         self.session_id = session_id
         self.user_uuid = user_uuid
         self.event_handler = event_handler
@@ -290,6 +502,11 @@ class PlanExecutor:
         # --- MODIFICATION START: Store task_id ---
         self.task_id = task_id
         # --- MODIFICATION END ---
+        # --- Document upload attachments ---
+        self.attachments = attachments or []
+        self.document_context = None  # Will be populated from extracted text if attachments present
+        self.multimodal_content = None  # Will be populated with native multimodal blocks if provider supports it
+
         self.turn_input_tokens = 0
         self.turn_output_tokens = 0
 
@@ -363,7 +580,7 @@ class PlanExecutor:
             msg += f"event: {event}\n"
         return f"{msg}\n"
 
-    async def _call_llm_and_update_tokens(self, prompt: str, reason: str, system_prompt_override: str = None, raise_on_error: bool = False, disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text") -> tuple[str, int, int]:
+    async def _call_llm_and_update_tokens(self, prompt: str, reason: str, system_prompt_override: str = None, raise_on_error: bool = False, disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", multimodal_content: list = None) -> tuple[str, int, int]:
         """A centralized wrapper for calling the LLM that handles token updates."""
         final_disabled_history = disabled_history or self.disabled_history
 
@@ -379,8 +596,9 @@ class PlanExecutor:
             source=source,
             # --- MODIFICATION START: Pass active profile and provider for prompt resolution ---
             active_profile_id=self.active_profile_id,
-            current_provider=self.current_provider
+            current_provider=self.current_provider,
             # --- MODIFICATION END ---
+            multimodal_content=multimodal_content
         )
         self.llm_debug_history.append({"reason": reason, "response": response_text})
         app_logger.debug(f"LLM RESPONSE (DEBUG): Reason='{reason}', Response='{response_text}'")
@@ -1201,7 +1419,9 @@ class PlanExecutor:
                 async_event_handler=self.event_handler,  # Real-time SSE via asyncio.create_task()
                 max_iterations=5,
                 conversation_history=conversation_history,
-                knowledge_context=knowledge_context_str if knowledge_enabled else None
+                knowledge_context=knowledge_context_str if knowledge_enabled else None,
+                document_context=self.document_context,
+                multimodal_content=self.multimodal_content
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
@@ -1384,11 +1604,11 @@ class PlanExecutor:
             }
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
 
-    async def _build_user_message_for_conversation(self, knowledge_context: Optional[str] = None) -> str:
+    async def _build_user_message_for_conversation(self, knowledge_context: Optional[str] = None, document_context: Optional[str] = None) -> str:
         """Build user message for LLM-only direct execution.
 
         System prompt is handled separately via system_prompt_override parameter.
-        This method builds only the user-facing content: knowledge context + conversation history + current query.
+        This method builds only the user-facing content: document context + knowledge context + conversation history + current query.
 
         IMPORTANT: This retrieves conversation history from session_id, which is
         SHARED across all profile switches. This means LLM-only profiles can
@@ -1400,9 +1620,10 @@ class PlanExecutor:
 
         Args:
             knowledge_context: Optional knowledge context to inject before conversation history
+            document_context: Optional uploaded document context to inject
 
         Returns:
-            User message string with knowledge + history + current query
+            User message string with documents + knowledge + history + current query
         """
         # Get session history (includes ALL previous turns regardless of profile)
         try:
@@ -1422,6 +1643,10 @@ class PlanExecutor:
         # Build user message (WITHOUT system prompt)
         user_message_parts = []
 
+        # Inject uploaded document context if present
+        if document_context:
+            user_message_parts.append(f"# Uploaded Documents\n{document_context}")
+
         # Inject knowledge context if retrieved
         if knowledge_context:
             user_message_parts.append(knowledge_context)
@@ -1434,16 +1659,21 @@ User: {self.original_user_input}""")
 
         return "\n".join(user_message_parts)
 
-    async def _build_user_message_for_rag_synthesis(self, knowledge_context: str) -> str:
+    async def _build_user_message_for_rag_synthesis(self, knowledge_context: str, document_context: Optional[str] = None) -> str:
         """Build user message for RAG focused synthesis with knowledge + history.
 
         Args:
             knowledge_context: Formatted knowledge context from retrieval
+            document_context: Optional uploaded document context to inject
 
         Returns:
-            User message string with knowledge + optional history + current query
+            User message string with documents + knowledge + optional history + current query
         """
         parts = []
+
+        # Inject uploaded document context if present
+        if document_context:
+            parts.append(f"# Uploaded Documents\n{document_context}")
 
         # Knowledge context (most important)
         if knowledge_context:
@@ -1694,6 +1924,23 @@ Response:"""
         # Only pure llm_only (without MCP tools) goes through direct execution
         is_llm_only = (profile_type == "llm_only" and not use_mcp_tools)
 
+        # --- Document upload: Load document context with multimodal routing ---
+        if self.attachments:
+            self.multimodal_content, text_fallback = load_multimodal_document_content(
+                self.user_uuid, self.session_id, self.attachments,
+                self.current_provider, self.current_model
+            )
+            # Always set text context (for planning, text-only files, and as fallback)
+            self.document_context = text_fallback
+            if not self.document_context and not self.multimodal_content:
+                # Pure fallback: use text extraction for everything
+                self.document_context = load_document_context(self.user_uuid, self.session_id, self.attachments)
+
+            if self.multimodal_content:
+                app_logger.info(f"Native multimodal: {len(self.multimodal_content)} block(s) for {self.current_provider}")
+            if self.document_context:
+                app_logger.info(f"Document context loaded: {len(self.document_context):,} chars from {len(self.attachments)} attachment(s)")
+
         # --- MODIFICATION START: Calculate turn number from workflow_history ---
         # All profile types (llm_only, rag_focused, tool_enabled) use workflow_history for consistency
         self.current_turn_number = 1
@@ -1920,9 +2167,13 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
                 app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
 
+            # Load document context from uploaded files
+            doc_context = load_document_context(self.user_uuid, self.session_id, self.attachments) if self.attachments else None
+
             # Build user message (WITHOUT system prompt)
             user_message = await self._build_user_message_for_conversation(
-                knowledge_context=knowledge_context_str
+                knowledge_context=knowledge_context_str,
+                document_context=doc_context
             )
 
             # NOW emit llm_execution event with complete information
@@ -1983,7 +2234,8 @@ The following domain knowledge may be relevant to this conversation:
                     prompt=user_message,  # User message only (knowledge + history + query)
                     reason="Direct LLM Execution (Conversation Profile)",
                     system_prompt_override=system_prompt,  # System prompt via override (correct architecture)
-                    source=self.source
+                    source=self.source,
+                    multimodal_content=self.multimodal_content
                 )
             finally:
                 # Restore original dependencies
@@ -2673,8 +2925,12 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = "You are a knowledge base assistant. Answer using only the provided documents."
                 app_logger.warning("RAG_FOCUSED_EXECUTION prompt not available (decryption failed or not found), using fallback")
 
+            # Load document context from uploaded files
+            rag_doc_context = load_document_context(self.user_uuid, self.session_id, self.attachments) if self.attachments else None
+
             user_message = await self._build_user_message_for_rag_synthesis(
-                knowledge_context=knowledge_context
+                knowledge_context=knowledge_context,
+                document_context=rag_doc_context
             )
 
             # Emit "Calling LLM" event with call_id for token tracking
@@ -2699,7 +2955,8 @@ The following domain knowledge may be relevant to this conversation:
             response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
                 prompt=user_message,
                 reason="RAG Focused Synthesis",
-                system_prompt_override=system_prompt
+                system_prompt_override=system_prompt,
+                multimodal_content=self.multimodal_content
             )
 
             # Calculate LLM call duration
@@ -3444,6 +3701,13 @@ The following domain knowledge may be relevant to this conversation:
         # Track execution start time for duration calculation (tool_enabled profiles)
         if not is_llm_only and not is_rag_focused:
             self.tool_enabled_start_time = time.time()
+
+        # --- Document upload: Prepend document context for tool_enabled planning ---
+        # By this point, llm_only, conversation_with_tools, and rag_focused have all returned.
+        # Augment original_user_input so the Planner sees document context in strategic planning.
+        if self.document_context:
+            self.original_user_input = f"[User has uploaded documents]\n{self.document_context}\n\n[User's question]\n{self.original_user_input}"
+            app_logger.info(f"Prepended document context ({len(self.document_context):,} chars) to user input for tool_enabled planning")
 
         try:
             # --- MODIFICATION START: Handle Replay ---
