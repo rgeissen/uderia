@@ -2706,6 +2706,24 @@
 }
 
 /* ============================================================================
+   LIGHT THEME - APPLICATION CONFIGURATION SUBTAB NAV
+   ============================================================================ */
+
+/* Selected config subtab: dark orange text on light orange bg */
+[data-theme="light"] .config-subtab.text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Unselected config subtab: hover should use dark text on light bg, not white */
+[data-theme="light"] .config-subtab.hover\:text-white:hover {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .config-subtab.hover\:bg-gray-700\/50:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
    LIGHT THEME - ALL ADMIN TABLES (comprehensive)
    ============================================================================ */
 

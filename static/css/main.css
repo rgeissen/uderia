@@ -4852,7 +4852,8 @@ button.bg-gray-700.px-2:hover {
 }
 
 /* Additional enforcement for orange/colored action buttons in light theme */
-[data-theme="light"] button[class*="bg-[#F15F22]"],
+/* Use exact class selector for bg-[#F15F22] to avoid matching bg-[#F15F22]/20 (light tint) */
+[data-theme="light"] button.bg-\[\#F15F22\],
 [data-theme="light"] button[class*="bg-teradata-orange"] {
     color: white !important;
 }
