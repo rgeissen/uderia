@@ -255,9 +255,12 @@ export function renderResourcePanel(type) {
                         <div class="mt-4 text-sm text-gray-300">
                             <div class="font-semibold mb-2">Coordinating Profiles:</div>
                             <div class="flex flex-wrap gap-2 justify-center">
-                                ${state.activeGenieProfile.slaveProfiles.map(profileId => {
-                                    const profile = window.configState?.profiles?.find(p => p.id === profileId);
-                                    return profile ? `<span class="px-3 py-1 bg-gray-700 rounded-md">@${profile.tag}</span>` : '';
+                                ${state.activeGenieProfile.slaveProfiles.map(entry => {
+                                    if (typeof entry === 'object' && entry.tag) {
+                                        return UI.renderProfileTag(entry.tag);
+                                    }
+                                    const profile = window.configState?.profiles?.find(p => p.id === entry);
+                                    return profile ? UI.renderProfileTag(profile.tag, profile.profile_type) : '';
                                 }).join('')}
                             </div>
                         </div>

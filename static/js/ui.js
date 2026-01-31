@@ -172,7 +172,7 @@ function isLightColor(hex) {
  * @param {string} additionalClasses - Optional additional CSS classes
  * @returns {string} HTML string for the colored profile tag
  */
-function renderProfileTag(tag, profileType, additionalClasses = '') {
+export function renderProfileTag(tag, profileType, additionalClasses = '') {
     const color = getProfileTagColor(tag, profileType);
 
     // PURE INDUSTRIAL: Solid colors, flat monolithic design
