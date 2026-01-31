@@ -2510,12 +2510,34 @@
                                                 <option value="heavy">Heavy Charting</option>
                                             </select>
                                         </div>
-                                        <div class="pt-4 border-t border-white/10">
+                                        <div id="user-tts-section" class="pt-4 border-t border-white/10">
                                             <details>
-                                                <summary class="text-sm font-medium text-gray-300 cursor-pointer hover:text-white mb-2">Configure Google TTS</summary>
+                                                <summary class="text-sm font-medium text-gray-300 cursor-pointer hover:text-white mb-2">
+                                                    Configure Google TTS
+                                                    <span id="user-tts-mode-badge" class="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-600 text-gray-300">Loading...</span>
+                                                </summary>
                                                 <div class="mt-4">
-                                                    <label for="tts-credentials-json" class="block text-sm font-medium text-gray-400 mb-2">Google TTS Credentials JSON (Optional)</label>
-                                                    <textarea id="tts-credentials-json" name="tts_credentials_json" rows="4" class="w-full max-w-2xl p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none text-sm font-mono" placeholder="Paste credentials.json content here. Leave blank to use server environment variable."></textarea>
+                                                    <!-- Shown when mode=disabled -->
+                                                    <div id="tts-disabled-message" class="hidden p-3 bg-gray-800/50 rounded-lg">
+                                                        <p class="text-sm text-gray-400">Voice features are disabled by your administrator.</p>
+                                                    </div>
+
+                                                    <!-- Shown when mode=global -->
+                                                    <div id="tts-global-message" class="hidden p-3 bg-green-900/20 border border-green-600/30 rounded-lg">
+                                                        <p class="text-sm text-green-400">Voice features are enabled using organization-wide credentials. No action needed.</p>
+                                                    </div>
+
+                                                    <!-- Shown when mode=user -->
+                                                    <div id="tts-user-credentials-section" class="hidden">
+                                                        <label for="tts-credentials-json" class="block text-sm font-medium text-gray-400 mb-2">Google TTS Credentials JSON</label>
+                                                        <textarea id="tts-credentials-json" name="tts_credentials_json" rows="4" class="w-full max-w-2xl p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none text-sm font-mono" placeholder="Paste your Google Cloud service account JSON here."></textarea>
+                                                        <div class="flex items-center gap-3 mt-2">
+                                                            <button id="save-user-tts-btn" type="button" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md transition-colors">Save Credentials</button>
+                                                            <button id="test-user-tts-btn" type="button" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors">Test</button>
+                                                            <button id="delete-user-tts-btn" type="button" class="px-3 py-1.5 bg-red-600/80 hover:bg-red-700 text-white text-xs font-medium rounded-md transition-colors hidden">Delete</button>
+                                                            <span id="user-tts-status" class="text-xs text-gray-400"></span>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </details>
                                         </div>
@@ -3183,13 +3205,35 @@
                                                 </div>
                                             </div>
 
-                                            <!-- Voice/TTS Toggle -->
+                                            <!-- Voice/TTS Configuration -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-start gap-3">
-                                                    <input type="checkbox" id="enable-voice-system" name="enable_voice_system" class="mt-1 w-4 h-4">
                                                     <div class="flex-1">
-                                                        <label for="enable-voice-system" class="block text-sm font-semibold text-white cursor-pointer">Enable Voice Conversation (TTS)</label>
-                                                        <p class="text-xs text-gray-400 mt-1">When enabled, users can configure Google TTS credentials for voice-based conversations. Users provide their own TTS API credentials in their personal settings.</p>
+                                                        <h4 class="text-sm font-semibold text-white">Voice Conversation (TTS)</h4>
+                                                        <p class="text-xs text-gray-400 mt-1">Configure Text-to-Speech mode and credentials for voice-based conversations.</p>
+
+                                                        <!-- TTS Mode Selector -->
+                                                        <div class="mt-3">
+                                                            <label for="tts-mode-select" class="block text-xs font-medium text-gray-400 mb-1">TTS Mode</label>
+                                                            <select id="tts-mode-select" class="w-72 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none">
+                                                                <option value="disabled">Disabled</option>
+                                                                <option value="global">Global Credentials (Admin-provided)</option>
+                                                                <option value="user">User Credentials (Each user provides their own)</option>
+                                                            </select>
+                                                        </div>
+
+                                                        <!-- Global Credentials Section (shown when mode=global) -->
+                                                        <div id="tts-global-credentials-section" class="mt-4 hidden">
+                                                            <div class="p-3 bg-gray-800/50 rounded-lg border border-gray-600">
+                                                                <label for="tts-global-credentials-json" class="block text-xs font-medium text-gray-400 mb-2">Global Google TTS Service Account JSON</label>
+                                                                <textarea id="tts-global-credentials-json" rows="4" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md text-sm font-mono text-white focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none" placeholder="Paste Google Cloud service account JSON here..."></textarea>
+                                                                <div class="flex items-center gap-3 mt-2">
+                                                                    <button id="tts-test-global-btn" type="button" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors">Test Credentials</button>
+                                                                    <button id="tts-delete-global-btn" type="button" class="px-3 py-1.5 bg-red-600/80 hover:bg-red-700 text-white text-xs font-medium rounded-md transition-colors hidden">Delete Credentials</button>
+                                                                    <span id="tts-global-status" class="text-xs text-gray-400"></span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -3208,6 +3252,16 @@
                                         </div>
                                     </details>
                                 </div>
+                                    <!-- Tab Save Button: Features -->
+                                    <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
+                                        <button type="button" id="save-features-settings-btn" disabled
+                                            class="px-5 py-2.5 rounded-md transition-colors font-medium text-sm flex items-center gap-2 disabled:bg-gray-600 disabled:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:text-white enabled:cursor-pointer">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Save Feature Settings
+                                        </button>
+                                    </div>
                                     </div>
 
                                     <!-- ============================================================ -->
@@ -3416,6 +3470,16 @@
                                         </div>
                                     </details>
                                 </div>
+                                    <!-- Tab Save Button: AI & Knowledge -->
+                                    <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
+                                        <button type="button" id="save-ai-knowledge-btn" disabled
+                                            class="px-5 py-2.5 rounded-md transition-colors font-medium text-sm flex items-center gap-2 disabled:bg-gray-600 disabled:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:text-white enabled:cursor-pointer">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Save AI & Knowledge Settings
+                                        </button>
+                                    </div>
                                     </div>
 
                                     <!-- ============================================================ -->
@@ -3760,6 +3824,16 @@
                                         </div>
                                     </details>
                                 </div>
+                                    <!-- Tab Save Button: User Interface -->
+                                    <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
+                                        <button type="button" id="save-ui-settings-btn" disabled
+                                            class="px-5 py-2.5 rounded-md transition-colors font-medium text-sm flex items-center gap-2 disabled:bg-gray-600 disabled:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:text-white enabled:cursor-pointer">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Save UI Settings
+                                        </button>
+                                    </div>
                                     </div>
 
                                     <!-- ============================================================ -->
@@ -3910,7 +3984,16 @@
                                         </div>
                                     </details>
                                 </div>
-
+                                    <!-- Tab Save Button: Security -->
+                                    <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
+                                        <button type="button" id="save-security-settings-btn" disabled
+                                            class="px-5 py-2.5 rounded-md transition-colors font-medium text-sm flex items-center gap-2 disabled:bg-gray-600 disabled:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:text-white enabled:cursor-pointer">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Save Security Settings
+                                        </button>
+                                    </div>
                                     </div>
 
                                     <!-- ============================================================ -->
@@ -3970,15 +4053,6 @@
                                 </div>
                                     </div>
 
-                                    <!-- Save Button (visible on all tabs) -->
-                                    <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
-                                        <button type="button" id="save-system-settings-btn" disabled class="px-6 py-3 bg-gray-600 rounded-md transition-colors text-white font-medium opacity-50 cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-[#F15F22] enabled:hover:bg-[#D9501A] enabled:opacity-100 enabled:cursor-pointer">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                            Save System Settings
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
                         </div>

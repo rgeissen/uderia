@@ -15,7 +15,7 @@ fi
 
 # Display the configuration (without apiKey)
 echo "--- Configuration to be sent (excluding apiKey) ---"
-jq 'del(.credentials.apiKey) | del(.tts_credentials_json)' "$CONFIG_FILE"
+jq 'del(.credentials.apiKey)' "$CONFIG_FILE"
 echo "-------------------------------------------------"
 
 # Send the configuration to the server

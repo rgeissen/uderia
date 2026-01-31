@@ -89,7 +89,6 @@ except RuntimeError as e:
     sys.exit(1)
 
 from trusted_data_agent.core.config import APP_CONFIG, APP_STATE
-from trusted_data_agent.api.routes import get_tts_client # Assuming get_tts_client is still relevant
 
 
 # --- MODIFICATION START: Add RAG Processing Worker ---

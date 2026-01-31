@@ -9,6 +9,5 @@
         "host": "localhost",
         "port": "8080",
         "path": "/mcp"
-    },
-    "tts_credentials_json": "<YOUR_GOOGLE_CLOUD_TTS_CREDENTIALS_JSON_BASE64_ENCODED>"
+    }
 }

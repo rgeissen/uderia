@@ -476,6 +476,22 @@ class SystemSettings(Base):
         }
 
 
+class TtsGlobalConfig(Base):
+    """Global TTS configuration storage (encrypted credentials, settings)."""
+
+    __tablename__ = 'tts_global_config'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    config_key = Column(String(100), nullable=False, unique=True, index=True)
+    config_value = Column(Text, nullable=False)  # Encrypted JSON for credentials
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<TtsGlobalConfig(key='{self.config_key}')>"
+
+
 class CollectionSubscription(Base):
     """User subscriptions to shared marketplace RAG collections (reference-based)."""
     

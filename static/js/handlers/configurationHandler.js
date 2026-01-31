@@ -2315,7 +2315,6 @@ export async function reconnectAndLoad() {
             model: llmConfig.model,
             credentials: llmConfig.credentials,
             listing_method: llmConfig.listingMethod || 'foundation_models',
-            tts_credentials_json: document.getElementById('tts-credentials-json')?.value || '',
             charting_intensity: document.getElementById('charting-intensity')?.value || 'none'
         };
 

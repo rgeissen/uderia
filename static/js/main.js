@@ -1240,6 +1240,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             DOM.keyObservationsToggleButton.classList.remove('hidden');
         }
 
+        // Initialize user TTS settings section based on tts_mode
+        updateUserTtsSection(state.appConfig.tts_mode || 'disabled');
+
         // Initialize upload button visibility (requires auth token to be available)
         initializeUploadCapabilities(state.currentSessionId || undefined);
 
@@ -1312,11 +1315,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             // The new configuration UI handles its own state
             // No need to pre-fill old form fields
-            const savedTtsCreds = localStorage.getItem('ttsCredentialsJson');
-            if (savedTtsCreds && DOM.ttsCredentialsJsonTextarea) {
-                DOM.ttsCredentialsJsonTextarea.value = savedTtsCreds;
-            }
-            
+            // TTS credentials now managed server-side via dedicated endpoints
+
             // Show welcome screen in conversation view
             await showWelcomeScreen();
         }
@@ -1324,10 +1324,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("DEBUG: Error during startup configuration/session loading. Showing config modal.", startupError);
         // Fallback to showing credentials view
         try {
-             const savedTtsCreds = localStorage.getItem('ttsCredentialsJson');
-             if (savedTtsCreds && DOM.ttsCredentialsJsonTextarea) { 
-                 DOM.ttsCredentialsJsonTextarea.value = savedTtsCreds; 
-             }
              // NOTE: Old loadCredentialsAndModels() removed - new config UI handles this
         } catch (prefillError) {
             console.error("DEBUG: Error during fallback pre-fill:", prefillError);
@@ -1365,6 +1361,127 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================================
 // PANEL MANAGEMENT
 // ============================================================================
+
+/**
+ * Update the user TTS settings section based on the current TTS mode.
+ * Shows/hides the appropriate message or credential input form.
+ */
+window.updateUserTtsSection = updateUserTtsSection;
+function updateUserTtsSection(mode) {
+    const badge = document.getElementById('user-tts-mode-badge');
+    const disabledMsg = document.getElementById('tts-disabled-message');
+    const globalMsg = document.getElementById('tts-global-message');
+    const userSection = document.getElementById('tts-user-credentials-section');
+
+    // Hide all sections
+    [disabledMsg, globalMsg, userSection].forEach(el => { if (el) el.classList.add('hidden'); });
+
+    if (mode === 'disabled') {
+        if (badge) { badge.textContent = 'Disabled'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-red-900/50 text-red-400'; }
+        if (disabledMsg) disabledMsg.classList.remove('hidden');
+    } else if (mode === 'global') {
+        if (badge) { badge.textContent = 'Organization'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-400'; }
+        if (globalMsg) globalMsg.classList.remove('hidden');
+    } else if (mode === 'user') {
+        if (badge) { badge.textContent = 'User Credentials'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-400'; }
+        if (userSection) userSection.classList.remove('hidden');
+        // Load user TTS credential status from server
+        _loadUserTtsStatus();
+    }
+}
+
+/**
+ * Load user TTS credential status and set up button handlers.
+ */
+async function _loadUserTtsStatus() {
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        if (!token) return;
+
+        const resp = await fetch('/api/user/tts-credentials', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const statusEl = document.getElementById('user-tts-status');
+        const deleteBtn = document.getElementById('delete-user-tts-btn');
+
+        if (data.has_credentials) {
+            if (statusEl) { statusEl.textContent = 'Credentials configured'; statusEl.className = 'text-xs text-green-400'; }
+            if (deleteBtn) deleteBtn.classList.remove('hidden');
+        } else {
+            if (statusEl) { statusEl.textContent = 'No credentials configured'; statusEl.className = 'text-xs text-gray-400'; }
+            if (deleteBtn) deleteBtn.classList.add('hidden');
+        }
+
+        // Setup button handlers (idempotent - removes old listeners via clone)
+        _setupUserTtsButtons();
+    } catch (err) {
+        console.error('[TTS] Error loading user TTS status:', err);
+    }
+}
+
+/**
+ * Setup event listeners for user TTS credential buttons.
+ */
+function _setupUserTtsButtons() {
+    const token = localStorage.getItem('tda_auth_token');
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    const saveBtn = document.getElementById('save-user-tts-btn');
+    const testBtn = document.getElementById('test-user-tts-btn');
+    const deleteBtn = document.getElementById('delete-user-tts-btn');
+    const statusEl = document.getElementById('user-tts-status');
+    const textarea = document.getElementById('tts-credentials-json');
+
+    if (saveBtn) {
+        saveBtn.onclick = async () => {
+            const creds = textarea?.value?.trim();
+            if (!creds) { if (statusEl) { statusEl.textContent = 'Please paste credentials first'; statusEl.className = 'text-xs text-yellow-400'; } return; }
+            if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.className = 'text-xs text-blue-400'; }
+            try {
+                const resp = await fetch('/api/user/tts-credentials', { method: 'POST', headers, body: JSON.stringify({ credentials_json: creds }) });
+                const data = await resp.json();
+                if (resp.ok) {
+                    if (statusEl) { statusEl.textContent = 'Credentials saved'; statusEl.className = 'text-xs text-green-400'; }
+                    if (textarea) textarea.value = '';
+                    if (deleteBtn) deleteBtn.classList.remove('hidden');
+                } else {
+                    if (statusEl) { statusEl.textContent = data.error || 'Save failed'; statusEl.className = 'text-xs text-red-400'; }
+                }
+            } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'text-xs text-red-400'; } }
+        };
+    }
+
+    if (testBtn) {
+        testBtn.onclick = async () => {
+            const creds = textarea?.value?.trim();
+            if (!creds) { if (statusEl) { statusEl.textContent = 'Please paste credentials first'; statusEl.className = 'text-xs text-yellow-400'; } return; }
+            if (statusEl) { statusEl.textContent = 'Testing...'; statusEl.className = 'text-xs text-blue-400'; }
+            try {
+                const resp = await fetch('/api/user/tts-credentials/test', { method: 'POST', headers, body: JSON.stringify({ credentials_json: creds }) });
+                const data = await resp.json();
+                if (resp.ok) {
+                    if (statusEl) { statusEl.textContent = 'Credentials are valid'; statusEl.className = 'text-xs text-green-400'; }
+                } else {
+                    if (statusEl) { statusEl.textContent = data.error || 'Test failed'; statusEl.className = 'text-xs text-red-400'; }
+                }
+            } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'text-xs text-red-400'; } }
+        };
+    }
+
+    if (deleteBtn) {
+        deleteBtn.onclick = async () => {
+            if (!confirm('Delete your TTS credentials?')) return;
+            try {
+                await fetch('/api/user/tts-credentials', { method: 'DELETE', headers });
+                if (statusEl) { statusEl.textContent = 'Credentials deleted'; statusEl.className = 'text-xs text-gray-400'; }
+                deleteBtn.classList.add('hidden');
+            } catch (e) { console.error('[TTS] Delete error:', e); }
+        };
+    }
+}
 
 /**
  * Initialize panels based on admin window defaults

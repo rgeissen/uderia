@@ -1395,7 +1395,6 @@ async def run_mcp_classification():
                     "port": mcp_server.get('port'),
                     "path": mcp_server.get('path', '/mcp')
                 },
-                "tts_credentials_json": ""  # Not needed for classification
             }
             
             # Activate services
@@ -1815,11 +1814,14 @@ async def get_app_config():
     from trusted_data_agent.core.config import APP_CONFIG
     
     try:
+        from trusted_data_agent.core.tts_service import get_tts_mode
+
         return jsonify({
             'status': 'success',
             'config': {
                 'rag_enabled': APP_CONFIG.RAG_ENABLED,
                 'voice_conversation_enabled': APP_CONFIG.VOICE_CONVERSATION_ENABLED,
+                'tts_mode': get_tts_mode(),
                 'charting_enabled': APP_CONFIG.CHARTING_ENABLED,
                 'rag_config': {
                     'refresh_on_startup': APP_CONFIG.RAG_REFRESH_ON_STARTUP,
@@ -1841,23 +1843,22 @@ async def get_app_config():
 async def save_app_config():
     """Save application configuration settings (feature availability)"""
     from trusted_data_agent.core.config import APP_CONFIG
-    
+
     try:
         data = await request.get_json()
-        
+
         # Update APP_CONFIG with new feature availability settings
         if 'rag_enabled' in data:
             APP_CONFIG.RAG_ENABLED = bool(data['rag_enabled'])
             logger.info(f"RAG enabled: {APP_CONFIG.RAG_ENABLED}")
-        
-        if 'voice_conversation_enabled' in data:
-            APP_CONFIG.VOICE_CONVERSATION_ENABLED = bool(data['voice_conversation_enabled'])
-            logger.info(f"Voice conversation enabled: {APP_CONFIG.VOICE_CONVERSATION_ENABLED}")
-        
+
+        # voice_conversation_enabled is now derived from tts_mode (managed via /v1/admin/tts-config)
+        # Keep backward compat: if explicitly sent, ignore silently
+
         if 'charting_enabled' in data:
             APP_CONFIG.CHARTING_ENABLED = bool(data['charting_enabled'])
             logger.info(f"Charting enabled: {APP_CONFIG.CHARTING_ENABLED}")
-        
+
         # Update RAG configuration
         if 'rag_config' in data:
             rag_config = data['rag_config']
@@ -1870,13 +1871,16 @@ async def save_app_config():
             if 'embedding_model' in rag_config:
                 APP_CONFIG.RAG_EMBEDDING_MODEL = str(rag_config['embedding_model'])
                 logger.info(f"RAG embedding model: {APP_CONFIG.RAG_EMBEDDING_MODEL}")
-        
+
+        from trusted_data_agent.core.tts_service import get_tts_mode
+
         return jsonify({
             'status': 'success',
             'message': 'Application configuration updated successfully',
             'config': {
                 'rag_enabled': APP_CONFIG.RAG_ENABLED,
                 'voice_conversation_enabled': APP_CONFIG.VOICE_CONVERSATION_ENABLED,
+                'tts_mode': get_tts_mode(),
                 'charting_enabled': APP_CONFIG.CHARTING_ENABLED,
                 'rag_config': {
                     'refresh_on_startup': APP_CONFIG.RAG_REFRESH_ON_STARTUP,
@@ -1892,6 +1896,104 @@ async def save_app_config():
             'status': 'error',
             'message': str(e)
         }), 500
+
+
+@admin_api_bp.route('/v1/admin/tts-config', methods=['GET'])
+@require_admin
+async def get_tts_config():
+    """Get TTS configuration: mode, whether global credentials are set, and project hint."""
+    from trusted_data_agent.core.tts_service import (
+        get_tts_mode, has_global_tts_credentials, get_global_credentials_project_id
+    )
+
+    try:
+        mode = get_tts_mode()
+        has_creds = has_global_tts_credentials()
+        project_id = get_global_credentials_project_id() if has_creds else None
+
+        return jsonify({
+            'status': 'success',
+            'tts_mode': mode,
+            'has_global_credentials': has_creds,
+            'project_id': project_id
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting TTS config: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/tts-config', methods=['POST'])
+@require_admin
+async def save_tts_config():
+    """Save TTS configuration: mode and optionally global credentials."""
+    from trusted_data_agent.core.tts_service import (
+        set_tts_mode, save_global_tts_credentials, delete_global_tts_credentials,
+        get_tts_mode, has_global_tts_credentials, get_global_credentials_project_id
+    )
+
+    try:
+        data = await request.get_json()
+
+        # Update TTS mode
+        new_mode = data.get('tts_mode')
+        if new_mode:
+            if not set_tts_mode(new_mode):
+                return jsonify({'status': 'error', 'message': f'Invalid TTS mode: {new_mode}'}), 400
+            logger.info(f"Admin updated TTS mode to: {new_mode}")
+
+        # Handle global credentials
+        global_creds = data.get('global_credentials_json', '').strip()
+        if global_creds:
+            if not save_global_tts_credentials(global_creds):
+                return jsonify({'status': 'error', 'message': 'Failed to save global TTS credentials. Check JSON format.'}), 400
+            logger.info("Admin saved global TTS credentials")
+
+        # Handle credential deletion
+        if data.get('delete_global_credentials'):
+            delete_global_tts_credentials()
+            logger.info("Admin deleted global TTS credentials")
+
+        mode = get_tts_mode()
+        has_creds = has_global_tts_credentials()
+        project_id = get_global_credentials_project_id() if has_creds else None
+
+        return jsonify({
+            'status': 'success',
+            'message': 'TTS configuration updated successfully',
+            'tts_mode': mode,
+            'has_global_credentials': has_creds,
+            'project_id': project_id
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error saving TTS config: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/tts-config/test', methods=['POST'])
+@require_admin
+async def test_admin_tts_credentials():
+    """Test TTS credentials without saving them."""
+    from trusted_data_agent.core.tts_service import test_tts_credentials
+
+    try:
+        data = await request.get_json()
+        credentials_json = data.get('credentials_json', '').strip()
+
+        if not credentials_json:
+            return jsonify({'status': 'error', 'message': 'No credentials provided'}), 400
+
+        result = test_tts_credentials(credentials_json)
+
+        if result['success']:
+            return jsonify({'status': 'success', 'message': 'TTS credentials are valid'}), 200
+        else:
+            return jsonify({'status': 'error', 'message': result['error']}), 400
+
+    except Exception as e:
+        logger.error(f"Error testing TTS credentials: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @admin_api_bp.route('/v1/admin/knowledge-config', methods=['GET'])

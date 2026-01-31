@@ -110,7 +110,6 @@ function captureAllProfileStates() {
  */
 function captureAdvancedSettings() {
     return {
-        ttsCredentials: document.getElementById('tts-credentials-json')?.value || '',
         chartingIntensity: document.getElementById('charting-intensity')?.value || 'none'
     };
 }
@@ -131,12 +130,7 @@ function attachChangeListeners() {
         llmSelect.addEventListener('change', () => markDirty('llm-provider'));
     }
     
-    // Advanced Settings
-    const ttsInput = document.getElementById('tts-credentials-json');
-    if (ttsInput) {
-        ttsInput.addEventListener('input', () => markDirty('tts-credentials'));
-    }
-    
+    // Advanced Settings (TTS credentials now managed via dedicated save button)
     const chartingSelect = document.getElementById('charting-intensity');
     if (chartingSelect) {
         chartingSelect.addEventListener('change', () => markDirty('charting-intensity'));

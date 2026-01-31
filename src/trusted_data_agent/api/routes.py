@@ -26,7 +26,6 @@ from trusted_data_agent.llm import handler as llm_handler
 from trusted_data_agent.agent import execution_service
 from trusted_data_agent.core import configuration_service
 from trusted_data_agent.core.utils import (
-    get_tts_client,
     synthesize_speech,
     unwrap_exception,
     _get_prompt_info,
@@ -476,11 +475,15 @@ async def get_app_config():
         'default_theme': 'legacy'
     })
     
+    from trusted_data_agent.core.tts_service import get_tts_mode
+    tts_mode = get_tts_mode()
+
     return jsonify({
         "charting_enabled": APP_CONFIG.CHARTING_ENABLED,
         "allow_synthesis_from_history": APP_CONFIG.ALLOW_SYNTHESIS_FROM_HISTORY,
         "default_charting_intensity": APP_CONFIG.DEFAULT_CHARTING_INTENSITY,
-        "voice_conversation_enabled": APP_CONFIG.VOICE_CONVERSATION_ENABLED,
+        "voice_conversation_enabled": tts_mode != 'disabled',
+        "tts_mode": tts_mode,
         "rag_enabled": APP_CONFIG.RAG_ENABLED,
         "license_info": APP_STATE.get("license_info"),
         "window_defaults": window_defaults
@@ -547,10 +550,18 @@ async def get_api_key(provider):
 async def text_to_speech():
     """
     Converts text to speech using Google Cloud TTS.
+    Resolves TTS client based on tts_mode (global/user/disabled).
     """
-    if not APP_CONFIG.VOICE_CONVERSATION_ENABLED:
-        app_logger.warning("Voice conversation feature is disabled by config. Aborting text-to-speech request.")
+    from trusted_data_agent.core.tts_service import resolve_tts_client, get_tts_mode
+
+    tts_mode = get_tts_mode()
+    if tts_mode == 'disabled':
+        app_logger.warning("Voice conversation feature is disabled. Aborting text-to-speech request.")
         return jsonify({"error": "Voice conversation feature is disabled."}), 403
+
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required."}), 401
 
     data = await request.get_json()
     text = data.get("text")
@@ -558,14 +569,12 @@ async def text_to_speech():
         app_logger.warning("No text provided in request body for speech synthesis.")
         return jsonify({"error": "No text provided for synthesis."}), 400
 
-    if "tts_client" not in APP_STATE or APP_STATE["tts_client"] is None:
-        app_logger.info("TTS client not in STATE, attempting to initialize.")
-        APP_STATE["tts_client"] = get_tts_client()
-
-    tts_client = APP_STATE.get("tts_client")
+    tts_client = resolve_tts_client(user_uuid)
     if not tts_client:
-        app_logger.error("TTS client is still not available after initialization attempt.")
-        return jsonify({"error": "TTS client could not be initialized. Check server logs."}), 500
+        if tts_mode == 'user':
+            return jsonify({"error": "No TTS credentials configured. Please add your Google TTS credentials in Settings."}), 403
+        else:
+            return jsonify({"error": "TTS client could not be initialized. Contact your administrator."}), 500
 
     audio_content = synthesize_speech(tts_client, text)
 
@@ -575,6 +584,84 @@ async def text_to_speech():
     else:
         app_logger.error("synthesize_speech returned None. Sending error response.")
         return jsonify({"error": "Failed to synthesize speech."}), 500
+
+
+# --- User TTS Credential Endpoints ---
+
+@api_bp.route("/api/user/tts-credentials", methods=["GET"])
+async def get_user_tts_status():
+    """Check if current user has TTS credentials stored and what the current TTS mode is."""
+    from trusted_data_agent.core.tts_service import get_tts_mode, has_user_tts_credentials
+
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required."}), 401
+
+    tts_mode = get_tts_mode()
+    has_creds = has_user_tts_credentials(user_uuid) if tts_mode == 'user' else False
+
+    return jsonify({
+        "tts_mode": tts_mode,
+        "has_credentials": has_creds
+    }), 200
+
+
+@api_bp.route("/api/user/tts-credentials", methods=["POST"])
+async def save_user_tts_creds():
+    """Save user's TTS credentials (encrypted)."""
+    from trusted_data_agent.core.tts_service import save_user_tts_credentials, get_tts_mode
+
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required."}), 401
+
+    if get_tts_mode() != 'user':
+        return jsonify({"error": "TTS is not in user-credentials mode. Contact your administrator."}), 403
+
+    data = await request.get_json()
+    credentials_json = data.get("credentials_json", "").strip()
+    if not credentials_json:
+        return jsonify({"error": "No credentials provided."}), 400
+
+    if save_user_tts_credentials(user_uuid, credentials_json):
+        return jsonify({"status": "success", "message": "TTS credentials saved successfully."}), 200
+    else:
+        return jsonify({"error": "Failed to save TTS credentials. Check JSON format."}), 400
+
+
+@api_bp.route("/api/user/tts-credentials", methods=["DELETE"])
+async def delete_user_tts_creds():
+    """Delete user's stored TTS credentials."""
+    from trusted_data_agent.core.tts_service import delete_user_tts_credentials
+
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required."}), 401
+
+    delete_user_tts_credentials(user_uuid)
+    return jsonify({"status": "success", "message": "TTS credentials deleted."}), 200
+
+
+@api_bp.route("/api/user/tts-credentials/test", methods=["POST"])
+async def test_user_tts_creds():
+    """Test user TTS credentials by attempting to create a client."""
+    from trusted_data_agent.core.tts_service import test_tts_credentials
+
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"error": "Authentication required."}), 401
+
+    data = await request.get_json()
+    credentials_json = data.get("credentials_json", "").strip()
+    if not credentials_json:
+        return jsonify({"error": "No credentials provided."}), 400
+
+    result = test_tts_credentials(credentials_json)
+    if result['success']:
+        return jsonify({"status": "success", "message": "TTS credentials are valid."}), 200
+    else:
+        return jsonify({"error": result['error']}), 400
+
 
 @api_bp.route("/tools")
 async def get_tools():
@@ -1962,7 +2049,6 @@ async def configure_services():
     service_config_data = {
         "provider": data_from_ui.get("provider"),
         "model": data_from_ui.get("model"),
-        "tts_credentials_json": data_from_ui.get("tts_credentials_json"),
         "user_uuid": user_uuid,
         "credentials": {
             "apiKey": creds.get("apiKey") or data_from_ui.get("apiKey"),

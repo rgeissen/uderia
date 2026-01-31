@@ -9,6 +9,5 @@
         "host": "localhost",
         "port": "8080",
         "path": "/mcp"
-    },
-    "tts_credentials_json": ""
+    }
 }

@@ -158,6 +158,10 @@ APP_STATE = {
 
     # LLM instance pooling by (provider, model, credentials_hash, user_uuid)
     "llm_instance_pool": {},  # {pool_key: llm_instance}
+
+    # TTS client caching (managed by tts_service.py)
+    "tts_client_global": None,       # Cached global TTS client (for 'global' mode)
+    "tts_clients_by_user": {},       # Per-user TTS client cache (for 'user' mode)
 }
 
 # Note: Recommended models are now stored in the database (recommended_models table)

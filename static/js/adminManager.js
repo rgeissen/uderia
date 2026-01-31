@@ -14,9 +14,16 @@ const AdminManager = {
 
     // Dirty state tracking for settings tabs
     optimizerSettingsOriginal: {},  // Original values loaded from server
-    systemSettingsOriginal: {},     // Original values loaded from server
     optimizerSettingsDirty: false,  // Has user modified optimizer settings?
-    systemSettingsDirty: false,     // Has user modified system settings?
+    // Per-tab dirty tracking for Application Configuration sub-tabs
+    featuresOriginal: {},
+    featuresDirty: false,
+    aiKnowledgeOriginal: {},
+    aiKnowledgeDirty: false,
+    uiSettingsOriginal: {},
+    uiSettingsDirty: false,
+    securityOriginal: {},
+    securityDirty: false,
 
     /**
      * Initialize the administration module
@@ -177,10 +184,22 @@ const AdminManager = {
             saveExpertSettingsBtn.addEventListener('click', () => this.saveExpertSettings());
         }
 
-        // System Settings (LLM Behavior, Security) - now in Application Configuration tab
-        const saveSystemSettingsBtn = document.getElementById('save-system-settings-btn');
-        if (saveSystemSettingsBtn) {
-            saveSystemSettingsBtn.addEventListener('click', () => this.saveSystemSettings());
+        // Per-tab save buttons for Application Configuration sub-tabs
+        const saveFeaturesBtn = document.getElementById('save-features-settings-btn');
+        if (saveFeaturesBtn) {
+            saveFeaturesBtn.addEventListener('click', () => this.saveFeatureSettings());
+        }
+        const saveAIKnowledgeBtn = document.getElementById('save-ai-knowledge-btn');
+        if (saveAIKnowledgeBtn) {
+            saveAIKnowledgeBtn.addEventListener('click', () => this.saveAIKnowledgeSettings());
+        }
+        const saveUISettingsBtn = document.getElementById('save-ui-settings-btn');
+        if (saveUISettingsBtn) {
+            saveUISettingsBtn.addEventListener('click', () => this.saveWindowDefaults());
+        }
+        const saveSecurityBtn = document.getElementById('save-security-settings-btn');
+        if (saveSecurityBtn) {
+            saveSecurityBtn.addEventListener('click', () => this.saveSecuritySettings());
         }
 
         // Temperature slider value display
@@ -197,8 +216,11 @@ const AdminManager = {
         // Setup dirty state tracking for Optimizer Settings
         this.setupOptimizerSettingsChangeListeners();
 
-        // Setup dirty state tracking for System Settings
-        this.setupSystemSettingsChangeListeners();
+        // Setup dirty state tracking for Application Configuration sub-tabs
+        this.setupFeaturesChangeListeners();
+        this.setupAIKnowledgeChangeListeners();
+        this.setupUISettingsChangeListeners();
+        this.setupSecurityChangeListeners();
 
         // Knowledge Global Settings
         const saveKnowledgeGlobalSettingsBtn = document.getElementById('save-knowledge-global-settings-btn');
@@ -215,6 +237,26 @@ const AdminManager = {
                     valueDisplay.textContent = parseFloat(e.target.value).toFixed(2);
                 }
             });
+        }
+
+        // TTS Mode toggle - show/hide global credentials section
+        const ttsModeSelect = document.getElementById('tts-mode-select');
+        if (ttsModeSelect) {
+            ttsModeSelect.addEventListener('change', (e) => {
+                this._toggleTtsGlobalSection(e.target.value);
+            });
+        }
+
+        // TTS Test Credentials button
+        const ttsTestBtn = document.getElementById('tts-test-global-btn');
+        if (ttsTestBtn) {
+            ttsTestBtn.addEventListener('click', () => this._testGlobalTtsCredentials());
+        }
+
+        // TTS Delete Credentials button
+        const ttsDeleteBtn = document.getElementById('tts-delete-global-btn');
+        if (ttsDeleteBtn) {
+            ttsDeleteBtn.addEventListener('click', () => this._deleteGlobalTtsCredentials());
         }
 
         const clearCacheBtn = document.getElementById('clear-cache-btn');
@@ -303,19 +345,7 @@ const AdminManager = {
             });
         }
 
-        // Application Configuration
-        const saveAppConfigBtn = document.getElementById('save-app-config-btn');
-        if (saveAppConfigBtn) {
-            saveAppConfigBtn.addEventListener('click', () => this.saveAppConfig());
-        }
-
-        // Window defaults button
-        const saveWindowDefaultsBtn = document.getElementById('save-window-defaults-btn');
-        if (saveWindowDefaultsBtn) {
-            saveWindowDefaultsBtn.addEventListener('click', () => this.saveWindowDefaults());
-        }
-
-        // Rate Limiting
+        // Rate Limiting checkbox handlers (UI toggle logic, not save)
         const rateLimitEnabledCheckbox = document.getElementById('rate-limit-enabled');
         if (rateLimitEnabledCheckbox) {
             rateLimitEnabledCheckbox.addEventListener('change', (e) => this.toggleGlobalOverrideAvailability(e.target.checked));
@@ -324,17 +354,6 @@ const AdminManager = {
         const globalOverrideCheckbox = document.getElementById('rate-limit-global-override');
         if (globalOverrideCheckbox) {
             globalOverrideCheckbox.addEventListener('change', (e) => this.toggleRateLimitSettings(e.target.checked));
-        }
-
-        const saveRateLimitBtn = document.getElementById('save-rate-limit-btn');
-        if (saveRateLimitBtn) {
-            saveRateLimitBtn.addEventListener('click', () => this.saveRateLimitSettings());
-        }
-
-        // Knowledge Repository Configuration
-        const saveKnowledgeConfigBtn = document.getElementById('save-knowledge-config-btn');
-        if (saveKnowledgeConfigBtn) {
-            saveKnowledgeConfigBtn.addEventListener('click', () => this.saveKnowledgeConfig());
         }
     },
 
@@ -454,6 +473,7 @@ const AdminManager = {
                 panel.classList.add('hidden');
             }
         });
+
     },
 
     /**
@@ -2321,19 +2341,75 @@ const AdminManager = {
     },
 
     /**
-     * Setup change listeners for System Settings fields (in App Config tab)
+     * Setup change listeners for Features tab fields
      */
-    setupSystemSettingsChangeListeners() {
-        // System settings field IDs (LLM Behavior + Security)
-        const systemFields = [
-            'llm-max-retries', 'llm-base-delay',
-            'session-timeout', 'token-expiry'
-        ];
+    setupFeaturesChangeListeners() {
+        const fields = ['enable-rag-system', 'enable-charting-system', 'tts-mode-select'];
+        fields.forEach(fieldId => {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                const eventType = el.type === 'checkbox' ? 'change' : el.tagName === 'SELECT' ? 'change' : 'input';
+                el.addEventListener(eventType, () => this.checkFeaturesDirty());
+            }
+        });
+    },
 
-        systemFields.forEach(fieldId => {
-            const element = document.getElementById(fieldId);
-            if (element) {
-                element.addEventListener('input', () => this.checkSystemSettingsDirty());
+    /**
+     * Setup change listeners for AI & Knowledge tab fields
+     */
+    setupAIKnowledgeChangeListeners() {
+        const fields = [
+            'llm-max-retries', 'llm-base-delay',
+            'rag-refresh-startup', 'rag-num-examples', 'rag-embedding-model',
+            'knowledge-rag-enabled', 'knowledge-min-relevance', 'knowledge-num-docs',
+            'knowledge-max-tokens', 'knowledge-reranking-enabled',
+            'knowledge-min-relevance-locked', 'knowledge-num-docs-locked',
+            'knowledge-max-tokens-locked', 'knowledge-reranking-locked'
+        ];
+        fields.forEach(fieldId => {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                const eventType = el.type === 'checkbox' || el.type === 'range' ? 'change' : 'input';
+                el.addEventListener(eventType, () => this.checkAIKnowledgeDirty());
+            }
+        });
+    },
+
+    /**
+     * Setup change listeners for UI Settings tab fields
+     */
+    setupUISettingsChangeListeners() {
+        const fields = [
+            'session-history-visible', 'session-history-default-mode', 'session-history-user-can-toggle',
+            'resources-visible', 'resources-default-mode', 'resources-user-can-toggle',
+            'status-visible', 'status-default-mode', 'status-user-can-toggle',
+            'always-show-welcome-screen', 'default-theme-selector'
+        ];
+        fields.forEach(fieldId => {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                const eventType = el.type === 'checkbox' ? 'change' : el.tagName === 'SELECT' ? 'change' : 'input';
+                el.addEventListener(eventType, () => this.checkUISettingsDirty());
+            }
+        });
+    },
+
+    /**
+     * Setup change listeners for Security tab fields
+     */
+    setupSecurityChangeListeners() {
+        const fields = [
+            'session-timeout', 'token-expiry',
+            'rate-limit-enabled', 'rate-limit-global-override',
+            'rate-limit-user-prompts-per-hour', 'rate-limit-user-prompts-per-day',
+            'rate-limit-user-configs-per-hour', 'rate-limit-ip-login-per-minute',
+            'rate-limit-ip-register-per-hour', 'rate-limit-ip-api-per-minute'
+        ];
+        fields.forEach(fieldId => {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                const eventType = el.type === 'checkbox' ? 'change' : 'input';
+                el.addEventListener(eventType, () => this.checkSecurityDirty());
             }
         });
     },
@@ -2367,67 +2443,114 @@ const AdminManager = {
     },
 
     /**
-     * Get current system settings values for comparison
+     * Snapshot and dirty checking - generic helper
      */
-    getSystemSettingsSnapshot() {
-        return {
-            llm_max_retries: this.getFieldValue('llm-max-retries'),
-            llm_base_delay: this.getFieldValue('llm-base-delay'),
-            session_timeout: this.getFieldValue('session-timeout'),
-            token_expiry: this.getFieldValue('token-expiry')
-        };
+    _snapshotFields(fieldMap) {
+        const snapshot = {};
+        for (const [key, fieldId] of Object.entries(fieldMap)) {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                snapshot[key] = el.type === 'checkbox' ? el.checked : el.value;
+            } else {
+                snapshot[key] = '';
+            }
+        }
+        return snapshot;
     },
 
-    /**
-     * Check if optimizer settings have changed from original values
-     */
+    _isDirty(current, original) {
+        return Object.keys(current).some(key => String(current[key]) !== String(original[key]));
+    },
+
+    _updateSaveButton(btnId, isDirty) {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.disabled = !isDirty;
+    },
+
+    // --- Features Tab ---
+    getFeaturesSnapshot() {
+        return this._snapshotFields({
+            rag_enabled: 'enable-rag-system',
+            charting_enabled: 'enable-charting-system',
+            tts_mode: 'tts-mode-select'
+        });
+    },
+    checkFeaturesDirty() {
+        this.featuresDirty = this._isDirty(this.getFeaturesSnapshot(), this.featuresOriginal);
+        this._updateSaveButton('save-features-settings-btn', this.featuresDirty);
+    },
+
+    // --- AI & Knowledge Tab ---
+    getAIKnowledgeSnapshot() {
+        return this._snapshotFields({
+            llm_max_retries: 'llm-max-retries',
+            llm_base_delay: 'llm-base-delay',
+            rag_refresh: 'rag-refresh-startup',
+            rag_num_examples: 'rag-num-examples',
+            rag_embedding_model: 'rag-embedding-model',
+            knowledge_enabled: 'knowledge-rag-enabled',
+            knowledge_min_relevance: 'knowledge-min-relevance',
+            knowledge_num_docs: 'knowledge-num-docs',
+            knowledge_max_tokens: 'knowledge-max-tokens',
+            knowledge_reranking: 'knowledge-reranking-enabled',
+            knowledge_min_relevance_locked: 'knowledge-min-relevance-locked',
+            knowledge_num_docs_locked: 'knowledge-num-docs-locked',
+            knowledge_max_tokens_locked: 'knowledge-max-tokens-locked',
+            knowledge_reranking_locked: 'knowledge-reranking-locked'
+        });
+    },
+    checkAIKnowledgeDirty() {
+        this.aiKnowledgeDirty = this._isDirty(this.getAIKnowledgeSnapshot(), this.aiKnowledgeOriginal);
+        this._updateSaveButton('save-ai-knowledge-btn', this.aiKnowledgeDirty);
+    },
+
+    // --- UI Settings Tab ---
+    getUISettingsSnapshot() {
+        return this._snapshotFields({
+            session_history_visible: 'session-history-visible',
+            session_history_mode: 'session-history-default-mode',
+            session_history_toggle: 'session-history-user-can-toggle',
+            resources_visible: 'resources-visible',
+            resources_mode: 'resources-default-mode',
+            resources_toggle: 'resources-user-can-toggle',
+            status_visible: 'status-visible',
+            status_mode: 'status-default-mode',
+            status_toggle: 'status-user-can-toggle',
+            welcome_screen: 'always-show-welcome-screen',
+            theme: 'default-theme-selector'
+        });
+    },
+    checkUISettingsDirty() {
+        this.uiSettingsDirty = this._isDirty(this.getUISettingsSnapshot(), this.uiSettingsOriginal);
+        this._updateSaveButton('save-ui-settings-btn', this.uiSettingsDirty);
+    },
+
+    // --- Security Tab ---
+    getSecuritySnapshot() {
+        return this._snapshotFields({
+            session_timeout: 'session-timeout',
+            token_expiry: 'token-expiry',
+            rate_limit_enabled: 'rate-limit-enabled',
+            rate_limit_override: 'rate-limit-global-override',
+            prompts_per_hour: 'rate-limit-user-prompts-per-hour',
+            prompts_per_day: 'rate-limit-user-prompts-per-day',
+            configs_per_hour: 'rate-limit-user-configs-per-hour',
+            login_per_minute: 'rate-limit-ip-login-per-minute',
+            register_per_hour: 'rate-limit-ip-register-per-hour',
+            api_per_minute: 'rate-limit-ip-api-per-minute'
+        });
+    },
+    checkSecurityDirty() {
+        this.securityDirty = this._isDirty(this.getSecuritySnapshot(), this.securityOriginal);
+        this._updateSaveButton('save-security-settings-btn', this.securityDirty);
+    },
+
+    // --- Optimizer Tab (unchanged) ---
     checkOptimizerSettingsDirty() {
         const current = this.getOptimizerSettingsSnapshot();
         const original = this.optimizerSettingsOriginal;
-
-        // Compare all values (convert to string for consistent comparison)
-        const isDirty = Object.keys(current).some(key => {
-            return String(current[key]) !== String(original[key]);
-        });
-
-        this.optimizerSettingsDirty = isDirty;
-        this.updateOptimizerSaveButton();
-    },
-
-    /**
-     * Check if system settings have changed from original values
-     */
-    checkSystemSettingsDirty() {
-        const current = this.getSystemSettingsSnapshot();
-        const original = this.systemSettingsOriginal;
-
-        // Compare all values
-        const isDirty = Object.keys(current).some(key => {
-            return String(current[key]) !== String(original[key]);
-        });
-
-        this.systemSettingsDirty = isDirty;
-        this.updateSystemSaveButton();
-    },
-
-    /**
-     * Update the Optimizer Settings save button state
-     */
-    updateOptimizerSaveButton() {
-        const btn = document.getElementById('save-expert-settings-btn');
-        if (btn) {
-            btn.disabled = !this.optimizerSettingsDirty;
-        }
-    },
-
-    /**
-     * Update the System Settings save button state
-     */
-    updateSystemSaveButton() {
-        const btn = document.getElementById('save-system-settings-btn');
-        if (btn) {
-            btn.disabled = !this.systemSettingsDirty;
-        }
+        this.optimizerSettingsDirty = this._isDirty(current, original);
+        this._updateSaveButton('save-expert-settings-btn', this.optimizerSettingsDirty);
     },
 
     /**
@@ -2674,55 +2797,6 @@ const AdminManager = {
     },
 
     /**
-     * Save system settings to backend (LLM Behavior, Security)
-     */
-    async saveSystemSettings() {
-        try {
-            const token = localStorage.getItem('tda_auth_token');
-            if (!token) {
-                window.showNotification('error', 'Not authenticated');
-                return;
-            }
-
-            const settings = {
-                llm_behavior: {
-                    max_retries: parseInt(this.getFieldValue('llm-max-retries')),
-                    base_delay: parseFloat(this.getFieldValue('llm-base-delay'))
-                },
-                security: {
-                    session_timeout: parseInt(this.getFieldValue('session-timeout')),
-                    token_expiry: parseInt(this.getFieldValue('token-expiry'))
-                }
-            };
-
-            const response = await fetch('/api/v1/admin/expert-settings', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(settings)
-            });
-
-            const data = await response.json();
-
-            if (response.ok && data.status === 'success') {
-                // Success - update dirty state
-                this.systemSettingsOriginal = this.getSystemSettingsSnapshot();
-                this.systemSettingsDirty = false;
-                this.updateSystemSaveButton();
-
-                window.showNotification('success', 'System settings saved successfully');
-            } else {
-                window.showNotification('error', data.message || 'Failed to save settings');
-            }
-        } catch (error) {
-            console.error('[AdminManager] Error saving system settings:', error);
-            window.showNotification('error', error.message);
-        }
-    },
-
-    /**
      * Clear application cache
      */
     async clearCache() {
@@ -2808,11 +2882,9 @@ const AdminManager = {
             if (response.ok && data.status === 'success') {
                 // Set checkbox values
                 const ragCheckbox = document.getElementById('enable-rag-system');
-                const voiceCheckbox = document.getElementById('enable-voice-system');
                 const chartingCheckbox = document.getElementById('enable-charting-system');
-                
+
                 if (ragCheckbox) ragCheckbox.checked = data.config.rag_enabled || false;
-                if (voiceCheckbox) voiceCheckbox.checked = data.config.voice_conversation_enabled || false;
                 if (chartingCheckbox) chartingCheckbox.checked = data.config.charting_enabled || false;
                 
                 // Set RAG configuration values
@@ -2847,6 +2919,39 @@ const AdminManager = {
                     console.error('[AdminManager] Error loading knowledge config:', knowledgeError);
                 }
 
+                // Load TTS configuration from dedicated endpoint
+                try {
+                    const ttsResp = await fetch('/api/v1/admin/tts-config', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (ttsResp.ok) {
+                        const ttsData = await ttsResp.json();
+                        const ttsModeSelect = document.getElementById('tts-mode-select');
+                        if (ttsModeSelect) {
+                            ttsModeSelect.value = ttsData.tts_mode || 'disabled';
+                            this._toggleTtsGlobalSection(ttsData.tts_mode);
+                        }
+                        // Show status if global credentials exist
+                        const ttsStatus = document.getElementById('tts-global-status');
+                        const ttsDeleteBtn = document.getElementById('tts-delete-global-btn');
+                        if (ttsData.has_global_credentials) {
+                            if (ttsStatus) {
+                                ttsStatus.textContent = `Credentials configured${ttsData.project_id ? ' (Project: ' + ttsData.project_id + ')' : ''}`;
+                                ttsStatus.className = 'text-xs text-green-400';
+                            }
+                            if (ttsDeleteBtn) ttsDeleteBtn.classList.remove('hidden');
+                        } else {
+                            if (ttsStatus) {
+                                ttsStatus.textContent = 'No global credentials configured';
+                                ttsStatus.className = 'text-xs text-gray-400';
+                            }
+                            if (ttsDeleteBtn) ttsDeleteBtn.classList.add('hidden');
+                        }
+                    }
+                } catch (ttsError) {
+                    console.error('[AdminManager] Error loading TTS config:', ttsError);
+                }
+
                 // Load LLM Behavior and Security settings from expert-settings endpoint
                 try {
                     const expertResp = await fetch('/api/v1/admin/expert-settings', {
@@ -2874,11 +2979,21 @@ const AdminManager = {
                     console.error('[AdminManager] Error loading system settings:', expertError);
                 }
 
-                // Store original values for dirty tracking (after all settings are loaded)
-                this.systemSettingsOriginal = this.getSystemSettingsSnapshot();
-                this.systemSettingsDirty = false;
-                this.updateSystemSaveButton();
+                // Store original values for dirty tracking - AI & Knowledge tab
+                this.aiKnowledgeOriginal = this.getAIKnowledgeSnapshot();
+                this.aiKnowledgeDirty = false;
+                this._updateSaveButton('save-ai-knowledge-btn', false);
+
+                // Store original values for dirty tracking - Security tab
+                this.securityOriginal = this.getSecuritySnapshot();
+                this.securityDirty = false;
+                this._updateSaveButton('save-security-settings-btn', false);
             }
+
+            // Store original values for dirty tracking - Features tab
+            this.featuresOriginal = this.getFeaturesSnapshot();
+            this.featuresDirty = false;
+            this._updateSaveButton('save-features-settings-btn', false);
 
             // Load window defaults
             await this.loadWindowDefaults();
@@ -2935,6 +3050,11 @@ const AdminManager = {
                 const defaultThemeSelector = document.getElementById('default-theme-selector');
                 if (alwaysShowWelcomeCheckbox) alwaysShowWelcomeCheckbox.checked = wd.always_show_welcome_screen || false;
                 if (defaultThemeSelector) defaultThemeSelector.value = wd.default_theme || 'legacy';
+
+                // Store original values for dirty tracking - UI Settings tab
+                this.uiSettingsOriginal = this.getUISettingsSnapshot();
+                this.uiSettingsDirty = false;
+                this._updateSaveButton('save-ui-settings-btn', false);
             }
         } catch (error) {
             console.error('[AdminManager] Error loading window defaults:', error);
@@ -3001,44 +3121,41 @@ const AdminManager = {
             const data = await response.json();
             
             if (response.ok && data.status === 'success') {
+                // Reset dirty state
+                this.uiSettingsOriginal = this.getUISettingsSnapshot();
+                this.uiSettingsDirty = false;
+                this._updateSaveButton('save-ui-settings-btn', false);
                 if (window.showNotification) {
-                    window.showNotification('success', 'Startup settings saved successfully. Users will see these defaults on next load.');
+                    window.showNotification('success', 'UI settings saved successfully');
                 }
             } else {
                 if (window.showNotification) {
-                    window.showNotification('error', data.message || 'Failed to save window defaults');
+                    window.showNotification('error', data.message || 'Failed to save UI settings');
                 }
             }
         } catch (error) {
             console.error('[AdminManager] Error saving window defaults:', error);
             if (window.showNotification) {
-                window.showNotification('error', 'Failed to save window defaults');
+                window.showNotification('error', 'Failed to save UI settings');
             }
         }
     },
 
     /**
-     * Save application configuration (feature toggles)
+     * Save Feature Settings (Features tab only: RAG toggle, Charting toggle, TTS config)
      */
-    async saveAppConfig() {
+    async saveFeatureSettings() {
         try {
             const token = localStorage.getItem('tda_auth_token');
             if (!token) return;
 
             const ragCheckbox = document.getElementById('enable-rag-system');
-            const voiceCheckbox = document.getElementById('enable-voice-system');
             const chartingCheckbox = document.getElementById('enable-charting-system');
-            const ragRefreshCheckbox = document.getElementById('rag-refresh-startup');
 
+            // Save feature toggles (without rag_config — that belongs to AI & Knowledge tab)
             const config = {
                 rag_enabled: ragCheckbox ? ragCheckbox.checked : false,
-                voice_conversation_enabled: voiceCheckbox ? voiceCheckbox.checked : false,
-                charting_enabled: chartingCheckbox ? chartingCheckbox.checked : false,
-                rag_config: {
-                    refresh_on_startup: ragRefreshCheckbox ? ragRefreshCheckbox.checked : true,
-                    num_examples: parseInt(this.getFieldValue('rag-num-examples')) || 3,
-                    embedding_model: this.getFieldValue('rag-embedding-model') || 'all-MiniLM-L6-v2'
-                }
+                charting_enabled: chartingCheckbox ? chartingCheckbox.checked : false
             };
 
             const response = await fetch('/api/v1/admin/app-config', {
@@ -3051,21 +3168,386 @@ const AdminManager = {
             });
 
             const data = await response.json();
-            
-            if (response.ok && data.status === 'success') {
-                // Use configurationHandler's notification system (positioned in header)
+
+            if (!response.ok || data.status !== 'success') {
                 if (window.showNotification) {
-                    window.showNotification('success', 'Feature settings saved successfully');
+                    window.showNotification('error', data.message || 'Failed to save feature settings');
                 }
-            } else {
-                if (window.showNotification) {
-                    window.showNotification('error', data.message || 'Failed to save settings');
+                return;
+            }
+
+            // Save TTS configuration separately
+            const ttsModeSelect = document.getElementById('tts-mode-select');
+            if (ttsModeSelect) {
+                const ttsConfig = { tts_mode: ttsModeSelect.value };
+                // Include global credentials if mode is global and textarea has content
+                if (ttsModeSelect.value === 'global') {
+                    const globalCreds = document.getElementById('tts-global-credentials-json')?.value?.trim();
+                    if (globalCreds) {
+                        ttsConfig.global_credentials_json = globalCreds;
+                    }
+                }
+                const ttsResp = await fetch('/api/v1/admin/tts-config', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(ttsConfig)
+                });
+                const ttsData = await ttsResp.json();
+                if (!ttsResp.ok) {
+                    if (window.showNotification) {
+                        window.showNotification('error', ttsData.message || 'Failed to save TTS config');
+                    }
+                    return;
+                }
+                // Clear the credentials textarea after successful save (credentials are stored encrypted)
+                const credsTextarea = document.getElementById('tts-global-credentials-json');
+                if (credsTextarea && credsTextarea.value.trim()) {
+                    credsTextarea.value = '';
+                }
+                // Update status display
+                const ttsStatus = document.getElementById('tts-global-status');
+                const ttsDeleteBtn = document.getElementById('tts-delete-global-btn');
+                if (ttsData.has_global_credentials) {
+                    if (ttsStatus) {
+                        ttsStatus.textContent = `Credentials configured${ttsData.project_id ? ' (Project: ' + ttsData.project_id + ')' : ''}`;
+                        ttsStatus.className = 'text-xs text-green-400';
+                    }
+                    if (ttsDeleteBtn) ttsDeleteBtn.classList.remove('hidden');
+                }
+
+                // Sync user-facing TTS section in Advanced Settings
+                if (window.updateUserTtsSection) {
+                    window.updateUserTtsSection(ttsModeSelect.value);
                 }
             }
+
+            // Reset dirty state
+            this.featuresOriginal = this.getFeaturesSnapshot();
+            this.featuresDirty = false;
+            this._updateSaveButton('save-features-settings-btn', false);
+
+            if (window.showNotification) {
+                window.showNotification('success', 'Feature settings saved successfully');
+            }
         } catch (error) {
-            console.error('[AdminManager] Error saving app config:', error);
+            console.error('[AdminManager] Error saving feature settings:', error);
             if (window.showNotification) {
                 window.showNotification('error', error.message);
+            }
+        }
+    },
+
+    /**
+     * Save AI & Knowledge Settings (LLM Behavior, Planner Repo config, Knowledge Repo settings)
+     */
+    async saveAIKnowledgeSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return;
+
+            // 1. Save LLM Behavior to expert-settings
+            const expertSettings = {
+                llm_behavior: {
+                    max_retries: parseInt(this.getFieldValue('llm-max-retries')),
+                    base_delay: parseFloat(this.getFieldValue('llm-base-delay'))
+                }
+            };
+
+            const expertResp = await fetch('/api/v1/admin/expert-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(expertSettings)
+            });
+
+            const expertData = await expertResp.json();
+            if (!expertResp.ok || expertData.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', expertData.message || 'Failed to save LLM behavior settings');
+                }
+                return;
+            }
+
+            // 2. Save RAG config to app-config
+            const ragRefreshCheckbox = document.getElementById('rag-refresh-startup');
+            const ragConfig = {
+                rag_config: {
+                    refresh_on_startup: ragRefreshCheckbox ? ragRefreshCheckbox.checked : true,
+                    num_examples: parseInt(this.getFieldValue('rag-num-examples')) || 3,
+                    embedding_model: this.getFieldValue('rag-embedding-model') || 'all-MiniLM-L6-v2'
+                }
+            };
+
+            const ragResp = await fetch('/api/v1/admin/app-config', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(ragConfig)
+            });
+
+            const ragData = await ragResp.json();
+            if (!ragResp.ok || ragData.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', ragData.message || 'Failed to save RAG configuration');
+                }
+                return;
+            }
+
+            // 3. Save Knowledge Repository global settings
+            const knowledgeSettings = {
+                minRelevanceScore: {
+                    value: parseFloat(document.getElementById('knowledge-min-relevance')?.value || 0.30),
+                    is_locked: document.getElementById('knowledge-min-relevance-locked')?.checked || false
+                },
+                maxDocs: {
+                    value: parseInt(document.getElementById('knowledge-num-docs')?.value || 3),
+                    is_locked: document.getElementById('knowledge-num-docs-locked')?.checked || false
+                },
+                maxTokens: {
+                    value: parseInt(document.getElementById('knowledge-max-tokens')?.value || 2000),
+                    is_locked: document.getElementById('knowledge-max-tokens-locked')?.checked || false
+                },
+                rerankingEnabled: {
+                    value: document.getElementById('knowledge-reranking-enabled')?.checked || false,
+                    is_locked: document.getElementById('knowledge-reranking-locked')?.checked || false
+                }
+            };
+
+            // Validate knowledge values
+            if (knowledgeSettings.minRelevanceScore.value < 0 || knowledgeSettings.minRelevanceScore.value > 1) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Min relevance score must be between 0.0 and 1.0');
+                }
+                return;
+            }
+            if (knowledgeSettings.maxDocs.value < 1 || knowledgeSettings.maxDocs.value > 20) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Max documents must be between 1 and 20');
+                }
+                return;
+            }
+            if (knowledgeSettings.maxTokens.value < 500 || knowledgeSettings.maxTokens.value > 10000) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Max tokens must be between 500 and 10000');
+                }
+                return;
+            }
+
+            const knowledgeResp = await fetch('/api/v1/admin/knowledge-global-settings', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(knowledgeSettings)
+            });
+
+            if (!knowledgeResp.ok) {
+                const knowledgeError = await knowledgeResp.json();
+                if (window.showNotification) {
+                    window.showNotification('error', knowledgeError.message || 'Failed to save knowledge settings');
+                }
+                return;
+            }
+
+            // Reset dirty state
+            this.aiKnowledgeOriginal = this.getAIKnowledgeSnapshot();
+            this.aiKnowledgeDirty = false;
+            this._updateSaveButton('save-ai-knowledge-btn', false);
+
+            if (window.showNotification) {
+                window.showNotification('success', 'AI & Knowledge settings saved successfully');
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error saving AI & Knowledge settings:', error);
+            if (window.showNotification) {
+                window.showNotification('error', error.message);
+            }
+        }
+    },
+
+    /**
+     * Save Security Settings (Session/Token expiry, Rate limiting)
+     */
+    async saveSecuritySettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return;
+
+            // 1. Save session/token security to expert-settings
+            const expertSettings = {
+                security: {
+                    session_timeout: parseInt(this.getFieldValue('session-timeout')),
+                    token_expiry: parseInt(this.getFieldValue('token-expiry'))
+                }
+            };
+
+            const expertResp = await fetch('/api/v1/admin/expert-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(expertSettings)
+            });
+
+            const expertData = await expertResp.json();
+            if (!expertResp.ok || expertData.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', expertData.message || 'Failed to save security settings');
+                }
+                return;
+            }
+
+            // 2. Save rate limit settings
+            const rateLimitSettings = {
+                rate_limit_enabled: document.getElementById('rate-limit-enabled')?.checked ? 'true' : 'false',
+                rate_limit_global_override: document.getElementById('rate-limit-global-override')?.checked ? 'true' : 'false',
+                rate_limit_user_prompts_per_hour: document.getElementById('rate-limit-user-prompts-per-hour')?.value || '100',
+                rate_limit_user_prompts_per_day: document.getElementById('rate-limit-user-prompts-per-day')?.value || '1000',
+                rate_limit_user_configs_per_hour: document.getElementById('rate-limit-user-configs-per-hour')?.value || '10',
+                rate_limit_ip_login_per_minute: document.getElementById('rate-limit-ip-login-per-minute')?.value || '5',
+                rate_limit_ip_register_per_hour: document.getElementById('rate-limit-ip-register-per-hour')?.value || '3',
+                rate_limit_ip_api_per_minute: document.getElementById('rate-limit-ip-api-per-minute')?.value || '60'
+            };
+
+            const rateLimitResp = await fetch('/api/v1/auth/admin/rate-limit-settings', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(rateLimitSettings)
+            });
+
+            if (!rateLimitResp.ok) {
+                const rateLimitError = await rateLimitResp.json();
+                if (window.showNotification) {
+                    window.showNotification('error', rateLimitError.message || 'Failed to save rate limit settings');
+                }
+                return;
+            }
+
+            // Reset dirty state
+            this.securityOriginal = this.getSecuritySnapshot();
+            this.securityDirty = false;
+            this._updateSaveButton('save-security-settings-btn', false);
+
+            if (window.showNotification) {
+                window.showNotification('success', 'Security settings saved successfully');
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error saving security settings:', error);
+            if (window.showNotification) {
+                window.showNotification('error', error.message);
+            }
+        }
+    },
+
+    /**
+     * Toggle visibility of the global TTS credentials section based on mode
+     */
+    _toggleTtsGlobalSection(mode) {
+        const section = document.getElementById('tts-global-credentials-section');
+        if (section) {
+            section.classList.toggle('hidden', mode !== 'global');
+        }
+    },
+
+    /**
+     * Test global TTS credentials without saving
+     */
+    async _testGlobalTtsCredentials() {
+        const textarea = document.getElementById('tts-global-credentials-json');
+        const statusEl = document.getElementById('tts-global-status');
+        const creds = textarea?.value?.trim();
+
+        if (!creds) {
+            if (statusEl) {
+                statusEl.textContent = 'Please paste credentials JSON first';
+                statusEl.className = 'text-xs text-yellow-400';
+            }
+            return;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = 'Testing...';
+            statusEl.className = 'text-xs text-blue-400';
+        }
+
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const resp = await fetch('/api/v1/admin/tts-config/test', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ credentials_json: creds })
+            });
+            const data = await resp.json();
+
+            if (resp.ok && data.status === 'success') {
+                if (statusEl) {
+                    statusEl.textContent = 'Credentials are valid';
+                    statusEl.className = 'text-xs text-green-400';
+                }
+            } else {
+                if (statusEl) {
+                    statusEl.textContent = data.message || 'Credentials test failed';
+                    statusEl.className = 'text-xs text-red-400';
+                }
+            }
+        } catch (err) {
+            console.error('[AdminManager] TTS test error:', err);
+            if (statusEl) {
+                statusEl.textContent = 'Test failed: ' + err.message;
+                statusEl.className = 'text-xs text-red-400';
+            }
+        }
+    },
+
+    /**
+     * Delete global TTS credentials
+     */
+    async _deleteGlobalTtsCredentials() {
+        if (!confirm('Delete global TTS credentials? Users in global mode will lose TTS access.')) return;
+
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const resp = await fetch('/api/v1/admin/tts-config', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ delete_global_credentials: true })
+            });
+            const data = await resp.json();
+
+            if (resp.ok) {
+                const statusEl = document.getElementById('tts-global-status');
+                const deleteBtn = document.getElementById('tts-delete-global-btn');
+                if (statusEl) {
+                    statusEl.textContent = 'No global credentials configured';
+                    statusEl.className = 'text-xs text-gray-400';
+                }
+                if (deleteBtn) deleteBtn.classList.add('hidden');
+                if (window.showNotification) {
+                    window.showNotification('success', 'Global TTS credentials deleted');
+                }
+            }
+        } catch (err) {
+            console.error('[AdminManager] TTS delete error:', err);
+            if (window.showNotification) {
+                window.showNotification('error', 'Failed to delete TTS credentials');
             }
         }
     },

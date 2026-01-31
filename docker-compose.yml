@@ -30,6 +30,16 @@ services:
       - APP_BASE_URL=https://tda.uderia.com
       # Secret key for session security and cryptographic signing. Change this to a strong random string in production or use .env file.
       - SECRET_KEY=${SECRET_KEY}
+      # --- Text-to-Speech (TTS) Bootstrap ---
+      # Set TDA_TTS_CREDENTIALS to auto-enable global TTS on first startup.
+      # Provide the full Google service account JSON inline:
+      #   TDA_TTS_CREDENTIALS={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+      # Alternatively, mount a service account file and set GOOGLE_APPLICATION_CREDENTIALS:
+      #   GOOGLE_APPLICATION_CREDENTIALS=/app/tts-credentials.json
+      # On startup, if tts_mode is 'disabled' and no credentials exist in the DB yet,
+      # the credentials are encrypted, stored in the database, and tts_mode is set to 'global'.
+      # After bootstrap, the env var is no longer needed (credentials persist in the DB).
+      # - TDA_TTS_CREDENTIALS=${TDA_TTS_CREDENTIALS}
       
     networks:
       - tda_network

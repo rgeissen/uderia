@@ -100,7 +100,13 @@ def init_database():
         
         # Initialize system settings
         _initialize_default_system_settings()
-        
+
+        # Sync VOICE_CONVERSATION_ENABLED from tts_mode setting
+        _sync_tts_mode_to_config()
+
+        # Bootstrap TTS credentials from environment variables (if available)
+        _bootstrap_tts_from_env()
+
         # Initialize document upload configurations
         _initialize_document_upload_configs()
         
@@ -444,6 +450,7 @@ def _initialize_default_system_settings():
         'rate_limit_ip_login_per_minute': ('5', 'Maximum login attempts per minute per IP address'),
         'rate_limit_ip_register_per_hour': ('3', 'Maximum registrations per hour per IP address'),
         'rate_limit_ip_api_per_minute': ('60', 'Maximum API calls per minute per IP address'),
+        'tts_mode': ('disabled', 'TTS credential mode: disabled, global, or user'),
     }
     
     try:
@@ -465,6 +472,37 @@ def _initialize_default_system_settings():
             
     except Exception as e:
         logger.error(f"Error initializing system settings: {e}", exc_info=True)
+
+
+def _sync_tts_mode_to_config():
+    """
+    Read tts_mode from system_settings and sync APP_CONFIG.VOICE_CONVERSATION_ENABLED.
+    Called at startup after system settings are initialized.
+    """
+    from trusted_data_agent.auth.models import SystemSettings
+    from trusted_data_agent.core.config import APP_CONFIG
+
+    try:
+        with get_db_session() as session:
+            setting = session.query(SystemSettings).filter_by(setting_key='tts_mode').first()
+            if setting:
+                tts_mode = setting.setting_value
+                APP_CONFIG.VOICE_CONVERSATION_ENABLED = (tts_mode != 'disabled')
+                logger.info(f"TTS mode synced from database: {tts_mode} (voice_enabled={APP_CONFIG.VOICE_CONVERSATION_ENABLED})")
+    except Exception as e:
+        logger.warning(f"Could not sync TTS mode from database: {e}")
+
+
+def _bootstrap_tts_from_env():
+    """
+    Bootstrap global TTS credentials from environment variables at startup.
+    Delegates to tts_service.bootstrap_tts_from_env().
+    """
+    try:
+        from trusted_data_agent.core.tts_service import bootstrap_tts_from_env
+        bootstrap_tts_from_env()
+    except Exception as e:
+        logger.warning(f"Could not bootstrap TTS credentials from environment: {e}")
 
 
 def _initialize_document_upload_configs():

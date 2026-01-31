@@ -719,7 +719,6 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
         model = config_data.get("model")
         server_name = config_data.get("mcp_server", {}).get("name") or config_data.get("server_name")
         server_id = config_data.get("mcp_server", {}).get("id") or config_data.get("server_id")
-        tts_credentials_json = config_data.get("tts_credentials_json")
         user_uuid = config_data.get("user_uuid")  # Extract user_uuid for per-user isolation
 
         # Determine if MCP server configuration is provided
@@ -1049,11 +1048,7 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
             else:
                 APP_CONFIG.CHART_MCP_CONNECTED = False
 
-            APP_STATE['tts_credentials_json'] = tts_credentials_json
-            if APP_CONFIG.VOICE_CONVERSATION_ENABLED:
-                from trusted_data_agent.core.utils import get_tts_client
-                app_logger.info("AUDIO DEBUG: Configuration updated. Re-initializing TTS client.")
-                APP_STATE['tts_client'] = get_tts_client()
+            # TTS credentials are now managed via tts_service.py (admin/user endpoints)
 
             # --- 5. Finalize Contexts ---
             _regenerate_contexts()

@@ -21,6 +21,15 @@ RUN sed -i '1s/^\xEF\xBB\xBF//' src/trusted_data_agent/main.py
 # Install the application in editable mode to make the 'src' package discoverable
 RUN pip install -e .
 
+# --- Environment Variables ---
+# TDA_TTS_CREDENTIALS (optional): Google service account JSON string to bootstrap global TTS.
+#   On first startup, if tts_mode is 'disabled', credentials are encrypted and stored in the DB,
+#   and tts_mode is set to 'global'. The env var is not needed after initial bootstrap.
+#   Example: docker run -e TDA_TTS_CREDENTIALS='{"type":"service_account","project_id":"..."}' ...
+# GOOGLE_APPLICATION_CREDENTIALS (optional): File path to a Google service account JSON file.
+#   Used as fallback if TDA_TTS_CREDENTIALS is not set. Mount the file into the container.
+#   Example: docker run -v /path/to/creds.json:/app/tts-creds.json -e GOOGLE_APPLICATION_CREDENTIALS=/app/tts-creds.json ...
+
 # Make port 5050 available to the world outside this container
 EXPOSE 5050
 

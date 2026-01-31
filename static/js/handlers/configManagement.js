@@ -472,9 +472,7 @@ export async function handleConfigFormSubmit(e) {
         safeSetItem(`${config.provider.toLowerCase()}ApiKey`, config.apiKey);
     }
 
-    if (config.tts_credentials_json) {
-        safeSetItem('ttsCredentialsJson', config.tts_credentials_json);
-    }
+    // TTS credentials are now managed via dedicated TTS endpoints (admin/user)
 
     try {
         const res = await fetch('/configure', {
