@@ -3,9 +3,60 @@ Unified session name generation for all profile types.
 Provides consistent timing, event emission, and token tracking.
 """
 import logging
+import re
 from typing import AsyncGenerator, Tuple, Optional
 
 logger = logging.getLogger("quart.app")
+
+
+# Common words to exclude when building a fallback title from the query
+_STOP_WORDS = frozenset({
+    'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+    'should', 'may', 'might', 'shall', 'can', 'need', 'dare', 'ought',
+    'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as',
+    'into', 'through', 'during', 'before', 'after', 'above', 'below',
+    'and', 'but', 'or', 'nor', 'not', 'so', 'yet', 'both', 'either',
+    'neither', 'each', 'every', 'all', 'any', 'few', 'more', 'most',
+    'other', 'some', 'such', 'no', 'only', 'own', 'same', 'than',
+    'too', 'very', 'just', 'because', 'if', 'when', 'where', 'how',
+    'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those',
+    'i', 'me', 'my', 'myself', 'we', 'our', 'you', 'your', 'he', 'she',
+    'it', 'its', 'they', 'them', 'their', 'show', 'tell', 'give', 'get',
+    'make', 'let', 'please', 'help', 'want', 'like', 'know', 'think',
+    'about', 'up', 'out', 'there', 'here', 'also', 'then', 'now',
+})
+
+
+def _fallback_name_from_query(query: str, max_words: int = 5) -> str:
+    """
+    Extract a meaningful session name from the user's query itself.
+    Used as a fallback when LLM-based generation fails.
+
+    Examples:
+        "Show me all products with low inventory" -> "Products Low Inventory"
+        "What databases are on the system?"       -> "Databases System"
+        "How many users signed up last month?"     -> "Users Signed Up Month"
+    """
+    if not query or not query.strip():
+        return "New Chat"
+
+    # Strip @TAG prefix (e.g., "@CHAT What is...")
+    cleaned = re.sub(r'^@\S+\s+', '', query.strip())
+    # Remove punctuation
+    cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
+    # Extract significant words
+    words = [w for w in cleaned.split() if w.lower() not in _STOP_WORDS and len(w) > 1]
+
+    if not words:
+        # All words were stop words; take first few original words instead
+        words = cleaned.split()[:max_words]
+
+    # Title-case and limit
+    title_words = [w.capitalize() for w in words[:max_words]]
+    result = ' '.join(title_words)
+
+    return result if result else "New Chat"
 
 
 def _extract_from_thinking_content(thinking_text: str) -> str:
@@ -261,7 +312,9 @@ async def generate_session_name_with_events(
             raise ValueError(f"Invalid llm_interface: {llm_interface}")
     except Exception as e:
         logger.error(f"Failed to generate session name: {e}", exc_info=True)
-        name, input_tokens, output_tokens = "New Chat", 0, 0
+        fallback = _fallback_name_from_query(user_query)
+        logger.info(f"[SessionName] Using query-based fallback: '{fallback}'")
+        name, input_tokens, output_tokens = fallback, 0, 0
 
     # Always yield completion event (caller decides whether to emit as SSE)
     complete_event = {
@@ -341,7 +394,10 @@ async def _generate_via_executor(
 
     # Clean the name and extract only the final title
     cleaned_name = _extract_session_name(name_text)
-    return cleaned_name or "New Chat", input_tokens, output_tokens
+    if not cleaned_name:
+        cleaned_name = _fallback_name_from_query(query)
+        logger.info(f"[SessionName] Extraction empty, using query-based fallback: '{cleaned_name}'")
+    return cleaned_name, input_tokens, output_tokens
 
 
 async def _generate_via_langchain(
@@ -429,7 +485,7 @@ async def _generate_via_langchain(
     logger.info(f"Session name extracted tokens: {input_tokens} in / {output_tokens} out")
 
     if not cleaned_name or len(cleaned_name) >= 100:
-        logger.warning(f"Session name too long or empty after cleaning: {len(cleaned_name)} chars")
-        return "New Chat", input_tokens, output_tokens
+        cleaned_name = _fallback_name_from_query(query)
+        logger.info(f"[SessionName] LangChain extraction failed/too long, using query-based fallback: '{cleaned_name}'")
 
     return cleaned_name, input_tokens, output_tokens

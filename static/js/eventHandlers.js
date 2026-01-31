@@ -2587,6 +2587,19 @@ export function initializeEventListeners() {
     DOM.resourceTabs.addEventListener('click', handleResourceTabClick);
     DOM.keyObservationsToggleButton.addEventListener('click', handleKeyObservationsToggleClick);
 
+    // Voice button click toggles locked voice mode (same as Shift+Ctrl)
+    if (DOM.voiceInputButton) {
+        DOM.voiceInputButton.addEventListener('click', () => {
+            state.isVoiceModeLocked = !state.isVoiceModeLocked;
+            if (state.isVoiceModeLocked) {
+                startRecognition();
+            } else {
+                stopRecognition();
+            }
+            UI.updateVoiceModeUI();
+        });
+    }
+
     // Delegated event listener for copy buttons and NEW reload/replay buttons
     DOM.chatLog.addEventListener('click', (e) => {
         const copyButton = e.target.closest('.copy-button');

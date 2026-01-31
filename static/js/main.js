@@ -1235,10 +1235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             DOM.chartingIntensitySelect.value = state.appConfig.default_charting_intensity || 'medium';
         }
 
-        if (state.appConfig.voice_conversation_enabled) {
-            DOM.voiceInputButton.classList.remove('hidden');
-            DOM.keyObservationsToggleButton.classList.remove('hidden');
-        }
+        updateVoiceButtonVisibility(state.appConfig.voice_conversation_enabled);
 
         // Initialize user TTS settings section based on tts_mode
         updateUserTtsSection(state.appConfig.tts_mode || 'disabled');
@@ -1366,6 +1363,24 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Update the user TTS settings section based on the current TTS mode.
  * Shows/hides the appropriate message or credential input form.
  */
+/**
+ * Show or hide voice-related buttons in the chat input area based on TTS state.
+ */
+window.updateVoiceButtonVisibility = updateVoiceButtonVisibility;
+function updateVoiceButtonVisibility(enabled) {
+    if (enabled) {
+        DOM.voiceInputButton.classList.remove('hidden');
+        DOM.keyObservationsToggleButton.classList.remove('hidden');
+    } else {
+        DOM.voiceInputButton.classList.add('hidden');
+        DOM.keyObservationsToggleButton.classList.add('hidden');
+    }
+    // Sync app config state so synthesizeText() in api.js works correctly
+    if (state.appConfig) {
+        state.appConfig.voice_conversation_enabled = enabled;
+    }
+}
+
 window.updateUserTtsSection = updateUserTtsSection;
 function updateUserTtsSection(mode) {
     const badge = document.getElementById('user-tts-mode-badge');

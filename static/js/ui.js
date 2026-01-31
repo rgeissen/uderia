@@ -4335,7 +4335,7 @@ export function updateVoiceModeUI() {
         DOM.voiceInputButton.classList.add('bg-[#F15F22]');
     } else {
         DOM.voiceInputButton.classList.add('bg-gray-600');
-        DOM.voiceInputButton.classList.remove('bg-[#F115F22]'); // Typo fixed from original
+        DOM.voiceInputButton.classList.remove('bg-[#F15F22]');
     }
 
     let tooltipText = "Voice Conversation";

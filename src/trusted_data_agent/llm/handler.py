@@ -609,19 +609,17 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                 # --- MODIFICATION END ---
 
                 # --- FIX: Set max_output_tokens to prevent truncation (consistent with other providers) ---
-                # Auto-disable thinking for session name generation (Gemini 2.x only)
-                thinking_config = None
-                if reason and "session name" in reason.lower():
-                    # Only apply for Gemini 2.x models (older models don't support thinking_config)
+                # Use low token limit for session name generation (3-5 word title)
+                is_session_name_call = reason and "session name" in reason.lower()
+                gen_config_kwargs = {"max_output_tokens": 100 if is_session_name_call else 8192}
+                if is_session_name_call:
+                    # Auto-disable thinking for session name generation (Gemini 2.x only)
                     model_name = getattr(llm_instance, 'model_name', '')
-                    if model_name.startswith('models/gemini-2'):
-                        thinking_config = genai.ThinkingConfig(thinking_budget=0)
+                    if model_name.startswith('models/gemini-2') and hasattr(genai, 'ThinkingConfig'):
+                        gen_config_kwargs["thinking_config"] = genai.ThinkingConfig(thinking_budget=0)
                         app_logger.debug(f"[SessionName] Disabling thinking mode for session name generation (model: {model_name})")
 
-                google_generation_config = genai.GenerationConfig(
-                    max_output_tokens=8192,
-                    thinking_config=thinking_config
-                )
+                google_generation_config = genai.GenerationConfig(**gen_config_kwargs)
 
                 if is_session_call:
                     chat_session = session_data['chat_object']

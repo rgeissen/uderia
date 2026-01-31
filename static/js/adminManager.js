@@ -3222,6 +3222,10 @@ const AdminManager = {
                 if (window.updateUserTtsSection) {
                     window.updateUserTtsSection(ttsModeSelect.value);
                 }
+                // Sync voice button visibility in chat input area
+                if (window.updateVoiceButtonVisibility) {
+                    window.updateVoiceButtonVisibility(ttsModeSelect.value !== 'disabled');
+                }
             }
 
             // Reset dirty state

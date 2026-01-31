@@ -1545,6 +1545,7 @@ class PlanExecutor:
                 "turn_id": self.current_turn_number,
                 "session_id": self.session_id,  # Include session_id for filtering when switching sessions
                 "tts_payload": tts_payload,
+                "source": self.source,
                 "is_session_primer": self.is_session_primer
             }, "final_answer")
 
@@ -2315,6 +2316,7 @@ The following domain knowledge may be relevant to this conversation:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "tts_payload": tts_payload,
+                "source": self.source,
                 "is_session_primer": self.is_session_primer
             }
             self._log_system_event(event_data)
