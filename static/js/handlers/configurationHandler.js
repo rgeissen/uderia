@@ -1309,7 +1309,7 @@ function attachLLMEventListeners() {
 }
 
 // Placeholder for LLM configuration modal (to be implemented)
-export async function showLLMConfigurationModal(configId = null) {
+export async function showLLMConfigurationModal(configId = null, preselectedProvider = null) {
     let config = configId ? configState.llmConfigurations.find(c => c.id === configId) : null;
     const isEdit = !!config;
     
@@ -1339,7 +1339,7 @@ export async function showLLMConfigurationModal(configId = null) {
         }
     }
     
-    const selectedProvider = config?.provider || 'Google';
+    const selectedProvider = config?.provider || preselectedProvider || 'Google';
 
     // Build provider options
     const providerOptions = Object.keys(LLM_PROVIDER_TEMPLATES)
@@ -1790,7 +1790,8 @@ export async function showLLMConfigurationModal(configId = null) {
                 await configState.updateLLMConfiguration(configId, configData);
                 savedConfigId = configId;
             } else {
-                savedConfigId = await configState.addLLMConfiguration(configData);
+                const savedConfig = await configState.addLLMConfiguration(configData);
+                savedConfigId = savedConfig?.id || configData.id;
                 if (!savedConfigId) {
                     throw new Error('Failed to create configuration');
                 }
@@ -6119,7 +6120,13 @@ export async function initializeConfigurationUI() {
     // Add LLM configuration button
     const addLLMConfigBtn = document.getElementById('add-llm-config-btn');
     if (addLLMConfigBtn) {
-        addLLMConfigBtn.addEventListener('click', async () => await showLLMConfigurationModal());
+        addLLMConfigBtn.addEventListener('click', async () => {
+            // Pre-select provider based on active tab (map lowercase tab filter to template key)
+            const providerKey = activeLLMProviderFilter !== 'all'
+                ? Object.keys(LLM_PROVIDER_TEMPLATES).find(k => k.toLowerCase() === activeLLMProviderFilter)
+                : null;
+            await showLLMConfigurationModal(null, providerKey);
+        });
     }
 
     // Add Profile button
