@@ -36,15 +36,15 @@ export async function handleStartNewSession() {
         profileWarningBanner.classList.add('hidden');
     }
     // Capture the active profile override BEFORE clearing it - needed for session primer
-    // Check both activeProfileOverrideId (set on query execution) and activeTagPrefix (set on autocomplete selection)
-    let activeProfileOverrideId = window.activeProfileOverrideId || null;
+    // PRIORITY: Badge (current selection) > activeProfileOverrideId (last executed) > null
+    let activeProfileOverrideId = null;
 
-    // If no activeProfileOverrideId but tag badge is visible, resolve the tag to a profile ID
-    // Read the tag directly from the badge element (more reliable than window.activeTagPrefix which may be cleared)
+    // Check badge FIRST - it represents the user's current intent (what they typed/selected)
+    // This takes priority over window.activeProfileOverrideId which is the last *executed* profile
     const tagBadge = document.getElementById('active-profile-tag');
     const isTagBadgeVisible = tagBadge && !tagBadge.classList.contains('hidden');
 
-    if (!activeProfileOverrideId && isTagBadgeVisible && window.configState?.profiles) {
+    if (isTagBadgeVisible && window.configState?.profiles) {
         // Get tag from badge's first span (the one containing "@TAG"), fallback to activeTagPrefix
         // Badge structure: <span>@TAG</span><span class="tag-remove">×</span>
         const tagSpan = tagBadge.querySelector('span:first-child');
@@ -57,6 +57,11 @@ export async function handleStartNewSession() {
                 console.log(`[Session Primer] Resolved tag badge @${tag} to profile ID: ${activeProfileOverrideId}`);
             }
         }
+    }
+
+    // Fall back to last executed profile if no badge is active
+    if (!activeProfileOverrideId) {
+        activeProfileOverrideId = window.activeProfileOverrideId || null;
     }
 
     // Clear the active profile override for autocomplete when starting a new session
