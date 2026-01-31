@@ -4913,29 +4913,29 @@ button.bg-gray-700.px-2:hover {
     animation: chipShimmer 1.5s ease-in-out infinite;
 }
 
-/* Attachment preview container smooth transition */
+/* Attachment preview container - hidden until files are attached */
 .attachment-preview-container {
     transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
                 opacity 0.2s ease;
     max-height: 0;
     opacity: 0;
     overflow: hidden;
+    display: none;
 }
 .attachment-preview-container.visible {
+    display: block;
     max-height: 200px;
     opacity: 1;
 }
 
-/* Drop zone overlay */
+/* Drop zone overlay - hidden by default, shown only during drag-over */
 .drop-zone-overlay {
     position: absolute;
     inset: 0;
     border-radius: 0.75rem;
     z-index: 10;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     background: rgba(241, 95, 34, 0.08);
@@ -4943,7 +4943,7 @@ button.bg-gray-700.px-2:hover {
     backdrop-filter: blur(4px);
 }
 .drop-zone-overlay.visible {
-    opacity: 1;
+    display: flex;
 }
 
 /* Upload error toast */
