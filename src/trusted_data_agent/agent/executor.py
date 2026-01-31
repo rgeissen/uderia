@@ -3665,7 +3665,7 @@ The following domain knowledge may be relevant to this conversation:
                 cancelled_event = self._emit_lifecycle_event("execution_cancelled", {
                     "profile_type": profile_type,
                     "profile_tag": self._get_current_profile_tag(),
-                    "phases_completed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
+                    "phases_completed": len([a for a in self.turn_action_history if isinstance(a.get("action"), dict) and a["action"].get("tool_name") != "TDA_SystemLog"]),
                     "cancellation_stage": self.state.name,
                     "partial_input_tokens": self.turn_input_tokens,
                     "partial_output_tokens": self.turn_output_tokens
@@ -3714,7 +3714,7 @@ The following domain knowledge may be relevant to this conversation:
                     "error_message": str(root_exception),
                     "error_type": error_type,
                     "error_stage": self.state.name,
-                    "phases_completed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
+                    "phases_completed": len([a for a in self.turn_action_history if isinstance(a.get("action"), dict) and a["action"].get("tool_name") != "TDA_SystemLog"]),
                     "partial_input_tokens": self.turn_input_tokens,
                     "partial_output_tokens": self.turn_output_tokens,
                     "success": False
@@ -3854,7 +3854,7 @@ The following domain knowledge may be relevant to this conversation:
                         "payload": {
                             "profile_type": "tool_enabled",
                             "profile_tag": self._get_current_profile_tag(),
-                            "phases_executed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
+                            "phases_executed": len([a for a in self.turn_action_history if isinstance(a.get("action"), dict) and a["action"].get("tool_name") != "TDA_SystemLog"]),
                             "total_input_tokens": self.turn_input_tokens,
                             "total_output_tokens": self.turn_output_tokens,
                             "duration_ms": duration_ms,
@@ -4432,7 +4432,7 @@ The following domain knowledge may be relevant to this conversation:
                 complete_event_payload = {
                     "profile_type": "tool_enabled",
                     "profile_tag": self._get_current_profile_tag(),
-                    "phases_executed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
+                    "phases_executed": len([a for a in self.turn_action_history if isinstance(a.get("action"), dict) and a["action"].get("tool_name") != "TDA_SystemLog"]),
                     "total_input_tokens": self.turn_input_tokens,
                     "total_output_tokens": self.turn_output_tokens,
                     "duration_ms": duration_ms,
