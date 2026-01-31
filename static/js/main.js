@@ -313,7 +313,6 @@ async function initializeRAGAutoCompletion() {
         }
 
         activeProfileTag.classList.remove('hidden');
-        userInput.classList.add('has-tag');
         
         // Store the tag prefix and remove it from visible input
         const currentValue = userInput.value;
@@ -356,7 +355,6 @@ async function initializeRAGAutoCompletion() {
         activeProfileTag.style.removeProperty('--profile-tag-border');
         activeProfileTag.style.removeProperty('--profile-tag-shadow');
         activeProfileTag.style.color = '';  // Reset direct color style
-        userInput.classList.remove('has-tag');
 
         // Clear session header override and restore default
         const defaultProfileId = window.configState?.defaultProfileId;

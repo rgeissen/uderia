@@ -2590,6 +2590,16 @@
     --tw-ring-color: var(--teradata-orange-light-focus) !important;
 }
 
+/* Light mode: focus ring on input-area wrapper, not the input */
+[data-theme="light"] #chat-form #user-input:focus {
+    border-color: transparent !important;
+    --tw-ring-color: transparent !important;
+}
+
+[data-theme="light"] #input-area:focus-within {
+    border-color: var(--teradata-orange-light-mode) !important;
+}
+
 /* Input focus classes */
 [data-theme="light"] .focus\:ring-\[\#F15F22\]:focus,
 [data-theme="light"] .focus\:border-\[\#F15F22\]:focus {
@@ -2945,6 +2955,35 @@ input:focus, textarea:focus, select:focus {
     border-color: var(--border-focus);
     box-shadow: 0 0 0 3px var(--border-focus-ring, rgba(241, 95, 34, 0.1));
     outline: none;
+}
+
+/* Chat input: visual box is on #input-area wrapper, not the input itself */
+#input-area {
+    border-radius: var(--radius-sm);
+    background: var(--input-bg);
+    border: 1px solid var(--border-secondary);
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+#input-area:focus-within {
+    background: var(--input-bg-focus, var(--input-bg));
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--border-focus-ring, rgba(241, 95, 34, 0.1));
+}
+
+#chat-form #user-input {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    border-radius: 0 !important;
+}
+
+#chat-form #user-input:focus {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
 /* Enhanced Card Styles */

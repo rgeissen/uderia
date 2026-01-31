@@ -2642,25 +2642,17 @@ button[data-action="delete-mcp"]:hover {
    END UNIFIED PROFILE TAG SYSTEM
    ============================================================================ */
 
-/* Active profile tag badge in question box - positioning context only */
-/* Visual styling now inherited from .profile-tag base class */
+/* Active profile tag badge in question box - inside input area wrapper */
+/* Visual styling inherited from .profile-tag base class */
 #active-profile-tag {
-    position: absolute;
-    top: 50%;
-    left: 12px;
-    transform: translateY(-50%);
-    z-index: 20;
+    flex-shrink: 0;
     display: none;
+    margin-left: 0.5rem;
     /* Background and box-shadow applied dynamically via JavaScript based on provider */
 }
 
 #active-profile-tag:not(.hidden) {
     display: inline-flex;
-}
-
-/* Adjust user input padding when tag badge is active */
-#user-input.has-tag {
-    padding-left: 100px !important;
 }
 
 /* RAG suggestions and profile tag selector shared base styling - enhanced */

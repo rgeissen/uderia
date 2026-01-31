@@ -1033,7 +1033,6 @@
                                         <div class="glass-panel rounded-xl p-2 flex flex-wrap gap-2" id="file-attachments-list"></div>
                                     </div>
                                     <form id="chat-form" class="flex items-center gap-2 md:gap-3 glass-panel rounded-xl p-2 relative">
-                                        <div id="active-profile-tag" class="hidden"></div>
                                         <!-- Drop Zone Overlay -->
                                         <div id="drop-zone-overlay" class="drop-zone-overlay">
                                             <div class="flex flex-col items-center gap-2">
@@ -1059,9 +1058,13 @@
                                         <input type="file" id="file-attach-input" multiple
                                             accept=".pdf,.txt,.docx,.md,.jpg,.jpeg,.png,.gif,.webp"
                                             class="hidden" />
-                                        <input type="text" id="user-input" placeholder="Ask about databases, tables, users..."
-                                            class="flex-1 p-3 bg-transparent border-none rounded-lg focus:outline-none text-white placeholder-gray-400"
-                                            autocomplete="off" disabled />
+                                        <!-- Input area: tag + text input wrapped together -->
+                                        <div id="input-area" class="flex-1 flex items-center min-w-0">
+                                            <div id="active-profile-tag" class="hidden"></div>
+                                            <input type="text" id="user-input" placeholder="Ask about databases, tables, users..."
+                                                class="flex-1 p-3 bg-transparent border-none rounded-lg focus:outline-none text-white placeholder-gray-400 min-w-0"
+                                                autocomplete="off" disabled />
+                                        </div>
                                         <!-- Voice Input Button -->
                                         <button type="button" id="voice-input-button"
                                             class="p-3 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:bg-gray-700 flex items-center justify-center w-12 h-12 transition-all duration-200 transform hover:scale-110 hidden"

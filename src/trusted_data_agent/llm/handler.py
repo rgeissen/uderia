@@ -511,6 +511,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
     response_text = ""
     input_tokens, output_tokens = 0, 0
+    is_session_name_call = reason and "session name" in reason.lower()
     # NOTE: Don't capture provider/model from global config here - they get updated during profile override
     # We'll capture the actual values used at the end of the function from APP_CONFIG
 
@@ -610,7 +611,6 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
                 # --- FIX: Set max_output_tokens to prevent truncation (consistent with other providers) ---
                 # Use low token limit for session name generation (3-5 word title)
-                is_session_name_call = reason and "session name" in reason.lower()
                 gen_config_kwargs = {"max_output_tokens": 100 if is_session_name_call else 8192}
                 if is_session_name_call:
                     # Auto-disable thinking for session name generation (Gemini 2.x only)
@@ -745,7 +745,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                         messages_for_api.append({'role': 'user', 'content': prompt})
 
                     response = await llm_instance.messages.create(
-                        model=APP_CONFIG.CURRENT_MODEL, system=system_prompt, messages=messages_for_api, max_tokens=4096, timeout=120.0
+                        model=APP_CONFIG.CURRENT_MODEL, system=system_prompt, messages=messages_for_api, max_tokens=100 if is_session_name_call else 4096, timeout=120.0
                     )
                     # --- Debugging: Log raw response object ---
                     app_logger.debug(f"RAW LLM Response Object (Anthropic): {pprint.pformat(response.dict())}")
@@ -781,7 +781,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     # Prepend system prompt for these providers
                     messages_for_api.insert(0, {'role': 'system', 'content': system_prompt})
                     response = await llm_instance.chat.completions.create(
-                        model=APP_CONFIG.CURRENT_MODEL, messages=messages_for_api, max_tokens=4096, timeout=120.0
+                        model=APP_CONFIG.CURRENT_MODEL, messages=messages_for_api, max_tokens=100 if is_session_name_call else 4096, timeout=120.0
                     )
                     # --- Debugging: Log raw response object ---
                     app_logger.debug(f"RAW LLM Response Object (OpenAI/Azure/Friendli): {pprint.pformat(response.dict())}")
@@ -875,7 +875,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                         bedrock_messages.append({'role': 'user', 'content': prompt})
                     body = json.dumps({
                         "anthropic_version": "bedrock-2023-05-31",
-                        "max_tokens": 4096,
+                        "max_tokens": 100 if is_session_name_call else 4096,
                         "system": system_prompt,
                         "messages": bedrock_messages # Use the cleaned messages
                     })
@@ -887,28 +887,33 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                          for msg in bedrock_messages:
                               titan_messages.append({"role": msg['role'], "content": [{"text": msg['content']}]})
                          titan_messages.append({"role": "user", "content": [{"text": prompt}]})
-                         body_dict = {"messages": titan_messages, "inferenceConfig": {"maxTokens": 4096}}
+                         _max_tokens = 100 if is_session_name_call else 4096
+                         body_dict = {"messages": titan_messages, "inferenceConfig": {"maxTokens": _max_tokens}}
                          if system_prompt:
                              body_dict["system"] = [{"text": system_prompt}]
                          body = json.dumps(body_dict)
                     else:
                         # Legacy titan-text-express format
+                        _max_tokens = 100 if is_session_name_call else 4096
                         text_prompt = f"{system_prompt}\n\n" + "".join([f"{msg['role']}: {msg['content']}\n\n" for msg in bedrock_messages]) + f"user: {prompt}\n\nassistant:"
-                        body = json.dumps({"inputText": text_prompt, "textGenerationConfig": {"maxTokenCount": 4096}})
+                        body = json.dumps({"inputText": text_prompt, "textGenerationConfig": {"maxTokenCount": _max_tokens}})
 
                 elif bedrock_provider in ["cohere", "meta", "ai21", "mistral"]:
                     # Format for providers expecting a single text prompt with history
+                    _max_tokens = 100 if is_session_name_call else 4096
+                    _max_gen_len = 100 if is_session_name_call else 2048
                     text_prompt = f"{system_prompt}\n\n" + "".join([f"{msg['role']}: {msg['content']}\n\n" for msg in bedrock_messages]) + f"user: {prompt}\n\nassistant:"
 
-                    if bedrock_provider == "cohere": body_dict = {"prompt": text_prompt, "max_tokens": 4096}
-                    elif bedrock_provider == "meta": body_dict = {"prompt": text_prompt, "max_gen_len": 2048}
-                    elif bedrock_provider == "mistral": body_dict = {"prompt": text_prompt, "max_tokens": 4096}
-                    else: body_dict = {"prompt": text_prompt, "maxTokens": 4096} # AI21
+                    if bedrock_provider == "cohere": body_dict = {"prompt": text_prompt, "max_tokens": _max_tokens}
+                    elif bedrock_provider == "meta": body_dict = {"prompt": text_prompt, "max_gen_len": _max_gen_len}
+                    elif bedrock_provider == "mistral": body_dict = {"prompt": text_prompt, "max_tokens": _max_tokens}
+                    else: body_dict = {"prompt": text_prompt, "maxTokens": _max_tokens} # AI21
                     body = json.dumps(body_dict)
                 else:
+                    _max_tokens = 100 if is_session_name_call else 4096
                     app_logger.warning(f"Unknown Bedrock provider '{bedrock_provider}'. Defaulting to legacy 'inputText' format.")
                     text_prompt = f"{system_prompt}\n\n" + "".join([f"{msg['role']}: {msg['content']}\n\n" for msg in bedrock_messages]) + f"user: {prompt}\n\nassistant:"
-                    body = json.dumps({ "inputText": text_prompt, "textGenerationConfig": {"maxTokenCount": 4096} })
+                    body = json.dumps({ "inputText": text_prompt, "textGenerationConfig": {"maxTokenCount": _max_tokens} })
 
                 final_model_id_for_api = _normalize_bedrock_model_id(model_id_to_invoke)
                 app_logger.debug(f"Invoking Bedrock model: {final_model_id_for_api} with body: {body[:200]}...") # Log start of body
