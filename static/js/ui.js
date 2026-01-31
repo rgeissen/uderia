@@ -1918,8 +1918,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
     parentContainer.appendChild(stepEl);
 
-    // Auto-scroll to latest step
-    stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Auto-scroll to latest step (skip during historical replay to keep scroll at top)
+    if (!state.isViewingHistoricalTurn) {
+        stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 
     // Reset genie coordination state on completion
     if (type === 'genie_coordination_complete') {
@@ -1986,8 +1988,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 `;
             }
 
-            // Scroll to updated step
-            lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Scroll to updated step (skip during historical replay)
+            if (!state.isViewingHistoricalTurn) {
+                lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
             return; // Exit early - we updated existing step, no need to create new one
         }
     }
@@ -2068,8 +2072,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 `;
             }
 
-            // Scroll to updated step
-            lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Scroll to updated step (skip during historical replay)
+            if (!state.isViewingHistoricalTurn) {
+                lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
             return; // Exit early - we updated existing step, no need to create new one
         } else {
             console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
@@ -2776,8 +2782,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
     parentContainer.appendChild(stepEl);
 
-    // Auto-scroll to latest step
-    stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Auto-scroll to latest step (skip during historical replay to keep scroll at top)
+    if (!state.isViewingHistoricalTurn) {
+        stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 
     // Reset conversation agent state on completion
     if (type === 'conversation_agent_complete') {
@@ -3087,7 +3095,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         statusTitle.textContent = `Live Status - ${brandedName}`;
         // Render genie events using custom renderer
         _renderGenieStep(eventData, DOM.statusWindowContent, isFinal);
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3111,7 +3119,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         statusTitle.textContent = `Live Status - ${brandedName}`;
         // Render conversation agent events using custom renderer
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3128,7 +3136,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         statusTitle.textContent = 'Live Status - Knowledge Retrieval';
         // Render knowledge retrieval using the conversation agent renderer (same styling)
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, false);
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3136,7 +3144,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         // Session name generation events - route to conversation agent renderer
         statusTitle.textContent = 'Live Status - Session Name';
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3166,7 +3174,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         }
 
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3252,7 +3260,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         state.phaseContainerStack.push(phaseContainer);
         state.currentPhaseContainerEl = phaseContainer;
 
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3293,7 +3301,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         }
         state.currentPhaseContainerEl = state.phaseContainerStack.length > 0 ? state.phaseContainerStack[state.phaseContainerStack.length - 1] : null;
         state.isInFastPath = false;
-        if (!state.isMouseOverStatus) {
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
         return;
@@ -3328,7 +3336,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         state._statusAutoScrollEnabled = false;
     }
 
-    if (state._statusAutoScrollEnabled) {
+    if (state._statusAutoScrollEnabled && !state.isViewingHistoricalTurn) {
         // Use rAF to ensure layout finalized before scrolling
         requestAnimationFrame(() => {
             const lastStep = parentEl.querySelector(':scope > .status-step:last-of-type')

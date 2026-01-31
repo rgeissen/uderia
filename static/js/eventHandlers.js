@@ -1342,6 +1342,9 @@ async function handleReloadPlanClick(element) {
                     UI.renderGenieStepForReload(eventData, DOM.statusWindowContent, isFinal);
                 });
 
+                // Scroll to top after replaying all events
+                DOM.statusWindowContent.scrollTop = 0;
+
                 // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
@@ -1469,6 +1472,9 @@ async function handleReloadPlanClick(element) {
                     });
                 }
 
+                // Scroll to top after replaying all events
+                DOM.statusWindowContent.scrollTop = 0;
+
                 // Update token counts from historical turn data (isHistorical = true)
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
@@ -1566,6 +1572,10 @@ async function handleReloadPlanClick(element) {
                         UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
                     });
                 }
+
+                // Scroll to top after replaying all events
+                DOM.statusWindowContent.scrollTop = 0;
+
                 // NOTE: Removed redundant "RAG Focused Profile" info card - this info is already
                 // shown in "Knowledge Focused Started" and "Knowledge Focused Complete" events
             } else if (turnData.knowledge_retrieval_event && (turnData.knowledge_chunks_ui || turnData.knowledge_retrieval_event.chunks)) {

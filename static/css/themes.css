@@ -1372,6 +1372,43 @@
     background-color: var(--bg-tertiary) !important;
 }
 
+/* Light theme - Classification Results Modal */
+[data-theme="light"] #classification-modal .bg-gray-800\/80 {
+    background: var(--bg-secondary) !important;
+    border-bottom-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .bg-gray-800\/30 {
+    background: var(--hover-bg-strong) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .bg-gray-900\/30 {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #classification-modal .bg-gray-900\/10 {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #classification-modal .border-gray-700\/50,
+[data-theme="light"] #classification-modal .border-gray-700\/30,
+[data-theme="light"] #classification-modal .border-gray-700\/20 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .text-red-400 {
+    color: var(--status-error) !important;
+}
+
+[data-theme="light"] #classification-modal .opacity-50 {
+    opacity: 0.7 !important;
+}
+
 /* Light theme - Dividers and borders */
 [data-theme="light"] .divide-white\/10 > * + * {
     border-color: var(--border-primary) !important;
