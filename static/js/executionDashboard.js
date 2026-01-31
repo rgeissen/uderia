@@ -448,7 +448,8 @@ class ExecutionDashboard {
                  style="background-color: var(--card-bg);" 
                  onmouseover="this.style.backgroundColor='var(--hover-bg)'" 
                  onmouseout="this.style.backgroundColor='var(--card-bg)'" 
-                 data-question-text="${question.query.replace(/"/g, '&quot;')}">
+                 data-question-text="${question.query.replace(/"/g, '&quot;')}"
+                 data-session-id="${question.session_id}">
                 <div class="flex-shrink-0 w-6 h-6 bg-orange-500/20 rounded-full flex items-center justify-center">
                     <span class="text-xs font-bold text-orange-400">${index + 1}</span>
                 </div>
@@ -461,8 +462,16 @@ class ExecutionDashboard {
         `).join('');
 
         container.innerHTML = html;
+
+        // Add click event listeners to navigate to session
+        container.querySelectorAll('.expensive-question-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const sessionId = item.getAttribute('data-session-id');
+                this.highlightSession(sessionId);
+            });
+        });
     }
-        
+
     /**
      * Filter and render session cards (Tier 2)
      */

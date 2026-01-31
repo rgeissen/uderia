@@ -1624,10 +1624,8 @@ async function handleReloadPlanClick(element) {
         }
 
         // Handle tool_enabled profiles with lifecycle events (execution_start, execution_complete)
-        if (turnData && turnData.profile_type === 'tool_enabled' &&
-            turnData.tool_enabled_events && turnData.tool_enabled_events.length > 0) {
-
-            DOM.statusWindowContent.innerHTML = '';
+        // Check for tool_enabled_events directly (profile_type may not be in turn data)
+        if (turnData && turnData.tool_enabled_events && turnData.tool_enabled_events.length > 0) {
 
             // Update status title
             const statusTitle = DOM.statusTitle || document.getElementById('status-title');
@@ -1636,20 +1634,9 @@ async function handleReloadPlanClick(element) {
                 statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
             }
 
-            // Replay lifecycle events FIRST (execution_start, execution_complete)
-            turnData.tool_enabled_events.forEach((event, index) => {
-                const isFinal = index === turnData.tool_enabled_events.length - 1;
-
-                const eventData = {
-                    step: _getConversationAgentStepTitle(event.type, event.payload),
-                    details: event.payload,
-                    type: event.type
-                };
-
-                UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
-            });
-
-            // Then render execution trace (plan steps + tool executions)
+            // Pass lifecycle events TO renderHistoricalTrace for integrated rendering.
+            // renderHistoricalTrace renders execution_start at the top and execution_complete
+            // at the bottom, so lifecycle events are not wiped by innerHTML clearing.
             UI.renderHistoricalTrace(
                 turnData.original_plan || [],
                 turnData.execution_trace || [],
@@ -1661,7 +1648,8 @@ async function handleReloadPlanClick(element) {
                     turn_output_tokens: turnData.turn_output_tokens || 0
                 },
                 turnData.system_events || [],
-                turnData.duration_ms || 0
+                turnData.duration_ms || 0,
+                turnData.tool_enabled_events || []
             );
 
             // Update token display

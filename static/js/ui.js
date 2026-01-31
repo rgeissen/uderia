@@ -540,7 +540,7 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
  * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = [], durationMs = 0) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = []) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -558,6 +558,21 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     titleEl.className = 'text-lg font-bold text-white mb-4 p-3 bg-gray-900/50 rounded-md';
     titleEl.textContent = `Reloaded Details for Turn ${turnId}`;
     DOM.statusWindowContent.appendChild(titleEl);
+
+    // --- Render execution_start lifecycle event from tool_enabled_events (if present) ---
+    if (toolEnabledEvents && toolEnabledEvents.length > 0) {
+        const startEvent = toolEnabledEvents.find(e => e.type === 'execution_start');
+        if (startEvent) {
+            const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                ? window.EventHandlers.getLifecycleTitle('execution_start', startEvent.payload, startEvent.payload?.profile_type || 'tool_enabled')
+                : 'Efficiency Focused Started';
+            _renderStandardStep({
+                step: stepTitle,
+                details: startEvent.payload,
+                type: 'execution_start'
+            }, DOM.statusWindowContent, true);
+        }
+    }
 
     // --- PHASE 2: Render knowledge retrieval event FIRST if present ---
     if (knowledgeRetrievalEvent) {
@@ -696,20 +711,33 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     }
 
     // --- Execution Summary Card for tool_enabled profiles ---
-    // Only show if we have duration data (indicates tool_enabled profile)
-    if (durationMs > 0) {
+    // Use execution_complete from tool_enabled_events if available (includes token counts),
+    // otherwise fall back to manually constructed summary card for backwards compatibility.
+    const completeEvent = (toolEnabledEvents || []).find(e => e.type === 'execution_complete');
+    if (completeEvent) {
+        const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+            ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+            : 'Execution Complete';
+        _renderStandardStep({
+            step: stepTitle,
+            details: completeEvent.payload,
+            type: 'execution_complete'
+        }, DOM.statusWindowContent, true);
+    } else if (durationMs > 0) {
+        // Fallback for old sessions without tool_enabled_events
         const summaryCard = document.createElement('div');
         summaryCard.className = 'status-step p-3 rounded-md mb-2 completed lifecycle';
 
         const durationSec = (durationMs / 1000).toFixed(1);
         const phaseCount = (originalPlan || []).length;
         const toolCount = (executionTrace || []).reduce((acc, entry) => {
-            // Count actual tool calls (not TDA_SystemLog)
             if (entry.action && entry.action.tool_name && entry.action.tool_name !== 'TDA_SystemLog') {
                 return acc + 1;
             }
             return acc;
         }, 0);
+        const inputTokens = turnTokens?.turn_input_tokens || 0;
+        const outputTokens = turnTokens?.turn_output_tokens || 0;
 
         summaryCard.innerHTML = `
             <div class="flex items-center gap-2 mb-2">
@@ -721,6 +749,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     <div class="status-kv-value">${phaseCount} completed</div>
                     <div class="status-kv-key">Tools</div>
                     <div class="status-kv-value">${toolCount} executed</div>
+                    <div class="status-kv-key">Tokens</div>
+                    <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
                     <div class="status-kv-key">Duration</div>
                     <div class="status-kv-value">${durationSec}s</div>
                 </div>
@@ -1352,6 +1382,26 @@ function _renderSessionNameCompleteDetails(details) {
             <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
             <div class="status-kv-key">Tokens</div>
             <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+        </div>
+    `;
+}
+
+function _renderExecutionStartDetails(details) {
+    const profileTag = details.profile_tag || 'Unknown';
+    const profileType = details.profile_type || 'tool_enabled';
+    const query = details.query || '';
+    const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Profile</div>
+            <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+            <div class="status-kv-key">Type</div>
+            <div class="status-kv-value">${profileType}</div>
+            ${queryPreview ? `
+            <div class="status-kv-key">Query</div>
+            <div class="status-kv-value text-gray-300">"${queryPreview}"</div>
+            ` : ''}
         </div>
     `;
 }
@@ -2854,6 +2904,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderSessionNameStartDetails(details);
             } else if (type === "session_name_generation_complete") {
                 customRenderedHtml = _renderSessionNameCompleteDetails(details);
+            } else if (type === "execution_start") {
+                customRenderedHtml = _renderExecutionStartDetails(details);
             } else if (type === "execution_complete") {
                 customRenderedHtml = _renderExecutionCompleteDetails(details);
             } else {
@@ -3099,7 +3151,21 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             }
         }
         statusTitle.textContent = 'Live Status';
-        _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+
+        // For tool_enabled profiles during live execution, route lifecycle events
+        // through _renderStandardStep so they integrate visually with optimizer steps.
+        // Detect optimizer context by checking for existing standard (non-conversation-agent) steps.
+        const hasStandardSteps = DOM.statusWindowContent.querySelector(
+            '.status-step:not(.conversation-agent-status-step):not(.knowledge-retrieval-status-step)'
+        );
+
+        if (hasStandardSteps && (type === 'execution_start' || type === 'execution_complete' ||
+            type === 'execution_error' || type === 'execution_cancelled')) {
+            _renderStandardStep(eventData, DOM.statusWindowContent, isFinal);
+        } else {
+            _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        }
+
         if (!state.isMouseOverStatus) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }

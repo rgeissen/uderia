@@ -3844,6 +3844,24 @@ The following domain knowledge may be relevant to this conversation:
                 if system_events:
                     app_logger.debug(f"Using {len(system_events)} collected session name events for workflow history")
 
+                # Pre-build execution_complete event for persistence BEFORE constructing turn_summary.
+                # The actual SSE emission happens later (after final_answer yield), but we need
+                # the event data stored in tool_enabled_events now so it's included in the saved turn.
+                if hasattr(self, 'tool_enabled_events') and hasattr(self, 'tool_enabled_start_time'):
+                    duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000)
+                    self.tool_enabled_events.append({
+                        "type": "execution_complete",
+                        "payload": {
+                            "profile_type": "tool_enabled",
+                            "profile_tag": self._get_current_profile_tag(),
+                            "phases_executed": len([a for a in self.turn_action_history if a.get("action", {}).get("tool_name") != "TDA_SystemLog"]),
+                            "total_input_tokens": self.turn_input_tokens,
+                            "total_output_tokens": self.turn_output_tokens,
+                            "duration_ms": duration_ms,
+                            "success": True
+                        }
+                    })
+
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
                     "user_query": self.original_user_input, # Store the original query
@@ -4424,12 +4442,9 @@ The following domain knowledge may be relevant to this conversation:
                 complete_event = self._emit_lifecycle_event("execution_complete", complete_event_payload)
                 yield complete_event
 
-                # Collect event for persistence (defensive check in case array wasn't initialized)
-                if hasattr(self, 'tool_enabled_events'):
-                    self.tool_enabled_events.append({
-                        "type": "execution_complete",
-                        "payload": complete_event_payload
-                    })
+                # Note: execution_complete event is pre-collected into tool_enabled_events
+                # before turn_summary save (ensures it persists to session file).
+                # The SSE emission here is for live UI rendering only.
 
                 app_logger.info("✅ Emitted execution_complete event for tool_enabled profile")
         except Exception as e:
