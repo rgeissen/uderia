@@ -234,6 +234,28 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // Initialize upload capabilities for the loaded session's provider
         initializeUploadCapabilities(sessionId);
 
+        // Preset profile tag badge based on session's first profile
+        // Only show badge if session has actual profile usage history (not for new/unused sessions)
+        const sessionProfileTag = (data.profile_tags_used && data.profile_tags_used.length > 0)
+            ? data.profile_tags_used[0]
+            : null;
+
+        if (sessionProfileTag && window.configState?.profiles) {
+            const tagUpper = sessionProfileTag.toUpperCase();
+            const matchedProfile = window.configState.profiles.find(
+                p => p.tag && p.tag.toUpperCase() === tagUpper
+            );
+            if (matchedProfile && typeof window.showActiveTagBadge === 'function') {
+                window.activeTagPrefix = `@${matchedProfile.tag} `;
+                window.showActiveTagBadge(matchedProfile);
+            }
+        } else if (!isNewSession) {
+            // Switching to an existing session with no profile history — clear stale badge
+            // When isNewSession=true, preserve any manually-selected override badge
+            window.activeTagPrefix = '';
+            if (typeof window.hideActiveTagBadge === 'function') window.hideActiveTagBadge();
+        }
+
         // Mark conversation as initialized after successful session load
         if (window.__conversationInitState) {
             window.__conversationInitState.initialized = true;

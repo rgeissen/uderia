@@ -502,6 +502,10 @@ async function initializeRAGAutoCompletion() {
     // Expose globally for use by configurationHandler when default profile changes
     window.updateResourcePanelForProfile = updateResourcePanelForProfile;
 
+    // Expose profile tag badge functions for use by sessionManagement when loading sessions
+    window.showActiveTagBadge = showActiveTagBadge;
+    window.hideActiveTagBadge = hideActiveTagBadge;
+
     function updateTagBadge() {
         if (isUpdatingInput) return;
         
