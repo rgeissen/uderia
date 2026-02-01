@@ -167,6 +167,7 @@ function _captureExecutionState() {
         isGenieCoordinationActive: state.isGenieCoordinationActive,
         isInFastPath: state.isInFastPath,
         currentTaskId: state.currentTaskId,
+        currentTurnNumber: state.currentTurnNumber,
         currentProvider: state.currentProvider,
         currentModel: state.currentModel,
         pendingSubtaskPlanningEvents: [...state.pendingSubtaskPlanningEvents],
@@ -265,6 +266,7 @@ function _restoreExecutionState(s) {
     state.currentTaskId = s.currentTaskId;
     state.currentProvider = s.currentProvider;
     state.currentModel = s.currentModel;
+    state.currentTurnNumber = s.currentTurnNumber || null;
     state.pendingSubtaskPlanningEvents = s.pendingSubtaskPlanningEvents || [];
     state.pendingKnowledgeRetrievalEvent = s.pendingKnowledgeRetrievalEvent || null;
     state.lastRagCaseData = s.lastRagCaseData || null;
@@ -304,6 +306,131 @@ function _restoreHandlerState(h) {
 }
 
 /**
+ * Replays buffered REST events into the Live Status window for a child session.
+ * Contains its own event-type routing logic (mirrors _dispatchRestEvent from
+ * notifications.js) to avoid circular dependency issues. The replay version
+ * suppresses indicator blinks and manages state flags directly during replay.
+ *
+ * Called when switching to a session with an active REST event buffer but no cached UI.
+ * @param {string} sessionId - The session ID whose buffer to replay.
+ */
+function _replayRestEventBuffer(sessionId) {
+    const buffer = state.restEventBuffer[sessionId];
+    if (!buffer || buffer.events.length === 0) return;
+
+    // Reset status window for replay
+    DOM.statusWindowContent.innerHTML = '';
+    const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+    if (statusTitle) statusTitle.textContent = 'Live Status';
+
+    // Suppress indicator blinks during replay
+    state.isViewingHistoricalTurn = true;
+
+    for (const event of buffer.events) {
+        const eventType = event.type;
+        if (!eventType) continue;
+
+        // Skip transient events that don't need replay
+        if (eventType === 'status_indicator_update') continue;
+
+        // Token updates → direct to token display
+        if (eventType === 'token_update') {
+            UI.updateTokenDisplay(event);
+            continue;
+        }
+
+        // Session model updates → metadata only
+        if (eventType === 'session_model_update') {
+            const payload = event.payload || event;
+            state.currentProvider = payload.provider || state.currentProvider;
+            state.currentModel = payload.model || state.currentModel;
+            UI.updateStatusPromptName(payload.provider, payload.model);
+            continue;
+        }
+
+        // RAG retrieval → store data without blink
+        if (eventType === 'rag_retrieval') {
+            state.lastRagCaseData = event;
+            continue;
+        }
+
+        // Knowledge retrieval → update indicator without blink
+        if (eventType === 'knowledge_retrieval') {
+            const collections = event.data?.collections || [];
+            const documentCount = event.data?.document_count || 0;
+            UI.updateKnowledgeIndicator(collections, documentCount);
+        }
+
+        // --- Conversation Agent events (conversation_with_tools profile) ---
+        if (eventType.startsWith('conversation_agent') ||
+            eventType.startsWith('conversation_llm') ||
+            eventType.startsWith('conversation_tool')) {
+            const payload = event.payload || event;
+            // Set state flags during replay
+            if (eventType === 'conversation_agent_start') state.isConversationAgentActive = true;
+            if (eventType === 'conversation_agent_complete') state.isConversationAgentActive = false;
+            UI.updateStatusWindow({
+                step: eventType, details: payload, type: eventType
+            }, eventType === 'conversation_agent_complete', 'conversation_agent');
+            continue;
+        }
+
+        // --- Knowledge Retrieval events (rag_focused + conversation_with_tools) ---
+        if (eventType.startsWith('knowledge_') ||
+            eventType === 'rag_llm_step' ||
+            eventType === 'knowledge_search_complete') {
+            UI.updateStatusWindow({
+                step: eventType, details: event.payload || event, type: eventType
+            }, false, 'knowledge_retrieval');
+            continue;
+        }
+
+        // --- LLM execution events (llm_only profile) ---
+        if (eventType === 'llm_execution' || eventType === 'llm_execution_complete') {
+            UI.updateStatusWindow({
+                step: eventType, details: event.payload || event, type: eventType
+            }, eventType === 'llm_execution_complete', 'conversation_agent');
+            continue;
+        }
+
+        // --- Lifecycle events (all profile types) ---
+        if (eventType === 'execution_start' || eventType === 'execution_complete' ||
+            eventType === 'execution_error' || eventType === 'execution_cancelled') {
+            const payload = event.payload || event;
+            // Capture turn number from execution_start during replay
+            if (eventType === 'execution_start' && payload.turn_id) {
+                state.currentTurnNumber = payload.turn_id;
+            }
+            const isFinal = eventType !== 'execution_start';
+            UI.updateStatusWindow({
+                step: eventType, details: payload, type: eventType
+            }, isFinal, 'lifecycle');
+            continue;
+        }
+
+        // --- Session name events ---
+        if (eventType === 'session_name' || eventType === 'session_name_generation_start' ||
+            eventType === 'session_name_generation_complete') {
+            UI.updateStatusWindow(event, false, 'session_name');
+            continue;
+        }
+
+        // --- Default: planner/executor events (tool_enabled profile) → 'rest' source ---
+        const isFinal = (eventType === 'final_answer' || eventType === 'error' || eventType === 'cancelled');
+        UI.updateStatusWindow(event, isFinal, 'rest', buffer.taskId);
+    }
+
+    state.isViewingHistoricalTurn = false;
+
+    // Set execution state based on buffer completeness
+    if (!buffer.isComplete) {
+        state.isRestTaskActive = true;
+        state.activeRestTaskId = buffer.taskId;
+        UI.setExecutionState(true);
+    }
+}
+
+/**
  * Loads a specific session's history and data into the UI.
  * @param {string} sessionId - The ID of the session to load.
  * @param {boolean} [isNewSession=false] - Flag to skip redundant checks if it's a new session.
@@ -317,7 +444,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     // execution mode flags, and handler module state so we can restore everything
     // instantly when the user switches back (avoids server reload).
     const previousSessionId = state.currentSessionId;
-    if (previousSessionId && state.activeStreamSessions.has(previousSessionId)) {
+    if (previousSessionId && (state.activeStreamSessions.has(previousSessionId) || state.activeRestSessions.has(previousSessionId))) {
         state.sessionUiCache[previousSessionId] = {
             chatHTML: DOM.chatLog.innerHTML,
             statusHTML: DOM.statusWindowContent.innerHTML,
@@ -348,7 +475,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     // cache instead of reloading from the server. This avoids unnecessary API calls
     // and preserves the live execution context (status window header, content, chat progress).
     const cached = state.sessionUiCache[sessionId];
-    if (cached && state.activeStreamSessions.has(sessionId)) {
+    if (cached && (state.activeStreamSessions.has(sessionId) || state.activeRestSessions.has(sessionId))) {
         console.log(`[handleLoadSession] Restoring cached UI for active session ${sessionId}`);
         state.currentSessionId = sessionId;
         state.sessionLoaded = true;
@@ -528,20 +655,32 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         state.phaseContainerStack = [];
         state.pendingSubtaskPlanningEvents = [];
         state.pendingKnowledgeRetrievalEvent = null;
+        state.currentTurnNumber = null;
 
         // Reset handler module state for idle session
         cleanupCoordination();
         cleanupExecution();
 
-        // Auto-load last turn's execution data into the Live Status window.
-        // Uses dynamic import() to avoid circular dependency with eventHandlers.js
-        // (eventHandlers.js already imports from sessionManagement.js).
-        const allAvatars = DOM.chatLog.querySelectorAll('.clickable-avatar[data-turn-id]');
-        const lastAvatar = allAvatars.length > 0 ? allAvatars[allAvatars.length - 1] : null;
-        if (lastAvatar) {
-            import('../eventHandlers.js').then(({ handleReloadPlanClick }) => {
-                handleReloadPlanClick(lastAvatar);
-            });
+        // Check if this session has an active REST event buffer (e.g., Genie child during execution)
+        const restBuffer = state.restEventBuffer[sessionId];
+        if (restBuffer && !restBuffer.isComplete && state.activeRestSessions.has(sessionId)) {
+            // Active REST execution: replay buffered events into status window
+            _replayRestEventBuffer(sessionId);
+        } else {
+            // Auto-load last turn's execution data into the Live Status window.
+            // Uses dynamic import() to avoid circular dependency with eventHandlers.js
+            // (eventHandlers.js already imports from sessionManagement.js).
+            const allAvatars = DOM.chatLog.querySelectorAll('.clickable-avatar[data-turn-id]');
+            const lastAvatar = allAvatars.length > 0 ? allAvatars[allAvatars.length - 1] : null;
+            if (lastAvatar) {
+                import('../eventHandlers.js').then(({ handleReloadPlanClick }) => {
+                    handleReloadPlanClick(lastAvatar);
+                });
+            }
+            // Clean up completed buffers on visit (server has the data now)
+            if (restBuffer) {
+                delete state.restEventBuffer[sessionId];
+            }
         }
 
         // Mark conversation as initialized after successful session load

@@ -2332,8 +2332,12 @@ async def execute_query(session_id: str):
                 # --- MODIFICATION START: Build canonical_event directly ---
                 # No need to format/re-parse. Just build the dict.
                 canonical_event = copy.deepcopy(sanitized_event_data)
-                # Ensure 'type' key exists, merging the event_type string
-                canonical_event['type'] = event_type
+                # Preserve original event type (e.g. 'plan_generated', 'conversation_agent_start')
+                # if present; only fall back to SSE event_type when the event has no type field.
+                # The executor embeds the real type in event_data['type']. The SSE event_type
+                # is just the wrapper type (often 'notification' or None) and must not overwrite it.
+                if 'type' not in canonical_event:
+                    canonical_event['type'] = event_type or 'notification'
                 # --- MODIFICATION END ---
                     
                 # --- MODIFICATION START: Handle session_name_update as a top-level event ---

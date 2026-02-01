@@ -13,6 +13,7 @@ export const state = {
     currentStatusId: 0,
     currentSessionId: null,
     currentTaskId: null, // Add this line
+    currentTurnNumber: null, // Turn number for current execution (from execution_start event)
     resourceData: { tools: {}, prompts: {}, resources: {}, charts: {} },
     currentlySelectedResource: null,
     activeGenieProfile: null, // Store Genie profile info when @GENIE override is active
@@ -81,6 +82,8 @@ export const state = {
     // --- Session stream isolation ---
     activeStreamSessions: new Set(), // Session IDs with running /ask_stream processStream loops
     sessionUiCache: {},              // sessionId -> { chatHTML, statusHTML, tokenData } saved on switch-away
+    restEventBuffer: {},             // session_id -> { taskId, events: [], isComplete: false } for REST task replay
+    activeRestSessions: new Set(),   // Session IDs with active REST execution (e.g., Genie child sessions)
 };
 
 // Functions to modify state can be added here if needed, e.g.:

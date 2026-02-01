@@ -175,6 +175,106 @@ function _getConversationAgentStepTitle(eventType, payload) {
     }
 }
 
+/**
+ * Routes a REST task event to the correct profile-specific renderer.
+ * Different profile classes (tool_enabled, llm_only, conversation_with_tools,
+ * rag_focused) produce different event types that need different renderers.
+ * This dispatcher replaces the previous blanket 'rest' source rendering.
+ *
+ * @param {Object} event - The canonical event object (has .type and payload fields)
+ * @param {string} taskId - The REST task ID
+ */
+function _dispatchRestEvent(event, taskId) {
+    const eventType = event.type;
+    if (!eventType) return;
+
+    // --- Token updates: direct to token display, not status window ---
+    if (eventType === 'token_update') {
+        UI.updateTokenDisplay(event);
+        return;
+    }
+
+    // --- Status indicators: transient, skip (handled separately) ---
+    if (eventType === 'status_indicator_update') return;
+
+    // --- Session model updates: handle metadata only ---
+    if (eventType === 'session_model_update') {
+        const payload = event.payload || event;
+        UI.updateSessionModels(payload.session_id, payload.models_used, payload.profile_tags_used);
+        if (payload.session_id === state.currentSessionId) {
+            state.currentProvider = payload.provider;
+            state.currentModel = payload.model;
+            UI.updateStatusPromptName();
+        }
+        return;
+    }
+
+    // --- Conversation Agent events (conversation_with_tools profile) ---
+    if (eventType.startsWith('conversation_agent') ||
+        eventType.startsWith('conversation_llm') ||
+        eventType.startsWith('conversation_tool')) {
+        const payload = event.payload || event;
+        const stepTitle = _getConversationAgentStepTitle(eventType, payload);
+        UI.updateStatusWindow({
+            step: stepTitle,
+            details: payload,
+            type: eventType
+        }, eventType === 'conversation_agent_complete', 'conversation_agent');
+        // Also update handler state for correct live event processing
+        handleConversationAgentEvent(eventType, payload);
+        return;
+    }
+
+    // --- Knowledge Retrieval events (rag_focused + conversation_with_tools) ---
+    if (eventType.startsWith('knowledge_') ||
+        eventType === 'rag_llm_step' ||
+        eventType === 'knowledge_search_complete') {
+        const payload = event.payload || event;
+        const stepTitle = _getConversationAgentStepTitle(eventType, payload);
+        UI.updateStatusWindow({
+            step: stepTitle,
+            details: payload,
+            type: eventType
+        }, false, 'knowledge_retrieval');
+        return;
+    }
+
+    // --- LLM execution events (llm_only profile) ---
+    if (eventType === 'llm_execution' || eventType === 'llm_execution_complete') {
+        const payload = event.payload || event;
+        const stepTitle = _getConversationAgentStepTitle(eventType, payload);
+        UI.updateStatusWindow({
+            step: stepTitle,
+            details: payload,
+            type: eventType
+        }, eventType === 'llm_execution_complete', 'conversation_agent');
+        return;
+    }
+
+    // --- Lifecycle events (all profile types) ---
+    if (eventType === 'execution_start' || eventType === 'execution_complete' ||
+        eventType === 'execution_error' || eventType === 'execution_cancelled') {
+        const payload = event.payload || event;
+
+        // Capture turn number from execution_start for title display
+        if (eventType === 'execution_start' && payload.turn_id) {
+            state.currentTurnNumber = payload.turn_id;
+        }
+
+        const isFinal = eventType !== 'execution_start';
+        UI.updateStatusWindow({
+            step: eventType,
+            details: payload,
+            type: eventType
+        }, isFinal, 'lifecycle');
+        return;
+    }
+
+    // --- Default: planner/executor events (tool_enabled profile) → 'rest' source ---
+    const isFinal = (eventType === 'final_answer' || eventType === 'error' || eventType === 'cancelled');
+    UI.updateStatusWindow(event, isFinal, 'rest', taskId);
+}
+
 export function subscribeToNotifications() {
     if (!state.userUUID) {
         // Set status to disconnected if we can't even start.
@@ -305,72 +405,78 @@ export function subscribeToNotifications() {
                 }
                 break;
             }
-            // --- MODIFICATION START: Add handlers for REST task events ---
+            // --- REST task events with buffering and profile-aware dispatch ---
             case 'rest_task_update': {
                 const { task_id, session_id, event } = data.payload;
-                // Allow child session events through during Genie coordination —
-                // child sessions have different session_ids but their CCR/KNW
-                // indicators should be visible in the parent session.
+
+                // --- Always buffer REST events per session for cross-session replay ---
+                // Buffer is created on first event, and session is tracked as active.
+                // Completion is handled by the separate 'rest_task_complete' notification.
+                if (!state.restEventBuffer[session_id]) {
+                    state.restEventBuffer[session_id] = { taskId: task_id, events: [], isComplete: false };
+                    state.activeRestSessions.add(session_id);
+                }
+                state.restEventBuffer[session_id].events.push(event);
+
+                // --- Session guard: allow current session + child sessions during Genie ---
                 if (session_id !== state.currentSessionId && !state.isGenieCoordinationActive) break;
 
-                // --- MODIFICATION START: Add CCR (Champion Case Retrieval) event handling ---
-                // Check the *original* event type inside the payload
+                // --- Extract indicator events (CCR, KNW) for dot blinks ---
                 if (event.type === 'rag_retrieval') {
-                    state.lastRagCaseData = event; // Store the full case data
+                    state.lastRagCaseData = event;
                     UI.blinkCcrDot();
                 }
-                // --- MODIFICATION END ---
-
-                // --- PHASE 3: Add knowledge_retrieval event handling ---
                 if (event.type === 'knowledge_retrieval') {
                     const collections = event.data?.collections || [];
                     const documentCount = event.data?.document_count || 0;
-                    console.log('[knowledge_retrieval] Received:', { collections, documentCount });
-                    // Only blink during live execution, not when viewing historical turns
-                    if (!state.isViewingHistoricalTurn) {
-                        UI.blinkKnowledgeDot();
-                    }
+                    if (!state.isViewingHistoricalTurn) UI.blinkKnowledgeDot();
                     UI.updateKnowledgeIndicator(collections, documentCount);
                 }
-                // --- END PHASE 3 ---
 
-                // During Genie coordination, child REST events should only update indicator dots
-                // (CCR, KNW, status) — not render in the status window. The Genie renderer
-                // handles child progress via genie_slave_progress/genie_slave_completed events.
-                // Rendering child REST events via updateStatusWindow causes "task switches"
-                // that wipe the genie coordination steps from the Live Status window.
+                // During Genie coordination, child REST events should only blink dots.
+                // The Genie renderer handles child progress via genie_slave_* events.
                 if (state.isGenieCoordinationActive && session_id !== state.currentSessionId) {
                     break;
                 }
 
-                const isFinal = (event.type === 'final_answer' || event.type === 'error' || event.type === 'cancelled');
-
-                // The backend now sends a canonical event object, so we can pass it directly.
-                UI.updateStatusWindow(event, isFinal, 'rest', task_id);
+                // --- Route to profile-specific renderer ---
+                _dispatchRestEvent(event, task_id);
                 break;
             }
-            case 'rest_task_complete':
-                {
-                    const { session_id, turn_id, user_input, final_answer, profile_tag } = data.payload;
-                    if (session_id === state.currentSessionId) {
-                        // Add the Q&A to the main chat log with profile tag
-                        UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag);
-                        UI.addMessage('assistant', final_answer, turn_id, true);
-                        UI.moveSessionToTop(session_id);
-                        UI.setExecutionState(false); // Reset UI execution state
+            case 'rest_task_complete': {
+                const { session_id, turn_id, user_input, final_answer, profile_tag } = data.payload;
 
-                        // Explicitly mark the last active status step as completed
-                        const lastStep = DOM.statusWindowContent.querySelector('.status-step.active');
-                        if (lastStep) {
-                            lastStep.classList.remove('active');
-                            lastStep.classList.add('completed');
-                        }
-                    } else {
-                        // If not the current session, provide a visual cue
-                        UI.highlightSession(session_id);
-                    }
-                    break;
+                // --- Definitive cleanup for REST session tracking ---
+                state.activeRestSessions.delete(session_id);
+                if (state.restEventBuffer[session_id]) {
+                    state.restEventBuffer[session_id].isComplete = true;
                 }
+
+                if (session_id === state.currentSessionId) {
+                    // User is viewing this session — render Q&A and clean up
+                    UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag);
+                    UI.addMessage('assistant', final_answer, turn_id, true);
+                    UI.moveSessionToTop(session_id);
+                    UI.setExecutionState(false);
+
+                    // Explicitly mark the last active status step as completed
+                    const lastStep = DOM.statusWindowContent.querySelector('.status-step.active');
+                    if (lastStep) {
+                        lastStep.classList.remove('active');
+                        lastStep.classList.add('completed');
+                    }
+
+                    // Buffer no longer needed — UI is fully rendered
+                    delete state.restEventBuffer[session_id];
+                } else {
+                    // User is viewing a different session
+                    UI.highlightSession(session_id);
+                    // Delete stale cache (next visit should use normal server load with fresh data)
+                    delete state.sessionUiCache[session_id];
+                    // Buffer is kept (marked complete) — cleaned on next visit to this session
+                }
+                break;
+            }
             case 'status_indicator_update': {
                 // Status indicators (MCP, LLM) are global system health indicators.
                 // Always process them regardless of active streams — they reflect

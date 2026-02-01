@@ -638,6 +638,7 @@ After gathering information from profiles, provide a synthesized answer that:
                 "profile_type": "genie",
                 "session_id": self.parent_session_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "turn_id": getattr(self, 'turn_number', 1),
                 "profile_tag": self.genie_profile.get("tag", "GENIE"),
                 "query": query[:200] if query else "",
                 "available_slaves": len(self.slave_profiles)
@@ -702,6 +703,30 @@ After gathering information from profiles, provide a synthesized answer that:
                 event_name = event.get("name", "")
                 event_data = event.get("data", {})
 
+                # --- Status indicator: LLM busy on start ---
+                if event_kind in ("on_llm_start", "on_chat_model_start"):
+                    self._emit_event("status_indicator_update", {
+                        "target": "llm", "state": "busy"
+                    })
+
+                # --- Status indicator: MCP (db) busy when child profile tool starts ---
+                elif event_kind == "on_tool_start":
+                    self._emit_event("status_indicator_update", {
+                        "target": "db", "state": "busy"
+                    })
+
+                # --- Status indicator: MCP (db) idle when child profile tool completes ---
+                elif event_kind == "on_tool_end":
+                    self._emit_event("status_indicator_update", {
+                        "target": "db", "state": "idle"
+                    })
+
+                # --- Status indicator: MCP (db) idle on tool error ---
+                elif event_kind == "on_tool_error":
+                    self._emit_event("status_indicator_update", {
+                        "target": "db", "state": "idle"
+                    })
+
                 # Track token usage from LLM calls
                 # Some providers emit on_llm_end, others emit on_chat_model_end
                 if event_kind in ("on_llm_end", "on_chat_model_end"):
@@ -742,6 +767,11 @@ After gathering information from profiles, provide a synthesized answer that:
                     })
 
                     logger.info(f"[Genie] LLM Step {self.llm_call_count} ({step_name}): {input_tokens} in / {output_tokens} out")
+
+                    # --- Status indicator: LLM idle after completion ---
+                    self._emit_event("status_indicator_update", {
+                        "target": "llm", "state": "idle"
+                    })
 
                 # Capture final output from chain end
                 elif event_kind == "on_chain_end" and event_name == "LangGraph":

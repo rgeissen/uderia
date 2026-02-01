@@ -342,6 +342,11 @@ async def _run_genie_execution(
         # This provides multi-turn context to the Genie coordinator
         # Respects disabled_history flag (for single-turn context mode) and isValid flag (for purged/toggled turns)
         session_data = await session_manager.get_session(user_uuid, session_id)
+
+        # Compute turn number for lifecycle events (same logic as executor.py:1945-1951)
+        workflow_history = session_data.get('last_turn_data', {}).get('workflow_history', []) if session_data else []
+        coordinator.turn_number = len(workflow_history) + 1
+
         conversation_history = []
 
         if disabled_history:

@@ -389,6 +389,7 @@ class PlanExecutor:
         self.original_provider_details = {}  # Will store provider-specific config (Friendli, Azure, AWS)
         self.original_server_id = None  # Will store original current_server_id_by_user entry if overridden
         self.effective_mcp_server_id = None  # Track the ACTUAL MCP server ID used during this turn (for RAG storage)
+        self.profile_llm_instance = None  # Profile-specific LLM client (created when profile uses different provider than default)
         
         # Snapshot model and provider for this turn from active profile (default or override)
         # Don't use global config as it may not match the profile being used
@@ -587,8 +588,11 @@ class PlanExecutor:
         """A centralized wrapper for calling the LLM that handles token updates."""
         final_disabled_history = disabled_history or self.disabled_history
 
+        # Use profile-specific LLM instance when available (e.g., RAG profile with Friendli
+        # while default profile uses Google). Falls back to global instance.
+        llm_instance = self.profile_llm_instance if self.profile_llm_instance else self.dependencies['STATE']['llm']
         response_text, statement_input_tokens, statement_output_tokens, actual_provider, actual_model = await llm_handler.call_llm_api(
-            self.dependencies['STATE']['llm'], prompt,
+            llm_instance, prompt,
             # --- MODIFICATION START: Pass user_uuid and session_id ---
             user_uuid=self.user_uuid, session_id=self.session_id,
             # --- MODIFICATION END ---
@@ -597,9 +601,10 @@ class PlanExecutor:
             disabled_history=final_disabled_history,
             active_prompt_name_for_filter=active_prompt_name_for_filter,
             source=source,
-            # --- MODIFICATION START: Pass active profile and provider for prompt resolution ---
+            # --- MODIFICATION START: Pass active profile, provider and model for prompt resolution ---
             active_profile_id=self.active_profile_id,
             current_provider=self.current_provider,
+            current_model=self.current_model,
             # --- MODIFICATION END ---
             multimodal_content=multimodal_content
         )
@@ -1041,6 +1046,8 @@ class PlanExecutor:
             user_uuid=self.user_uuid,
             active_profile_id=self.active_profile_id,
             current_provider=self.current_provider,
+            current_model=self.current_model,
+            profile_llm_instance=self.profile_llm_instance,
             emit_events=True
         ):
             if event_data is None:
@@ -1955,6 +1962,51 @@ Response:"""
         app_logger.info(f"PlanExecutor initialized for {profile_label} turn: {self.current_turn_number}")
         # --- MODIFICATION END ---
 
+        # --- PROFILE LLM INSTANCE: Create profile-specific LLM client when provider differs ---
+        # The global APP_STATE['llm'] is set at login from the user's default profile.
+        # When the active profile (via @TAG override) uses a different LLM provider,
+        # we need a matching client instance. This is stored on self.profile_llm_instance
+        # (local to this executor, no global state modification) and used by _call_llm_and_update_tokens.
+        # The tool_enabled path has its own override mechanism at line ~3400, so this
+        # primarily serves llm_only, rag_focused, and conversation_with_tools profiles.
+        current_user_provider = get_user_provider(self.user_uuid)
+        current_user_model = get_user_model(self.user_uuid)
+        if self.current_provider and (self.current_provider != current_user_provider or self.current_model != current_user_model):
+            app_logger.info(f"🔄 Profile uses different LLM than default: {self.current_provider}/{self.current_model} vs {current_user_provider}/{current_user_model}")
+            try:
+                from trusted_data_agent.llm.client_factory import create_llm_client
+                from trusted_data_agent.core.configuration_service import retrieve_credentials_for_provider
+
+                credentials_result = await retrieve_credentials_for_provider(self.user_uuid, self.current_provider)
+                credentials = credentials_result.get("credentials", {})
+
+                if credentials:
+                    # Merge with profile LLM config credentials if available
+                    try:
+                        from trusted_data_agent.core.config_manager import get_config_manager
+                        config_manager = get_config_manager()
+                        if self.active_profile_id:
+                            profiles = config_manager.get_profiles(self.user_uuid)
+                            active_profile = next((p for p in profiles if p.get("id") == self.active_profile_id), None)
+                            if active_profile:
+                                llm_config_id = active_profile.get('llmConfigurationId')
+                                if llm_config_id:
+                                    llm_configs = config_manager.get_llm_configurations(self.user_uuid)
+                                    llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
+                                    if llm_config and llm_config.get('credentials'):
+                                        credentials = {**credentials, **llm_config['credentials']}
+                    except Exception as e:
+                        app_logger.debug(f"Could not merge profile LLM config credentials: {e}")
+
+                    self.profile_llm_instance = await create_llm_client(self.current_provider, self.current_model, credentials)
+                    app_logger.info(f"✅ Created profile-specific LLM instance: {self.current_provider}/{self.current_model}")
+                else:
+                    app_logger.warning(f"No credentials found for profile provider {self.current_provider}, falling back to global LLM instance")
+            except Exception as e:
+                app_logger.warning(f"Failed to create profile-specific LLM instance for {self.current_provider}/{self.current_model}: {e}")
+                app_logger.warning(f"Falling back to global LLM instance — provider branching in call_llm_api will still use correct provider path")
+        # --- PROFILE LLM INSTANCE END ---
+
         if is_llm_only:
             # DIRECT EXECUTION PATH - Bypass planner entirely
             app_logger.info("🗨️ LLM-only profile detected - direct execution mode")
@@ -2491,8 +2543,35 @@ The following domain knowledge may be relevant to this conversation:
         if is_conversation_with_tools:
             app_logger.info("🔧 Conversation profile with MCP Tools - LangChain agent mode")
 
+            # Emit execution_start lifecycle event for conversation_with_tools
+            try:
+                start_event = self._emit_lifecycle_event("execution_start", {
+                    "profile_type": "conversation_with_tools",
+                    "profile_tag": self._get_current_profile_tag(),
+                    "query": self.original_user_input[:200] if self.original_user_input else "",
+                })
+                yield start_event
+                app_logger.info("✅ Emitted execution_start event for conversation_with_tools profile")
+            except Exception as e:
+                app_logger.warning(f"Failed to emit execution_start event: {e}")
+
             async for event in self._execute_conversation_with_tools():
                 yield event
+
+            # Emit execution_complete lifecycle event for conversation_with_tools
+            try:
+                complete_event = self._emit_lifecycle_event("execution_complete", {
+                    "profile_type": "conversation_with_tools",
+                    "profile_tag": self._get_current_profile_tag(),
+                    "total_input_tokens": self.turn_input_tokens,
+                    "total_output_tokens": self.turn_output_tokens,
+                    "success": True
+                })
+                yield complete_event
+                app_logger.info("✅ Emitted execution_complete event for conversation_with_tools profile")
+            except Exception as e:
+                app_logger.warning(f"Failed to emit execution_complete event: {e}")
+
             return
         # --- CONVERSATION WITH TOOLS END ---
 
@@ -4756,6 +4835,8 @@ The following domain knowledge may be relevant to this conversation:
                         user_uuid=self.user_uuid,
                         active_profile_id=self.active_profile_id,
                         current_provider=self.current_provider,
+                        current_model=self.current_model,
+                        profile_llm_instance=self.profile_llm_instance,
                         emit_events=True
                     ):
                         if event_dict is None:

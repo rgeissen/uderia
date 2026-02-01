@@ -264,6 +264,8 @@ async def generate_session_name_with_events(
     user_uuid: str = None,
     active_profile_id: int = None,
     current_provider: str = None,
+    current_model: str = None,
+    profile_llm_instance = None,  # Profile-specific LLM client (overrides global when profile uses different provider)
     emit_events: bool = True
 ) -> AsyncGenerator[Tuple[Optional[dict], Optional[str], int, int], None]:
     """
@@ -301,7 +303,8 @@ async def generate_session_name_with_events(
         if llm_interface == "executor":
             # Use executor's LLM handler
             name, input_tokens, output_tokens = await _generate_via_executor(
-                user_query, llm_dependencies, user_uuid, active_profile_id, current_provider
+                user_query, llm_dependencies, user_uuid, active_profile_id, current_provider,
+                current_model=current_model, profile_llm_instance=profile_llm_instance
             )
         elif llm_interface == "langchain":
             # Use LangChain LLM instance
@@ -339,7 +342,9 @@ async def _generate_via_executor(
     dependencies: dict,
     user_uuid: str,
     active_profile_id: int,
-    current_provider: str
+    current_provider: str,
+    current_model: str = None,
+    profile_llm_instance = None
 ) -> Tuple[str, int, int]:
     """Generate session name using executor's LLM handler."""
     from trusted_data_agent.llm import handler as llm_handler
@@ -377,8 +382,10 @@ async def _generate_via_executor(
         "Database Query"
     )
 
+    # Use profile-specific LLM instance when available (profile uses different provider than default)
+    llm_to_use = profile_llm_instance if profile_llm_instance else dependencies['STATE']['llm']
     name_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
-        dependencies['STATE']['llm'],
+        llm_to_use,
         prompt,
         user_uuid=user_uuid,
         session_id=None,  # Don't add to session history
@@ -389,7 +396,8 @@ async def _generate_via_executor(
         disabled_history=True,
         source="system",
         active_profile_id=active_profile_id,
-        current_provider=current_provider
+        current_provider=current_provider,
+        current_model=current_model
     )
 
     # Clean the name and extract only the final title

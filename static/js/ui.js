@@ -553,12 +553,6 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         knowledgeBanner.classList.add('hidden');
     }
 
-    // 1. Add a title
-    const titleEl = document.createElement('h3');
-    titleEl.className = 'text-lg font-bold text-white mb-4 p-3 bg-gray-900/50 rounded-md';
-    titleEl.textContent = `Reloaded Details for Turn ${turnId}`;
-    DOM.statusWindowContent.appendChild(titleEl);
-
     // --- Render execution_start lifecycle event from tool_enabled_events (if present) ---
     if (toolEnabledEvents && toolEnabledEvents.length > 0) {
         const startEvent = toolEnabledEvents.find(e => e.type === 'execution_start');
@@ -583,18 +577,20 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         const stepTitle = eventType === 'knowledge_retrieval_complete'
             ? `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`
             : `Knowledge Retrieved (${docCount} chunks)`;
-        updateStatusWindow({
+        // Render directly via _renderConversationAgentStep to avoid title override.
+        // (updateStatusWindow with 'knowledge_retrieval' source would reset the title
+        // that handleReloadPlanClick already set to "<Branded Agent> - Turn X".)
+        _renderConversationAgentStep({
             step: stepTitle,
             details: knowledgeRetrievalEvent,
             type: eventType
-        }, false, 'knowledge_retrieval');
+        }, DOM.statusWindowContent, false);
     }
     // --- PHASE 2 END ---
 
     // 2. Iterate through the new, rich execution trace
     executionTrace.forEach(traceEntry => {
         let eventData = {};
-        let eventName = null;
 
         if (traceEntry.action && traceEntry.action.tool_name === 'TDA_SystemLog') {
             // This is a system event
@@ -620,7 +616,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     execution_depth: metadata.execution_depth
                 }
             };
-            updateStatusWindow(intentEventData, false);
+            // Render directly to avoid title override from 'interactive' source
+            _renderStandardStep(intentEventData, DOM.statusWindowContent, false);
 
             // Render result
             const resultEventData = {
@@ -631,16 +628,15 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     execution_depth: metadata.execution_depth
                 }
             };
-            // For tool results, the event name is important
-            eventName = resultEventData.type === 'tool_error' ? 'tool_error' : 'tool_result';
-            updateStatusWindow(resultEventData, false, eventName);
+            _renderStandardStep(resultEventData, DOM.statusWindowContent, false);
             return; // We've handled this entry completely
         } else {
             // Skip unknown trace entry formats
             return;
         }
 
-        updateStatusWindow(eventData, false);
+        // Render directly to avoid title override from 'interactive' source
+        _renderStandardStep(eventData, DOM.statusWindowContent, false);
     });
 
     // Render system events (session name generation, etc.) after execution trace
@@ -3033,11 +3029,9 @@ export function resetStatusWindowForNewTask() {
     state.pendingSubtaskPlanningEvents = [];
     state.isInFastPath = false;
     setThinkingIndicator(false);
-    // Reset title to default
-    const statusTitle = DOM.statusTitle || document.getElementById('status-title');
-    if (statusTitle) {
-        statusTitle.textContent = 'Live Status';
-    }
+    // Title is NOT reset here — it is managed by lifecycle events (execution_start)
+    // and profile-specific source handlers (genie, conversation_agent, rest).
+    // Each caller sets the appropriate branded title after calling this function.
 }
 
 /**
@@ -3059,6 +3053,21 @@ function _getBrandedAgentName(profileType) {
     }
 }
 
+/**
+ * Format the Live Status title with branded agent name and turn number.
+ * @param {string} profileType - Profile type for branding
+ * @param {boolean} isLive - true for live execution prefix, false for completed
+ * @returns {string} Formatted title
+ */
+function _formatStatusTitle(profileType, isLive = true) {
+    const brandedName = _getBrandedAgentName(profileType);
+    const turnSuffix = state.currentTurnNumber ? ` - Turn ${state.currentTurnNumber}` : '';
+    if (isLive) {
+        return `Live Status - ${brandedName}${turnSuffix}`;
+    }
+    return `${brandedName}${turnSuffix}`;
+}
+
 export function updateStatusWindow(eventData, isFinal = false, source = 'interactive', taskId = null) {
     const { step, details, type, metadata } = eventData;
 
@@ -3077,7 +3086,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             state.activeRestTaskId = taskId;
             updateTaskIdDisplay(taskId); // Display the task ID
         }
-        statusTitle.textContent = 'Live Status - REST'; // Removed redundant Task ID from title
+        statusTitle.textContent = _formatStatusTitle('tool_enabled');
     } else if (source === 'genie') {
         // Genie coordination events
         if (!state.isGenieCoordinationActive) {
@@ -3091,8 +3100,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             state.isRestTaskActive = false;
             updateTaskIdDisplay(null);
         }
-        const brandedName = _getBrandedAgentName('genie');
-        statusTitle.textContent = `Live Status - ${brandedName}`;
+        statusTitle.textContent = _formatStatusTitle('genie');
         // Render genie events using custom renderer
         _renderGenieStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
@@ -3115,8 +3123,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         }
         // Extract profile_type from event details if available (conversation_agent_start event)
         const profileType = details?.profile_type || 'conversation_with_tools';
-        const brandedName = _getBrandedAgentName(profileType);
-        statusTitle.textContent = `Live Status - ${brandedName}`;
+        statusTitle.textContent = _formatStatusTitle(profileType);
         // Render conversation agent events using custom renderer
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
@@ -3133,7 +3140,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
                 updateTaskIdDisplay(null);
             }
         }
-        statusTitle.textContent = 'Live Status - Knowledge Retrieval';
+        statusTitle.textContent = _formatStatusTitle('rag_focused');
         // Render knowledge retrieval using the conversation agent renderer (same styling)
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, false);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
@@ -3151,17 +3158,33 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         return;
     } else if (source === 'lifecycle') {
         // Lifecycle events (execution_start, execution_complete, etc.) for all profile types
+
+        // Capture turn number from execution_start for title display
+        if (type === 'execution_start' && details?.turn_id) {
+            state.currentTurnNumber = details.turn_id;
+        }
+
         // Reset status window if no active execution
         if (!state.isConversationAgentActive && !state.isGenieCoordinationActive && !state.isRestTaskActive) {
             const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
             if (!hasExistingSteps) {
                 resetStatusWindowForNewTask();
                 updateTaskIdDisplay(null);
-                // Only set generic title when starting fresh (no prior execution context)
-                statusTitle.textContent = 'Live Status';
+                // Use branded title from execution_start payload if available,
+                // so the correct agent name appears immediately (no brief "Live Status" gap)
+                if (type === 'execution_start' && details?.profile_type) {
+                    statusTitle.textContent = _formatStatusTitle(details.profile_type, true);
+                } else {
+                    statusTitle.textContent = 'Live Status';
+                }
             }
             // When existing steps are present, preserve the current title —
             // the profile-specific execution (Genie, Conversation, etc.) already set it.
+        }
+
+        // On execution_complete: transition from "Live Status - ..." to "<Brand> - Turn X"
+        if (type === 'execution_complete' && details?.profile_type) {
+            statusTitle.textContent = _formatStatusTitle(details.profile_type, false);
         }
 
         // For tool_enabled profiles during live execution, route lifecycle events
@@ -3190,7 +3213,9 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             resetStatusWindowForNewTask();
             updateTaskIdDisplay(null); // Hide the task ID
         }
-        statusTitle.textContent = 'Live Status';
+        // Title is NOT reset here — it is managed by lifecycle events (execution_start)
+        // and profile-specific source handlers (genie, conversation_agent, rest).
+        // Resetting here would overwrite the branded title on every tool_enabled event.
     }
 
     const execution_depth_from_details = details?.execution_depth ?? 0;

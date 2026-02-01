@@ -362,13 +362,16 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
                 else:
                     # Fallback to default if resolution fails
                     app_logger.warning(f"Profile prompt resolution returned None, using default")
-                    base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
+                    fallback_provider = current_provider or APP_CONFIG.CURRENT_PROVIDER
+                    base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(fallback_provider, PROVIDER_SYSTEM_PROMPTS["Google"]))
             except Exception as e:
                 app_logger.error(f"Error resolving profile prompt: {e}, falling back to default")
-                base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
+                fallback_provider = current_provider or APP_CONFIG.CURRENT_PROVIDER
+                base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(fallback_provider, PROVIDER_SYSTEM_PROMPTS["Google"]))
         else:
             # Fallback to default if profile/provider not available
-            base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(APP_CONFIG.CURRENT_PROVIDER, PROVIDER_SYSTEM_PROMPTS["Google"]))
+            fallback_provider = current_provider or APP_CONFIG.CURRENT_PROVIDER
+            base_prompt_text = str(PROVIDER_SYSTEM_PROMPTS.get(fallback_provider, PROVIDER_SYSTEM_PROMPTS["Google"]))
 
     STATE = dependencies['STATE']
 
@@ -504,16 +507,20 @@ def _normalize_bedrock_model_id(model_id: str) -> str:
     return model_id.split(':')[0]
 
     # --- MODIFICATION START: Add user_uuid parameter ---
-async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, multimodal_content: list = None) -> tuple[str, int, int, str, str]: # Added provider and model to return type
+async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, current_model: str = None, multimodal_content: list = None) -> tuple[str, int, int, str, str]: # Added provider and model to return type
 # --- MODIFICATION END ---
     if not llm_instance:
         raise RuntimeError("LLM is not initialized.")
 
+    # Use per-profile provider/model when passed, falling back to global config.
+    # This prevents cross-profile contamination when the active profile uses a different
+    # LLM provider than the global default (e.g., RAG profile using Friendli while default is Google).
+    effective_provider = current_provider if current_provider else APP_CONFIG.CURRENT_PROVIDER
+    effective_model = current_model if current_model else APP_CONFIG.CURRENT_MODEL
+
     response_text = ""
     input_tokens, output_tokens = 0, 0
     is_session_name_call = reason and "session name" in reason.lower()
-    # NOTE: Don't capture provider/model from global config here - they get updated during profile override
-    # We'll capture the actual values used at the end of the function from APP_CONFIG
 
     max_retries = APP_CONFIG.LLM_API_MAX_RETRIES
     base_delay = APP_CONFIG.LLM_API_BASE_DELAY
@@ -531,12 +538,12 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
             history_source = chat_history if chat_history is not None else session_data.get('chat_object', [])
             # Ensure history_source is a list
             if not isinstance(history_source, list):
-                 app_logger.warning(f"History source for {APP_CONFIG.CURRENT_PROVIDER} was not a list, resetting. Type: {type(history_source)}")
+                 app_logger.warning(f"History source for {effective_provider} was not a list, resetting. Type: {type(history_source)}")
                  history_source = []
             # --- MODIFICATION END ---
 
         # --- MODIFICATION START: Handle Google history logging explicitly ---
-        if APP_CONFIG.CURRENT_PROVIDER == "Google" and isinstance(history_source, list) and history_source and hasattr(history_source[0], 'role'):
+        if effective_provider == "Google" and isinstance(history_source, list) and history_source and hasattr(history_source[0], 'role'):
              # Assume Google's genai history object list
              normalized_history_for_log = [
                  {'role': msg.role, 'content': msg.parts[0].text if msg.parts and hasattr(msg.parts[0], 'text') else '[Content missing]'} for msg in history_source
@@ -566,7 +573,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
     for attempt in range(max_retries):
         try:
-            if APP_CONFIG.CURRENT_PROVIDER == "Google":
+            if effective_provider == "Google":
                 # --- Native multimodal for Google (Gemini) ---
                 if multimodal_content:
                     try:
@@ -694,7 +701,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
                 break # Exit retry loop on success
 
-            elif APP_CONFIG.CURRENT_PROVIDER in ["Anthropic", "OpenAI", "Azure", "Ollama", "Friendli"]:
+            elif effective_provider in ["Anthropic", "OpenAI", "Azure", "Ollama", "Friendli"]:
                 # --- MODIFICATION START: Use history_source consistently ---
                 current_history = []
                 if not disabled_history:
@@ -714,10 +721,10 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     if role in ['user', 'assistant'] and content is not None:
                         messages_for_api.append({'role': role, 'content': content})
                     else:
-                        app_logger.warning(f"Skipping history message with invalid role ('{role}') or missing content for {APP_CONFIG.CURRENT_PROVIDER}.")
+                        app_logger.warning(f"Skipping history message with invalid role ('{role}') or missing content for {effective_provider}.")
                 # --- MODIFICATION END ---
 
-                if APP_CONFIG.CURRENT_PROVIDER == "Anthropic":
+                if effective_provider == "Anthropic":
                     # --- Native multimodal for Anthropic ---
                     if multimodal_content:
                         try:
@@ -745,7 +752,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                         messages_for_api.append({'role': 'user', 'content': prompt})
 
                     response = await llm_instance.messages.create(
-                        model=APP_CONFIG.CURRENT_MODEL, system=system_prompt, messages=messages_for_api, max_tokens=100 if is_session_name_call else 4096, timeout=120.0
+                        model=effective_model, system=system_prompt, messages=messages_for_api, max_tokens=100 if is_session_name_call else 4096, timeout=120.0
                     )
                     # --- Debugging: Log raw response object ---
                     app_logger.debug(f"RAW LLM Response Object (Anthropic): {pprint.pformat(response.dict())}")
@@ -755,9 +762,9 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     if hasattr(response, 'usage'):
                         input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
 
-                elif APP_CONFIG.CURRENT_PROVIDER in ["OpenAI", "Azure", "Friendli"]:
+                elif effective_provider in ["OpenAI", "Azure", "Friendli"]:
                     # --- Native multimodal for OpenAI/Azure (images only) ---
-                    if multimodal_content and APP_CONFIG.CURRENT_PROVIDER in ["OpenAI", "Azure"]:
+                    if multimodal_content and effective_provider in ["OpenAI", "Azure"]:
                         try:
                             content_blocks = [{"type": "text", "text": prompt}]
                             for block in multimodal_content:
@@ -781,7 +788,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     # Prepend system prompt for these providers
                     messages_for_api.insert(0, {'role': 'system', 'content': system_prompt})
                     response = await llm_instance.chat.completions.create(
-                        model=APP_CONFIG.CURRENT_MODEL, messages=messages_for_api, max_tokens=100 if is_session_name_call else 4096, timeout=120.0
+                        model=effective_model, messages=messages_for_api, max_tokens=100 if is_session_name_call else 4096, timeout=120.0
                     )
                     # --- Debugging: Log raw response object ---
                     app_logger.debug(f"RAW LLM Response Object (OpenAI/Azure/Friendli): {pprint.pformat(response.dict())}")
@@ -791,10 +798,10 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     if hasattr(response, 'usage'):
                         input_tokens, output_tokens = response.usage.prompt_tokens, response.usage.completion_tokens
 
-                elif APP_CONFIG.CURRENT_PROVIDER == "Ollama":
+                elif effective_provider == "Ollama":
                     messages_for_api.append({'role': 'user', 'content': prompt})
                     response = await llm_instance.chat(
-                        model=APP_CONFIG.CURRENT_MODEL, messages=messages_for_api, system_prompt=system_prompt
+                        model=effective_model, messages=messages_for_api, system_prompt=system_prompt
                     )
                     # --- Debugging: Log raw response object ---
                     app_logger.debug(f"RAW LLM Response Object (Ollama): {pprint.pformat(response)}")
@@ -805,7 +812,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
                 break # Exit retry loop on success
 
-            elif APP_CONFIG.CURRENT_PROVIDER == "Amazon":
+            elif effective_provider == "Amazon":
                 # --- MODIFICATION START: Use history_source consistently ---
                 current_history = []
                 if not disabled_history:
@@ -816,7 +823,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     current_history = _condense_and_clean_history(current_history)
                 # --- MODIFICATION END ---
 
-                model_id_to_invoke = APP_CONFIG.CURRENT_MODEL
+                model_id_to_invoke = effective_model
                 is_inference_profile = model_id_to_invoke.startswith("arn:aws:bedrock:")
 
                 bedrock_provider = ""
@@ -984,7 +991,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
                 break # Exit retry loop on success
             else:
-                raise NotImplementedError(f"Provider '{APP_CONFIG.CURRENT_PROVIDER}' is not yet supported.")
+                raise NotImplementedError(f"Provider '{effective_provider}' is not yet supported.")
 
         except (InternalServerError, RateLimitError, OpenAI_APIError) as e:
             if attempt < max_retries - 1:
@@ -1000,7 +1007,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
             if raise_on_error: raise
             else: response_text = ""; break
         except Exception as e:
-            app_logger.error(f"Error calling LLM API for provider {APP_CONFIG.CURRENT_PROVIDER}: {e}", exc_info=True)
+            app_logger.error(f"Error calling LLM API for provider {effective_provider}: {e}", exc_info=True)
             llm_history_logger.error(f"--- ERROR in LLM call ---\n{e}\n" + "-"*50 + "\n")
             if raise_on_error: raise e
             else: app_logger.warning(f"LLM call failed after {attempt+1} attempts but raise_on_error=False. Continuing with empty response."); response_text = ""; break
@@ -1017,9 +1024,9 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
         await update_token_count(user_uuid, session_id, input_tokens, output_tokens)
     # --- MODIFICATION END ---
 
-    # Capture the actual provider and model used (from APP_CONFIG which gets updated during profile override)
-    actual_provider = APP_CONFIG.CURRENT_PROVIDER
-    actual_model = APP_CONFIG.CURRENT_MODEL
+    # Return the effective provider and model used for this call
+    actual_provider = effective_provider
+    actual_model = effective_model
     
     return response_text, input_tokens, output_tokens, actual_provider, actual_model
 

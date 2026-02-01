@@ -738,6 +738,11 @@ async function processStream(responseBody, originSessionId) {
                             const payload = eventData.payload || {};
                             const profile_type = payload.profile_type || 'unknown';
 
+                            // Capture turn number from execution_start for title display
+                            if (eventData.type === 'execution_start' && payload.turn_id) {
+                                state.currentTurnNumber = payload.turn_id;
+                            }
+
                             console.log(`[${eventData.type}] Received for ${profile_type} profile:`, payload);
 
                             // Generate harmonized title
@@ -1077,6 +1082,9 @@ export async function handleStreamRequest(endpoint, body) {
     DOM.userInput.value = '';
     UI.setExecutionState(true);
     UI.resetStatusWindowForNewTask();
+    // Set default title for the brief window before execution_start arrives with branding
+    const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+    if (statusTitle) statusTitle.textContent = 'Live Status';
 
     // This call remains to set the prompt name specifically for the new execution
     UI.updateStatusPromptName();
@@ -1596,7 +1604,8 @@ export async function handleReloadPlanClick(element) {
                 // Update status title to indicate historical view
                 const statusTitle = DOM.statusTitle || document.getElementById('status-title');
                 if (statusTitle) {
-                    statusTitle.textContent = `${isRagFocused ? 'RAG Focused' : 'Conversation'} Profile - Turn ${turnId}`;
+                    const brandedName = getBrandedAgentName(turnData.profile_type || 'rag_focused');
+                    statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
                 }
 
                 // Replay each event using the same renderer as live execution
