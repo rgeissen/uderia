@@ -1614,7 +1614,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                             <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Profiles</summary>
                             <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
                                 ${details.slave_profiles.map(p => {
-                                    return `<span class="profile-tag profile-tag--sm profile-tag--status-pending">@${p.tag}</span>`;
+                                    return renderProfileTag(p.tag, p.profile_type);
                                 }).join('')}
                             </div>
                         </details>

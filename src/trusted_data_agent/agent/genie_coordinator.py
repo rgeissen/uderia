@@ -665,7 +665,8 @@ After gathering information from profiles, provide a synthesized answer that:
                 {
                     "id": p.get("id"),
                     "tag": p.get("tag", "UNKNOWN"),
-                    "name": p.get("name", "")
+                    "name": p.get("name", ""),
+                    "profile_type": p.get("profile_type", "tool_enabled")
                 }
                 for p in self.slave_profiles
             ]
