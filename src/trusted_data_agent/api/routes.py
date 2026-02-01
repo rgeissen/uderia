@@ -185,11 +185,6 @@ async def get_rag_questions(current_user):
         profile = next((p for p in profiles if p.get("id") == profile_id), None)
         
         if profile:
-            # Only tool_enabled profiles use planner repositories for autocomplete
-            profile_type = profile.get("profile_type", "tool_enabled")
-            if profile_type != "tool_enabled":
-                return jsonify({"questions": []})
-
             autocomplete_collections = profile.get("autocompleteCollections", ["*"])
             if autocomplete_collections != ["*"]:
                 allowed_collection_ids = set(autocomplete_collections)
