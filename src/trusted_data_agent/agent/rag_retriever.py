@@ -1377,6 +1377,7 @@ class RAGRetriever:
                             "similarity_score": similarity_score,
                             "document_id": metadata.get("document_id", case_id),
                             "chunk_index": metadata.get("chunk_index", 0),
+                            "metadata": metadata,  # ChromaDB metadata (title, filename, etc.)
                             "strategy_type": "knowledge",  # Mark as knowledge document
                             "is_most_efficient": True,  # Not applicable for knowledge
                             "had_plan_improvements": False,

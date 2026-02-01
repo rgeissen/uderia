@@ -439,6 +439,9 @@ async function initializeRAGAutoCompletion() {
                     state.activeLlmOnlyProfile = null;
                     console.log(`🔍 Resource panel updated for profile: @${data.profile_tag}`);
                 }
+
+                // Update key observations button visibility based on new profile type
+                updateKeyObservationsButtonVisibility();
             } else {
                 // Restore default resources
                 const [toolsResponse, promptsResponse] = await Promise.all([
@@ -1393,14 +1396,28 @@ window.updateVoiceButtonVisibility = updateVoiceButtonVisibility;
 function updateVoiceButtonVisibility(enabled) {
     if (enabled) {
         DOM.voiceInputButton.classList.remove('hidden');
-        DOM.keyObservationsToggleButton.classList.remove('hidden');
     } else {
         DOM.voiceInputButton.classList.add('hidden');
-        DOM.keyObservationsToggleButton.classList.add('hidden');
     }
     // Sync app config state so synthesizeText() in api.js works correctly
     if (state.appConfig) {
         state.appConfig.voice_conversation_enabled = enabled;
+    }
+    updateKeyObservationsButtonVisibility();
+}
+
+/**
+ * Show key observations toggle only when TTS is enabled AND the active profile is tool_enabled.
+ * Key observations are only produced by tool_enabled (efficiency focused) profiles.
+ */
+function updateKeyObservationsButtonVisibility() {
+    const ttsEnabled = state.appConfig?.voice_conversation_enabled;
+    const isToolEnabled = !state.activeGenieProfile && !state.activeRagProfile && !state.activeLlmOnlyProfile;
+
+    if (ttsEnabled && isToolEnabled) {
+        DOM.keyObservationsToggleButton.classList.remove('hidden');
+    } else {
+        DOM.keyObservationsToggleButton.classList.add('hidden');
     }
 }
 
@@ -1415,13 +1432,13 @@ function updateUserTtsSection(mode) {
     [disabledMsg, globalMsg, userSection].forEach(el => { if (el) el.classList.add('hidden'); });
 
     if (mode === 'disabled') {
-        if (badge) { badge.textContent = 'Disabled'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-red-900/50 text-red-400'; }
+        if (badge) { badge.textContent = 'Disabled'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-400'; }
         if (disabledMsg) disabledMsg.classList.remove('hidden');
     } else if (mode === 'global') {
-        if (badge) { badge.textContent = 'Organization'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-400'; }
+        if (badge) { badge.textContent = 'Organization'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-400'; }
         if (globalMsg) globalMsg.classList.remove('hidden');
     } else if (mode === 'user') {
-        if (badge) { badge.textContent = 'User Credentials'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-400'; }
+        if (badge) { badge.textContent = 'User Credentials'; badge.className = 'ml-2 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-400'; }
         if (userSection) userSection.classList.remove('hidden');
         // Load user TTS credential status from server
         _loadUserTtsStatus();
@@ -1483,13 +1500,24 @@ function _setupUserTtsButtons() {
                 const data = await resp.json();
                 if (resp.ok) {
                     if (statusEl) { statusEl.textContent = 'Credentials saved'; statusEl.className = 'text-xs text-green-400'; }
-                    if (textarea) textarea.value = '';
                     if (deleteBtn) deleteBtn.classList.remove('hidden');
+                    saveBtn.disabled = true;
+                    saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
                 } else {
                     if (statusEl) { statusEl.textContent = data.error || 'Save failed'; statusEl.className = 'text-xs text-red-400'; }
                 }
             } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'text-xs text-red-400'; } }
         };
+    }
+
+    // Re-enable save button when credentials are modified
+    if (textarea && saveBtn) {
+        textarea.addEventListener('input', () => {
+            if (saveBtn.disabled) {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
     }
 
     if (testBtn) {

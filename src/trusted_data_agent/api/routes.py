@@ -475,14 +475,23 @@ async def get_app_config():
         'default_theme': 'legacy'
     })
     
-    from trusted_data_agent.core.tts_service import get_tts_mode
+    from trusted_data_agent.core.tts_service import get_tts_mode, has_global_tts_credentials, has_user_tts_credentials
     tts_mode = get_tts_mode()
+
+    # Only enable voice buttons if credentials actually exist for the active mode
+    voice_enabled = False
+    if tts_mode == 'global':
+        voice_enabled = has_global_tts_credentials()
+    elif tts_mode == 'user':
+        user_uuid = _get_user_uuid_from_request()
+        if user_uuid:
+            voice_enabled = has_user_tts_credentials(user_uuid)
 
     return jsonify({
         "charting_enabled": APP_CONFIG.CHARTING_ENABLED,
         "allow_synthesis_from_history": APP_CONFIG.ALLOW_SYNTHESIS_FROM_HISTORY,
         "default_charting_intensity": APP_CONFIG.DEFAULT_CHARTING_INTENSITY,
-        "voice_conversation_enabled": tts_mode != 'disabled',
+        "voice_conversation_enabled": voice_enabled,
         "tts_mode": tts_mode,
         "rag_enabled": APP_CONFIG.RAG_ENABLED,
         "license_info": APP_STATE.get("license_info"),

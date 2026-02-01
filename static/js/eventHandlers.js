@@ -888,65 +888,41 @@ async function processStream(responseBody) {
                         }
 
                         if (eventData.source === 'voice' && eventData.tts_payload) {
-                           const { direct_answer, key_observations } = eventData.tts_payload;
+                            state.ttsCancelled = false;
+                            const { direct_answer, key_observations } = eventData.tts_payload;
 
                             if (direct_answer) {
-                                const directAnswerAudio = await API.synthesizeText(direct_answer);
-                                if (directAnswerAudio) {
-                                    const audioUrl = URL.createObjectURL(directAnswerAudio);
-                                    const audio = new Audio(audioUrl);
-                                    await new Promise(resolve => {
-                                        audio.onended = resolve;
-                                        audio.onerror = resolve;
-                                        audio.play().catch(resolve);
-                                    });
-                                }
+                                await playTTSAudio(truncateForTTS(direct_answer));
                             }
 
-                            if (key_observations) {
+                            if (key_observations && !state.ttsCancelled) {
                                 switch (state.keyObservationsMode) {
                                     case 'autoplay-off':
                                         state.ttsState = 'AWAITING_OBSERVATION_CONFIRMATION';
                                         state.ttsObservationBuffer = key_observations;
                                         UI.updateVoiceModeUI();
 
-                                        const confirmationQuestion = "Do you want to hear the key observations?";
-                                        const questionAudio = await API.synthesizeText(confirmationQuestion);
+                                        await playTTSAudio("Do you want to hear the key observations?");
 
-                                        if (questionAudio) {
-                                            const questionUrl = URL.createObjectURL(questionAudio);
-                                            const questionPlayer = new Audio(questionUrl);
-                                            await new Promise(resolve => {
-                                                questionPlayer.onended = resolve;
-                                                questionPlayer.onerror = resolve;
-                                                questionPlayer.play().catch(resolve);
-                                            });
+                                        if (!state.ttsCancelled) {
                                             startConfirmationRecognition(handleObservationConfirmation);
                                         } else {
                                             state.ttsState = 'IDLE';
+                                            state.ttsObservationBuffer = '';
                                             UI.updateVoiceModeUI();
                                         }
                                         break;
 
                                     case 'autoplay-on':
-                                        const observationAudio = await API.synthesizeText(key_observations);
-                                        if (observationAudio) {
-                                            const audioUrl = URL.createObjectURL(observationAudio);
-                                            const audio = new Audio(audioUrl);
-                                            await new Promise(resolve => {
-                                                audio.onended = resolve;
-                                                audio.onerror = resolve;
-                                                audio.play().catch(resolve);
-                                            });
-                                        }
-
+                                        await playTTSAudio(key_observations);
+                                        // fall through to 'off' for voice restart
                                     case 'off':
-                                        if (state.isVoiceModeLocked) {
+                                        if (state.isVoiceModeLocked && !state.ttsCancelled) {
                                             setTimeout(() => startRecognition(), 100);
                                         }
                                         break;
                                 }
-                            } else if (state.isVoiceModeLocked) {
+                            } else if (state.isVoiceModeLocked && !state.ttsCancelled) {
                                 setTimeout(() => startRecognition(), 100);
                             }
                         }
@@ -986,21 +962,76 @@ async function processStream(responseBody) {
 }
 
 
+/**
+ * Truncates text to a TTS-safe length (Google Cloud TTS limit is ~5000 bytes).
+ * Cuts at the last sentence boundary before the limit.
+ */
+function truncateForTTS(text, maxLength = 4500) {
+    if (!text || text.length <= maxLength) return text;
+    const truncated = text.substring(0, maxLength);
+    const lastSentenceEnd = Math.max(
+        truncated.lastIndexOf('. '),
+        truncated.lastIndexOf('! '),
+        truncated.lastIndexOf('? '),
+        truncated.lastIndexOf('.\n')
+    );
+    if (lastSentenceEnd > maxLength * 0.5) {
+        return truncated.substring(0, lastSentenceEnd + 1);
+    }
+    return truncated + '...';
+}
+
+/**
+ * Synthesizes and plays TTS audio, storing the Audio reference in state for cancellation.
+ * Resolves when audio finishes, errors, or is paused (cancelled).
+ */
+async function playTTSAudio(text) {
+    const audioBlob = await API.synthesizeText(text);
+    if (!audioBlob || state.ttsCancelled) return;
+
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    state.currentTTSAudio = audio;
+
+    await new Promise(resolve => {
+        const cleanup = () => { URL.revokeObjectURL(audioUrl); resolve(); };
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+        audio.onpause = cleanup;
+        audio.play().catch(cleanup);
+    });
+
+    state.currentTTSAudio = null;
+}
+
+/**
+ * Cancels any in-progress TTS playback and resets TTS state.
+ * Called when user presses Escape during TTS playback.
+ */
+export function cancelTTS() {
+    state.ttsCancelled = true;
+    if (state.currentTTSAudio) {
+        state.currentTTSAudio.pause();
+        state.currentTTSAudio = null;
+    }
+    state.ttsState = 'IDLE';
+    state.ttsObservationBuffer = '';
+    UI.updateVoiceModeUI();
+    if (state.isVoiceModeLocked) {
+        setTimeout(() => startRecognition(), 100);
+    }
+}
+
 async function handleObservationConfirmation(transcribedText) {
     const classification = Utils.classifyConfirmation(transcribedText);
 
     if (classification === 'yes' && state.ttsObservationBuffer) {
-        const observationAudio = await API.synthesizeText(state.ttsObservationBuffer);
-        if (observationAudio) {
-            const audioUrl = URL.createObjectURL(observationAudio);
-            const audio = new Audio(audioUrl);
-            await new Promise(resolve => {
-                audio.onended = resolve;
-                audio.play();
-            });
-        }
+        await playTTSAudio(state.ttsObservationBuffer);
     }
-    if (state.isVoiceModeLocked) {
+    state.ttsState = 'IDLE';
+    state.ttsObservationBuffer = '';
+    UI.updateVoiceModeUI();
+    if (state.isVoiceModeLocked && !state.ttsCancelled) {
         setTimeout(() => startRecognition(), 100);
     }
 }
@@ -2259,6 +2290,13 @@ async function handleChatModalSubmit(e) {
 }
 
 function handleKeyDown(e) {
+    // Cancel TTS playback on Escape (takes priority when TTS is active)
+    if (e.key === 'Escape' && (state.currentTTSAudio || state.ttsState !== 'IDLE')) {
+        e.preventDefault();
+        cancelTTS();
+        return;
+    }
+
     if (e.key === 'Control' && !e.repeat) {
         if (e.shiftKey) {
             state.isVoiceModeLocked = !state.isVoiceModeLocked;

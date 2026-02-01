@@ -20,6 +20,31 @@ class OutputFormatter:
         self.llm_response_text = llm_response_text
         self.rag_focused_sources = rag_focused_sources
 
+    @staticmethod
+    def _strip_markdown_for_tts(text: str) -> str:
+        """Strip markdown formatting from text for clean TTS output."""
+        if not text:
+            return text
+        s = text
+        s = re.sub(r'```[\s\S]*?```', '', s)       # fenced code blocks
+        s = re.sub(r'`([^`]+)`', r'\1', s)          # inline code
+        s = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', s)  # bold+italic
+        s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)      # bold
+        s = re.sub(r'\*(.+?)\*', r'\1', s)           # italic
+        s = re.sub(r'__(.+?)__', r'\1', s)           # bold (underscore)
+        s = re.sub(r'_(.+?)_', r'\1', s)             # italic (underscore)
+        s = re.sub(r'~~(.+?)~~', r'\1', s)           # strikethrough
+        s = re.sub(r'^#{1,6}\s+', '', s, flags=re.MULTILINE)  # headings
+        s = re.sub(r'^\s*[-*+]\s+', '', s, flags=re.MULTILINE)  # unordered list markers
+        s = re.sub(r'^\s*\d+\.\s+', '', s, flags=re.MULTILINE)  # ordered list markers
+        s = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', s)  # links
+        s = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', s)  # images
+        s = re.sub(r'^\s*>\s?', '', s, flags=re.MULTILINE)  # blockquotes
+        s = re.sub(r'^\s*[-*_]{3,}\s*$', '', s, flags=re.MULTILINE)  # horizontal rules
+        s = re.sub(r'\|', ' ', s)                    # table pipes
+        s = re.sub(r'\n{3,}', '\n\n', s)            # collapse excessive newlines
+        return s.strip()
+
     def _render_key_metric(self, metric: KeyMetric) -> str:
         """Renders the KeyMetric object into an HTML card."""
         if not metric:
@@ -537,9 +562,9 @@ class OutputFormatter:
         tts_payload = { "direct_answer": "", "key_observations": "", "synthesis": "" }
         if self.canonical_report:
             tts_payload = {
-                "direct_answer": self.canonical_report.direct_answer or "",
-                "key_observations": " ".join([obs.text for obs in self.canonical_report.key_observations]),
-                "synthesis": " ".join([synth.text for synth in self.canonical_report.synthesis])
+                "direct_answer": self._strip_markdown_for_tts(self.canonical_report.direct_answer or ""),
+                "key_observations": self._strip_markdown_for_tts(" ".join([obs.text for obs in self.canonical_report.key_observations])),
+                "synthesis": self._strip_markdown_for_tts(" ".join([synth.text for synth in self.canonical_report.synthesis]))
             }
 
         summary_html_parts = []
@@ -736,14 +761,14 @@ class OutputFormatter:
                 summary_html_parts.append(self._render_observations(self.canonical_report.key_observations))
 
             tts_payload = {
-                "direct_answer": self.canonical_report.direct_answer or "",
-                "key_observations": " ".join([obs.text for obs in self.canonical_report.key_observations]),
-                "synthesis": " ".join([synth.text for synth in self.canonical_report.synthesis])
+                "direct_answer": self._strip_markdown_for_tts(self.canonical_report.direct_answer or ""),
+                "key_observations": self._strip_markdown_for_tts(" ".join([obs.text for obs in self.canonical_report.key_observations])),
+                "synthesis": self._strip_markdown_for_tts(" ".join([synth.text for synth in self.canonical_report.synthesis]))
             }
         elif self.llm_response_text:
             # Use the robust markdown renderer for plain text fallback
             summary_html_parts.append(self._render_standard_markdown(self.llm_response_text))
-            tts_payload["direct_answer"] = self.llm_response_text
+            tts_payload["direct_answer"] = self._strip_markdown_for_tts(self.llm_response_text)
 
         summary_html = f'<div class="response-card summary-card mb-4">{"".join(summary_html_parts)}</div>' if summary_html_parts else "" # Added mb-4
 
@@ -858,7 +883,7 @@ class OutputFormatter:
             return "<div class='response-card mb-4'><p>Error: Report data is missing.</p></div>", {}
 
         tts_payload = {
-            "direct_answer": f"Report: {report.title}. Summary: {report.executive_summary}",
+            "direct_answer": self._strip_markdown_for_tts(f"Report: {report.title}. Summary: {report.executive_summary}"),
             "key_observations": "" # Could potentially synthesize key points from sections here later
         }
 
@@ -1102,7 +1127,7 @@ class OutputFormatter:
 
             tts_text_parts.append(f"Based on {len(self.rag_focused_sources)} source documents.")
 
-            return "".join(html_parts), {"text": " ".join(tts_text_parts)}
+            return "".join(html_parts), {"direct_answer": self._strip_markdown_for_tts(" ".join(tts_text_parts)), "key_observations": "", "synthesis": ""}
 
         if isinstance(self.prompt_report, PromptReportResponse):
             final_html, tts_payload = self._format_complex_prompt_report()

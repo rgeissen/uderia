@@ -1746,12 +1746,9 @@ User: {self.original_user_input}""")
             # Try title first (user-friendly name), then filename
             source = metadata.get("title") or metadata.get("filename")
 
-            # If no title or filename, check if this is an imported collection
+            # If no title or filename, fall back to collection name
             if not source:
-                if "(Imported)" in collection_name or metadata.get("source") == "import":
-                    source = "No Document Source (Imported)"
-                else:
-                    source = "Unknown Source"
+                source = collection_name if collection_name != "Unknown" else "Unknown Source"
 
             doc_text = f"""
 Source: {source} (Collection: {collection_name})
@@ -3072,6 +3069,8 @@ The following domain knowledge may be relevant to this conversation:
                 "final_answer_text": response_text,  # Clean text for parent genie coordinators
                 "turn_id": self.current_turn_number,  # Include turn_id for frontend badge rendering
                 "session_id": self.session_id,  # Include session_id for filtering when switching sessions
+                "tts_payload": tts_payload,
+                "source": self.source,
                 "knowledge_sources": [{"collection_id": r.get("collection_id"),
                                        "similarity_score": r.get("similarity_score")}
                                       for r in final_results],

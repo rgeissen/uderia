@@ -3202,11 +3202,7 @@ const AdminManager = {
                     }
                     return;
                 }
-                // Clear the credentials textarea after successful save (credentials are stored encrypted)
-                const credsTextarea = document.getElementById('tts-global-credentials-json');
-                if (credsTextarea && credsTextarea.value.trim()) {
-                    credsTextarea.value = '';
-                }
+                // Keep credentials visible in textarea after save (they are stored encrypted in DB)
                 // Update status display
                 const ttsStatus = document.getElementById('tts-global-status');
                 const ttsDeleteBtn = document.getElementById('tts-delete-global-btn');
@@ -3222,10 +3218,19 @@ const AdminManager = {
                 if (window.updateUserTtsSection) {
                     window.updateUserTtsSection(ttsModeSelect.value);
                 }
-                // Sync voice button visibility in chat input area
-                if (window.updateVoiceButtonVisibility) {
-                    window.updateVoiceButtonVisibility(ttsModeSelect.value !== 'disabled');
-                }
+                // Sync voice button visibility by re-fetching app-config
+                // (backend checks both mode AND credential existence per user)
+                try {
+                    const configResp = await fetch('/app-config', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (configResp.ok) {
+                        const configData = await configResp.json();
+                        if (window.updateVoiceButtonVisibility) {
+                            window.updateVoiceButtonVisibility(configData.voice_conversation_enabled);
+                        }
+                    }
+                } catch (e) { console.error('[AdminManager] Error syncing voice button visibility:', e); }
             }
 
             // Reset dirty state

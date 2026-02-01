@@ -33,10 +33,11 @@ export const state = {
     defaultPromptsCache: {},
     currentPhaseContainerEl: null,
     appConfig: {},
-    // --- MODIFICATION START: Add state for TTS conversation flow ---
+    // --- TTS conversation flow state ---
     ttsState: 'IDLE', // Can be 'IDLE', 'AWAITING_OBSERVATION_CONFIRMATION'
     ttsObservationBuffer: '', // Stores key observations while waiting for user confirmation
-    // --- MODIFICATION END ---
+    currentTTSAudio: null, // Reference to currently playing Audio object (for cancellation)
+    ttsCancelled: false, // Flag checked between TTS steps to abort the flow
     // --- MODIFICATION START: Add state for key observations mode ---
     keyObservationsMode: 'autoplay-off', // 'autoplay-off', 'autoplay-on', 'off'
     // --- MODIFICATION END ---

@@ -1383,6 +1383,7 @@ npx tailwindcss build
 
 ## Recent Major Changes
 
+- **Feb 2026**: Text to Speech - for all profile classes
 - **Jan 2026**: OAuth (Google/GitHub), email verification
 - **Dec 2025**: Prompt encryption to database, enhanced bootstrapping
 - **Dec 2025**: Consumption profile enforcement, financial governance
