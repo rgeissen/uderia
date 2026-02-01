@@ -2229,6 +2229,9 @@ The following domain knowledge may be relevant to this conversation:
             self.dependencies = clean_dependencies
 
             try:
+                # Signal LLM busy for status indicator dots
+                yield self._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+
                 # Call LLM with proper system/user separation
                 # System prompt passed via override, user message contains only content
                 response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
@@ -2241,6 +2244,9 @@ The following domain knowledge may be relevant to this conversation:
             finally:
                 # Restore original dependencies
                 self.dependencies = original_dependencies
+
+            # Signal LLM idle after call completes
+            yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             # Emit LLM execution complete event (like RAG's rag_llm_step)
             llm_complete_event = {

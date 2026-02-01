@@ -167,6 +167,21 @@ class ConversationAgentExecutor:
         else:
             logger.warning(f"[ConvAgent] No event handler available - event {event_type} will NOT be sent to SSE!")
 
+    async def _emit_status_indicator(self, target: str, status_state: str):
+        """Emit a status_indicator_update event directly (not wrapped as notification).
+
+        Status indicator events use a dedicated SSE event type so the frontend
+        can update indicator dots (LLM busy/idle, MCP busy/idle) in real-time.
+        """
+        if self.async_event_handler:
+            try:
+                await self.async_event_handler(
+                    {"target": target, "state": status_state},
+                    "status_indicator_update"
+                )
+            except Exception as e:
+                logger.warning(f"ConversationAgentExecutor status indicator error: {e}")
+
     def _load_system_prompt(self) -> str:
         """Load the system prompt for conversation with tools."""
         # Try to load from prompt system
@@ -347,14 +362,16 @@ RESPONSE FORMAT:
                 event_name = event.get("name", "")
                 event_data = event.get("data", {})
 
-                # Track LLM start time
+                # Track LLM start time and signal busy indicator
                 if event_kind in ("on_llm_start", "on_chat_model_start"):
                     llm_start_time = time.time()
+                    await self._emit_status_indicator("llm", "busy")
                     logger.debug(f"[ConvAgent] LLM call started at {llm_start_time}")
 
                 # Track LLM events - try multiple event types
                 # Some providers emit on_llm_end, others emit on_chat_model_end
                 if event_kind in ("on_llm_end", "on_chat_model_end"):
+                    await self._emit_status_indicator("llm", "idle")
                     output = event_data.get("output", {})
 
                     # Try multiple ways to get token usage from LangChain
@@ -504,6 +521,9 @@ RESPONSE FORMAT:
                     tool_name = event_name
                     tool_input = event_data.get("input", {})
 
+                    # Signal MCP busy for status indicator dots (frontend uses "db" target for MCP dot)
+                    await self._emit_status_indicator("db", "busy")
+
                     # Record start time
                     self.tool_start_times[tool_name] = time.time()
 
@@ -521,6 +541,8 @@ RESPONSE FORMAT:
 
                 # Track tool completions
                 elif event_kind == "on_tool_end":
+                    # Signal MCP idle for status indicator dots (frontend uses "db" target for MCP dot)
+                    await self._emit_status_indicator("db", "idle")
                     tool_name = event_name
                     tool_output = event_data.get("output", "")
 
@@ -553,6 +575,8 @@ RESPONSE FORMAT:
 
                 # Track tool errors
                 elif event_kind == "on_tool_error":
+                    # Signal MCP idle on error too (frontend uses "db" target for MCP dot)
+                    await self._emit_status_indicator("db", "idle")
                     tool_name = event_name
                     error = str(event_data.get("error", "Unknown error"))
 

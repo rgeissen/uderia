@@ -13,7 +13,6 @@ import { updateActiveSessionTitle } from '../ui.js';
 import { renderAttachmentChips, initializeUploadCapabilities } from './chatDocumentUpload.js';
 import { genieState, cleanupCoordination } from './genieHandler.js?v=3.4';
 import { conversationAgentState, cleanupExecution } from './conversationAgentHandler.js?v=1.0';
-import { handleReloadPlanClick } from '../eventHandlers.js';
 // NOTE: createHistoricalGenieCard import removed - genie coordination cards
 // are no longer rendered inline. Coordination details shown in Live Status window only.
 // NOTE: createHistoricalAgentCard import removed - conversation agent cards
@@ -445,6 +444,15 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         } else {
              UI.addMessage('assistant', "I'm ready to help. How can I assist you with your Teradata system today?");
         }
+
+        // Scroll to the beginning of the last assistant answer (not the bottom of chat).
+        // Uses 'instant' to override any pending smooth scrolls from addMessage() calls above.
+        const assistantMsgs = DOM.chatLog.querySelectorAll('.message-bubble:not(.justify-end)');
+        const lastAssistant = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
+        if (lastAssistant) {
+            lastAssistant.scrollIntoView({ behavior: 'instant', block: 'start' });
+        }
+
         UI.updateTokenDisplay({ total_input: data.input_tokens, total_output: data.output_tokens });
 
         // --- MODIFICATION START: Refresh feedback button states after loading history ---
@@ -526,13 +534,14 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         cleanupExecution();
 
         // Auto-load last turn's execution data into the Live Status window.
-        // Find the last clickable avatar with a turn ID in the rendered chat.
-        // (data-turn-id is set on the user avatar of each Q&A pair)
+        // Uses dynamic import() to avoid circular dependency with eventHandlers.js
+        // (eventHandlers.js already imports from sessionManagement.js).
         const allAvatars = DOM.chatLog.querySelectorAll('.clickable-avatar[data-turn-id]');
         const lastAvatar = allAvatars.length > 0 ? allAvatars[allAvatars.length - 1] : null;
         if (lastAvatar) {
-            // Fire-and-forget: load turn data asynchronously without blocking session load
-            handleReloadPlanClick(lastAvatar);
+            import('../eventHandlers.js').then(({ handleReloadPlanClick }) => {
+                handleReloadPlanClick(lastAvatar);
+            });
         }
 
         // Mark conversation as initialized after successful session load

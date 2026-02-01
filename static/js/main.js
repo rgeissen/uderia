@@ -364,6 +364,9 @@ async function initializeRAGAutoCompletion() {
         activeProfileTag.style.removeProperty('--profile-tag-shadow');
         activeProfileTag.style.color = '';  // Reset direct color style
 
+        // Clear last-executed override so new sessions use the default profile primer
+        delete window.activeProfileOverrideId;
+
         // Clear session header override and restore default
         const defaultProfileId = window.configState?.defaultProfileId;
         if (defaultProfileId && window.configState?.profiles) {

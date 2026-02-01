@@ -308,7 +308,10 @@ export function subscribeToNotifications() {
             // --- MODIFICATION START: Add handlers for REST task events ---
             case 'rest_task_update': {
                 const { task_id, session_id, event } = data.payload;
-                if (session_id !== state.currentSessionId) break;
+                // Allow child session events through during Genie coordination —
+                // child sessions have different session_ids but their CCR/KNW
+                // indicators should be visible in the parent session.
+                if (session_id !== state.currentSessionId && !state.isGenieCoordinationActive) break;
 
                 // --- MODIFICATION START: Add CCR (Champion Case Retrieval) event handling ---
                 // Check the *original* event type inside the payload
@@ -331,8 +334,17 @@ export function subscribeToNotifications() {
                 }
                 // --- END PHASE 3 ---
 
+                // During Genie coordination, child REST events should only update indicator dots
+                // (CCR, KNW, status) — not render in the status window. The Genie renderer
+                // handles child progress via genie_slave_progress/genie_slave_completed events.
+                // Rendering child REST events via updateStatusWindow causes "task switches"
+                // that wipe the genie coordination steps from the Live Status window.
+                if (state.isGenieCoordinationActive && session_id !== state.currentSessionId) {
+                    break;
+                }
+
                 const isFinal = (event.type === 'final_answer' || event.type === 'error' || event.type === 'cancelled');
-                
+
                 // The backend now sends a canonical event object, so we can pass it directly.
                 UI.updateStatusWindow(event, isFinal, 'rest', task_id);
                 break;
@@ -360,11 +372,9 @@ export function subscribeToNotifications() {
                     break;
                 }
             case 'status_indicator_update': {
-                // When streams are active, the per-stream /ask_stream channel handles
-                // status indicators with proper session isolation via processStream().
-                // Skip the notification channel duplicate to prevent cross-session pollution.
-                if (state.activeStreamSessions.size > 0) break;
-
+                // Status indicators (MCP, LLM) are global system health indicators.
+                // Always process them regardless of active streams — they reflect
+                // system-wide connection state that applies to all sessions equally.
                 const { target, state: statusState } = data.payload;
                 let dot;
                 if (target === 'db') dot = DOM.mcpStatusDot;
@@ -385,8 +395,9 @@ export function subscribeToNotifications() {
             }
             // --- MODIFICATION END ---
             case 'rag_retrieval':
-                // Skip when streams are active - per-stream channel handles this
-                if (state.activeStreamSessions.size > 0) break;
+                // RAG retrieval is a system-wide indicator — always process.
+                // Per-request stream also handles this (eventHandlers.js:756)
+                // for the viewed session; double-blink is acceptable.
                 state.lastRagCaseData = data.payload || data;
                 UI.blinkCcrDot();
                 break;

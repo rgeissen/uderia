@@ -3142,7 +3142,8 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         return;
     } else if (source === 'session_name') {
         // Session name generation events - route to conversation agent renderer
-        statusTitle.textContent = 'Live Status - Session Name';
+        // Don't change status title — session name generation is a background activity
+        // that shouldn't override the current execution context title
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
@@ -3156,9 +3157,12 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             if (!hasExistingSteps) {
                 resetStatusWindowForNewTask();
                 updateTaskIdDisplay(null);
+                // Only set generic title when starting fresh (no prior execution context)
+                statusTitle.textContent = 'Live Status';
             }
+            // When existing steps are present, preserve the current title —
+            // the profile-specific execution (Genie, Conversation, etc.) already set it.
         }
-        statusTitle.textContent = 'Live Status';
 
         // For tool_enabled profiles during live execution, route lifecycle events
         // through _renderStandardStep so they integrate visually with optimizer steps.
