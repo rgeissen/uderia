@@ -456,7 +456,8 @@ export function openPromptModal(prompt) {
         handleStreamRequest('/invoke_prompt_stream', {
             session_id: state.currentSessionId,
             prompt_name: promptName,
-            arguments: arugments
+            arguments: arugments,
+            profile_override_id: window.activeProfileOverrideId || undefined
         });
     };
 }

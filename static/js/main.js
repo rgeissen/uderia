@@ -275,6 +275,14 @@ async function initializeRAGAutoCompletion() {
     });
 
     function showActiveTagBadge(profile) {
+        // Never show the default profile as an override — the default can change over time,
+        // so this check is dynamic against the current configState
+        if (profile.id === window.configState?.defaultProfileId) {
+            activeTagPrefix = '';  // Clear any prefix set by callers before invoking this function
+            hideActiveTagBadge();
+            return;
+        }
+
         // Add unified profile tag classes - use --md for better visibility in question box
         activeProfileTag.className = 'profile-tag profile-tag--md profile-tag--removable';
         activeProfileTag.innerHTML = `
@@ -537,12 +545,25 @@ async function initializeRAGAutoCompletion() {
     function selectProfile(index) {
         if (index >= 0 && index < currentProfiles.length) {
             const profile = currentProfiles[index];
-            
+
             // Clear the input (remove the @ or partial tag)
             isUpdatingInput = true;
             userInput.value = '';
             isUpdatingInput = false;
-            
+
+            // If user selected the default profile, don't treat as override
+            if (profile.id === window.configState?.defaultProfileId) {
+                activeTagPrefix = '';
+                hideActiveTagBadge();
+                profileTagSelector.innerHTML = '';
+                profileTagSelector.classList.add('hidden');
+                currentProfiles = [];
+                profileSelectedIndex = -1;
+                isShowingProfileSelector = false;
+                userInput.focus();
+                return;
+            }
+
             // Set up the badge and store the tag prefix
             activeTagPrefix = `@${profile.tag} `;
 
@@ -556,7 +577,7 @@ async function initializeRAGAutoCompletion() {
                 hideActiveTagBadge();
                 userInput.focus();
             });
-            
+
             // Update session header to show override (keep default profile visible)
             const defaultProfileId = window.configState?.defaultProfileId;
             const defaultProfile = defaultProfileId && window.configState?.profiles

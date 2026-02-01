@@ -1093,12 +1093,19 @@ export async function handleChatSubmit(e, source = 'text') {
         console.log('🔍 Tag detected:', tag);
         const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
         if (overrideProfile) {
-            profileOverrideId = overrideProfile.id;
-            cleanedMessage = tagMatch[2]; // Strip @TAG from message
-            console.log(`✅ Profile override found: ${overrideProfile.name} (${profileOverrideId})`);
-            console.log(`📝 Cleaned message: "${cleanedMessage}"`);
-            // Store the active profile override for autocomplete to use
-            window.activeProfileOverrideId = profileOverrideId;
+            // Don't treat default profile as an override
+            if (overrideProfile.id !== window.configState?.defaultProfileId) {
+                profileOverrideId = overrideProfile.id;
+                cleanedMessage = tagMatch[2]; // Strip @TAG from message
+                console.log(`✅ Profile override found: ${overrideProfile.name} (${profileOverrideId})`);
+                console.log(`📝 Cleaned message: "${cleanedMessage}"`);
+                // Store the active profile override for autocomplete to use
+                window.activeProfileOverrideId = profileOverrideId;
+            } else {
+                // Default profile tag typed — strip the tag but don't set override
+                cleanedMessage = tagMatch[2];
+                console.log(`ℹ️  @${tag} is the default profile, not treating as override`);
+            }
         } else {
             console.log(`❌ No profile found with tag: ${tag}`);
         }
@@ -2107,7 +2114,8 @@ function openPromptModal(prompt) {
         handleStreamRequest('/invoke_prompt_stream', {
             session_id: state.currentSessionId,
             prompt_name: promptName,
-            arguments: arugments
+            arguments: arugments,
+            profile_override_id: window.activeProfileOverrideId || undefined
         });
     };
 }

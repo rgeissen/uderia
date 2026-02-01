@@ -2521,6 +2521,7 @@ async def invoke_prompt_stream():
     arguments = data.get("arguments", {})
     disabled_history = data.get("disabled_history", False)
     source = data.get("source", "prompt_library")
+    profile_override_id = data.get("profile_override_id")  # Profile ID for temporary override
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
@@ -2530,13 +2531,28 @@ async def invoke_prompt_stream():
         return Response(error_gen(), mimetype="text/event-stream")
 
     # Get active profile to check profile type
+    # Check profile override first, then session's profile_id, then fall back to default profile
     from trusted_data_agent.core.config_manager import get_config_manager
     config_manager = get_config_manager()
-    default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
     active_profile = None
-    if default_profile_id:
+
+    # Priority 1: Profile override from request
+    if profile_override_id:
         profiles = config_manager.get_profiles(user_uuid)
-        active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+        active_profile = next((p for p in profiles if p.get("id") == profile_override_id), None)
+
+    # Priority 2: Session's stored profile_id
+    if not active_profile and session_data.get("profile_id"):
+        profiles = config_manager.get_profiles(user_uuid)
+        active_profile = next((p for p in profiles if p.get("id") == session_data.get("profile_id")), None)
+
+    # Priority 3: Default profile
+    if not active_profile:
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+        if default_profile_id:
+            profiles = config_manager.get_profiles(user_uuid)
+            active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
 
     # Get profile type (default to tool_enabled for backward compatibility)
     active_profile_type = active_profile.get("profile_type", "tool_enabled") if active_profile else "tool_enabled"
@@ -2597,7 +2613,8 @@ async def invoke_prompt_stream():
                         prompt_arguments=arguments,
                         disabled_history=disabled_history,
                         source=source,
-                        task_id=task_id # Pass the generated task_id
+                        task_id=task_id, # Pass the generated task_id
+                        profile_override_id=profile_override_id  # Pass the profile override
                         # plan_to_execute=None, is_replay=False
                     )
                 )
