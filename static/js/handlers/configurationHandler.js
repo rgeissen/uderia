@@ -4744,6 +4744,16 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         // Get Genie settings section reference
         const genieProfileSettingsSection = modal.querySelector('#genie-profile-settings-section');
 
+        // Helper: Toggle planner section between full mode (Query + Autocomplete)
+        // and autocomplete-only mode (Autocomplete only).
+        // Query toggle is only relevant for tool_enabled profiles (planner/executor RAG).
+        const setPlannerAutocompleteOnly = (autocompleteOnly) => {
+            const queryHeader = modal.querySelector('#planner-query-column-header');
+            const queryToggles = modal.querySelectorAll('.planner-query-toggle');
+            if (queryHeader) queryHeader.style.display = autocompleteOnly ? 'none' : '';
+            queryToggles.forEach(toggle => toggle.style.display = autocompleteOnly ? 'none' : '');
+        };
+
         if (profileType === 'llm_only') {
             console.log('[Profile Modal] Configuring sections for Conversation profile with capability checkboxes');
             // Hide Genie sections
@@ -4782,29 +4792,26 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
             }
 
-            // Always hide Planner section for conversation profiles
-            if (plannerSection) plannerSection.style.display = 'none';
+            // Show Planner section in autocomplete-only mode (hide Query column)
+            if (plannerSection) plannerSection.style.display = '';
+            setPlannerAutocompleteOnly(true);
 
-            // Conditionally show Intelligence tab based on checkbox
+            // Always show Intelligence tab (autocomplete config lives in Planner section)
+            if (intelligenceTab) intelligenceTab.style.display = '';
+            if (intelligenceContent) {
+                intelligenceContent.style.display = '';
+                intelligenceContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
+            }
+            if (intelligenceTab) {
+                intelligenceTab.setAttribute('title', 'Configure autocomplete suggestions and knowledge repositories');
+            }
+
+            // Conditionally show Knowledge Repository sections based on checkbox
             if (useKnowledge) {
-                if (intelligenceTab) intelligenceTab.style.display = '';
-                if (intelligenceContent) {
-                    intelligenceContent.style.display = '';
-                    intelligenceContent.classList.remove('hidden');  // CRITICAL FIX: Remove Tailwind hidden class
-                }
-                if (intelligenceTab) {
-                    intelligenceTab.setAttribute('title', 'Configure knowledge repositories for context injection');
-                }
-                // SHOW Knowledge Repository sections
                 if (knowledgeSection) knowledgeSection.style.display = '';
                 if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = '';
                 if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = '';
             } else {
-                if (intelligenceTab) intelligenceTab.style.display = 'none';
-                if (intelligenceContent) {
-                    intelligenceContent.style.display = 'none';
-                    intelligenceContent.classList.add('hidden');  // Consistently use hidden class
-                }
                 if (knowledgeSection) knowledgeSection.style.display = 'none';
                 if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
                 if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
@@ -4824,13 +4831,16 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             if (genieProfileSettingsSection) genieProfileSettingsSection.style.display = 'none';
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
 
-            // Hide MCP and planner sections (RAG focused doesn't use tools/planner)
+            // Hide MCP sections (RAG focused doesn't use tools/planner)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
             if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
             if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
             if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
-            if (plannerSection) plannerSection.style.display = 'none';
+
+            // Show Planner section in autocomplete-only mode (hide Query column)
+            if (plannerSection) plannerSection.style.display = '';
+            setPlannerAutocompleteOnly(true);
 
             // KEEP Intelligence tab visible - REQUIRED for RAG focused
             if (intelligenceTab) intelligenceTab.style.display = '';
@@ -4866,16 +4876,25 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             if (mcpResourcesTab) mcpResourcesTab.style.display = 'none';
             if (mcpResourcesContent) mcpResourcesContent.style.display = 'none';
             if (mcpPromptsSection) mcpPromptsSection.style.display = 'none';
-            if (plannerSection) plannerSection.style.display = 'none';
+
+            // Show Planner section in autocomplete-only mode (hide Query column)
+            if (plannerSection) plannerSection.style.display = '';
+            setPlannerAutocompleteOnly(true);
 
             // Hide knowledge sections (slaves handle their own knowledge)
             if (knowledgeSection) knowledgeSection.style.display = 'none';
             if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
             if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
 
-            // Hide Intelligence tab entirely for genie
-            if (intelligenceTab) intelligenceTab.style.display = 'none';
-            if (intelligenceContent) intelligenceContent.style.display = 'none';
+            // Show Intelligence tab for autocomplete configuration
+            if (intelligenceTab) intelligenceTab.style.display = '';
+            if (intelligenceContent) {
+                intelligenceContent.style.display = '';
+                intelligenceContent.classList.remove('hidden');
+            }
+            if (intelligenceTab) {
+                intelligenceTab.setAttribute('title', 'Configure autocomplete suggestions');
+            }
 
             // SHOW Genie child profiles section
             if (genieSlaveProfilesSection) {
@@ -4916,6 +4935,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             }
             if (mcpPromptsSection) mcpPromptsSection.style.display = '';  // MCP prompts supported in planner/executor
             if (plannerSection) plannerSection.style.display = '';
+            setPlannerAutocompleteOnly(false);  // Show both Query and Autocomplete columns
             if (intelligenceTab) intelligenceTab.style.display = '';
             if (intelligenceContent) {
                 intelligenceContent.style.display = '';
@@ -5420,7 +5440,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 </div>
                 <div class="flex items-center gap-8 flex-shrink-0">
                     <!-- Query Toggle -->
-                    <div class="flex items-center justify-center" style="width: 50px;" ${isDefaultCollection ? 'title="Default collection cannot be disabled - it stores new discoveries"' : ''}>
+                    <div class="flex items-center justify-center planner-query-toggle" style="width: 50px;" ${isDefaultCollection ? 'title="Default collection cannot be disabled - it stores new discoveries"' : ''}>
                         <label class="relative inline-flex items-center ${isDefaultCollection ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}">
                             <input type="checkbox"
                                    data-collection-id="${coll.id}"
@@ -5475,6 +5495,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         populateResources(mcpSelect.value);
         // Re-render collections to update default collection for new MCP server
         renderCollections();
+        // Re-apply section visibility to maintain autocomplete-only mode
+        // for non-tool_enabled profiles (renderCollections replaces DOM elements)
+        updateSectionVisibility(profileType);
     };
 
     // Update reranking list when knowledge collection checkboxes change
