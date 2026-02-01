@@ -1593,9 +1593,6 @@ async function showWelcomeScreen() {
     const reconfigureLink = document.getElementById('welcome-reconfigure-link');
     const welcomeCheckbox = document.getElementById('welcome-screen-show-at-startup-checkbox');
     
-    // Populate disabled capabilities section
-    populateWelcomeDisabledCapabilities();
-    
     // Sync checkbox state with user preference
     if (welcomeCheckbox) {
         welcomeCheckbox.checked = state.showWelcomeScreenAtStartup;
