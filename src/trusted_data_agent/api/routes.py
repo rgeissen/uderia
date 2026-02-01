@@ -186,7 +186,10 @@ async def get_rag_questions(current_user):
         
         if profile:
             autocomplete_collections = profile.get("autocompleteCollections", [])
-            if autocomplete_collections and autocomplete_collections != ["*"]:
+            if not autocomplete_collections:
+                # Autocomplete explicitly disabled for this profile
+                return jsonify({"questions": []})
+            if autocomplete_collections != ["*"]:
                 allowed_collection_ids = set(autocomplete_collections)
     
     # Intersect with user-accessible collections if context available

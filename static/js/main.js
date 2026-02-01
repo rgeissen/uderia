@@ -782,6 +782,15 @@ async function initializeRAGAutoCompletion() {
             }
         }
         
+        // Check if autocomplete is disabled for the resolved profile
+        if (profileId && window.configState?.profiles) {
+            const profile = window.configState.profiles.find(p => p.id === profileId);
+            if (profile && Array.isArray(profile.autocompleteCollections) && profile.autocompleteCollections.length === 0) {
+                showSuggestions([]);
+                return;
+            }
+        }
+
         // Fetch semantically ranked questions from backend
         const questions = await API.fetchRAGQuestions(queryText, profileId, 5);
         showSuggestions(questions);
