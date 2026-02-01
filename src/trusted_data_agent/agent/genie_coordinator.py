@@ -447,13 +447,18 @@ class GenieCoordinator:
 
         # Register event callback for this parent session
         # Wrap the callback to also collect events from child tools
+        # Transient events that are only meaningful during live execution (UI indicator dots).
+        # They must NOT be persisted to turn data — they clutter plan reload and have no replay value.
+        _TRANSIENT_EVENT_TYPES = frozenset({"status_indicator_update", "token_update"})
+
         if event_callback:
             def collecting_callback(event_type: str, payload: dict):
-                # Collect event for plan reload
-                self.collected_events.append({
-                    "type": event_type,
-                    "payload": dict(payload)
-                })
+                # Collect event for plan reload (skip transient UI-only events)
+                if event_type not in _TRANSIENT_EVENT_TYPES:
+                    self.collected_events.append({
+                        "type": event_type,
+                        "payload": dict(payload)
+                    })
 
                 # Track profile invocations for synthesis/completion events
                 if event_type == "genie_slave_invoked":
@@ -467,10 +472,12 @@ class GenieCoordinator:
         else:
             # Even without an external callback, collect events for plan reload
             def collecting_only_callback(event_type: str, payload: dict):
-                self.collected_events.append({
-                    "type": event_type,
-                    "payload": dict(payload)
-                })
+                # Skip transient UI-only events
+                if event_type not in _TRANSIENT_EVENT_TYPES:
+                    self.collected_events.append({
+                        "type": event_type,
+                        "payload": dict(payload)
+                    })
 
                 # Track profile invocations for synthesis/completion events
                 if event_type == "genie_slave_invoked":

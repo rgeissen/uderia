@@ -1386,9 +1386,12 @@ export async function handleReloadPlanClick(element) {
                     statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
                 }
 
-                // Filter out obsolete events (genie_start, genie_routing are redundant with genie_coordination_start)
+                // Filter out obsolete and transient events:
+                // - genie_start, genie_routing: redundant with genie_coordination_start
+                // - status_indicator_update, token_update: transient UI-only events (no replay value)
                 const filteredGenieEvents = genieEvents.filter(e =>
-                    e.type !== 'genie_start' && e.type !== 'genie_routing'
+                    e.type !== 'genie_start' && e.type !== 'genie_routing' &&
+                    e.type !== 'status_indicator_update' && e.type !== 'token_update'
                 );
 
                 // Replay each event using the same renderer as live execution

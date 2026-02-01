@@ -1550,6 +1550,11 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
         return;
     }
 
+    // Skip transient UI-only events — these are for indicator dots only, not status cards
+    if (type === 'status_indicator_update' || type === 'token_update') {
+        return;
+    }
+
     // Mark previous active step as completed
     const lastStep = parentContainer.querySelector('.status-step.active');
     if (lastStep) {
