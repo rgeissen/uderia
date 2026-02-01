@@ -1106,11 +1106,16 @@ export async function handleStreamRequest(endpoint, body) {
     } finally {
         state.activeStreamSessions.delete(originSessionId);
         delete state.sessionUiCache[originSessionId];
-        // Only reset execution state if the user is still on the originating session
+
         if (state.currentSessionId === originSessionId) {
+            // User is viewing this session - clean up normally
             UI.setExecutionState(false);
             UI.updateHintAndIndicatorState();
         }
+        // When user is viewing a DIFFERENT session, we intentionally do NOT
+        // reset execution state or global flags - those belong to the viewed session.
+        // The stale cache is deleted so the next load of this completed session
+        // goes through the normal server path with fresh data.
     }
 }
 
@@ -1256,7 +1261,7 @@ function forceResetExecutionState() {
  * Handles clicks on the "Reload Plan" button or user avatar. Fetches and displays the full turn details.
  * @param {HTMLElement} element - The element that was clicked (button or avatar div).
  */
-async function handleReloadPlanClick(element) {
+export async function handleReloadPlanClick(element) {
     const turnId = element.dataset.turnId; // Get turnId from data attribute
     const sessionId = state.currentSessionId;
     if (!turnId || !sessionId) {

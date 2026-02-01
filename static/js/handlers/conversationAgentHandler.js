@@ -138,7 +138,7 @@ export function completeAgentExecution(payload) {
 /**
  * Clean up execution state.
  */
-function cleanupExecution() {
+export function cleanupExecution() {
     conversationAgentState.activeExecution = null;
     conversationAgentState.toolProgress = {};
     conversationAgentState.startTime = null;

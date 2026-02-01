@@ -360,6 +360,11 @@ export function subscribeToNotifications() {
                     break;
                 }
             case 'status_indicator_update': {
+                // When streams are active, the per-stream /ask_stream channel handles
+                // status indicators with proper session isolation via processStream().
+                // Skip the notification channel duplicate to prevent cross-session pollution.
+                if (state.activeStreamSessions.size > 0) break;
+
                 const { target, state: statusState } = data.payload;
                 let dot;
                 if (target === 'db') dot = DOM.mcpStatusDot;
@@ -380,6 +385,8 @@ export function subscribeToNotifications() {
             }
             // --- MODIFICATION END ---
             case 'rag_retrieval':
+                // Skip when streams are active - per-stream channel handles this
+                if (state.activeStreamSessions.size > 0) break;
                 state.lastRagCaseData = data.payload || data;
                 UI.blinkCcrDot();
                 break;
@@ -444,6 +451,17 @@ export function subscribeToNotifications() {
             case 'rag_llm_step':
             case 'knowledge_search_complete': {
                 const payload = data.payload || {};
+
+                // Session guard: skip events for other sessions
+                if (payload.session_id && payload.session_id !== state.currentSessionId) {
+                    console.log(`[${data.type}] Ignoring notification for different session:`, payload.session_id);
+                    break;
+                }
+                // When multiple streams active and no session_id, skip to avoid ambiguity
+                if (!payload.session_id && state.activeStreamSessions.size > 1) {
+                    break;
+                }
+
                 const stepTitle = _getConversationAgentStepTitle(data.type, payload);
                 console.log(`[${data.type}] Received direct notification:`, payload);
 

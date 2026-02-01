@@ -446,6 +446,69 @@ Files: `src/trusted_data_agent/llm/handler.py`, `core/session_manager.py`, `agen
 
 ---
 
+### 7. Session Isolation & Live Status Panel
+
+The platform supports **concurrent session execution** — users can submit queries in multiple sessions and switch between them while execution is in progress. Full isolation ensures each session's UI state (chat canvas, Live Status window, token counters, execution indicators) remains independent.
+
+#### Dual SSE Channel Architecture
+
+Two event channels deliver real-time updates to the frontend:
+
+| Channel | Mechanism | Scope | Session Guard |
+|---------|-----------|-------|---------------|
+| `/ask_stream` | `fetch()` per request | Per-request stream | `processStream()` checks `state.currentSessionId === originSessionId` before rendering |
+| `/api/notifications/subscribe` | `EventSource` singleton | Per-user (all sessions) | Event-type guards check `state.activeStreamSessions` and `payload.session_id` |
+
+The per-request stream (`processStream` in `eventHandlers.js`) is the primary rendering path. It skips all DOM writes when the user is viewing a different session. The notification channel (`notifications.js`) carries duplicate and supplementary events; guards prevent cross-session pollution by skipping `status_indicator_update`, `rag_retrieval`, and `knowledge_retrieval*` events when streams are active or when the event's `session_id` doesn't match the viewed session.
+
+#### Session UI Cache (Active Streams)
+
+When switching **away** from a session that is still executing (`state.activeStreamSessions`), the frontend snapshots the full UI context into `state.sessionUiCache[sessionId]`:
+
+| Cached State | Contents |
+|-------------|----------|
+| `chatHTML` | Full chat log `innerHTML` |
+| `statusHTML` | Status window content `innerHTML` |
+| `headerState` | Title, task ID, prompt/model display, thinking indicator, knowledge banner, all 6 token counters |
+| `executionState` | `currentStatusId`, mode flags (`isGenieCoordinationActive`, `isConversationAgentActive`, `isInFastPath`, etc.), provider/model, pending events |
+| `handlerState` | Module-level state from `genieHandler.js` (coordination progress, profiles invoked/consulted) and `conversationAgentHandler.js` (tool progress, tools used) |
+
+When switching **back** to that session, the cache is restored in full — DOM, header, execution flags, handler state — and `processStream` resumes live rendering of new events.
+
+When a stream **completes while viewing another session**, the `finally` block deletes the stale cache without touching global state (which belongs to the viewed session). The next switch to the completed session goes through the normal server load path.
+
+#### Normal Load Path (Idle Sessions)
+
+When switching to a session that is **not** actively streaming (no entry in `activeStreamSessions`, no cache), the session is loaded fresh from the server via `handleLoadSession()`:
+
+1. Session history fetched from `/api/v1/sessions/{id}`
+2. Chat messages rendered into `DOM.chatLog`
+3. Status window reset to clean slate (title → "Live Status", tokens → session totals, knowledge banner hidden, all execution flags zeroed)
+4. Handler module state reset via `cleanupCoordination()` and `cleanupExecution()`
+5. **Auto-load last turn**: The last `.clickable-avatar[data-turn-id]` element in the rendered chat is found and `handleReloadPlanClick()` is called fire-and-forget. This fetches the turn's execution data from the API and populates the Live Status window with the appropriate visualization (plan trace, genie coordination events, agent tool steps, or RAG retrieval results depending on profile type).
+
+This ensures users always see meaningful data in the Live Status panel — never a blank "Waiting for a new request..." when there is prior execution history.
+
+#### Key State Variables
+
+| Variable | Location | Purpose |
+|----------|----------|---------|
+| `state.activeStreamSessions` | `state.js` | `Set` of session IDs with running `processStream` loops |
+| `state.sessionUiCache` | `state.js` | Per-session snapshots: `{ chatHTML, statusHTML, headerState, executionState, handlerState }` |
+| `genieState` | `genieHandler.js` | Module singleton tracking genie coordination progress |
+| `conversationAgentState` | `conversationAgentHandler.js` | Module singleton tracking conversation agent tool progress |
+
+#### Files
+
+- `static/js/handlers/sessionManagement.js` — Cache save/restore helpers, normal load path reset, auto-load last turn
+- `static/js/eventHandlers.js` — `processStream()` session guard, `handleReloadPlanClick()` for historical turn loading
+- `static/js/notifications.js` — Notification channel event guards
+- `static/js/handlers/genieHandler.js` — `genieState` + `cleanupCoordination()`
+- `static/js/handlers/conversationAgentHandler.js` — `conversationAgentState` + `cleanupExecution()`
+- `static/js/state.js` — `activeStreamSessions`, `sessionUiCache`
+
+---
+
 ## Deep Dive: Planner/Executor Architecture
 
 ### Overview

@@ -11,6 +11,9 @@ import * as UI from '../ui.js';
 import { renameSession, deleteSession } from '../api.js';
 import { updateActiveSessionTitle } from '../ui.js';
 import { renderAttachmentChips, initializeUploadCapabilities } from './chatDocumentUpload.js';
+import { genieState, cleanupCoordination } from './genieHandler.js?v=3.4';
+import { conversationAgentState, cleanupExecution } from './conversationAgentHandler.js?v=1.0';
+import { handleReloadPlanClick } from '../eventHandlers.js';
 // NOTE: createHistoricalGenieCard import removed - genie coordination cards
 // are no longer rendered inline. Coordination details shown in Live Status window only.
 // NOTE: createHistoricalAgentCard import removed - conversation agent cards
@@ -122,6 +125,185 @@ export async function handleStartNewSession() {
     }
 }
 
+// ============================================================================
+// Session UI State Capture/Restore Helpers (for stream isolation)
+// ============================================================================
+
+/**
+ * Captures the current status window header DOM state as a plain object.
+ * Used to snapshot the header before switching away from an active session.
+ */
+function _captureHeaderState() {
+    return {
+        statusTitle: (DOM.statusTitle || document.getElementById('status-title'))?.textContent || 'Live Status',
+        taskIdValue: DOM.taskIdValue?.textContent || '',
+        taskIdVisible: DOM.taskIdDisplay ? !DOM.taskIdDisplay.classList.contains('hidden') : false,
+        promptNameHTML: document.getElementById('prompt-name-display')?.innerHTML || '',
+        thinkingActive: DOM.thinkingIndicator ? !DOM.thinkingIndicator.classList.contains('hidden') : false,
+        knowledgeBannerVisible: !document.getElementById('knowledge-banner')?.classList.contains('hidden'),
+        knowledgeCollectionsList: document.getElementById('knowledge-collections-list')?.textContent || '',
+        tokenData: {
+            statementInput: document.getElementById('statement-input-tokens')?.textContent || '0',
+            statementOutput: document.getElementById('statement-output-tokens')?.textContent || '0',
+            turnInput: document.getElementById('turn-input-tokens')?.textContent || '0',
+            turnOutput: document.getElementById('turn-output-tokens')?.textContent || '0',
+            totalInput: document.getElementById('total-input-tokens')?.textContent || '0',
+            totalOutput: document.getElementById('total-output-tokens')?.textContent || '0',
+            turnLabel: document.getElementById('turn-token-label')?.textContent || 'Last Turn',
+            normalVisible: !document.getElementById('token-normal-display')?.classList.contains('hidden'),
+            awsVisible: !document.getElementById('token-aws-message')?.classList.contains('hidden'),
+        },
+    };
+}
+
+/**
+ * Captures per-execution state variables from the global state object.
+ */
+function _captureExecutionState() {
+    return {
+        currentStatusId: state.currentStatusId,
+        isRestTaskActive: state.isRestTaskActive,
+        activeRestTaskId: state.activeRestTaskId,
+        isConversationAgentActive: state.isConversationAgentActive,
+        isGenieCoordinationActive: state.isGenieCoordinationActive,
+        isInFastPath: state.isInFastPath,
+        currentTaskId: state.currentTaskId,
+        currentProvider: state.currentProvider,
+        currentModel: state.currentModel,
+        pendingSubtaskPlanningEvents: [...state.pendingSubtaskPlanningEvents],
+        pendingKnowledgeRetrievalEvent: state.pendingKnowledgeRetrievalEvent
+            ? { ...state.pendingKnowledgeRetrievalEvent } : null,
+        lastRagCaseData: state.lastRagCaseData
+            ? { ...state.lastRagCaseData } : null,
+    };
+}
+
+/**
+ * Captures module-level state from genie and conversation agent handler modules.
+ */
+function _captureHandlerState() {
+    return {
+        genie: {
+            activeCoordination: genieState.activeCoordination,
+            slaveProgress: JSON.parse(JSON.stringify(genieState.slaveProgress)),
+            startTime: genieState.startTime,
+            availableProfiles: [...(genieState.availableProfiles || [])],
+            profilesInvoked: [...(genieState.profilesInvoked || [])],
+            profileTag: genieState.profileTag,
+            selectedProfiles: [...(genieState.selectedProfiles || [])],
+            synthesisStarted: genieState.synthesisStarted || false,
+            profilesConsulted: [...(genieState.profilesConsulted || [])],
+        },
+        conversationAgent: {
+            activeExecution: conversationAgentState.activeExecution,
+            toolProgress: JSON.parse(JSON.stringify(conversationAgentState.toolProgress)),
+            startTime: conversationAgentState.startTime,
+            availableTools: [...(conversationAgentState.availableTools || [])],
+            toolsUsed: [...(conversationAgentState.toolsUsed || [])],
+            profileTag: conversationAgentState.profileTag,
+        },
+    };
+}
+
+/**
+ * Restores status window header DOM state from a snapshot.
+ */
+function _restoreHeaderState(h) {
+    const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+    if (statusTitle) statusTitle.textContent = h.statusTitle;
+
+    if (DOM.taskIdValue) DOM.taskIdValue.textContent = h.taskIdValue;
+    if (DOM.taskIdDisplay) DOM.taskIdDisplay.classList.toggle('hidden', !h.taskIdVisible);
+
+    const promptNameDisplay = document.getElementById('prompt-name-display');
+    if (promptNameDisplay) promptNameDisplay.innerHTML = h.promptNameHTML;
+
+    // Thinking indicator
+    if (h.thinkingActive) {
+        DOM.thinkingIndicator?.classList.remove('hidden');
+        DOM.thinkingIndicator?.classList.add('flex');
+        DOM.promptNameDisplay?.classList.add('hidden');
+    } else {
+        DOM.thinkingIndicator?.classList.add('hidden');
+        DOM.thinkingIndicator?.classList.remove('flex');
+        DOM.promptNameDisplay?.classList.remove('hidden');
+    }
+
+    // Knowledge banner
+    const knowledgeBanner = document.getElementById('knowledge-banner');
+    if (knowledgeBanner) knowledgeBanner.classList.toggle('hidden', !h.knowledgeBannerVisible);
+    const collectionsList = document.getElementById('knowledge-collections-list');
+    if (collectionsList) collectionsList.textContent = h.knowledgeCollectionsList;
+
+    // Token display (restore raw textContent values)
+    const t = h.tokenData;
+    if (t) {
+        const el = (id) => document.getElementById(id);
+        if (el('statement-input-tokens')) el('statement-input-tokens').textContent = t.statementInput;
+        if (el('statement-output-tokens')) el('statement-output-tokens').textContent = t.statementOutput;
+        if (el('turn-input-tokens')) el('turn-input-tokens').textContent = t.turnInput;
+        if (el('turn-output-tokens')) el('turn-output-tokens').textContent = t.turnOutput;
+        if (el('total-input-tokens')) el('total-input-tokens').textContent = t.totalInput;
+        if (el('total-output-tokens')) el('total-output-tokens').textContent = t.totalOutput;
+        const turnLabel = el('turn-token-label');
+        if (turnLabel) turnLabel.textContent = t.turnLabel;
+        el('token-normal-display')?.classList.toggle('hidden', !t.normalVisible);
+        el('token-aws-message')?.classList.toggle('hidden', !t.awsVisible);
+    }
+}
+
+/**
+ * Restores per-execution state variables from a snapshot.
+ * Phase container DOM refs are reset to null (stale after innerHTML restore).
+ */
+function _restoreExecutionState(s) {
+    state.currentStatusId = s.currentStatusId;
+    state.isRestTaskActive = s.isRestTaskActive;
+    state.activeRestTaskId = s.activeRestTaskId;
+    state.isConversationAgentActive = s.isConversationAgentActive;
+    state.isGenieCoordinationActive = s.isGenieCoordinationActive;
+    state.isInFastPath = s.isInFastPath;
+    state.currentTaskId = s.currentTaskId;
+    state.currentProvider = s.currentProvider;
+    state.currentModel = s.currentModel;
+    state.pendingSubtaskPlanningEvents = s.pendingSubtaskPlanningEvents || [];
+    state.pendingKnowledgeRetrievalEvent = s.pendingKnowledgeRetrievalEvent || null;
+    state.lastRagCaseData = s.lastRagCaseData || null;
+    // Phase containers: stale DOM refs after innerHTML restore - reset to null.
+    // New events will render at root level, which is acceptable.
+    state.currentPhaseContainerEl = null;
+    state.phaseContainerStack = [];
+}
+
+/**
+ * Restores module-level handler state from a snapshot.
+ */
+function _restoreHandlerState(h) {
+    if (h.genie) {
+        Object.assign(genieState, {
+            activeCoordination: h.genie.activeCoordination,
+            slaveProgress: JSON.parse(JSON.stringify(h.genie.slaveProgress)),
+            startTime: h.genie.startTime,
+            availableProfiles: [...h.genie.availableProfiles],
+            profilesInvoked: [...h.genie.profilesInvoked],
+            profileTag: h.genie.profileTag,
+            selectedProfiles: [...(h.genie.selectedProfiles || [])],
+            synthesisStarted: h.genie.synthesisStarted || false,
+            profilesConsulted: [...(h.genie.profilesConsulted || [])],
+        });
+    }
+    if (h.conversationAgent) {
+        Object.assign(conversationAgentState, {
+            activeExecution: h.conversationAgent.activeExecution,
+            toolProgress: JSON.parse(JSON.stringify(h.conversationAgent.toolProgress)),
+            startTime: h.conversationAgent.startTime,
+            availableTools: [...h.conversationAgent.availableTools],
+            toolsUsed: [...h.conversationAgent.toolsUsed],
+            profileTag: h.conversationAgent.profileTag,
+        });
+    }
+}
+
 /**
  * Loads a specific session's history and data into the UI.
  * @param {string} sessionId - The ID of the session to load.
@@ -131,16 +313,20 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     // Skip loading only if session ID matches AND session is already loaded in UI
     if (state.currentSessionId === sessionId && state.sessionLoaded && !isNewSession) return;
 
-    // --- Session stream isolation: save current session's UI state before switching ---
-    // If the current session has an active stream, cache its DOM state so we can
-    // restore it instantly when the user switches back (avoids server reload).
+    // --- Session stream isolation: save current session's full UI state before switching ---
+    // If the current session has an active stream, cache its DOM state, header state,
+    // execution mode flags, and handler module state so we can restore everything
+    // instantly when the user switches back (avoids server reload).
     const previousSessionId = state.currentSessionId;
     if (previousSessionId && state.activeStreamSessions.has(previousSessionId)) {
         state.sessionUiCache[previousSessionId] = {
             chatHTML: DOM.chatLog.innerHTML,
             statusHTML: DOM.statusWindowContent.innerHTML,
+            headerState: _captureHeaderState(),
+            executionState: _captureExecutionState(),
+            handlerState: _captureHandlerState(),
         };
-        console.log(`[handleLoadSession] Cached UI state for active session ${previousSessionId}`);
+        console.log(`[handleLoadSession] Cached full UI state for active session ${previousSessionId}`);
     }
 
     // --- MODIFICATION START: Clear task ID display on session load ---
@@ -161,7 +347,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     // --- Session stream isolation: fast-path restore for sessions with active streams ---
     // If the target session has a running stream AND cached UI state, restore from
     // cache instead of reloading from the server. This avoids unnecessary API calls
-    // and preserves the live execution context (status window, chat progress).
+    // and preserves the live execution context (status window header, content, chat progress).
     const cached = state.sessionUiCache[sessionId];
     if (cached && state.activeStreamSessions.has(sessionId)) {
         console.log(`[handleLoadSession] Restoring cached UI for active session ${sessionId}`);
@@ -169,9 +355,19 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         state.sessionLoaded = true;
         localStorage.setItem('currentSessionId', sessionId);
 
-        // Restore cached DOM state
+        // Restore cached DOM state (chat canvas + status window content)
         DOM.chatLog.innerHTML = cached.chatHTML;
         DOM.statusWindowContent.innerHTML = cached.statusHTML;
+
+        // Restore full status window header state (title, tokens, model, knowledge, thinking)
+        if (cached.headerState) _restoreHeaderState(cached.headerState);
+
+        // Restore execution mode state variables (status ID, mode flags, provider/model)
+        if (cached.executionState) _restoreExecutionState(cached.executionState);
+
+        // Restore handler module state (genie coordination, conversation agent progress)
+        if (cached.handlerState) _restoreHandlerState(cached.handlerState);
+
         UI.setExecutionState(true);
 
         // Update sidebar highlighting and session title
@@ -303,6 +499,41 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // events and manage execution state from that point forward.
         UI.setExecutionState(false);
         UI.setThinkingIndicator(false);
+
+        // --- Reset status window to idle state for loaded (non-streaming) session ---
+        DOM.statusWindowContent.innerHTML = '<p class="text-gray-400">Waiting for a new request...</p>';
+        const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+        if (statusTitle) statusTitle.textContent = 'Live Status';
+
+        // Reset knowledge banner
+        const knowledgeBanner = document.getElementById('knowledge-banner');
+        if (knowledgeBanner) knowledgeBanner.classList.add('hidden');
+
+        // Reset execution mode flags to clean slate
+        state.currentStatusId = 0;
+        state.isRestTaskActive = false;
+        state.activeRestTaskId = null;
+        state.isConversationAgentActive = false;
+        state.isGenieCoordinationActive = false;
+        state.isInFastPath = false;
+        state.currentPhaseContainerEl = null;
+        state.phaseContainerStack = [];
+        state.pendingSubtaskPlanningEvents = [];
+        state.pendingKnowledgeRetrievalEvent = null;
+
+        // Reset handler module state for idle session
+        cleanupCoordination();
+        cleanupExecution();
+
+        // Auto-load last turn's execution data into the Live Status window.
+        // Find the last clickable avatar with a turn ID in the rendered chat.
+        // (data-turn-id is set on the user avatar of each Q&A pair)
+        const allAvatars = DOM.chatLog.querySelectorAll('.clickable-avatar[data-turn-id]');
+        const lastAvatar = allAvatars.length > 0 ? allAvatars[allAvatars.length - 1] : null;
+        if (lastAvatar) {
+            // Fire-and-forget: load turn data asynchronously without blocking session load
+            handleReloadPlanClick(lastAvatar);
+        }
 
         // Mark conversation as initialized after successful session load
         if (window.__conversationInitState) {

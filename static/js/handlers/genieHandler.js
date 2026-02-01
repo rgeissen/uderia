@@ -348,7 +348,7 @@ export function completeCoordination(payload) {
 /**
  * Clean up coordination state.
  */
-function cleanupCoordination() {
+export function cleanupCoordination() {
     genieState.activeCoordination = null;
     genieState.slaveProgress = {};
     genieState.startTime = null;
