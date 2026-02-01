@@ -185,8 +185,8 @@ async def get_rag_questions(current_user):
         profile = next((p for p in profiles if p.get("id") == profile_id), None)
         
         if profile:
-            autocomplete_collections = profile.get("autocompleteCollections", ["*"])
-            if autocomplete_collections != ["*"]:
+            autocomplete_collections = profile.get("autocompleteCollections", [])
+            if autocomplete_collections and autocomplete_collections != ["*"]:
                 allowed_collection_ids = set(autocomplete_collections)
     
     # Intersect with user-accessible collections if context available
