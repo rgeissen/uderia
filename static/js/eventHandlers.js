@@ -557,7 +557,7 @@ function getProfileDisplayName(profileType) {
 // END: Harmonized Event Title Generation
 // ============================================================================
 
-async function processStream(responseBody) {
+async function processStream(responseBody, originSessionId) {
     const reader = responseBody.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -572,6 +572,11 @@ async function processStream(responseBody) {
 
         for (const message of messages) {
             if (!message) continue;
+
+            // Session guard: skip all DOM writes if the user has switched
+            // to a different session. The stream stays alive so that when
+            // they switch back, new events resume rendering immediately.
+            if (state.currentSessionId !== originSessionId) continue;
 
             let eventName = 'message';
             let dataLine = '';
@@ -1082,17 +1087,30 @@ export async function handleStreamRequest(endpoint, body) {
 
     DOM.contextStatusDot.classList.remove('history-disabled-preview');
 
+    const originSessionId = state.currentSessionId;
+    state.activeStreamSessions.add(originSessionId);
+
     try {
         const response = await API.startStream(endpoint, body);
         if (response && response.ok && response.body) {
-            await processStream(response.body);
+            await processStream(response.body, originSessionId);
         }
     } catch (error) {
-        UI.addMessage('assistant', `Sorry, a stream processing error occurred: ${error.message}`);
-        UI.updateStatusWindow({ step: "Error", details: error.stack, type: 'error' }, true);
+        // Only show error if the user is still on the originating session
+        if (state.currentSessionId === originSessionId) {
+            UI.addMessage('assistant', `Sorry, a stream processing error occurred: ${error.message}`);
+            UI.updateStatusWindow({ step: "Error", details: error.stack, type: 'error' }, true);
+        } else {
+            console.warn('[handleStreamRequest] Stream error for previous session, suppressing:', error.message);
+        }
     } finally {
-        UI.setExecutionState(false);
-        UI.updateHintAndIndicatorState();
+        state.activeStreamSessions.delete(originSessionId);
+        delete state.sessionUiCache[originSessionId];
+        // Only reset execution state if the user is still on the originating session
+        if (state.currentSessionId === originSessionId) {
+            UI.setExecutionState(false);
+            UI.updateHintAndIndicatorState();
+        }
     }
 }
 

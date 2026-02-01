@@ -54,12 +54,16 @@ export async function getApiKey(provider) {
 }
 
 
-export async function startStream(endpoint, body) {
-    const response = await fetch(endpoint, {
+export async function startStream(endpoint, body, signal = null) {
+    const fetchOptions = {
         method: 'POST',
         headers: _getHeaders(),
         body: JSON.stringify(body),
-    });
+    };
+    if (signal) {
+        fetchOptions.signal = signal;
+    }
+    const response = await fetch(endpoint, fetchOptions);
     if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || `Request failed with status ${response.status}`);

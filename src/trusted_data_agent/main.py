@@ -284,6 +284,7 @@ def create_app():
 
             except Exception as e:
                 app_logger.error(f"Failed to initialize RAG at startup: {e}", exc_info=True)
+                app_logger.warning("RAG retriever will be lazy-initialized on first use.")
                 APP_STATE["rag_collections"] = []
         else:
             APP_STATE["rag_collections"] = []

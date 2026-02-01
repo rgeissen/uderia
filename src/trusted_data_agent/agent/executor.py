@@ -512,7 +512,10 @@ class PlanExecutor:
 
         # --- MODIFICATION START: Store the global RAG retriever instance ---
         if APP_CONFIG.RAG_ENABLED:
-            self.rag_retriever = self.dependencies['STATE'].get('rag_retriever_instance')
+            from trusted_data_agent.agent.rag_retriever import get_rag_retriever
+            self.rag_retriever = get_rag_retriever()
+            if self.rag_retriever is None:
+                app_logger.warning("RAG is enabled but retriever could not be initialized. Knowledge retrieval will be unavailable for this turn.")
         else:
             self.rag_retriever = None
         # --- MODIFICATION END ---

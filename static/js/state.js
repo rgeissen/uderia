@@ -78,6 +78,9 @@ export const state = {
     isConversationAgentActive: false, // Tracks if conversation agent is executing
     isGenieCoordinationActive: false, // Tracks if genie coordination is executing
     pendingKnowledgeRetrievalEvent: null, // Stores knowledge retrieval event for conversation_with_tools
+    // --- Session stream isolation ---
+    activeStreamSessions: new Set(), // Session IDs with running /ask_stream processStream loops
+    sessionUiCache: {},              // sessionId -> { chatHTML, statusHTML, tokenData } saved on switch-away
 };
 
 // Functions to modify state can be added here if needed, e.g.:

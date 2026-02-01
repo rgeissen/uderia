@@ -131,6 +131,18 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     // Skip loading only if session ID matches AND session is already loaded in UI
     if (state.currentSessionId === sessionId && state.sessionLoaded && !isNewSession) return;
 
+    // --- Session stream isolation: save current session's UI state before switching ---
+    // If the current session has an active stream, cache its DOM state so we can
+    // restore it instantly when the user switches back (avoids server reload).
+    const previousSessionId = state.currentSessionId;
+    if (previousSessionId && state.activeStreamSessions.has(previousSessionId)) {
+        state.sessionUiCache[previousSessionId] = {
+            chatHTML: DOM.chatLog.innerHTML,
+            statusHTML: DOM.statusWindowContent.innerHTML,
+        };
+        console.log(`[handleLoadSession] Cached UI state for active session ${previousSessionId}`);
+    }
+
     // --- MODIFICATION START: Clear task ID display on session load ---
     UI.updateTaskIdDisplay(null);
     // --- MODIFICATION END ---
@@ -146,17 +158,47 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     }
     // --- MODIFICATION END ---
 
+    // --- Session stream isolation: fast-path restore for sessions with active streams ---
+    // If the target session has a running stream AND cached UI state, restore from
+    // cache instead of reloading from the server. This avoids unnecessary API calls
+    // and preserves the live execution context (status window, chat progress).
+    const cached = state.sessionUiCache[sessionId];
+    if (cached && state.activeStreamSessions.has(sessionId)) {
+        console.log(`[handleLoadSession] Restoring cached UI for active session ${sessionId}`);
+        state.currentSessionId = sessionId;
+        state.sessionLoaded = true;
+        localStorage.setItem('currentSessionId', sessionId);
+
+        // Restore cached DOM state
+        DOM.chatLog.innerHTML = cached.chatHTML;
+        DOM.statusWindowContent.innerHTML = cached.statusHTML;
+        UI.setExecutionState(true);
+
+        // Update sidebar highlighting and session title
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.sessionId === sessionId);
+        });
+        const activeItem = document.getElementById(`session-${sessionId}`);
+        const nameSpan = activeItem ? activeItem.querySelector('.session-name-span') : null;
+        if (nameSpan) {
+            updateActiveSessionTitle(nameSpan.textContent.trim());
+        }
+
+        DOM.userInput.focus();
+        return;
+    }
+
     try {
         const data = await API.loadSession(sessionId);
         state.currentSessionId = sessionId;
         state.sessionLoaded = true; // Mark session as loaded in UI
-        
+
         // Persist session ID to localStorage for browser refresh persistence
         localStorage.setItem('currentSessionId', sessionId);
-        
+
         state.currentProvider = data.provider || state.currentProvider;
         state.currentModel = data.model || state.currentModel;
-        
+
         // --- MODIFICATION START: Restore feedback state from session data ---
         if (data.feedback_by_turn) {
             state.feedbackByTurn = { ...data.feedback_by_turn };
@@ -164,12 +206,12 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             state.feedbackByTurn = {};
         }
         // --- MODIFICATION END ---
-        
+
         // Hide welcome screen when loading a session with history
         if (window.hideWelcomeScreen) {
             window.hideWelcomeScreen();
         }
-        
+
         DOM.chatLog.innerHTML = '';
         if (data.history && data.history.length > 0) {
             // --- MODIFICATION START: Pass turn_id and isValid during history load ---
@@ -208,7 +250,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
              UI.addMessage('assistant', "I'm ready to help. How can I assist you with your Teradata system today?");
         }
         UI.updateTokenDisplay({ total_input: data.input_tokens, total_output: data.output_tokens });
-        
+
         // --- MODIFICATION START: Refresh feedback button states after loading history ---
         UI.refreshFeedbackButtons();
         // --- MODIFICATION END ---
@@ -255,6 +297,12 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             window.activeTagPrefix = '';
             if (typeof window.hideActiveTagBadge === 'function') window.hideActiveTagBadge();
         }
+
+        // Reset execution state for the loaded session (clean slate)
+        // If this session has an active stream, processStream will resume rendering
+        // events and manage execution state from that point forward.
+        UI.setExecutionState(false);
+        UI.setThinkingIndicator(false);
 
         // Mark conversation as initialized after successful session load
         if (window.__conversationInitState) {
