@@ -344,20 +344,34 @@ export async function handleDeleteSessionClick(deleteButton) {
     const sessionId = sessionItem.dataset.sessionId;
     const sessionName = sessionItem.querySelector('.session-name-span')?.textContent || 'this session';
 
+    // Check if this is a Genie parent with child sessions
+    const isGenieParent = sessionItem.classList.contains('genie-master-session');
+    let confirmMessage = `Are you sure you want to permanently delete '${sessionName}'? This action cannot be undone.`;
+    if (isGenieParent) {
+        const childCount = document.querySelectorAll(`[data-genie-parent-id="${sessionId}"]`).length;
+        if (childCount > 0) {
+            confirmMessage = `Are you sure you want to permanently delete '${sessionName}' and its ${childCount} child session${childCount > 1 ? 's' : ''}? This action cannot be undone.`;
+        }
+    }
+
     UI.showConfirmation(
         'Delete Session?',
-        `Are you sure you want to permanently delete '${sessionName}'? This action cannot be undone.`,
+        confirmMessage,
         async () => {
             try {
-                await deleteSession(sessionId);
-                UI.removeSessionFromList(sessionId);
+                const result = await deleteSession(sessionId);
+                const deletedChildren = result?.deleted_children || [];
 
-                if (state.currentSessionId === sessionId) {
+                // Remove child session elements, then the parent
+                UI.removeSessionAndDescendantsFromList(sessionId, deletedChildren);
+
+                // Check if the currently active session was deleted (parent or child)
+                if (state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId)) {
                     try {
                         const remainingSessions = await API.loadAllSessions();
                         // Filter out archived sessions
                         const activeSessions = remainingSessions ? remainingSessions.filter(s => !s.archived) : [];
-                        
+
                         if (activeSessions && activeSessions.length > 0) {
                             // The API returns sessions sorted by most recent first.
                             const nextSessionId = activeSessions[0].id;

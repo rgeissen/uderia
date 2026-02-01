@@ -4177,9 +4177,31 @@ export function updateSessionTimestamp(sessionId, last_updated) {
 export function removeSessionFromList(sessionId) {
     const sessionItem = document.getElementById(`session-${sessionId}`);
     if (sessionItem) {
-        sessionItem.remove();
-    } else {
+        // If wrapped in a genie-wrapper, remove the wrapper instead
+        const wrapper = sessionItem.closest('.genie-wrapper');
+        if (wrapper && wrapper.dataset.sessionId === sessionId) {
+            wrapper.remove();
+        } else {
+            sessionItem.remove();
+        }
     }
+}
+
+/**
+ * Removes a session and all its descendant child sessions from the DOM.
+ * Used when deleting a Genie parent to cascade-remove children.
+ * @param {string} sessionId - The parent session ID to remove.
+ * @param {string[]} childIds - Array of child session IDs to remove.
+ */
+export function removeSessionAndDescendantsFromList(sessionId, childIds) {
+    // Remove child sessions first
+    if (childIds && childIds.length > 0) {
+        for (const childId of childIds) {
+            removeSessionFromList(childId);
+        }
+    }
+    // Remove the parent session
+    removeSessionFromList(sessionId);
 }
 
 

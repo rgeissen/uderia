@@ -1437,31 +1437,42 @@ async def get_genie_parent_session(slave_session_id: str, user_uuid: str) -> dic
         return None
 
 
-async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -> bool:
+async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str, _depth: int = 0) -> list:
     """
-    Clean up (delete) all child sessions when a Genie parent session is deleted.
-
-    Note: Function name preserved for API compatibility.
+    Clean up (archive) all child sessions when a Genie parent session is deleted.
+    Recursively handles nested Genie sessions (children that are themselves parents).
 
     Args:
         parent_session_id: The Genie coordinator session ID
         user_uuid: The user who owns the sessions
+        _depth: Internal recursion depth guard (max 5)
 
     Returns:
-        True if successful, False otherwise
+        List of all deleted (archived) child session IDs, including nested descendants
     """
+    all_deleted = []
+
+    if _depth > 5:
+        app_logger.warning(f"Max nesting depth reached for cleanup of parent {parent_session_id}")
+        return all_deleted
+
     try:
         import sqlite3
         from trusted_data_agent.core.utils import get_project_root
 
-        # Get all child sessions
+        # Get all direct child sessions
         slaves = await get_genie_slave_sessions(parent_session_id, user_uuid)
 
-        # Delete each child session file
+        # Delete each child session, recursing into nested Genie children first
         for slave in slaves:
             slave_session_id = slave.get('slave_session_id')
             if slave_session_id:
+                # Recurse: if this child is also a Genie parent, clean up its children first
+                nested_deleted = await cleanup_genie_slave_sessions(slave_session_id, user_uuid, _depth=_depth + 1)
+                all_deleted.extend(nested_deleted)
+
                 await delete_session(user_uuid, slave_session_id)
+                all_deleted.append(slave_session_id)
                 app_logger.info(f"Deleted genie child session: {slave_session_id}")
 
         # Remove links from database
@@ -1495,11 +1506,11 @@ async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str) -
             app_logger.warning(f"Failed to clear genie session cache: {cache_err}")
 
         app_logger.info(f"Cleaned up {len(slaves)} genie child sessions for parent {parent_session_id}")
-        return True
+        return all_deleted
 
     except Exception as e:
         app_logger.error(f"Failed to cleanup genie child sessions: {e}", exc_info=True)
-        return False
+        return all_deleted
 
 
 async def update_genie_slave_status(slave_session_id: str, user_uuid: str, status: str) -> bool:

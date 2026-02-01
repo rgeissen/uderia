@@ -1640,12 +1640,19 @@ async def delete_session_endpoint(current_user, session_id: str):
 
     try:
         success = await session_manager.delete_session(user_uuid, session_id)
-        if success:
-            app_logger.info(f"Successfully processed archive request for session {session_id} (user {user_uuid}).")
-            return jsonify({"status": "success", "message": "Session archived successfully."}), 200
-        else:
+        if not success:
             app_logger.error(f"session_manager.delete_session reported failure for session {session_id} (user {user_uuid}).")
             return jsonify({"status": "error", "message": "Failed to archive session file on the server."}), 500
+
+        # Cascade: archive Genie child sessions (if any)
+        deleted_children = []
+        slave_sessions = await session_manager.get_genie_slave_sessions(session_id, user_uuid)
+        if slave_sessions:
+            app_logger.info(f"Cascade archiving {len(slave_sessions)} child sessions for Genie parent {session_id}")
+            deleted_children = await session_manager.cleanup_genie_slave_sessions(session_id, user_uuid)
+
+        app_logger.info(f"Successfully processed archive request for session {session_id} (user {user_uuid}).")
+        return jsonify({"status": "success", "message": "Session archived successfully.", "deleted_children": deleted_children}), 200
     except Exception as e:
         app_logger.error(f"Unexpected error during DELETE /api/session/{session_id} for user {user_uuid}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "An unexpected server error occurred during archiving."}), 500
