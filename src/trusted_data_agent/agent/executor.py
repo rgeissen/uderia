@@ -3537,11 +3537,20 @@ The following domain knowledge may be relevant to this conversation:
                             # CRITICAL: Track the override MCP server ID for RAG case storage
                             self.effective_mcp_server_id = override_mcp_server_id
 
-                            # Load and process tools using the same method as configuration_service
+                            # Load and process tools AND prompts using the same method as configuration_service
                             from langchain_mcp_adapters.tools import load_mcp_tools
                             from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS
+                            loaded_override_prompts = []
                             async with temp_mcp_client.session(override_mcp_server_id) as session:
                                 all_processed_tools = await load_mcp_tools(session)
+                                # Also load prompts from the override MCP server
+                                try:
+                                    list_prompts_result = await session.list_prompts()
+                                    if hasattr(list_prompts_result, 'prompts'):
+                                        loaded_override_prompts = list_prompts_result.prompts
+                                        app_logger.info(f"   Loaded {len(loaded_override_prompts)} prompts from override MCP server")
+                                except Exception as e:
+                                    app_logger.warning(f"   Failed to load prompts from override MCP server: {e}")
 
                             # CRITICAL FIX: Add CLIENT_SIDE_TOOLS to all_processed_tools
                             # load_mcp_tools only loads server tools, but CLIENT_SIDE_TOOLS (TDA_FinalReport, etc.)
@@ -3570,8 +3579,11 @@ The following domain knowledge may be relevant to this conversation:
 
                             # Same for prompts
                             if "*" in enabled_prompt_names:
-                                # Expand wildcard (prompts handled via original structure, so we keep "*" for now)
-                                pass  # Prompts filtering happens differently via structured_prompts
+                                if loaded_override_prompts:
+                                    enabled_prompt_names = {p.name for p in loaded_override_prompts}
+                                elif self.original_mcp_prompts:
+                                    enabled_prompt_names = set(self.original_mcp_prompts.keys())
+                                app_logger.info(f"   Wildcard '*' expanded to {len(enabled_prompt_names)} prompts")
 
                             # Filter to only enabled tools (prompts handled separately via original structure)
                             # CRITICAL FIX: Always include TDA client-side tools (reporting, synthesis) regardless of profile filtering
@@ -3582,9 +3594,16 @@ The following domain knowledge may be relevant to this conversation:
                             # Convert to dictionary with tool names as keys (matching normal structure)
                             filtered_tools_dict = {tool.name: tool for tool in filtered_tools}
 
-                            # For prompts, filter the original mcp_prompts dict
-                            filtered_prompts_dict = {name: prompt for name, prompt in self.original_mcp_prompts.items()
-                                                    if name in enabled_prompt_names}
+                            # Build mcp_prompts from override MCP server's loaded prompts (not from original)
+                            # The original mcp_prompts may be empty if the default profile didn't load MCP
+                            if loaded_override_prompts:
+                                all_override_prompts_dict = {p.name: p for p in loaded_override_prompts}
+                                filtered_prompts_dict = {name: prompt for name, prompt in all_override_prompts_dict.items()
+                                                        if name in enabled_prompt_names}
+                            else:
+                                # Fallback to original if MCP prompt loading failed
+                                filtered_prompts_dict = {name: prompt for name, prompt in (self.original_mcp_prompts or {}).items()
+                                                        if name in enabled_prompt_names}
 
                             # CRITICAL FIX: Build structured_tools from scratch for the override MCP server
                             # We can't filter original_structured_tools because it's from a DIFFERENT MCP server!
@@ -3626,16 +3645,50 @@ The following domain knowledge may be relevant to this conversation:
 
                             app_logger.info(f"   Built structured_tools from override MCP server: {len(filtered_structured_tools)} categories")
                             
-                            # Rebuild structured_prompts to only include filtered prompts
+                            # Rebuild structured_prompts from override MCP server (not from original)
+                            # Same approach as structured_tools: use classification results or build from scratch
                             filtered_structured_prompts = {}
-                            
-                            for category, prompts_list in (self.original_structured_prompts or {}).items():
-                                filtered_category_prompts = [
-                                    prompt_info for prompt_info in prompts_list 
-                                    if prompt_info['name'] in enabled_prompt_names
-                                ]
-                                if filtered_category_prompts:
-                                    filtered_structured_prompts[category] = filtered_category_prompts
+                            classified_prompts = classification_results.get("prompts", {})
+
+                            if classified_prompts:
+                                # Use classification categories from profile
+                                for category, prompts_list in classified_prompts.items():
+                                    filtered_category_prompts = [
+                                        prompt_info for prompt_info in prompts_list
+                                        if prompt_info.get('name') in enabled_prompt_names
+                                    ]
+                                    if filtered_category_prompts:
+                                        filtered_structured_prompts[category] = filtered_category_prompts
+                            elif loaded_override_prompts:
+                                # Fallback: build from freshly loaded MCP prompts in a single "All Prompts" category
+                                from trusted_data_agent.mcp_adapter.adapter import _extract_prompt_type_from_description
+                                all_prompts_category = []
+                                for prompt_obj in loaded_override_prompts:
+                                    if prompt_obj.name in enabled_prompt_names:
+                                        cleaned_desc, prompt_type = _extract_prompt_type_from_description(prompt_obj.description)
+                                        processed_args = []
+                                        if hasattr(prompt_obj, 'arguments') and prompt_obj.arguments:
+                                            for arg in prompt_obj.arguments:
+                                                arg_dict = arg.model_dump()
+                                                processed_args.append(arg_dict)
+                                        all_prompts_category.append({
+                                            "name": prompt_obj.name,
+                                            "description": cleaned_desc or "No description available.",
+                                            "arguments": processed_args,
+                                            "disabled": False,
+                                            "prompt_type": prompt_type
+                                        })
+                                if all_prompts_category:
+                                    filtered_structured_prompts["All Prompts"] = all_prompts_category
+                            else:
+                                # Last resort: try filtering original (might be empty)
+                                for category, prompts_list in (self.original_structured_prompts or {}).items():
+                                    filtered_category_prompts = [
+                                        prompt_info for prompt_info in prompts_list
+                                        if prompt_info['name'] in enabled_prompt_names
+                                    ]
+                                    if filtered_category_prompts:
+                                        filtered_structured_prompts[category] = filtered_category_prompts
                             
                             # CRITICAL FIX: Update current_server_id_by_user for tool execution
                             # The mcp_adapter uses get_user_mcp_server_id() which reads this dict

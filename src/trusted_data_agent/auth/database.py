@@ -85,6 +85,7 @@ def init_database():
         
         # Run schema migrations for existing installations (MUST run before any User queries)
         _run_user_table_migrations()
+        _run_cost_table_migrations()
 
         # Create collections table (for marketplace)
         _create_collections_table()
@@ -378,6 +379,35 @@ def _run_user_table_migrations():
 
     except Exception as e:
         logger.error(f"Error running user table migrations: {e}", exc_info=True)
+
+
+def _run_cost_table_migrations():
+    """
+    Run schema migrations for the llm_model_costs table.
+    Adds columns introduced after initial release.
+    """
+    import sqlite3
+
+    try:
+        db_path = DEFAULT_DB_PATH
+        if not db_path.exists():
+            return
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Migration: Add is_deprecated column
+        try:
+            cursor.execute("SELECT is_deprecated FROM llm_model_costs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding is_deprecated column to llm_model_costs table")
+            cursor.execute("ALTER TABLE llm_model_costs ADD COLUMN is_deprecated BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error running cost table migrations: {e}", exc_info=True)
 
 
 def _create_default_admin_if_needed():

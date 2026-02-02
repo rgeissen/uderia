@@ -2628,7 +2628,11 @@ async def invoke_prompt_stream():
                         disabled_history=disabled_history,
                         source=source,
                         task_id=task_id, # Pass the generated task_id
-                        profile_override_id=profile_override_id  # Pass the profile override
+                        # CRITICAL FIX: Always pass the resolved profile ID, not just the explicit override.
+                        # When the session's profile differs from the default (e.g., session uses tool_enabled
+                        # but default is llm_only), the execution service must use the session's profile.
+                        # Without this, it falls back to the default profile and takes the wrong execution path.
+                        profile_override_id=active_profile.get('id') if active_profile else profile_override_id
                         # plan_to_execute=None, is_replay=False
                     )
                 )
