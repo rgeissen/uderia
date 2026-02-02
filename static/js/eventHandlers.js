@@ -755,7 +755,8 @@ async function processStream(responseBody, originSessionId) {
                             UI.updateStatusWindow({
                                 step: stepTitle,
                                 details: payload,
-                                type: eventData.type
+                                type: eventData.type,
+                                metadata: eventData.metadata
                             }, isFinal, 'lifecycle');
                         }
                     } else if (eventName === 'rag_retrieval') {

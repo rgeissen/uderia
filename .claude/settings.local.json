@@ -54,7 +54,8 @@
       "WebFetch(domain:friendli.ai)",
       "WebFetch(domain:ai.google.dev)",
       "WebFetch(domain:reference.langchain.com)",
-      "Bash(__NEW_LINE_605ad94a90e017c3__ echo \"\")"
+      "Bash(__NEW_LINE_605ad94a90e017c3__ echo \"\")",
+      "Bash(git -C /Users/rainer.geissendoerfer/my_private_code/uderia diff --stat HEAD)"
     ],
     "additionalDirectories": [
       "/private/tmp"

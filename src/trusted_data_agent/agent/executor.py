@@ -3837,7 +3837,8 @@ The following domain knowledge may be relevant to this conversation:
                 # Collect event for persistence (matches pattern from RAG/Genie profiles)
                 self.tool_enabled_events.append({
                     "type": "execution_start",
-                    "payload": start_event_payload
+                    "payload": start_event_payload,
+                    "metadata": {"execution_depth": self.execution_depth}
                 })
 
                 app_logger.info("✅ Emitted execution_start event for tool_enabled profile")
@@ -3885,6 +3886,14 @@ The following domain knowledge may be relevant to this conversation:
                 if self.is_delegated_task:
                     async for event in self._run_delegated_prompt():
                         yield event
+                    # _run_delegated_prompt() plans + executes via _run_plan() which
+                    # sets state=SUMMARIZING, but the normal summarization phase at
+                    # the bottom of run() is unreachable due to the early return.
+                    # Call _handle_summarization() explicitly so the sub-executor
+                    # emits execution_complete (and honours is_synthesis_from_history).
+                    if self.state == self.AgentState.SUMMARIZING:
+                        async for event in self._handle_summarization(final_answer_override):
+                            yield event
                     return # Exit early for delegated tasks
 
                 # --- Planning Phase ---
@@ -4271,7 +4280,8 @@ The following domain knowledge may be relevant to this conversation:
                             "total_output_tokens": self.turn_output_tokens,
                             "duration_ms": duration_ms,
                             "success": True
-                        }
+                        },
+                        "metadata": {"execution_depth": self.execution_depth}
                     })
 
                 turn_summary = {
@@ -4687,6 +4697,10 @@ The following domain knowledge may be relevant to this conversation:
             self.turn_action_history.extend(sub_executor.turn_action_history)
         # --- MODIFICATION END ---
 
+        # Merge sub-executor's lifecycle events for reload persistence
+        if hasattr(sub_executor, 'tool_enabled_events') and hasattr(self, 'tool_enabled_events'):
+            self.tool_enabled_events.extend(sub_executor.tool_enabled_events)
+
         self.last_tool_output = sub_executor.last_tool_output
 
         # Copy sub_executor's turn tokens back to parent (they now include parent's original + sub's additions)
@@ -4746,6 +4760,35 @@ The following domain knowledge may be relevant to this conversation:
         elif self.execution_depth > 0 and not self.force_final_summary:
             app_logger.info(f"Sub-planner (depth {self.execution_depth}) completed. Bypassing final summary.")
             self.state = self.AgentState.DONE
+
+            # Emit execution_complete lifecycle event for sub-executor
+            try:
+                duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0
+                complete_payload = {
+                    "profile_type": "tool_enabled",
+                    "profile_tag": self._get_current_profile_tag(),
+                    "phases_executed": len([a for a in self.turn_action_history if isinstance(a.get("action"), dict) and a["action"].get("tool_name") != "TDA_SystemLog"]),
+                    "total_input_tokens": self.turn_input_tokens,
+                    "total_output_tokens": self.turn_output_tokens,
+                    "duration_ms": duration_ms,
+                    "success": True
+                }
+
+                # Store in tool_enabled_events BEFORE yield (yield suspends execution;
+                # storing first guarantees persistence even if generator is not fully consumed)
+                if hasattr(self, 'tool_enabled_events'):
+                    self.tool_enabled_events.append({
+                        "type": "execution_complete",
+                        "payload": complete_payload,
+                        "metadata": {"execution_depth": self.execution_depth}
+                    })
+
+                yield self._emit_lifecycle_event("execution_complete", complete_payload)
+                app_logger.info(f"✅ Emitted execution_complete for sub-executor (depth={self.execution_depth})")
+            except Exception as e:
+                app_logger.warning(f"Failed to emit sub-executor execution_complete: {e}")
+
+            return
         elif final_answer_override:
             final_content = CanonicalResponse(direct_answer=final_answer_override)
         elif self.is_conversational_plan:
@@ -4854,11 +4897,18 @@ The following domain knowledge may be relevant to this conversation:
                 complete_event = self._emit_lifecycle_event("execution_complete", complete_event_payload)
                 yield complete_event
 
-                # Note: execution_complete event is pre-collected into tool_enabled_events
-                # before turn_summary save (ensures it persists to session file).
-                # The SSE emission here is for live UI rendering only.
+                # For depth=0: execution_complete is pre-collected into tool_enabled_events
+                # before turn_summary save (in the finally block). SSE emission here is for live UI only.
+                # For depth>0 (sub-executors via is_synthesis_from_history path): the finally block's
+                # pre-build is guarded by execution_depth==0, so we store here instead.
+                if self.execution_depth > 0 and hasattr(self, 'tool_enabled_events'):
+                    self.tool_enabled_events.append({
+                        "type": "execution_complete",
+                        "payload": complete_event_payload,
+                        "metadata": {"execution_depth": self.execution_depth}
+                    })
 
-                app_logger.info("✅ Emitted execution_complete event for tool_enabled profile")
+                app_logger.info(f"✅ Emitted execution_complete event for tool_enabled profile (depth={self.execution_depth})")
         except Exception as e:
             # Silent failure - don't break execution
             app_logger.warning(f"Failed to emit execution_complete event: {e}")

@@ -553,19 +553,23 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         knowledgeBanner.classList.add('hidden');
     }
 
-    // --- Render execution_start lifecycle event from tool_enabled_events (if present) ---
-    if (toolEnabledEvents && toolEnabledEvents.length > 0) {
-        const startEvent = toolEnabledEvents.find(e => e.type === 'execution_start');
-        if (startEvent) {
-            const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
-                ? window.EventHandlers.getLifecycleTitle('execution_start', startEvent.payload, startEvent.payload?.profile_type || 'tool_enabled')
-                : 'Efficiency Focused Started';
-            _renderStandardStep({
-                step: stepTitle,
-                details: startEvent.payload,
-                type: 'execution_start'
-            }, DOM.statusWindowContent, true);
-        }
+    // --- Separate lifecycle events by depth for correct positioning ---
+    // Depth=0 events render as bookends (top/bottom). Depth>0 events render inline within trace.
+    const depth0StartEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_start' && !(e.metadata?.execution_depth > 0));
+    const subStartEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_start' && e.metadata?.execution_depth > 0);
+    const subCompleteEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_complete' && e.metadata?.execution_depth > 0);
+
+    // Render depth=0 execution_start at the top (parent executor bookend)
+    for (const startEvent of depth0StartEvents) {
+        const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+            ? window.EventHandlers.getLifecycleTitle('execution_start', startEvent.payload, startEvent.payload?.profile_type || 'tool_enabled')
+            : 'Efficiency Focused Started';
+        _renderStandardStep({
+            step: stepTitle,
+            details: startEvent.payload,
+            type: 'execution_start',
+            metadata: startEvent.metadata
+        }, DOM.statusWindowContent, true);
     }
 
     // --- PHASE 2: Render knowledge retrieval event FIRST if present ---
@@ -589,7 +593,49 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     // --- PHASE 2 END ---
 
     // 2. Iterate through the new, rich execution trace
+    // Track depth transitions to insert sub-executor lifecycle events at correct positions
+    let _prevTraceDepth = 0;
+    let _subStartRendered = false;
+    let _subCompleteRendered = false;
+
     executionTrace.forEach(traceEntry => {
+        const _traceMetadata = traceEntry.action?.metadata || {};
+        const _currentTraceDepth = _traceMetadata.execution_depth || 0;
+
+        // Transition depth=0 → depth>0: insert sub-executor's execution_start
+        if (_currentTraceDepth > 0 && _prevTraceDepth === 0 && !_subStartRendered) {
+            for (const startEvent of subStartEvents) {
+                const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                    ? window.EventHandlers.getLifecycleTitle('execution_start', startEvent.payload, startEvent.payload?.profile_type || 'tool_enabled')
+                    : 'Efficiency Focused Started';
+                _renderStandardStep({
+                    step: stepTitle,
+                    details: startEvent.payload,
+                    type: 'execution_start',
+                    metadata: startEvent.metadata
+                }, DOM.statusWindowContent, true);
+            }
+            _subStartRendered = true;
+        }
+
+        // Transition depth>0 → depth=0: insert sub-executor's execution_complete
+        if (_currentTraceDepth === 0 && _prevTraceDepth > 0 && !_subCompleteRendered) {
+            for (const completeEvent of subCompleteEvents) {
+                const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                    ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+                    : 'Execution Complete';
+                _renderStandardStep({
+                    step: stepTitle,
+                    details: completeEvent.payload,
+                    type: 'execution_complete',
+                    metadata: completeEvent.metadata
+                }, DOM.statusWindowContent, true);
+            }
+            _subCompleteRendered = true;
+        }
+
+        _prevTraceDepth = _currentTraceDepth;
+
         let eventData = {};
 
         if (traceEntry.action && traceEntry.action.tool_name === 'TDA_SystemLog') {
@@ -638,6 +684,21 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         // Render directly to avoid title override from 'interactive' source
         _renderStandardStep(eventData, DOM.statusWindowContent, false);
     });
+
+    // If trace ended at depth>0, render sub-executor execution_complete after trace
+    if (_prevTraceDepth > 0 && !_subCompleteRendered) {
+        for (const completeEvent of subCompleteEvents) {
+            const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+                : 'Execution Complete';
+            _renderStandardStep({
+                step: stepTitle,
+                details: completeEvent.payload,
+                type: 'execution_complete',
+                metadata: completeEvent.metadata
+            }, DOM.statusWindowContent, true);
+        }
+    }
 
     // Render system events (session name generation, etc.) after execution trace
     if (systemEvents && systemEvents.length > 0) {
@@ -709,16 +770,20 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     // --- Execution Summary Card for tool_enabled profiles ---
     // Use execution_complete from tool_enabled_events if available (includes token counts),
     // otherwise fall back to manually constructed summary card for backwards compatibility.
-    const completeEvent = (toolEnabledEvents || []).find(e => e.type === 'execution_complete');
-    if (completeEvent) {
-        const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
-            ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
-            : 'Execution Complete';
-        _renderStandardStep({
-            step: stepTitle,
-            details: completeEvent.payload,
-            type: 'execution_complete'
-        }, DOM.statusWindowContent, true);
+    // Only depth=0 events render here (sub-executor events already rendered inline in trace).
+    const depth0CompleteEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_complete' && !(e.metadata?.execution_depth > 0));
+    if (depth0CompleteEvents.length > 0) {
+        for (const completeEvent of depth0CompleteEvents) {
+            const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+                : 'Execution Complete';
+            _renderStandardStep({
+                step: stepTitle,
+                details: completeEvent.payload,
+                type: 'execution_complete',
+                metadata: completeEvent.metadata
+            }, DOM.statusWindowContent, true);
+        }
     } else if (durationMs > 0) {
         // Fallback for old sessions without tool_enabled_events
         const summaryCard = document.createElement('div');
@@ -3209,7 +3274,13 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
 
         if (hasStandardSteps && (type === 'execution_start' || type === 'execution_complete' ||
             type === 'execution_error' || type === 'execution_cancelled')) {
-            _renderStandardStep(eventData, DOM.statusWindowContent, isFinal);
+            // Sub-executor lifecycle events render inside the active phase container
+            // so they appear nested within the parent's phase (not at top level).
+            const lifecycleDepth = metadata?.execution_depth || 0;
+            const lifecycleTarget = lifecycleDepth > 0 && state.currentPhaseContainerEl
+                ? state.currentPhaseContainerEl.querySelector('.status-phase-content') || DOM.statusWindowContent
+                : DOM.statusWindowContent;
+            _renderStandardStep(eventData, lifecycleTarget, isFinal);
         } else {
             _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         }
