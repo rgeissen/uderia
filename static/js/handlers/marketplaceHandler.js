@@ -303,7 +303,7 @@ async function loadMarketplaceCollections() {
     } catch (error) {
         console.error('Failed to load marketplace collections:', error);
         if (loading) loading.classList.add('hidden');
-        showNotification('Failed to load marketplace collections: ' + error.message, 'error');
+        showNotification('error', 'Failed to load marketplace collections: ' + error.message);
     }
 }
 
@@ -535,12 +535,12 @@ async function handleSubscribe(collectionId, button) {
     try {
         const token = window.authClient?.getToken();
         if (!token) {
-            showNotification('Authentication required. Please log in.', 'error');
+            showNotification('error', 'Authentication required. Please log in.');
             button.textContent = originalText;
             button.disabled = false;
             return;
         }
-        
+
         const response = await fetch(`/api/v1/marketplace/collections/${collectionId}/subscribe`, {
             method: 'POST',
             headers: {
@@ -554,7 +554,7 @@ async function handleSubscribe(collectionId, button) {
             throw new Error(error.error || 'Subscription failed');
         }
         
-        showNotification('Successfully subscribed to collection', 'success');
+        showNotification('success', 'Successfully subscribed to collection');
         loadMarketplaceCollections(); // Reload marketplace to update UI
         
         // Also reload RAG collections if the function is available
@@ -564,7 +564,7 @@ async function handleSubscribe(collectionId, button) {
         
     } catch (error) {
         console.error('Subscribe failed:', error);
-        showNotification('Failed to subscribe: ' + error.message, 'error');
+        showNotification('error', 'Failed to subscribe: ' + error.message);
         button.textContent = originalText;
         button.disabled = false;
     }
@@ -581,25 +581,25 @@ async function handleUnsubscribe(subscriptionId, button) {
     try {
         const token = window.authClient?.getToken();
         if (!token) {
-            showNotification('Authentication required. Please log in.', 'error');
+            showNotification('error', 'Authentication required. Please log in.');
             button.textContent = originalText;
             button.disabled = false;
             return;
         }
-        
+
         const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Unsubscribe failed');
         }
-        
-        showNotification('Successfully unsubscribed from collection', 'success');
+
+        showNotification('success', 'Successfully unsubscribed from collection');
         loadMarketplaceCollections(); // Reload marketplace to update UI
         
         // Also reload RAG collections if the function is available
@@ -609,7 +609,7 @@ async function handleUnsubscribe(subscriptionId, button) {
         
     } catch (error) {
         console.error('Unsubscribe failed:', error);
-        showNotification('Failed to unsubscribe: ' + error.message, 'error');
+        showNotification('error', 'Failed to unsubscribe: ' + error.message);
         button.textContent = originalText;
         button.disabled = false;
     }
@@ -622,7 +622,7 @@ async function handleUnsubscribe(subscriptionId, button) {
  */
 export async function unsubscribeFromCollection(subscriptionId, collectionName) {
     if (!subscriptionId) {
-        showNotification('Invalid subscription ID', 'error');
+        showNotification('error', 'Invalid subscription ID');
         return;
     }
     
@@ -635,10 +635,10 @@ export async function unsubscribeFromCollection(subscriptionId, collectionName) 
                 try {
                     const token = window.authClient?.getToken();
                     if (!token) {
-                        showNotification('Authentication required. Please log in.', 'error');
+                        showNotification('error', 'Authentication required. Please log in.');
                         return;
                     }
-                    
+
                     const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
                         method: 'DELETE',
                         headers: {
@@ -651,17 +651,17 @@ export async function unsubscribeFromCollection(subscriptionId, collectionName) 
                         throw new Error(error.message || error.error || 'Unsubscribe failed');
                     }
                     
-                    showNotification(`Successfully unsubscribed from "${collectionName}"`, 'success');
-                    
+                    showNotification('success', `Successfully unsubscribed from "${collectionName}"`);
+
                     // Reload both marketplace and RAG collections
                     loadMarketplaceCollections();
                     if (window.loadRagCollections) {
                         await window.loadRagCollections();
                     }
-                    
+
                 } catch (error) {
                     console.error('Unsubscribe failed:', error);
-                    showNotification('Failed to unsubscribe: ' + error.message, 'error');
+                    showNotification('error', 'Failed to unsubscribe: ' + error.message);
                 }
             }
         );
@@ -674,23 +674,23 @@ export async function unsubscribeFromCollection(subscriptionId, collectionName) 
         try {
             const token = window.authClient?.getToken();
             if (!token) {
-                showNotification('Authentication required. Please log in.', 'error');
+                showNotification('error', 'Authentication required. Please log in.');
                 return;
             }
-            
+
             const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
-            
+
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.message || error.error || 'Unsubscribe failed');
             }
-            
-            showNotification(`Successfully unsubscribed from "${collectionName}"`, 'success');
+
+            showNotification('success', `Successfully unsubscribed from "${collectionName}"`);
             
             // Reload both marketplace and RAG collections
             loadMarketplaceCollections();
@@ -700,7 +700,7 @@ export async function unsubscribeFromCollection(subscriptionId, collectionName) 
             
         } catch (error) {
             console.error('Unsubscribe failed:', error);
-            showNotification('Failed to unsubscribe: ' + error.message, 'error');
+            showNotification('error', 'Failed to unsubscribe: ' + error.message);
         }
     }
 }
@@ -795,7 +795,7 @@ async function handleFork() {
     const submitBtn = document.getElementById('fork-collection-submit');
     
     if (!collectionId || !newName) {
-        showNotification('Please provide a name for the forked collection', 'error');
+        showNotification('error', 'Please provide a name for the forked collection');
         return;
     }
     
@@ -808,14 +808,14 @@ async function handleFork() {
     try {
         const token = window.authClient?.getToken();
         if (!token) {
-            showNotification('Authentication required. Please log in.', 'error');
+            showNotification('error', 'Authentication required. Please log in.');
             if (submitBtn) {
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
             }
             return;
         }
-        
+
         const response = await fetch(`/api/v1/marketplace/collections/${collectionId}/fork`, {
             method: 'POST',
             headers: {
@@ -833,7 +833,7 @@ async function handleFork() {
         }
         
         const result = await response.json();
-        showNotification(`Successfully forked collection as "${newName}"`, 'success');
+        showNotification('success', `Successfully forked collection as "${newName}"`);
         closeForkModal();
         
         // Reload collections to show the new fork
@@ -843,7 +843,7 @@ async function handleFork() {
         
     } catch (error) {
         console.error('Fork failed:', error);
-        showNotification('Failed to fork collection: ' + error.message, 'error');
+        showNotification('error', 'Failed to fork collection: ' + error.message);
     } finally {
         if (submitBtn) {
             submitBtn.textContent = originalText;
@@ -942,7 +942,7 @@ async function handlePublish() {
     const submitBtn = document.getElementById('publish-collection-submit');
     
     if (!collectionId || !visibility) {
-        showNotification('Please select a visibility option', 'error');
+        showNotification('error', 'Please select a visibility option');
         return;
     }
     
@@ -956,10 +956,10 @@ async function handlePublish() {
         // Get authentication token
         const token = window.authClient?.getToken();
         if (!token) {
-            showNotification('Authentication required. Please log in.', 'error');
+            showNotification('error', 'Authentication required. Please log in.');
             return;
         }
-        
+
         const response = await fetch(`/api/v1/rag/collections/${collectionId}/publish`, {
             method: 'POST',
             headers: {
@@ -974,13 +974,13 @@ async function handlePublish() {
             throw new Error(error.error || 'Publish failed');
         }
         
-        showNotification('Successfully published collection to marketplace', 'success');
+        showNotification('success', 'Successfully published collection to marketplace');
         closePublishModal();
         loadMarketplaceCollections(); // Reload to update UI
         
     } catch (error) {
         console.error('Publish failed:', error);
-        showNotification('Failed to publish collection: ' + error.message, 'error');
+        showNotification('error', 'Failed to publish collection: ' + error.message);
     } finally {
         if (submitBtn) {
             submitBtn.textContent = originalText;
@@ -1014,10 +1014,10 @@ async function handleUnpublish(collectionId, collectionName, button) {
     try {
         const token = window.authClient?.getToken();
         if (!token) {
-            showNotification('Authentication required. Please log in.', 'error');
+            showNotification('error', 'Authentication required. Please log in.');
             return;
         }
-        
+
         const response = await fetch(`/api/v1/rag/collections/${collectionId}/unpublish`, {
             method: 'POST',
             headers: {
@@ -1031,7 +1031,7 @@ async function handleUnpublish(collectionId, collectionName, button) {
             throw new Error(error.message || error.error || 'Unpublish failed');
         }
         
-        showNotification('Successfully unpublished collection from marketplace', 'success');
+        showNotification('success', 'Successfully unpublished collection from marketplace');
         loadMarketplaceCollections(); // Reload to update UI
         
         // Also reload RAG collections if available
@@ -1041,7 +1041,7 @@ async function handleUnpublish(collectionId, collectionName, button) {
         
     } catch (error) {
         console.error('Unpublish failed:', error);
-        showNotification('Failed to unpublish collection: ' + error.message, 'error');
+        showNotification('error', 'Failed to unpublish collection: ' + error.message);
     } finally {
         if (button) {
             button.textContent = originalText;
@@ -1169,7 +1169,7 @@ async function handleRate() {
     const submitBtn = document.getElementById('rate-collection-submit');
     
     if (!collectionId || !rating) {
-        showNotification('Please select a rating', 'error');
+        showNotification('error', 'Please select a rating');
         return;
     }
     
@@ -1182,14 +1182,14 @@ async function handleRate() {
     try {
         const token = window.authClient?.getToken();
         if (!token) {
-            showNotification('Authentication required. Please log in.', 'error');
+            showNotification('error', 'Authentication required. Please log in.');
             if (submitBtn) {
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
             }
             return;
         }
-        
+
         const body = { rating: parseInt(rating) };
         if (review) body.review = review;
         
@@ -1207,13 +1207,13 @@ async function handleRate() {
             throw new Error(error.error || 'Rating submission failed');
         }
         
-        showNotification('Successfully submitted rating', 'success');
+        showNotification('success', 'Successfully submitted rating');
         closeRateModal();
         loadMarketplaceCollections(); // Reload to update ratings
         
     } catch (error) {
         console.error('Rate failed:', error);
-        showNotification('Failed to submit rating: ' + error.message, 'error');
+        showNotification('error', 'Failed to submit rating: ' + error.message);
     } finally {
         if (submitBtn) {
             submitBtn.textContent = originalText;

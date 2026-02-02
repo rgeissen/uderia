@@ -550,6 +550,19 @@
     color: white !important;
 }
 
+/* Exception: Marketplace buttons on colored backgrounds should stay white */
+[data-theme="light"] .unpublish-btn {
+    color: white !important;
+}
+
+/* Exception: App banner notifications with solid Tailwind bg colors should stay white */
+[data-theme="light"] #header-status-message[class*="bg-red-"],
+[data-theme="light"] #header-status-message[class*="bg-green-"],
+[data-theme="light"] #header-status-message[class*="bg-yellow-"],
+[data-theme="light"] #header-status-message[class*="bg-blue-"] {
+    color: white !important;
+}
+
 /* Exception: Panel toggle buttons should stay white (on dark/orange backgrounds) */
 [data-theme="light"] #toggle-history-button,
 [data-theme="light"] #toggle-header-button,

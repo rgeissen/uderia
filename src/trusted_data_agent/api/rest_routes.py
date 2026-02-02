@@ -8230,11 +8230,6 @@ async def unpublish_collection_from_marketplace(collection_id: int):
         if not coll_meta.get("is_marketplace_listed", False):
             return jsonify({"status": "error", "message": "Collection is not currently published"}), 400
         
-        # Prevent unpublishing default collection (defensive check)
-        default_collection_id = retriever._get_user_default_collection_id(user_uuid)
-        if default_collection_id and collection_id == default_collection_id:
-            return jsonify({"status": "error", "message": "Cannot unpublish your default collection"}), 400
-        
         # Update collection in database
         from trusted_data_agent.core.collection_db import get_collection_db
         collection_db = get_collection_db()
