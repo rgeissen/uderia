@@ -272,11 +272,14 @@ async def get_rag_questions(current_user):
                 include=["metadatas", "distances"]
             )
             
-            # Extract questions with their similarity scores
+            # Extract questions with their similarity scores, filtering by relevance threshold
+            max_distance = 1.0 - APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE
             if results and results.get("metadatas") and results["metadatas"][0]:
                 for idx, metadata in enumerate(results["metadatas"][0]):
                     if "user_query" in metadata:
                         distance = results["distances"][0][idx] if results.get("distances") else 0
+                        if max_distance < 1.0 and distance > max_distance:
+                            continue
                         all_results.append({
                             "question": metadata["user_query"],
                             "distance": distance,

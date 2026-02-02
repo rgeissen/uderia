@@ -1826,7 +1826,8 @@ async def get_app_config():
                 'rag_config': {
                     'refresh_on_startup': APP_CONFIG.RAG_REFRESH_ON_STARTUP,
                     'num_examples': APP_CONFIG.RAG_NUM_EXAMPLES,
-                    'embedding_model': APP_CONFIG.RAG_EMBEDDING_MODEL
+                    'embedding_model': APP_CONFIG.RAG_EMBEDDING_MODEL,
+                    'autocomplete_min_relevance': APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE
                 }
             }
         }), 200
@@ -1871,6 +1872,10 @@ async def save_app_config():
             if 'embedding_model' in rag_config:
                 APP_CONFIG.RAG_EMBEDDING_MODEL = str(rag_config['embedding_model'])
                 logger.info(f"RAG embedding model: {APP_CONFIG.RAG_EMBEDDING_MODEL}")
+            if 'autocomplete_min_relevance' in rag_config:
+                val = float(rag_config['autocomplete_min_relevance'])
+                APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE = max(0.0, min(1.0, val))
+                logger.info(f"Autocomplete min relevance: {APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE}")
 
         from trusted_data_agent.core.tts_service import get_tts_mode
 
@@ -1885,7 +1890,8 @@ async def save_app_config():
                 'rag_config': {
                     'refresh_on_startup': APP_CONFIG.RAG_REFRESH_ON_STARTUP,
                     'num_examples': APP_CONFIG.RAG_NUM_EXAMPLES,
-                    'embedding_model': APP_CONFIG.RAG_EMBEDDING_MODEL
+                    'embedding_model': APP_CONFIG.RAG_EMBEDDING_MODEL,
+                    'autocomplete_min_relevance': APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE
                 }
             }
         }), 200

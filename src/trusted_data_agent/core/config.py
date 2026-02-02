@@ -61,6 +61,7 @@ class AppConfig:
     RAG_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
     RAG_NUM_EXAMPLES = 3 # Total number of few-shot examples to retrieve across all active collections
     RAG_DEFAULT_COLLECTION_NAME = "default_collection" # ChromaDB collection name for default collection (ID 0)
+    AUTOCOMPLETE_MIN_RELEVANCE = 0.10  # Minimum cosine similarity for autocomplete suggestions (0.0-1.0)
     
     # Knowledge Repository Configuration (Knowledge Repositories = Domain Knowledge RAG)
     KNOWLEDGE_RAG_ENABLED = True # Master switch for knowledge repository retrieval during planning

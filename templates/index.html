@@ -3419,7 +3419,7 @@
                                             <!-- Min Relevance Score with Lock -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <div class="flex items-center justify-between mb-2">
-                                                    <label for="knowledge-min-relevance" class="block text-sm font-medium text-gray-300">Minimum Relevance Score</label>
+                                                    <label for="knowledge-min-relevance" class="block text-sm font-medium text-gray-300">Document Retrieval Minimum Relevance</label>
                                                     <div class="flex items-center gap-2">
                                                         <input type="checkbox" id="knowledge-min-relevance-locked" class="w-4 h-4">
                                                         <label for="knowledge-min-relevance-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
@@ -3474,6 +3474,16 @@
                                                         <p class="text-xs text-gray-400 mt-1">Use LLM to rerank retrieved documents by relevance. Increases latency. Lock to enforce globally.</p>
                                                     </div>
                                                 </div>
+                                            </div>
+
+                                            <!-- Autocomplete Suggestion Threshold -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <label for="autocomplete-min-relevance" class="block text-sm font-medium text-gray-300 mb-2">Autocomplete Suggestion Threshold</label>
+                                                <div class="flex items-center gap-4">
+                                                    <input type="range" id="autocomplete-min-relevance" min="0" max="1" step="0.05" value="0.10" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-[#F15F22]">
+                                                    <span id="autocomplete-min-relevance-value" class="text-sm text-white font-mono w-12 text-right">0.10</span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-2">Minimum similarity for question box autocomplete suggestions from planner repositories (0.0 = show all, 1.0 = exact match only, default: 0.10). Set to 0 to disable filtering.</p>
                                             </div>
 
                                         </div>

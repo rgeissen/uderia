@@ -239,6 +239,18 @@ const AdminManager = {
             });
         }
 
+        // Autocomplete min relevance slider value display
+        const autocompleteMinRelevanceSlider = document.getElementById('autocomplete-min-relevance');
+        if (autocompleteMinRelevanceSlider) {
+            autocompleteMinRelevanceSlider.addEventListener('input', (e) => {
+                const valueDisplay = document.getElementById('autocomplete-min-relevance-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = parseFloat(e.target.value).toFixed(2);
+                }
+                this.checkAIKnowledgeDirty();
+            });
+        }
+
         // TTS Mode toggle - show/hide global credentials section
         const ttsModeSelect = document.getElementById('tts-mode-select');
         if (ttsModeSelect) {
@@ -2496,7 +2508,8 @@ const AdminManager = {
             knowledge_min_relevance_locked: 'knowledge-min-relevance-locked',
             knowledge_num_docs_locked: 'knowledge-num-docs-locked',
             knowledge_max_tokens_locked: 'knowledge-max-tokens-locked',
-            knowledge_reranking_locked: 'knowledge-reranking-locked'
+            knowledge_reranking_locked: 'knowledge-reranking-locked',
+            autocomplete_min_relevance: 'autocomplete-min-relevance'
         });
     },
     checkAIKnowledgeDirty() {
@@ -2894,6 +2907,12 @@ const AdminManager = {
                     
                     this.setFieldValue('rag-num-examples', data.config.rag_config.num_examples);
                     this.setFieldValue('rag-embedding-model', data.config.rag_config.embedding_model);
+
+                    if (data.config.rag_config.autocomplete_min_relevance !== undefined) {
+                        this.setFieldValue('autocomplete-min-relevance', data.config.rag_config.autocomplete_min_relevance);
+                        const valueDisplay = document.getElementById('autocomplete-min-relevance-value');
+                        if (valueDisplay) valueDisplay.textContent = parseFloat(data.config.rag_config.autocomplete_min_relevance).toFixed(2);
+                    }
                 }
                 
                 // Load Knowledge Repository configuration from dedicated endpoint
@@ -3288,7 +3307,8 @@ const AdminManager = {
                 rag_config: {
                     refresh_on_startup: ragRefreshCheckbox ? ragRefreshCheckbox.checked : true,
                     num_examples: parseInt(this.getFieldValue('rag-num-examples')) || 3,
-                    embedding_model: this.getFieldValue('rag-embedding-model') || 'all-MiniLM-L6-v2'
+                    embedding_model: this.getFieldValue('rag-embedding-model') || 'all-MiniLM-L6-v2',
+                    autocomplete_min_relevance: parseFloat(this.getFieldValue('autocomplete-min-relevance')) || 0.10
                 }
             };
 
