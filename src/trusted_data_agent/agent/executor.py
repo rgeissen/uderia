@@ -2642,6 +2642,15 @@ The following domain knowledge may be relevant to this conversation:
             max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
             min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
             max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+            max_chunks_per_doc = effective_config.get("maxChunksPerDocument", APP_CONFIG.KNOWLEDGE_MAX_CHUNKS_PER_DOC)
+            freshness_weight = effective_config.get("freshnessWeight", APP_CONFIG.KNOWLEDGE_FRESHNESS_WEIGHT)
+            freshness_decay_rate = effective_config.get("freshnessDecayRate", APP_CONFIG.KNOWLEDGE_FRESHNESS_DECAY_RATE)
+            synthesis_prompt_override = effective_config.get("synthesisPromptOverride", "")
+
+            app_logger.info(f"[RAG] Effective config: maxDocs={max_docs}, minRelevance={min_relevance}, "
+                           f"maxTokens={max_tokens}, maxChunksPerDoc={max_chunks_per_doc}, "
+                           f"freshnessWeight={freshness_weight}, freshnessDecay={freshness_decay_rate}, "
+                           f"synthesisPrompt={'yes (' + str(len(synthesis_prompt_override)) + ' chars)' if synthesis_prompt_override else 'no'}")
 
             # Emit start event (fetch actual collection names from metadata)
             collection_names_for_start = []
@@ -2687,8 +2696,21 @@ The following domain knowledge may be relevant to this conversation:
                 min_score=min_relevance,
                 allowed_collection_ids=set([c["id"] for c in knowledge_collections]),
                 rag_context=rag_context,
-                repository_type="knowledge"  # Only knowledge, not planner
+                repository_type="knowledge",  # Only knowledge, not planner
+                max_chunks_per_doc=max_chunks_per_doc,
+                freshness_weight=freshness_weight,
+                freshness_decay_rate=freshness_decay_rate
             )
+
+            app_logger.info(f"[RAG] Retrieved {len(all_results)} chunks from {len(knowledge_collections)} collection(s)")
+            for idx, r in enumerate(all_results[:5]):
+                sim = r.get('similarity_score', 0)
+                adj = r.get('adjusted_score', sim)
+                fresh = r.get('freshness_score', 'N/A')
+                title = r.get('metadata', {}).get('title', 'unknown')[:50]
+                doc_id = r.get('document_id', 'N/A')
+                fresh_str = f" fresh={fresh:.3f}" if isinstance(fresh, (int, float)) else ""
+                app_logger.info(f"[RAG]   #{idx+1}: adj={adj:.4f} sim={sim:.4f}{fresh_str} title={title} doc={doc_id}")
 
             if not all_results:
                 # NO KNOWLEDGE FOUND - Treat as valid response, not error
@@ -3017,6 +3039,11 @@ The following domain knowledge may be relevant to this conversation:
             if not system_prompt or "[ENCRYPTED CONTENT]" in system_prompt:
                 system_prompt = "You are a knowledge base assistant. Answer using only the provided documents."
                 app_logger.warning("RAG_FOCUSED_EXECUTION prompt not available (decryption failed or not found), using fallback")
+
+            # Apply synthesis prompt override from profile/global settings (if configured)
+            if synthesis_prompt_override and synthesis_prompt_override.strip():
+                system_prompt = synthesis_prompt_override.strip()
+                app_logger.info(f"[RAG] Using synthesis prompt override ({len(system_prompt)} chars)")
 
             # Load document context from uploaded files
             rag_doc_context = load_document_context(self.user_uuid, self.session_id, self.attachments) if self.attachments else None

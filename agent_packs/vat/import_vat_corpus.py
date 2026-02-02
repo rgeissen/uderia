@@ -46,6 +46,31 @@ CHUNK_OVERLAP = 200
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 
+def normalize_date(date_str: str) -> str:
+    """Normalize truncated dates from corpus files to valid ISO format.
+
+    Corpus CDATE/MDATE values are often truncated (e.g. '2026-01-21 18:',
+    '2025-10-06 14:11:'). This pads missing components so datetime.fromisoformat()
+    can parse them.
+    """
+    if not date_str or not date_str.strip():
+        return ""
+    s = date_str.strip().rstrip(":")
+    # After stripping trailing colon, possible formats:
+    #   '2026-01-21 18'        -> add ':00:00'
+    #   '2025-10-06 14:11'     -> add ':00'
+    #   '2025-10-06 14:11:30'  -> already complete
+    #   '2025-10-06'           -> date only, fine as-is
+    if " " in s:
+        date_part, time_part = s.split(" ", 1)
+        colons = time_part.count(":")
+        if colons == 0:
+            s = f"{date_part} {time_part}:00:00"
+        elif colons == 1:
+            s = f"{date_part} {time_part}:00"
+    return s
+
+
 def clean_title(file_field: str) -> str:
     """Extract a clean title from the FILE field."""
     # Remove file extension
@@ -111,7 +136,7 @@ def process_corpus(corpus_path: Path, output_dir: Path, model: SentenceTransform
         file_field = doc.get("FILE", "Unknown")
         cdate = doc.get("CDATE", "")
         mdate = doc.get("MDATE", "")
-        date_str = mdate if mdate else cdate
+        date_str = normalize_date(mdate if mdate else cdate)
 
         text = extract_document_text(doc)
         if not text or not text.strip():

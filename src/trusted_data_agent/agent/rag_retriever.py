@@ -1,3 +1,4 @@
+import math
 import os
 import json
 import glob
@@ -1224,12 +1225,14 @@ class RAGRetriever:
             return case_data["conversational_response"].get("summary", "Conversational response.")
         return "Strategy details unavailable."
 
-    def retrieve_examples(self, query: str, k: int = 1, min_score: float = 0.7, allowed_collection_ids: set = None, 
-                         rag_context: Optional['RAGAccessContext'] = None, repository_type: str = "planner") -> List[Dict[str, Any]]:
+    def retrieve_examples(self, query: str, k: int = 1, min_score: float = 0.7, allowed_collection_ids: set = None,
+                         rag_context: Optional['RAGAccessContext'] = None, repository_type: str = "planner",
+                         max_chunks_per_doc: int = 0, freshness_weight: float = 0.0,
+                         freshness_decay_rate: float = 0.005) -> List[Dict[str, Any]]:
         """
         Retrieves the top-k most relevant and efficient RAG cases based on the query.
         Queries all active collections and aggregates results by similarity score.
-        
+
         Args:
             query: Search query text
             k: Number of examples to retrieve
@@ -1237,7 +1240,9 @@ class RAGRetriever:
             allowed_collection_ids: Optional set of collection IDs to filter by (for profile-based filtering)
             rag_context: Optional RAGAccessContext for user-aware filtering. If provided, only retrieves from accessible collections.
             repository_type: Type of repository to retrieve from - "planner" or "knowledge" (default: "planner")
-                           --- MODIFICATION: Added repository_type parameter for knowledge repository support ---
+            max_chunks_per_doc: Max chunks per document_id (0 = no limit). Prevents one document from dominating results.
+            freshness_weight: Weight for freshness scoring (0.0-1.0). 0.0 = pure similarity, 1.0 = pure freshness.
+            freshness_decay_rate: Exponential decay rate for freshness. Higher = faster decay.
         """
         logger.debug(f"Retrieving top {k} RAG examples for query: '{query[:50]}...' (repository_type: {repository_type})")
         
@@ -1413,29 +1418,54 @@ class RAGRetriever:
             return []
         # --- MODIFICATION END ---
         
-        # Calculate Adjusted Score to balance Relevance vs. Cleanliness
-        # Instead of hard buckets (which hide highly relevant cases if they have corrections),
-        # we apply a small penalty to the similarity score for corrections.
-        # This ensures a 95% match with corrections still beats a 70% clean match,
-        # but a 90% clean match beats a 92% match with corrections.
-        
+        # Calculate Adjusted Score
         PENALTY_TACTICAL = 0.05  # 5% penalty for tactical corrections
         PENALTY_PLAN = 0.05      # 5% penalty for plan corrections
-        
+
         for case in all_candidate_cases:
-            penalty = 0.0
-            if case["had_tactical_improvements"]:
-                penalty += PENALTY_TACTICAL
-            if case["had_plan_improvements"]:
-                penalty += PENALTY_PLAN
-            
-            case["adjusted_score"] = case["similarity_score"] - penalty
+            if case.get("strategy_type") == "knowledge" and freshness_weight > 0:
+                # Hybrid scoring: blend relevance with document freshness
+                freshness_score = 0.5  # default when no date available
+                date_str = case.get("metadata", {}).get("created_at", "")
+                if date_str:
+                    try:
+                        doc_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                        if doc_date.tzinfo is None:
+                            doc_date = doc_date.replace(tzinfo=timezone.utc)
+                        days_old = (datetime.now(timezone.utc) - doc_date).total_seconds() / 86400
+                        freshness_score = math.exp(-freshness_decay_rate * days_old)
+                    except (ValueError, TypeError):
+                        pass
+                relevance_weight = 1.0 - freshness_weight
+                case["freshness_score"] = freshness_score
+                case["adjusted_score"] = (relevance_weight * case["similarity_score"]) + (freshness_weight * freshness_score)
+            else:
+                # Planner repositories: penalty-based scoring
+                penalty = 0.0
+                if case.get("had_tactical_improvements"):
+                    penalty += PENALTY_TACTICAL
+                if case.get("had_plan_improvements"):
+                    penalty += PENALTY_PLAN
+                case["adjusted_score"] = case["similarity_score"] - penalty
 
         # Sort by Adjusted Score descending
         all_candidate_cases.sort(key=lambda x: x["adjusted_score"], reverse=True)
-        
+
+        # Per-document deduplication (0 = disabled)
+        if max_chunks_per_doc and max_chunks_per_doc > 0:
+            doc_chunk_count = {}
+            deduped = []
+            for case in all_candidate_cases:
+                doc_id = case.get("document_id", case["case_id"])
+                current = doc_chunk_count.get(doc_id, 0)
+                if current < max_chunks_per_doc:
+                    deduped.append(case)
+                    doc_chunk_count[doc_id] = current + 1
+            logger.debug(f"Per-document dedup (max {max_chunks_per_doc}/doc): {len(all_candidate_cases)} -> {len(deduped)} candidates")
+            all_candidate_cases = deduped
+
         final_candidates = all_candidate_cases
-        logger.debug(f"Returning top {k} candidates sorted by adjusted score (Relevance - Cleanliness Penalty).")
+        logger.debug(f"Returning top {k} candidates sorted by adjusted score.")
 
         # Enrich with collection metadata
         for case in final_candidates[:k]:

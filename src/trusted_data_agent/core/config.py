@@ -69,6 +69,9 @@ class AppConfig:
     KNOWLEDGE_MIN_RELEVANCE_SCORE = 0.30  # Lowered for testing - may need better embeddings # Minimum similarity score for knowledge document retrieval (0.0-1.0)
     KNOWLEDGE_MAX_TOKENS = 2000 # Maximum tokens for all knowledge context combined
     KNOWLEDGE_RERANKING_ENABLED = False # Global default for LLM reranking (can be overridden per collection in profiles)
+    KNOWLEDGE_MAX_CHUNKS_PER_DOC = 0 # 0 = disabled (no per-document dedup). Limits chunks from same source document.
+    KNOWLEDGE_FRESHNESS_WEIGHT = 0.0 # 0.0 = disabled (pure relevance). Blend: (1-w)*similarity + w*freshness
+    KNOWLEDGE_FRESHNESS_DECAY_RATE = 0.005 # Exponential decay rate for freshness scoring. Higher = faster decay.
     
     # Session & Analytics Configuration
     SESSIONS_FILTER_BY_USER = os.environ.get('TDA_SESSIONS_FILTER_BY_USER', 'true').lower() == 'true' # If True, execution dashboard shows only current user's sessions. If False, shows all sessions. Note: User tier always filtered, Developer+ can override.

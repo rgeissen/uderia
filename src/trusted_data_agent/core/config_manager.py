@@ -1900,10 +1900,12 @@ class ConfigManager:
                     short_key = key.replace('knowledge_', '')
 
                     # Parse value to appropriate type
-                    if short_key == 'minRelevanceScore':
+                    if short_key in ('minRelevanceScore', 'freshnessWeight', 'freshnessDecayRate'):
                         parsed_value = float(value)
                     elif short_key == 'rerankingEnabled':
                         parsed_value = bool(int(value))
+                    elif short_key == 'synthesisPromptOverride':
+                        parsed_value = str(value)
                     else:
                         parsed_value = int(value)
 
@@ -1917,7 +1919,11 @@ class ConfigManager:
                     'minRelevanceScore': {'value': 0.30, 'is_locked': False},
                     'maxDocs': {'value': 3, 'is_locked': False},
                     'maxTokens': {'value': 2000, 'is_locked': False},
-                    'rerankingEnabled': {'value': False, 'is_locked': False}
+                    'rerankingEnabled': {'value': False, 'is_locked': False},
+                    'maxChunksPerDocument': {'value': 0, 'is_locked': False},
+                    'freshnessWeight': {'value': 0.0, 'is_locked': False},
+                    'freshnessDecayRate': {'value': 0.005, 'is_locked': False},
+                    'synthesisPromptOverride': {'value': '', 'is_locked': False}
                 }
                 for key, default in defaults.items():
                     if key not in settings:
@@ -1930,7 +1936,11 @@ class ConfigManager:
                 'minRelevanceScore': {'value': 0.30, 'is_locked': False},
                 'maxDocs': {'value': 3, 'is_locked': False},
                 'maxTokens': {'value': 2000, 'is_locked': False},
-                'rerankingEnabled': {'value': False, 'is_locked': False}
+                'rerankingEnabled': {'value': False, 'is_locked': False},
+                'maxChunksPerDocument': {'value': 0, 'is_locked': False},
+                'freshnessWeight': {'value': 0.0, 'is_locked': False},
+                'freshnessDecayRate': {'value': 0.005, 'is_locked': False},
+                'synthesisPromptOverride': {'value': '', 'is_locked': False}
             }
 
         return settings
@@ -1962,6 +1972,8 @@ class ConfigManager:
         # Convert boolean to int for storage
         if setting_key == 'rerankingEnabled':
             setting_value = 1 if setting_value else 0
+        elif setting_key == 'synthesisPromptOverride':
+            setting_value = str(setting_value) if setting_value else ''
 
         try:
             with get_db_session() as session:

@@ -2250,7 +2250,9 @@ async def save_knowledge_global_settings():
             }), 400
 
         # Validate settings
-        valid_keys = {'minRelevanceScore', 'maxDocs', 'maxTokens', 'rerankingEnabled'}
+        valid_keys = {'minRelevanceScore', 'maxDocs', 'maxTokens', 'rerankingEnabled',
+                      'maxChunksPerDocument', 'freshnessWeight', 'freshnessDecayRate',
+                      'synthesisPromptOverride'}
         for key in data.keys():
             if key not in valid_keys:
                 return jsonify({
@@ -2281,6 +2283,30 @@ async def save_knowledge_global_settings():
                 return jsonify({
                     'status': 'error',
                     'message': 'Max tokens must be between 500 and 10000'
+                }), 400
+
+        if 'maxChunksPerDocument' in data:
+            max_chunks = data['maxChunksPerDocument'].get('value')
+            if max_chunks is not None and (max_chunks < 0 or max_chunks > 50):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Max chunks per document must be between 0 and 50'
+                }), 400
+
+        if 'freshnessWeight' in data:
+            fw = data['freshnessWeight'].get('value')
+            if fw is not None and (fw < 0.0 or fw > 1.0):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Freshness weight must be between 0.0 and 1.0'
+                }), 400
+
+        if 'freshnessDecayRate' in data:
+            fdr = data['freshnessDecayRate'].get('value')
+            if fdr is not None and (fdr < 0.001 or fdr > 1.0):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Freshness decay rate must be between 0.001 and 1.0'
                 }), 400
 
         config_manager = get_config_manager()

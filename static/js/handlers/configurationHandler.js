@@ -5540,9 +5540,17 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
     const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
     const maxTokensInput = modal.querySelector('#profile-modal-max-tokens');
+    const maxChunksPerDocInput = modal.querySelector('#profile-modal-max-chunks-per-doc');
+    const freshnessWeightInput = modal.querySelector('#profile-modal-freshness-weight');
+    const freshnessDecayRateInput = modal.querySelector('#profile-modal-freshness-decay-rate');
+    const synthesisPromptInput = modal.querySelector('#profile-modal-synthesis-prompt');
     const minRelevanceLockedBadge = modal.querySelector('#profile-knowledge-min-relevance-locked-badge');
     const maxDocsLockedBadge = modal.querySelector('#profile-knowledge-max-docs-locked-badge');
     const maxTokensLockedBadge = modal.querySelector('#profile-knowledge-max-tokens-locked-badge');
+    const maxChunksPerDocLockedBadge = modal.querySelector('#profile-knowledge-max-chunks-per-doc-locked-badge');
+    const freshnessWeightLockedBadge = modal.querySelector('#profile-knowledge-freshness-weight-locked-badge');
+    const freshnessDecayLockedBadge = modal.querySelector('#profile-knowledge-freshness-decay-locked-badge');
+    const synthesisPromptLockedBadge = modal.querySelector('#profile-knowledge-synthesis-prompt-locked-badge');
 
     // Fetch global settings from database to check for locks and set placeholders
     let knowledgeGlobalSettings = {};
@@ -5612,6 +5620,78 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             maxTokensInput.placeholder = String(globalValue);
             maxTokensInput.disabled = false;
             if (maxTokensLockedBadge) maxTokensLockedBadge.classList.add('hidden');
+        }
+    }
+
+    // Configure max chunks per document
+    if (maxChunksPerDocInput) {
+        const isLocked = knowledgeGlobalSettings.maxChunksPerDocument?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.maxChunksPerDocument?.value ?? 0;
+        const profileValue = profile?.knowledgeConfig?.maxChunksPerDocument;
+
+        if (isLocked) {
+            maxChunksPerDocInput.value = globalValue;
+            maxChunksPerDocInput.disabled = true;
+            if (maxChunksPerDocLockedBadge) maxChunksPerDocLockedBadge.classList.remove('hidden');
+        } else {
+            maxChunksPerDocInput.value = profileValue !== undefined ? profileValue : '';
+            maxChunksPerDocInput.placeholder = String(globalValue);
+            maxChunksPerDocInput.disabled = false;
+            if (maxChunksPerDocLockedBadge) maxChunksPerDocLockedBadge.classList.add('hidden');
+        }
+    }
+
+    // Configure freshness weight
+    if (freshnessWeightInput) {
+        const isLocked = knowledgeGlobalSettings.freshnessWeight?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.freshnessWeight?.value ?? 0.0;
+        const profileValue = profile?.knowledgeConfig?.freshnessWeight;
+
+        if (isLocked) {
+            freshnessWeightInput.value = globalValue;
+            freshnessWeightInput.disabled = true;
+            if (freshnessWeightLockedBadge) freshnessWeightLockedBadge.classList.remove('hidden');
+        } else {
+            freshnessWeightInput.value = profileValue !== undefined ? profileValue : '';
+            freshnessWeightInput.placeholder = String(globalValue);
+            freshnessWeightInput.disabled = false;
+            if (freshnessWeightLockedBadge) freshnessWeightLockedBadge.classList.add('hidden');
+        }
+    }
+
+    // Configure freshness decay rate
+    if (freshnessDecayRateInput) {
+        const isLocked = knowledgeGlobalSettings.freshnessDecayRate?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.freshnessDecayRate?.value ?? 0.005;
+        const profileValue = profile?.knowledgeConfig?.freshnessDecayRate;
+
+        if (isLocked) {
+            freshnessDecayRateInput.value = globalValue;
+            freshnessDecayRateInput.disabled = true;
+            if (freshnessDecayLockedBadge) freshnessDecayLockedBadge.classList.remove('hidden');
+        } else {
+            freshnessDecayRateInput.value = profileValue !== undefined ? profileValue : '';
+            freshnessDecayRateInput.placeholder = String(globalValue);
+            freshnessDecayRateInput.disabled = false;
+            if (freshnessDecayLockedBadge) freshnessDecayLockedBadge.classList.add('hidden');
+        }
+    }
+
+    // Configure synthesis prompt override
+    if (synthesisPromptInput) {
+        const isLocked = knowledgeGlobalSettings.synthesisPromptOverride?.is_locked || false;
+        const globalValue = knowledgeGlobalSettings.synthesisPromptOverride?.value ?? '';
+        const profileValue = profile?.knowledgeConfig?.synthesisPromptOverride;
+
+        if (isLocked) {
+            synthesisPromptInput.value = globalValue;
+            synthesisPromptInput.disabled = true;
+            if (synthesisPromptLockedBadge) synthesisPromptLockedBadge.classList.remove('hidden');
+        } else {
+            synthesisPromptInput.value = profileValue !== undefined ? profileValue : '';
+            synthesisPromptInput.placeholder = globalValue || 'Leave empty to use global/default synthesis prompt...';
+            synthesisPromptInput.disabled = false;
+            if (synthesisPromptLockedBadge) synthesisPromptLockedBadge.classList.add('hidden');
         }
     }
 
@@ -5844,6 +5924,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const minRelevanceInput = modal.querySelector('#profile-modal-min-relevance');
         const maxDocsInput = modal.querySelector('#profile-modal-max-docs');
         const maxTokensInput = modal.querySelector('#profile-modal-max-tokens');
+        const maxChunksPerDocInput = modal.querySelector('#profile-modal-max-chunks-per-doc');
+        const freshnessWeightInput = modal.querySelector('#profile-modal-freshness-weight');
+        const freshnessDecayRateInput = modal.querySelector('#profile-modal-freshness-decay-rate');
+        const synthesisPromptInput = modal.querySelector('#profile-modal-synthesis-prompt');
 
         // Check if knowledge is enabled based on profile type and capability checkbox
         // - rag_focused: always enabled
@@ -5878,6 +5962,31 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 if (!isNaN(maxTokens) && maxTokens >= 500) {
                     knowledgeConfig.maxTokens = maxTokens;
                 }
+            }
+
+            if (maxChunksPerDocInput && maxChunksPerDocInput.value !== '') {
+                const maxChunks = parseInt(maxChunksPerDocInput.value);
+                if (!isNaN(maxChunks) && maxChunks >= 0 && maxChunks <= 50) {
+                    knowledgeConfig.maxChunksPerDocument = maxChunks;
+                }
+            }
+
+            if (freshnessWeightInput && freshnessWeightInput.value !== '') {
+                const fw = parseFloat(freshnessWeightInput.value);
+                if (!isNaN(fw) && fw >= 0 && fw <= 1) {
+                    knowledgeConfig.freshnessWeight = fw;
+                }
+            }
+
+            if (freshnessDecayRateInput && freshnessDecayRateInput.value !== '') {
+                const fdr = parseFloat(freshnessDecayRateInput.value);
+                if (!isNaN(fdr) && fdr >= 0.001 && fdr <= 1.0) {
+                    knowledgeConfig.freshnessDecayRate = fdr;
+                }
+            }
+
+            if (synthesisPromptInput && synthesisPromptInput.value.trim() !== '') {
+                knowledgeConfig.synthesisPromptOverride = synthesisPromptInput.value.trim();
             }
         }
 

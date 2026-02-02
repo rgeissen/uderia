@@ -239,6 +239,17 @@ const AdminManager = {
             });
         }
 
+        // Freshness weight slider value display
+        const freshnessWeightSlider = document.getElementById('knowledge-freshness-weight');
+        if (freshnessWeightSlider) {
+            freshnessWeightSlider.addEventListener('input', (e) => {
+                const valueDisplay = document.getElementById('knowledge-freshness-weight-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = parseFloat(e.target.value).toFixed(2);
+                }
+            });
+        }
+
         // Autocomplete min relevance slider value display
         const autocompleteMinRelevanceSlider = document.getElementById('autocomplete-min-relevance');
         if (autocompleteMinRelevanceSlider) {
@@ -3346,6 +3357,22 @@ const AdminManager = {
                 rerankingEnabled: {
                     value: document.getElementById('knowledge-reranking-enabled')?.checked || false,
                     is_locked: document.getElementById('knowledge-reranking-locked')?.checked || false
+                },
+                maxChunksPerDocument: {
+                    value: parseInt(document.getElementById('knowledge-max-chunks-per-doc')?.value || 0),
+                    is_locked: document.getElementById('knowledge-max-chunks-per-doc-locked')?.checked || false
+                },
+                freshnessWeight: {
+                    value: parseFloat(document.getElementById('knowledge-freshness-weight')?.value || 0.0),
+                    is_locked: document.getElementById('knowledge-freshness-weight-locked')?.checked || false
+                },
+                freshnessDecayRate: {
+                    value: parseFloat(document.getElementById('knowledge-freshness-decay-rate')?.value || 0.005),
+                    is_locked: document.getElementById('knowledge-freshness-decay-rate-locked')?.checked || false
+                },
+                synthesisPromptOverride: {
+                    value: document.getElementById('knowledge-synthesis-prompt')?.value || '',
+                    is_locked: document.getElementById('knowledge-synthesis-prompt-locked')?.checked || false
                 }
             };
 
@@ -3365,6 +3392,24 @@ const AdminManager = {
             if (knowledgeSettings.maxTokens.value < 500 || knowledgeSettings.maxTokens.value > 10000) {
                 if (window.showNotification) {
                     window.showNotification('error', 'Max tokens must be between 500 and 10000');
+                }
+                return;
+            }
+            if (knowledgeSettings.maxChunksPerDocument.value < 0 || knowledgeSettings.maxChunksPerDocument.value > 50) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Max chunks per document must be between 0 and 50');
+                }
+                return;
+            }
+            if (knowledgeSettings.freshnessWeight.value < 0 || knowledgeSettings.freshnessWeight.value > 1) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Freshness weight must be between 0.0 and 1.0');
+                }
+                return;
+            }
+            if (knowledgeSettings.freshnessDecayRate.value < 0.001 || knowledgeSettings.freshnessDecayRate.value > 1.0) {
+                if (window.showNotification) {
+                    window.showNotification('error', 'Freshness decay rate must be between 0.001 and 1.0');
                 }
                 return;
             }
@@ -5502,6 +5547,40 @@ const AdminManager = {
                 if (locked) locked.checked = settings.rerankingEnabled.is_locked;
             }
 
+            // Populate max chunks per document
+            if (settings.maxChunksPerDocument) {
+                const input = document.getElementById('knowledge-max-chunks-per-doc');
+                const locked = document.getElementById('knowledge-max-chunks-per-doc-locked');
+                if (input) input.value = settings.maxChunksPerDocument.value;
+                if (locked) locked.checked = settings.maxChunksPerDocument.is_locked;
+            }
+
+            // Populate freshness weight
+            if (settings.freshnessWeight) {
+                const slider = document.getElementById('knowledge-freshness-weight');
+                const valueDisplay = document.getElementById('knowledge-freshness-weight-value');
+                const locked = document.getElementById('knowledge-freshness-weight-locked');
+                if (slider) slider.value = settings.freshnessWeight.value;
+                if (valueDisplay) valueDisplay.textContent = parseFloat(settings.freshnessWeight.value).toFixed(2);
+                if (locked) locked.checked = settings.freshnessWeight.is_locked;
+            }
+
+            // Populate freshness decay rate
+            if (settings.freshnessDecayRate) {
+                const input = document.getElementById('knowledge-freshness-decay-rate');
+                const locked = document.getElementById('knowledge-freshness-decay-rate-locked');
+                if (input) input.value = settings.freshnessDecayRate.value;
+                if (locked) locked.checked = settings.freshnessDecayRate.is_locked;
+            }
+
+            // Populate synthesis prompt override
+            if (settings.synthesisPromptOverride) {
+                const textarea = document.getElementById('knowledge-synthesis-prompt');
+                const locked = document.getElementById('knowledge-synthesis-prompt-locked');
+                if (textarea) textarea.value = settings.synthesisPromptOverride.value || '';
+                if (locked) locked.checked = settings.synthesisPromptOverride.is_locked;
+            }
+
             console.log('[AdminManager] Knowledge global settings loaded:', settings);
 
         } catch (error) {
@@ -5537,6 +5616,22 @@ const AdminManager = {
                 rerankingEnabled: {
                     value: document.getElementById('knowledge-reranking-enabled')?.checked || false,
                     is_locked: document.getElementById('knowledge-reranking-locked')?.checked || false
+                },
+                maxChunksPerDocument: {
+                    value: parseInt(document.getElementById('knowledge-max-chunks-per-doc')?.value || 0),
+                    is_locked: document.getElementById('knowledge-max-chunks-per-doc-locked')?.checked || false
+                },
+                freshnessWeight: {
+                    value: parseFloat(document.getElementById('knowledge-freshness-weight')?.value || 0.0),
+                    is_locked: document.getElementById('knowledge-freshness-weight-locked')?.checked || false
+                },
+                freshnessDecayRate: {
+                    value: parseFloat(document.getElementById('knowledge-freshness-decay-rate')?.value || 0.005),
+                    is_locked: document.getElementById('knowledge-freshness-decay-rate-locked')?.checked || false
+                },
+                synthesisPromptOverride: {
+                    value: document.getElementById('knowledge-synthesis-prompt')?.value || '',
+                    is_locked: document.getElementById('knowledge-synthesis-prompt-locked')?.checked || false
                 }
             };
 

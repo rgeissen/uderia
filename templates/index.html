@@ -3476,6 +3476,61 @@
                                                 </div>
                                             </div>
 
+                                            <!-- Max Chunks Per Document with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-max-chunks-per-doc" class="block text-sm font-medium text-gray-300">Max Chunks Per Document</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-max-chunks-per-doc-locked" class="w-4 h-4">
+                                                        <label for="knowledge-max-chunks-per-doc-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <input type="number" id="knowledge-max-chunks-per-doc" min="0" max="50" value="0" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">0 = no limit. Limits chunks from the same source document to prevent a single document from dominating results (0-50). Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Freshness Weight with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-freshness-weight" class="block text-sm font-medium text-gray-300">Freshness Weight</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-freshness-weight-locked" class="w-4 h-4">
+                                                        <label for="knowledge-freshness-weight-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                    <input type="range" id="knowledge-freshness-weight" min="0" max="1" step="0.05" value="0.0" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-[#F15F22]">
+                                                    <span id="knowledge-freshness-weight-value" class="text-sm text-white font-mono w-12 text-right">0.00</span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-2">Blend between relevance (0.0) and document recency (1.0). At 0.0, only semantic similarity matters. Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Freshness Decay Rate with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-freshness-decay-rate" class="block text-sm font-medium text-gray-300">Freshness Decay Rate</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-freshness-decay-rate-locked" class="w-4 h-4">
+                                                        <label for="knowledge-freshness-decay-rate-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <input type="number" id="knowledge-freshness-decay-rate" min="0.001" max="1.0" step="0.001" value="0.005" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent">
+                                                <p class="text-xs text-gray-500 mt-2">Exponential decay rate for freshness scoring (0.001-1.0). Higher = faster decay. At 0.005, a 1-year-old document retains ~16% freshness score. Lock to enforce globally.</p>
+                                            </div>
+
+                                            <!-- Synthesis Prompt Override with Lock -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <label for="knowledge-synthesis-prompt" class="block text-sm font-medium text-gray-300">Synthesis Prompt Override</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="checkbox" id="knowledge-synthesis-prompt-locked" class="w-4 h-4">
+                                                        <label for="knowledge-synthesis-prompt-locked" class="text-xs text-gray-400 cursor-pointer">Lock</label>
+                                                    </div>
+                                                </div>
+                                                <textarea id="knowledge-synthesis-prompt" rows="4" placeholder="Leave empty to use default RAG synthesis prompt..." class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-[#F15F22] focus:border-transparent resize-y"></textarea>
+                                                <p class="text-xs text-gray-500 mt-2">Custom system prompt for knowledge synthesis. Leave empty to use the default RAG prompt. Lock to enforce globally.</p>
+                                            </div>
+
                                             <!-- Autocomplete Suggestion Threshold -->
                                             <div class="p-4 bg-gray-700/50 rounded-lg">
                                                 <label for="autocomplete-min-relevance" class="block text-sm font-medium text-gray-300 mb-2">Autocomplete Suggestion Threshold</label>
@@ -6586,6 +6641,93 @@
                                                           hover:border-gray-600 transition-colors">
                                             <p class="text-xs text-gray-500 mt-1.5">Context window limit (500-10000)</p>
                                         </div>
+
+                                        <!-- Max Chunks Per Document -->
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label for="profile-modal-max-chunks-per-doc" class="block text-xs font-medium text-gray-300">
+                                                    Max Chunks/Doc
+                                                </label>
+                                                <span id="profile-knowledge-max-chunks-per-doc-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                    </svg>
+                                                    Locked
+                                                </span>
+                                            </div>
+                                            <input type="number" id="profile-modal-max-chunks-per-doc"
+                                                   min="0" max="50" step="1"
+                                                   placeholder="0"
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
+                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                          hover:border-gray-600 transition-colors">
+                                            <p class="text-xs text-gray-500 mt-1.5">0 = no limit per document (0-50)</p>
+                                        </div>
+
+                                        <!-- Freshness Weight -->
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label for="profile-modal-freshness-weight" class="block text-xs font-medium text-gray-300">
+                                                    Freshness Weight
+                                                </label>
+                                                <span id="profile-knowledge-freshness-weight-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                    </svg>
+                                                    Locked
+                                                </span>
+                                            </div>
+                                            <input type="number" id="profile-modal-freshness-weight"
+                                                   min="0" max="1" step="0.05"
+                                                   placeholder="0.0"
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
+                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                          hover:border-gray-600 transition-colors">
+                                            <p class="text-xs text-gray-500 mt-1.5">Relevance vs recency (0.0-1.0)</p>
+                                        </div>
+
+                                        <!-- Freshness Decay Rate -->
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label for="profile-modal-freshness-decay-rate" class="block text-xs font-medium text-gray-300">
+                                                    Freshness Decay Rate
+                                                </label>
+                                                <span id="profile-knowledge-freshness-decay-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                    </svg>
+                                                    Locked
+                                                </span>
+                                            </div>
+                                            <input type="number" id="profile-modal-freshness-decay-rate"
+                                                   min="0.001" max="1.0" step="0.001"
+                                                   placeholder="0.005"
+                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
+                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                          hover:border-gray-600 transition-colors">
+                                            <p class="text-xs text-gray-500 mt-1.5">Exponential decay (0.001-1.0)</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Synthesis Prompt Override (full width, separate row) -->
+                                    <div class="mt-4">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label for="profile-modal-synthesis-prompt" class="block text-xs font-medium text-gray-300">
+                                                Synthesis Prompt Override
+                                            </label>
+                                            <span id="profile-knowledge-synthesis-prompt-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                </svg>
+                                                Locked
+                                            </span>
+                                        </div>
+                                        <textarea id="profile-modal-synthesis-prompt" rows="3"
+                                                  placeholder="Leave empty to use global/default synthesis prompt..."
+                                                  class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
+                                                         placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
+                                                         hover:border-gray-600 transition-colors resize-y"></textarea>
+                                        <p class="text-xs text-gray-500 mt-1.5">Custom system prompt for knowledge synthesis. Leave empty to use global default.</p>
                                     </div>
 
                                     <div class="mt-4 p-3 bg-gray-900/30 border border-gray-700/30 rounded-lg">

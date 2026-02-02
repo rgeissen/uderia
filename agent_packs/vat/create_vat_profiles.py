@@ -84,6 +84,17 @@ EXPERTS = [
     },
 ]
 
+# Synthesis prompt matching the original VAT application's "Principal Analyst" role
+VAT_SYNTHESIS_PROMPT = """You are a Principal Analyst at Teradata, an expert in synthesizing information into high-quality, client-facing documents. Your task is to create a polished response to the user's request using the provided raw context snippets.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Analyze the User's Goal:** First, understand the core objective of the user's query.
+2.  **Filter for Relevance:** You MUST ignore any snippets that do not directly relate to the user's specific request.
+3.  **Extract Key Facts:** From the relevant context, extract the most important facts, figures, and talking points.
+4.  **Synthesize and Structure:** Write a comprehensive, well-structured answer that directly fulfills the user's request. Use clear headings, bullet points, and bold text (Markdown).
+5.  **Cite Your Sources:** Create a numbered list of the unique 'Source' documents you used. As you write, cite information using numeric footnotes corresponding to your reference list (e.g., `[1]`, `[2]`).
+6.  **Final Formatting:** At the very end of your response, you MUST add a section with the exact heading `### References`. Under this heading, paste the unique, numbered list of sources."""
+
 
 def get_jwt_token(base_url: str, username: str, password: str) -> str:
     """Authenticate and return JWT token."""
@@ -224,6 +235,13 @@ def main():
                         "name": collection_name,
                     }
                 ],
+                "maxDocs": 10,
+                "maxTokens": 8000,
+                "minRelevanceScore": 0.25,
+                "maxChunksPerDocument": 2,
+                "freshnessWeight": 0.3,
+                "freshnessDecayRate": 0.005,
+                "synthesisPromptOverride": VAT_SYNTHESIS_PROMPT,
             },
             "classification_mode": "light",
         }
