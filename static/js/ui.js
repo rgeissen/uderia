@@ -592,15 +592,86 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     }
     // --- PHASE 2 END ---
 
-    // 2. Iterate through the new, rich execution trace
-    // Track depth transitions to insert sub-executor lifecycle events at correct positions
+    // 2. Iterate through the execution trace with collapsible phase containers
+    // Phase container stack mirrors the live execution's phaseContainerStack
+    const _phaseContainerStack = [];
     let _prevTraceDepth = 0;
     let _subStartRendered = false;
     let _subCompleteRendered = false;
 
+    // Helper: get the current render target (innermost phase content or root)
+    const _getPhaseTarget = () => {
+        if (_phaseContainerStack.length > 0) {
+            return _phaseContainerStack[_phaseContainerStack.length - 1]
+                .querySelector('.status-phase-content') || DOM.statusWindowContent;
+        }
+        return DOM.statusWindowContent;
+    };
+
     executionTrace.forEach(traceEntry => {
         const _traceMetadata = traceEntry.action?.metadata || {};
         const _currentTraceDepth = _traceMetadata.execution_depth || 0;
+
+        // --- Intercept phase_start: create collapsible container ---
+        if (traceEntry.action?.tool_name === 'TDA_SystemLog' && _traceMetadata.type === 'phase_start') {
+            const details = traceEntry.action.arguments?.details || {};
+            const depth = _traceMetadata.execution_depth || 0;
+
+            // Close any containers at same or deeper depth (handles re-planning)
+            while (_phaseContainerStack.length > depth) {
+                const old = _phaseContainerStack.pop();
+                if (old) old.classList.add('completed');
+            }
+
+            const phaseContainer = document.createElement('details');
+            phaseContainer.className = 'status-phase-container';
+            // Collapsed by default — user can expand to inspect details
+            phaseContainer.open = false;
+
+            const phaseHeader = document.createElement('summary');
+            phaseHeader.className = 'status-phase-header phase-start';
+            const depthPrefix = depth > 0 ? '↳ '.repeat(depth) : '';
+            phaseHeader.innerHTML = `
+                <span class="font-bold flex-shrink-0">${depthPrefix}Phase ${details.phase_num}/${details.total_phases}</span>
+                <span class="text-gray-400 text-xs truncate ml-2">${details.goal || ''}</span>
+            `;
+            phaseContainer.appendChild(phaseHeader);
+
+            const phaseContent = document.createElement('div');
+            phaseContent.className = 'status-phase-content';
+            phaseContainer.appendChild(phaseContent);
+
+            _getPhaseTarget().appendChild(phaseContainer);
+            _phaseContainerStack.push(phaseContainer);
+
+            _prevTraceDepth = _currentTraceDepth;
+            return; // Consumed — don't render as a flat step
+        }
+
+        // --- Intercept phase_end: close container with footer ---
+        if (traceEntry.action?.tool_name === 'TDA_SystemLog' && _traceMetadata.type === 'phase_end') {
+            const containerToEnd = _phaseContainerStack.pop();
+            if (containerToEnd) {
+                const details = traceEntry.action.arguments?.details || {};
+                const depth = details.execution_depth ?? (_traceMetadata.execution_depth || 0);
+                const depthPrefix = depth > 0 ? '↳ '.repeat(depth) : '';
+
+                const phaseFooter = document.createElement('div');
+                phaseFooter.className = 'status-phase-header phase-end';
+
+                if (details.status === 'skipped') {
+                    phaseFooter.classList.add('skipped');
+                    phaseFooter.innerHTML = `<span class="font-bold">${depthPrefix}Phase ${details.phase_num}/${details.total_phases} Skipped</span>`;
+                } else {
+                    phaseFooter.innerHTML = `<span class="font-bold">${depthPrefix}Phase ${details.phase_num}/${details.total_phases} Completed</span>`;
+                    containerToEnd.classList.add('completed');
+                }
+                containerToEnd.appendChild(phaseFooter);
+            }
+
+            _prevTraceDepth = _currentTraceDepth;
+            return; // Consumed — don't render as a flat step
+        }
 
         // Transition depth=0 → depth>0: insert sub-executor's execution_start
         if (_currentTraceDepth > 0 && _prevTraceDepth === 0 && !_subStartRendered) {
@@ -613,7 +684,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     details: startEvent.payload,
                     type: 'execution_start',
                     metadata: startEvent.metadata
-                }, DOM.statusWindowContent, true);
+                }, _getPhaseTarget(), true);
             }
             _subStartRendered = true;
         }
@@ -629,7 +700,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     details: completeEvent.payload,
                     type: 'execution_complete',
                     metadata: completeEvent.metadata
-                }, DOM.statusWindowContent, true);
+                }, _getPhaseTarget(), true);
             }
             _subCompleteRendered = true;
         }
@@ -639,7 +710,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         let eventData = {};
 
         if (traceEntry.action && traceEntry.action.tool_name === 'TDA_SystemLog') {
-            // This is a system event
+            // This is a system event (plan_generated, system_message, workaround, etc.)
             const metadata = traceEntry.action.metadata || {};
             eventData = {
                 step: traceEntry.action.arguments.message,
@@ -662,8 +733,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     execution_depth: metadata.execution_depth
                 }
             };
-            // Render directly to avoid title override from 'interactive' source
-            _renderStandardStep(intentEventData, DOM.statusWindowContent, false);
+            _renderStandardStep(intentEventData, _getPhaseTarget(), true);
 
             // Render result
             const resultEventData = {
@@ -674,15 +744,15 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     execution_depth: metadata.execution_depth
                 }
             };
-            _renderStandardStep(resultEventData, DOM.statusWindowContent, false);
+            _renderStandardStep(resultEventData, _getPhaseTarget(), true);
             return; // We've handled this entry completely
         } else {
             // Skip unknown trace entry formats
             return;
         }
 
-        // Render directly to avoid title override from 'interactive' source
-        _renderStandardStep(eventData, DOM.statusWindowContent, false);
+        // Render system event into current phase container
+        _renderStandardStep(eventData, _getPhaseTarget(), true);
     });
 
     // If trace ended at depth>0, render sub-executor execution_complete after trace
@@ -696,8 +766,14 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                 details: completeEvent.payload,
                 type: 'execution_complete',
                 metadata: completeEvent.metadata
-            }, DOM.statusWindowContent, true);
+            }, _getPhaseTarget(), true);
         }
+    }
+
+    // Close any remaining open phase containers (edge case: trace ends mid-phase)
+    while (_phaseContainerStack.length > 0) {
+        const remaining = _phaseContainerStack.pop();
+        if (remaining) remaining.classList.add('completed');
     }
 
     // Render system events (session name generation, etc.) after execution trace
@@ -3341,7 +3417,8 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
 
         const phaseContainer = document.createElement('details');
         phaseContainer.className = 'status-phase-container';
-        phaseContainer.open = true;
+        // Collapsed by default — user can expand to inspect details
+        phaseContainer.open = false;
 
         const phaseHeader = document.createElement('summary');
         phaseHeader.className = 'status-phase-header phase-start';
