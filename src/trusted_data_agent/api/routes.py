@@ -2628,11 +2628,11 @@ async def invoke_prompt_stream():
                         disabled_history=disabled_history,
                         source=source,
                         task_id=task_id, # Pass the generated task_id
-                        # CRITICAL FIX: Always pass the resolved profile ID, not just the explicit override.
-                        # When the session's profile differs from the default (e.g., session uses tool_enabled
-                        # but default is llm_only), the execution service must use the session's profile.
-                        # Without this, it falls back to the default profile and takes the wrong execution path.
-                        profile_override_id=active_profile.get('id') if active_profile else profile_override_id
+                        # Only pass profile override when resolved profile differs from default.
+                        # When they match, APP_STATE already has the correct MCP data from login.
+                        # When they differ (e.g., session uses tool_enabled but default is llm_only),
+                        # the override block in executor.py loads the correct MCP tools/prompts.
+                        profile_override_id=active_profile.get('id') if active_profile and active_profile.get('id') != config_manager.get_default_profile_id(user_uuid) else profile_override_id
                         # plan_to_execute=None, is_replay=False
                     )
                 )
