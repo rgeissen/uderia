@@ -55,8 +55,8 @@ EXPERTS = [
     {
         "corpus": "AIF_Corpus",
         "tag": "AIF_SME",
-        "name": "AI Factory Expert",
-        "description": "Expert for the Teradata AI Factory platform capabilities, deployment, integration, and AI/ML workflows.",
+        "name": "AI Studio Expert",
+        "description": "Expert for Teradata AI Factory and Teradata AI Studio platform capabilities, deployment, integration, and AI/ML workflows.",
     },
     {
         "corpus": "DS_Corpus",

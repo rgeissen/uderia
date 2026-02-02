@@ -2756,7 +2756,7 @@ function renderProfileCard(profile) {
                             <h4 class="font-semibold text-white">${escapeHtml(profile.name || profile.tag)}</h4>
                             <div class="flex items-center gap-1">
                                 ${(() => {
-                                    // Profile type color scheme: Ideate=Green, Focus=Blue, Optimize=Orange, Coordinate=Purple
+                                    // Profile type color scheme: Ideate=Green, Focus=Blue, Optimize=Purple, Coordinate=Orange
                                     const profileTypeColors = {
                                         'llm_only': '#4ade80',      // Green - Ideate
                                         'rag_focused': '#3b82f6',   // Blue - Focus
@@ -3027,8 +3027,8 @@ function renderProfileCard(profile) {
 const profileColors = {
     'conversation-profiles': '#4ade80',  // Green - Ideate
     'rag-profiles': '#3b82f6',           // Blue - Focus
-    'tool-profiles': '#F15F22',          // Orange - Optimize
-    'genie-profiles': '#9333ea'          // Purple - Coordinate
+    'tool-profiles': '#9333ea',          // Purple - Optimize
+    'genie-profiles': '#F15F22'          // Orange - Coordinate (Teradata brand)
 };
 
 // Description banner mapping for each tab
