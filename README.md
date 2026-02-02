@@ -1300,8 +1300,112 @@ The RAG system now features a **modular template architecture** that enables dom
 
 This modular approach allows organizations to extend the RAG system with custom templates tailored to their specific data patterns, query types, and business domains without modifying core agent code.
 
+### Knowledge Retrieval: Grounded Intelligence for the Focus Profile Class
+
+While Planner Repositories power the self-improving Optimizer, **Knowledge Repositories** serve an entirely different purpose: they deliver **grounded, hallucination-free answers** from verified documents. This is the engine behind the **Focus** profile class (🔵 `rag_focused`).
+
+#### The Value Proposition
+
+Traditional LLMs generate answers from training data — a black box of uncertain provenance. Knowledge Retrieval inverts this model:
+
+* **Zero Hallucination by Design**: The LLM synthesizes answers **exclusively** from retrieved documents. No general knowledge is injected. If the knowledge base doesn't contain the answer, the system says so transparently rather than fabricating one.
+* **Institutional Memory at Scale**: Corporate policies, engineering runbooks, product documentation, compliance frameworks — all searchable via natural language. When experts leave, their knowledge stays.
+* **Source Traceability**: Every answer includes citations back to specific documents, chunks, and metadata. Auditors and compliance teams can verify any claim.
+* **Freshness-Aware Ranking**: Documents are scored using a hybrid of semantic relevance and temporal freshness, ensuring recent updates rank appropriately against older but relevant content.
+
+#### How Knowledge Retrieval Works
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     KNOWLEDGE RETRIEVAL PIPELINE                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  User Query                                                              │
+│  "What is our data retention policy for EU customers?"                   │
+│       │                                                                  │
+│       ▼                                                                  │
+│  ┌─────────────────────────────┐                                         │
+│  │  Configuration Resolution   │ ← Three-tier: Global → Profile → Lock  │
+│  │  maxDocs, freshnessWeight,  │                                         │
+│  │  minRelevance, maxTokens    │                                         │
+│  └──────────────┬──────────────┘                                         │
+│                 ▼                                                         │
+│  ┌─────────────────────────────┐                                         │
+│  │  Semantic Search (ChromaDB) │ ← Embedding: all-MiniLM-L6-v2          │
+│  │  Query each knowledge       │                                         │
+│  │  collection assigned to     │                                         │
+│  │  the profile                │                                         │
+│  └──────────────┬──────────────┘                                         │
+│                 ▼                                                         │
+│  ┌─────────────────────────────┐                                         │
+│  │  Hybrid Scoring             │                                         │
+│  │  adjusted = (1-fw) × sim   │   fw = freshnessWeight                  │
+│  │           + fw × freshness  │   sim = 1 - cosine_distance            │
+│  │                             │   freshness = e^(-decay × days_old)    │
+│  └──────────────┬──────────────┘                                         │
+│                 ▼                                                         │
+│  ┌─────────────────────────────┐                                         │
+│  │  Per-Document Deduplication │ ← maxChunksPerDocument limit           │
+│  │  + Minimum Relevance Filter │ ← minRelevanceScore threshold          │
+│  └──────────────┬──────────────┘                                         │
+│                 ▼                                                         │
+│  ┌─────────────────────────────┐                                         │
+│  │  LLM Synthesis              │ ← Custom synthesis prompt override     │
+│  │  System prompt + retrieved  │   available per profile                 │
+│  │  documents + user query     │                                         │
+│  └──────────────┬──────────────┘                                         │
+│                 ▼                                                         │
+│  Answer with Source Citations                                            │
+│  "Per the EU Data Governance Policy (Section 4.2)..."                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Key Differentiators from Planner Repositories
+
+| Aspect | Planner Repositories | Knowledge Repositories |
+|--------|---------------------|----------------------|
+| **Purpose** | Self-improving execution strategies | Grounded document retrieval |
+| **Profile Class** | 🟠 Optimize (tool_enabled) | 🔵 Focus (rag_focused) |
+| **Data Source** | Auto-captured execution traces | Uploaded documents (PDF, DOCX, TXT, MD) |
+| **Scoring** | Similarity with efficiency penalties | Hybrid similarity + freshness |
+| **Tool Execution** | Yes — full MCP tool calling | None — pure retrieval + synthesis |
+| **Hallucination Risk** | Mitigated via proven patterns | Eliminated by design |
+
+#### Configuration
+
+Knowledge retrieval behavior is controlled through a **three-tier configuration resolution**:
+
+1. **Admin-Locked** (highest priority): Global settings locked by admin override all profile values
+2. **Profile Override**: Per-profile settings in the profile's `knowledgeConfig`
+3. **Global Default** (lowest priority): Platform-wide defaults
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `maxDocs` | Maximum documents returned | 3 |
+| `minRelevanceScore` | Minimum cosine similarity threshold | 0.30 |
+| `maxTokens` | Token budget for knowledge context | 2,000 |
+| `maxChunksPerDocument` | Limit chunks from same source | 0 (unlimited) |
+| `freshnessWeight` | Blend ratio: 0.0 = pure relevance, 1.0 = pure freshness | 0.0 |
+| `freshnessDecayRate` | Exponential decay rate for age penalty | 0.005 |
+| `synthesisPromptOverride` | Custom system prompt for LLM synthesis | (none) |
+
+#### Document Ingestion & Chunking
+
+Knowledge Repositories support multiple document formats (PDF, DOCX, TXT, Markdown) with configurable chunking strategies:
+
+* **Paragraph-based** (default): Respects natural document structure, combines small paragraphs, splits oversized ones
+* **Sentence-based**: Fine-grained chunking for dense technical content
+* **Fixed-size**: Character-count chunking with configurable overlap
+* **Semantic**: Boundary-aware splitting that preserves meaning
+
+Each chunk is embedded using `all-MiniLM-L6-v2` and stored in ChromaDB with metadata (title, author, creation date, source filename, category, tags) enabling rich filtering and freshness scoring.
+
+For the comprehensive architecture deep-dive including scoring algorithms, execution flow, and advanced features, see:
+[**Knowledge Retrieval Architecture (docs/Architecture/KNOWLEDGE_RETRIEVAL_ARCHITECTURE.md)**](docs/Architecture/KNOWLEDGE_RETRIEVAL_ARCHITECTURE.md)
+
 For a comprehensive overview of the RAG architecture, template development, and maintenance utilities, please see the detailed documentation:
-[**RAG System Documentation (docs/RAG/RAG.md)**](docs/RAG/RAG.md)  
+[**RAG System Documentation (docs/RAG/RAG.md)**](docs/RAG/RAG.md)
 [**RAG Template Plugin Development (rag_templates/README.md)**](rag_templates/README.md)
 
 [⬆️ Back to Table of Contents](#table-of-contents)
