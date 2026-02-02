@@ -92,3 +92,7 @@ test/inference_profile_test.py
 
 # Gemini
 .gemini/
+
+# Agent packs - corpus data and import artifacts (not distributed)
+agent_packs/*/corpus/
+agent_packs/*/import_output/
