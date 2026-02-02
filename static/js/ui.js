@@ -2847,9 +2847,17 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     stepEl.id = `status-step-${state.currentStatusId}`;
     stepEl.className = 'status-step p-3 rounded-md mb-2'; // Added mb-2 for spacing
 
+    // Apply depth-based indentation for sub-executor events
+    const depth = eventData.metadata?.execution_depth || eventData.details?.execution_depth || 0;
+    if (depth > 0) {
+        stepEl.style.marginLeft = `${depth * 16}px`;
+        stepEl.style.borderLeft = '2px solid rgba(139, 92, 246, 0.3)';
+    }
+
+    const depthPrefix = depth > 0 ? '↳ '.repeat(depth) : '';
     const stepTitle = document.createElement('h4');
     stepTitle.className = 'font-bold text-sm text-white mb-2';
-    stepTitle.textContent = step || (type === 'tool_result' ? 'Result' : (type === 'error' ? 'Error' : 'Details'));
+    stepTitle.textContent = depthPrefix + (step || (type === 'tool_result' ? 'Result' : (type === 'error' ? 'Error' : 'Details')));
 
     // Add progress indicator for active phases (Phase 1: Terminology Harmonization)
     if (type === 'phase_start' && !isFinal) {
@@ -3262,7 +3270,7 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
 
         const phaseContainer = document.createElement('details');
         phaseContainer.className = 'status-phase-container';
-        phaseContainer.open = false; 
+        phaseContainer.open = true;
 
         const phaseHeader = document.createElement('summary');
         phaseHeader.className = 'status-phase-header phase-start';

@@ -584,6 +584,12 @@ class PlanExecutor:
             msg += f"event: {event}\n"
         return f"{msg}\n"
 
+    def _format_sse_with_depth(self, data: dict, event: str = None) -> str:
+        """Wraps _format_sse and auto-injects execution_depth into metadata."""
+        if self.execution_depth > 0:
+            data.setdefault("metadata", {})["execution_depth"] = self.execution_depth
+        return self._format_sse(data, event)
+
     async def _call_llm_and_update_tokens(self, prompt: str, reason: str, system_prompt_override: str = None, raise_on_error: bool = False, disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", multimodal_content: list = None) -> tuple[str, int, int]:
         """A centralized wrapper for calling the LLM that handles token updates."""
         final_disabled_history = disabled_history or self.disabled_history
@@ -704,7 +710,7 @@ class PlanExecutor:
 
             reason="Determining tool constraints for column iteration."
             call_id = str(uuid.uuid4())
-            events.append(self._format_sse({"step": "Calling LLM", "type": "system_message", "details": {"summary": reason, "call_id": call_id}}))
+            events.append(self._format_sse_with_depth({"step": "Calling LLM", "type": "system_message", "details": {"summary": reason, "call_id": call_id}}))
 
             response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
                 prompt=prompt, reason=reason,
@@ -715,7 +721,7 @@ class PlanExecutor:
 
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
-                events.append(self._format_sse({
+                events.append(self._format_sse_with_depth({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
                     "turn_input": self.turn_input_tokens,
@@ -959,7 +965,7 @@ class PlanExecutor:
                     source_phase_key = value["source"]
                     target_data_key = None
                     is_placeholder = True
-                    self.events_to_yield.append(self._format_sse({
+                    self.events_to_yield.append(self._format_sse_with_depth({
                         "step": "System Correction", "type": "workaround",
                         "details": {
                             "summary": "The agent's plan used an incomplete placeholder. The system will automatically extract the primary value from the source.",
@@ -977,7 +983,7 @@ class PlanExecutor:
                             is_placeholder = True
 
                             canonical_value = {"source": source_phase_key, "key": target_data_key}
-                            self.events_to_yield.append(self._format_sse({
+                            self.events_to_yield.append(self._format_sse_with_depth({
                                 "step": "System Correction", "type": "workaround",
                                 "details": {
                                     "summary": "The agent's plan contained a non-standard placeholder. The system has automatically normalized it to ensure correct data flow.",
@@ -1057,7 +1063,7 @@ class PlanExecutor:
                 name_output_tokens = out_tokens
             else:
                 # SSE event: yield to frontend
-                yield self._format_sse(event_data, event_type)
+                yield self._format_sse_with_depth(event_data, event_type)
 
                 # Collect for system_events (plan reload)
                 # Store complete event_data including 'step', 'details', and 'type'
@@ -1132,13 +1138,13 @@ class PlanExecutor:
         if not mcp_server_id:
             error_msg = "conversation_with_tools profile requires an MCP server configuration."
             app_logger.error(error_msg)
-            yield self._format_sse({"step": "Error", "error": error_msg}, "error")
+            yield self._format_sse_with_depth({"step": "Error", "error": error_msg}, "error")
             return
 
         if not llm_config_id:
             error_msg = "conversation_with_tools profile requires an LLM configuration."
             app_logger.error(error_msg)
-            yield self._format_sse({"step": "Error", "error": error_msg}, "error")
+            yield self._format_sse_with_depth({"step": "Error", "error": error_msg}, "error")
             return
 
         try:
@@ -1276,7 +1282,7 @@ class PlanExecutor:
                             else:
                                 collection_names_for_start.append(coll_config.get("name", coll_id or "Unknown"))
 
-                        yield self._format_sse({
+                        yield self._format_sse_with_depth({
                             "type": "knowledge_retrieval_start",
                             "payload": {
                                 "collections": collection_names_for_start,
@@ -1318,7 +1324,7 @@ class PlanExecutor:
                                             coll_name = coll_config.get("name", "Unknown")
 
                                         # Emit reranking start event
-                                        yield self._format_sse({
+                                        yield self._format_sse_with_depth({
                                             "type": "knowledge_reranking_start",
                                             "payload": {
                                                 "collection": coll_name,
@@ -1337,7 +1343,7 @@ class PlanExecutor:
                                         # Get session to show updated token counts
                                         updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                         if updated_session:
-                                            yield self._format_sse({
+                                            yield self._format_sse_with_depth({
                                                 "type": "knowledge_reranking_complete",
                                                 "payload": {
                                                     "collection": coll_name,
@@ -1406,7 +1412,7 @@ class PlanExecutor:
                             }
 
                             # Emit completion event for Live Status panel (replaces old single event)
-                            yield self._format_sse({
+                            yield self._format_sse_with_depth({
                                 "type": "knowledge_retrieval_complete",
                                 "payload": knowledge_retrieval_event_data
                             }, event="notification")
@@ -1465,7 +1471,7 @@ class PlanExecutor:
             # Emit token update event with updated session totals
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
-                yield self._format_sse({
+                yield self._format_sse_with_depth({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
                     "turn_input": self.turn_input_tokens,
@@ -1530,7 +1536,7 @@ class PlanExecutor:
                             # Emit token_update event so UI reflects updated session totals
                             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                             if updated_session:
-                                yield self._format_sse({
+                                yield self._format_sse_with_depth({
                                     "statement_input": name_input_tokens,
                                     "statement_output": name_output_tokens,
                                     "turn_input": self.turn_input_tokens,
@@ -1542,13 +1548,13 @@ class PlanExecutor:
 
                         if new_name and new_name != "New Chat":
                             await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                            yield self._format_sse({
+                            yield self._format_sse_with_depth({
                                 "session_id": self.session_id,
                                 "newName": new_name
                             }, "session_name_update")
 
             # Emit final answer with formatted HTML
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "step": "Finished",
                 "final_answer": final_html,  # Send formatted HTML
                 "final_answer_text": response_text,  # Also include clean text
@@ -1600,7 +1606,7 @@ class PlanExecutor:
         except Exception as e:
             app_logger.error(f"conversation_with_tools execution error: {e}", exc_info=True)
             error_msg = f"Agent execution failed: {str(e)}"
-            yield self._format_sse({"step": "Error", "error": error_msg}, "error")
+            yield self._format_sse_with_depth({"step": "Error", "error": error_msg}, "error")
 
             # Save error turn data
             turn_summary = {
@@ -1856,7 +1862,7 @@ Response:"""
         full_payload = {**base_payload, **event_data}
 
         # Return formatted SSE event
-        return self._format_sse({"type": event_type, "payload": full_payload}, event="notification")
+        return self._format_sse_with_depth({"type": event_type, "payload": full_payload}, event="notification")
 
 
     def _classify_error(self, exception: Exception) -> str:
@@ -2198,7 +2204,7 @@ The following domain knowledge may be relevant to this conversation:
                                     "details": event_details
                                 }
                                 self._log_system_event(event_data)
-                                yield self._format_sse(event_data, "knowledge_retrieval")
+                                yield self._format_sse_with_depth(event_data, "knowledge_retrieval")
 
                                 # Collect event for plan reload
                                 llm_execution_events.append({
@@ -2246,7 +2252,7 @@ The following domain knowledge may be relevant to this conversation:
                 }
             }
             self._log_system_event(event_data)
-            yield self._format_sse(event_data, "llm_execution")
+            yield self._format_sse_with_depth(event_data, "llm_execution")
 
             # Collect event for plan reload (without system prompt to save space)
             llm_execution_events.append({
@@ -2282,7 +2288,7 @@ The following domain knowledge may be relevant to this conversation:
 
             try:
                 # Signal LLM busy for status indicator dots
-                yield self._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+                yield self._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
                 # Call LLM with proper system/user separation
                 # System prompt passed via override, user message contains only content
@@ -2298,7 +2304,7 @@ The following domain knowledge may be relevant to this conversation:
                 self.dependencies = original_dependencies
 
             # Signal LLM idle after call completes
-            yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+            yield self._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             # Emit LLM execution complete event (like RAG's rag_llm_step)
             llm_complete_event = {
@@ -2318,7 +2324,7 @@ The following domain knowledge may be relevant to this conversation:
                 }
             }
             self._log_system_event(llm_complete_event)
-            yield self._format_sse(llm_complete_event, "llm_execution_complete")
+            yield self._format_sse_with_depth(llm_complete_event, "llm_execution_complete")
 
             # Collect event for plan reload
             llm_execution_events.append({
@@ -2340,7 +2346,7 @@ The following domain knowledge may be relevant to this conversation:
             # Emit token update event for UI
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
-                yield self._format_sse({
+                yield self._format_sse_with_depth({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
                     "turn_input": self.turn_input_tokens,
@@ -2378,7 +2384,7 @@ The following domain knowledge may be relevant to this conversation:
                 "is_session_primer": self.is_session_primer
             }
             self._log_system_event(event_data)
-            yield self._format_sse(event_data, "final_answer")
+            yield self._format_sse_with_depth(event_data, "final_answer")
 
             # Save to session (with formatted HTML for UI)
             await session_manager.add_message_to_histories(
@@ -2423,7 +2429,7 @@ The following domain knowledge may be relevant to this conversation:
                                 # Emit token_update event so UI reflects updated session totals
                                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                 if updated_session:
-                                    yield self._format_sse({
+                                    yield self._format_sse_with_depth({
                                         "statement_input": name_input_tokens,
                                         "statement_output": name_output_tokens,
                                         "turn_input": self.turn_input_tokens,
@@ -2472,7 +2478,7 @@ The following domain knowledge may be relevant to this conversation:
                     "name": session_data.get("name", "Unnamed Session"),
                 }
                 app_logger.info(f"🔔 [LLM-only] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}")
-                yield self._format_sse({
+                yield self._format_sse_with_depth({
                     "type": "session_model_update",
                     "payload": notification_payload
                 }, event="notification")
@@ -2620,13 +2626,13 @@ The following domain knowledge may be relevant to this conversation:
 
             if not knowledge_collections:
                 error_msg = "RAG focused profile has no knowledge collections configured."
-                yield self._format_sse({"step": "Finished", "error": error_msg}, "error")
+                yield self._format_sse_with_depth({"step": "Finished", "error": error_msg}, "error")
                 return
 
             # Check if RAG retriever is available
             if not self.rag_retriever:
                 error_msg = "Knowledge retrieval is not available. RAG system may not be initialized."
-                yield self._format_sse({"step": "Finished", "error": error_msg, "error_type": "rag_not_available"}, "error")
+                yield self._format_sse_with_depth({"step": "Finished", "error": error_msg, "error_type": "rag_not_available"}, "error")
                 return
 
             # Retrieve knowledge (REQUIRED) - using three-tier configuration (global -> profile -> locks)
@@ -2667,7 +2673,7 @@ The following domain knowledge may be relevant to this conversation:
                 "session_id": self.session_id
             }
             knowledge_events.append({"type": "knowledge_retrieval_start", "payload": start_event_payload})
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "type": "knowledge_retrieval_start",
                 "payload": start_event_payload
             }, event="notification")
@@ -2703,7 +2709,7 @@ The following domain knowledge may be relevant to this conversation:
                     "session_id": self.session_id
                 }
                 knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": retrieval_complete_payload})
-                yield self._format_sse({
+                yield self._format_sse_with_depth({
                     "type": "knowledge_retrieval_complete",
                     "payload": retrieval_complete_payload
                 }, event="notification")
@@ -2755,7 +2761,7 @@ The following domain knowledge may be relevant to this conversation:
                                     # Emit token_update event so UI reflects updated session totals
                                     updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                     if updated_session:
-                                        yield self._format_sse({
+                                        yield self._format_sse_with_depth({
                                             "statement_input": name_input_tokens,
                                             "statement_output": name_output_tokens,
                                             "turn_input": self.turn_input_tokens,
@@ -2773,7 +2779,7 @@ The following domain knowledge may be relevant to this conversation:
                                 if new_name != "New Chat":
                                     try:
                                         await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                                        yield self._format_sse({
+                                        yield self._format_sse_with_depth({
                                             "session_id": self.session_id,
                                             "newName": new_name
                                         }, "session_name_update")
@@ -2786,7 +2792,7 @@ The following domain knowledge may be relevant to this conversation:
                     # Re-fetch session to get updated token counts after session name generation
                     session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                     if session_data:
-                        yield self._format_sse({
+                        yield self._format_sse_with_depth({
                             "statement_input": 0,  # No new statement tokens in "no results" path
                             "statement_output": 0,
                             "turn_input": self.turn_input_tokens,
@@ -2855,7 +2861,7 @@ The following domain knowledge may be relevant to this conversation:
                 # Send session update notification
                 session_data = await session_manager.get_session(self.user_uuid, self.session_id)
                 if session_data:
-                    yield self._format_sse({
+                    yield self._format_sse_with_depth({
                         "type": "session_model_update",
                         "payload": {
                             "session_id": self.session_id,
@@ -2869,7 +2875,7 @@ The following domain knowledge may be relevant to this conversation:
                     }, event="notification")
 
                 # Emit final_answer (NOT error) with turn_id for badge rendering
-                yield self._format_sse({
+                yield self._format_sse_with_depth({
                     "step": "Finished",
                     "final_answer": no_results_message,
                     "final_answer_text": no_results_text,
@@ -2915,7 +2921,7 @@ The following domain knowledge may be relevant to this conversation:
                             "session_id": self.session_id
                         }
                         knowledge_events.append({"type": "knowledge_reranking_start", "payload": rerank_start_payload})
-                        yield self._format_sse({
+                        yield self._format_sse_with_depth({
                             "type": "knowledge_reranking_start",
                             "payload": rerank_start_payload
                         }, event="notification")
@@ -2933,7 +2939,7 @@ The following domain knowledge may be relevant to this conversation:
                             "session_id": self.session_id
                         }
                         knowledge_events.append({"type": "knowledge_reranking_complete", "payload": rerank_complete_payload})
-                        yield self._format_sse({
+                        yield self._format_sse_with_depth({
                             "type": "knowledge_reranking_complete",
                             "payload": rerank_complete_payload
                         }, event="notification")
@@ -2997,7 +3003,7 @@ The following domain knowledge may be relevant to this conversation:
             }
 
             knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": event_details})
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "type": "knowledge_retrieval_complete",
                 "payload": event_details
             }, event="notification")
@@ -3024,7 +3030,7 @@ The following domain knowledge may be relevant to this conversation:
             call_id = str(uuid.uuid4())
             llm_start_time = time.time()
 
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "step": "Calling LLM for Knowledge Synthesis",
                 "type": "system_message",
                 "details": {
@@ -3036,7 +3042,7 @@ The following domain knowledge may be relevant to this conversation:
             })
 
             # Set LLM busy indicator
-            yield self._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+            yield self._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
             # Call LLM for synthesis
             response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
@@ -3050,7 +3056,7 @@ The following domain knowledge may be relevant to this conversation:
             llm_duration_ms = int((time.time() - llm_start_time) * 1000)
 
             # Set LLM idle indicator
-            yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+            yield self._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             # Explicitly update session token counts and emit token_update event
             # This ensures the status window shows correct session totals during live execution
@@ -3062,7 +3068,7 @@ The following domain knowledge may be relevant to this conversation:
                 session_data = await session_manager.get_session(self.user_uuid, self.session_id)
 
                 if session_data:
-                    yield self._format_sse({
+                    yield self._format_sse_with_depth({
                         "statement_input": input_tokens,
                         "statement_output": output_tokens,
                         "turn_input": self.turn_input_tokens,
@@ -3082,7 +3088,7 @@ The following domain knowledge may be relevant to this conversation:
                 "session_id": self.session_id
             }
             knowledge_events.append({"type": "rag_llm_step", "payload": rag_llm_step_payload})
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "type": "rag_llm_step",
                 "payload": rag_llm_step_payload
             }, event="notification")
@@ -3103,7 +3109,7 @@ The following domain knowledge may be relevant to this conversation:
                     "full_length": len(response_text)
                 }]
             }
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "step": "LLM Synthesis Results",
                 "details": synthesis_result_data,
                 "tool_name": "LLM_Synthesis"
@@ -3137,7 +3143,7 @@ The following domain knowledge may be relevant to this conversation:
             }
             # NOTE: Don't store knowledge_search_complete in knowledge_events - it's redundant with execution_complete
             # which already contains the same KPIs. Only emit for live streaming.
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "type": "knowledge_search_complete",
                 "payload": knowledge_search_complete_payload
             }, event="notification")
@@ -3151,7 +3157,7 @@ The following domain knowledge may be relevant to this conversation:
             final_html, tts_payload = formatter.render()
 
             # Emit final answer
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "step": "Finished",
                 "final_answer": final_html,
                 "final_answer_text": response_text,  # Clean text for parent genie coordinators
@@ -3198,7 +3204,7 @@ The following domain knowledge may be relevant to this conversation:
                     "name": session_data.get("name", "Unnamed Session"),
                 }
                 app_logger.info(f"🔔 [RAG Focused] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}")
-                yield self._format_sse({
+                yield self._format_sse_with_depth({
                     "type": "session_model_update",
                     "payload": notification_payload
                 }, event="notification")
@@ -3313,7 +3319,7 @@ The following domain knowledge may be relevant to this conversation:
                                 # Emit token_update event so UI reflects updated session totals
                                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                 if updated_session:
-                                    yield self._format_sse({
+                                    yield self._format_sse_with_depth({
                                         "statement_input": name_input_tokens,
                                         "statement_output": name_output_tokens,
                                         "turn_input": self.turn_input_tokens,
@@ -3332,7 +3338,7 @@ The following domain knowledge may be relevant to this conversation:
                             if new_name != "New Chat":
                                 try:
                                     await session_manager.update_session_name(self.user_uuid, self.session_id, new_name)
-                                    yield self._format_sse({
+                                    yield self._format_sse_with_depth({
                                         "session_id": self.session_id,
                                         "newName": new_name
                                     }, "session_name_update")
@@ -3774,7 +3780,7 @@ The following domain knowledge may be relevant to this conversation:
                         }
                     }
                     app_logger.info(f"📢 Yielding profile_override_failed notification: {notification_data}")
-                    yield self._format_sse(notification_data, event="notification")
+                    yield self._format_sse_with_depth(notification_data, event="notification")
                 
                 # Continue with default profile if override fails
                 # Note: Do NOT call update_models_used here - it will be called below with the restored default values
@@ -3800,7 +3806,7 @@ The following domain knowledge may be relevant to this conversation:
                 "name": session_data.get("name", "Unnamed Session"),
             }
             app_logger.info(f"🔔 [DEBUG] Sending session_model_update SSE notification: provider={notification_payload['provider']}, model={notification_payload['model']}, profile_tags={notification_payload['profile_tags_used']}")
-            yield self._format_sse({
+            yield self._format_sse_with_depth({
                 "type": "session_model_update",
                 "payload": notification_payload
             }, event="notification")
@@ -3873,7 +3879,7 @@ The following domain knowledge may be relevant to this conversation:
                     "details": f"Re-executing {'optimized' if replay_type_text == 'Optimized' else 'original'} plan..."
                 }
                 self._log_system_event(event_data)
-                yield self._format_sse(event_data)
+                yield self._format_sse_with_depth(event_data)
             # --- MODIFICATION END ---
             else:
                 if self.is_delegated_task:
@@ -4008,7 +4014,7 @@ The following domain knowledge may be relevant to this conversation:
                                 }
                             }
                             self._log_system_event(event_data)
-                            yield self._format_sse(event_data)
+                            yield self._format_sse_with_depth(event_data)
                             continue # Loop back to replan
                         break # Exit planning loop
 
@@ -4040,7 +4046,7 @@ The following domain knowledge may be relevant to this conversation:
                 app_logger.error(f"Execution halted by definitive tool error: {e.friendly_message}")
                 event_data = {"step": "Unrecoverable Error", "details": e.friendly_message, "type": "error"}
                 self._log_system_event(event_data, "tool_result")
-                yield self._format_sse(event_data, "tool_result")
+                yield self._format_sse_with_depth(event_data, "tool_result")
                 final_answer_override = f"I could not complete the request. Reason: {e.friendly_message}"
                 self.state = self.AgentState.SUMMARIZING # Go to summarization even on error
 
@@ -4062,7 +4068,7 @@ The following domain knowledge may be relevant to this conversation:
                 "session_id": self.session_id
             }
             self._log_system_event(event_data, "cancelled")
-            yield self._format_sse(event_data, "cancelled")
+            yield self._format_sse_with_depth(event_data, "cancelled")
 
             # --- PHASE 2: Emit execution_cancelled lifecycle event (all profiles) ---
             try:
@@ -4107,7 +4113,7 @@ The following domain knowledge may be relevant to this conversation:
                 "session_id": self.session_id
             }
             self._log_system_event(event_data, "error")
-            yield self._format_sse(event_data, "error")
+            yield self._format_sse_with_depth(event_data, "error")
 
             # --- PHASE 2: Emit execution_error lifecycle event (all profiles) ---
             try:
@@ -4441,7 +4447,7 @@ The following domain knowledge may be relevant to this conversation:
             "details": f"Single Prompt('{prompt_name}') identified. Expanding plan in-process to improve efficiency."
         }
         self._log_system_event(event_data)
-        yield self._format_sse(event_data)
+        yield self._format_sse_with_depth(event_data)
 
         prompt_info = self._get_prompt_info(prompt_name)
         if prompt_info:
@@ -4454,7 +4460,7 @@ The following domain knowledge may be relevant to this conversation:
                     "details": f"Prompt '{prompt_name}' is missing required arguments: {missing_args}. Attempting to extract from user query."
                 }
                 self._log_system_event(event_data)
-                yield self._format_sse(event_data)
+                yield self._format_sse_with_depth(event_data)
 
                 enrichment_prompt = (
                     f"You are an expert argument extractor. From the user's query, extract the values for the following missing arguments: {list(missing_args)}. "
@@ -4470,8 +4476,8 @@ The following domain knowledge may be relevant to this conversation:
                     "details": {"summary": reason, "call_id": call_id}
                 }
                 self._log_system_event(event_data)
-                yield self._format_sse(event_data)
-                yield self._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+                yield self._format_sse_with_depth(event_data)
+                yield self._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
                 response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
                     prompt=enrichment_prompt, reason=reason,
@@ -4482,7 +4488,7 @@ The following domain knowledge may be relevant to this conversation:
 
                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                 if updated_session:
-                    yield self._format_sse({
+                    yield self._format_sse_with_depth({
                         "statement_input": input_tokens, "statement_output": output_tokens,
                         "turn_input": self.turn_input_tokens,
                         "turn_output": self.turn_output_tokens,
@@ -4491,7 +4497,7 @@ The following domain knowledge may be relevant to this conversation:
                         "call_id": call_id
                     }, "token_update")
 
-                yield self._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+                yield self._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
                 try:
                     extracted_args = json.loads(response_text)
@@ -4528,7 +4534,7 @@ The following domain knowledge may be relevant to this conversation:
                     "details": "Sub-process is skipping its final summary task to prevent redundant work. The main process will generate the final report."
                 }
                 self._log_system_event(event_data)
-                yield self._format_sse(event_data)
+                yield self._format_sse_with_depth(event_data)
                 self.meta_plan = self.meta_plan[:-1]
 
 
@@ -4568,7 +4574,7 @@ The following domain knowledge may be relevant to this conversation:
                         "type": "workaround"
                     }
                     self._log_system_event(error_event)
-                    yield self._format_sse(error_event)
+                    yield self._format_sse_with_depth(error_event)
                     self.current_phase_index += 1
                     continue
                 
@@ -4587,7 +4593,7 @@ The following domain knowledge may be relevant to this conversation:
                     }
                 }
                 self._log_system_event(event_data)
-                yield self._format_sse(event_data)
+                yield self._format_sse_with_depth(event_data)
                 
                 async for event in self._run_sub_prompt(prompt_name, prompt_args):
                     yield event
@@ -4599,7 +4605,7 @@ The following domain knowledge may be relevant to this conversation:
                     "details": {"phase_num": phase_num, "total_phases": len(self.meta_plan), "status": "completed", "execution_depth": self.execution_depth}
                 }
                 self._log_system_event(event_data)
-                yield self._format_sse(event_data)
+                yield self._format_sse_with_depth(event_data)
             else:
                 # --- MODIFICATION START: Pass replay prefix conceptually ---
                 # PhaseExecutor needs modification to accept and use this prefix
@@ -4628,7 +4634,7 @@ The following domain knowledge may be relevant to this conversation:
                 "type": "workaround"
             }
             self._log_system_event(error_event)
-            yield self._format_sse(error_event)
+            yield self._format_sse_with_depth(error_event)
             app_logger.error(f"Attempted to run sub-prompt with invalid name: '{prompt_name}'")
             return
         
@@ -4638,7 +4644,7 @@ The following domain knowledge may be relevant to this conversation:
             "type": "workaround"
         }
         self._log_system_event(event_data)
-        yield self._format_sse(event_data)
+        yield self._format_sse_with_depth(event_data)
 
         force_disable_sub_history = is_delegated_task
         if force_disable_sub_history:
@@ -4812,7 +4818,7 @@ The following domain knowledge may be relevant to this conversation:
         # The final_answer event below serves as the visual confirmation in the UI
 
         # --- MODIFICATION START: Include both HTML and clean text in response ---
-        yield self._format_sse({
+        yield self._format_sse_with_depth({
             "final_answer": final_html,
             "final_answer_text": self.final_summary_text,  # Clean text for LLM consumption
             "tts_payload": tts_payload,
@@ -4907,7 +4913,7 @@ The following domain knowledge may be relevant to this conversation:
                                 # Emit token_update event so UI reflects updated session totals
                                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                 if updated_session:
-                                    yield self._format_sse({
+                                    yield self._format_sse_with_depth({
                                         "statement_input": in_tok,
                                         "statement_output": out_tok,
                                         "turn_input": self.turn_input_tokens,
@@ -4927,7 +4933,7 @@ The following domain knowledge may be relevant to this conversation:
                                     await session_manager.update_session_name(
                                         self.user_uuid, self.session_id, new_name
                                     )
-                                    yield self._format_sse({
+                                    yield self._format_sse_with_depth({
                                         "session_id": self.session_id,
                                         "newName": new_name
                                     }, "session_name_update")
@@ -4936,7 +4942,7 @@ The following domain knowledge may be relevant to this conversation:
                                     app_logger.error(f"[SessionName] ❌ Failed to update: {name_e}", exc_info=True)
                         else:
                             # Emit SSE event and collect for workflow history
-                            yield self._format_sse(event_dict, event_type)
+                            yield self._format_sse_with_depth(event_dict, event_type)
                             self.session_name_events.append({
                                 "type": event_type,
                                 "payload": event_dict  # Full event data including step, type, details

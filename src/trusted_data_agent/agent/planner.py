@@ -246,7 +246,7 @@ class Planner:
                     "details": f"PLAN HYDRATION: Injected data from the previous turn to fulfill the request: '{self.executor.original_user_input}'."
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
     def _validate_and_correct_plan(self):
         """
@@ -381,7 +381,7 @@ class Planner:
                     }
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
     def _ensure_final_report_phase(self):
         """
@@ -458,7 +458,7 @@ class Planner:
             }
         }
         self.executor._log_system_event(event_data)
-        yield self.executor._format_sse(event_data)
+        yield self.executor._format_sse_with_depth(event_data)
 
     # ===========================================================================
     # PLAN NORMALIZATION METHODS - Template Syntax Canonicalization
@@ -684,7 +684,7 @@ class Planner:
                             }
                         }
                         self.executor._log_system_event(event_data)
-                        yield self.executor._format_sse(event_data)
+                        yield self.executor._format_sse_with_depth(event_data)
 
                         i = j + 1
                         continue
@@ -729,8 +729,8 @@ class Planner:
                         call_id = str(uuid.uuid4())
                         event_data = {"step": "Analyzing Plan Efficiency", "type": "plan_optimization", "details": {"summary": "Checking if an iterative task can be optimized into a single batch operation.", "call_id": call_id}}
                         self.executor._log_system_event(event_data)
-                        yield self.executor._format_sse(event_data)
-                        yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+                        yield self.executor._format_sse_with_depth(event_data)
+                        yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
                         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
                             prompt=classification_prompt,
@@ -745,9 +745,9 @@ class Planner:
                         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                         # --- MODIFICATION END ---
                         if updated_session:
-                            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+                            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
-                        yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+                        yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
                         try:
                             classification_data = json.loads(response_text)
@@ -782,7 +782,7 @@ class Planner:
                         }
                     }
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
                     made_change = True
                 else:
                     app_logger.info(f"PLAN REWRITE SKIPPED: Task classified as 'synthesis'. Preserving loop for phase {phase.get('phase')}.")
@@ -853,7 +853,7 @@ class Planner:
                     }
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
                 made_change = True
 
             i += 1
@@ -923,8 +923,8 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                     }
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
-                yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth(event_data)
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
                 
                 try:
                     response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
@@ -936,12 +936,12 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                         source=self.executor.source
                     )
                     
-                    yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+                    yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
                     
                     # Update session with token usage
                     updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                     if updated_session:
-                        yield self.executor._format_sse({
+                        yield self.executor._format_sse_with_depth({
                             "statement_input": input_tokens,
                             "statement_output": output_tokens,
                             "turn_input": self.executor.turn_input_tokens,
@@ -967,7 +967,7 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                         }
                     }
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
                     
                     made_change = True
                     app_logger.info(f"Successfully synthesized answer for TDA_ContextReport in phase {phase.get('phase')}")
@@ -1054,8 +1054,8 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                     "details": {"summary": "Detected an inefficient multi-step SQL plan. The agent is consolidating it into a single, optimized query.", "call_id": call_id}
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
-                yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth(event_data)
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
                 response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
                     prompt=consolidation_prompt, reason=reason,
@@ -1063,13 +1063,13 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                     raise_on_error=True, source=self.executor.source
                 )
 
-                yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
                 # --- MODIFICATION START: Pass user_uuid to get_session ---
                 updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
                 # --- MODIFICATION END ---
                 if updated_session:
-                    yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+                    yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
                 try:
                     json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
@@ -1106,7 +1106,7 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                         }
                     }
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
                     app_logger.info(f"PLAN REWRITE (SQL Consolidation): Final rewritten plan: {self.executor.meta_plan}")
                     i = 0
                     continue
@@ -1559,7 +1559,7 @@ Ranking:"""
             }
         }
         self.executor._log_system_event(event_data)
-        yield self.executor._format_sse(event_data)
+        yield self.executor._format_sse_with_depth(event_data)
 
     async def _generate_meta_plan(self, force_disable_history: bool = False, replan_context: str = None):
         """The universal planner. It generates a meta-plan for ANY request."""
@@ -1569,7 +1569,7 @@ Ranking:"""
         if self.executor.active_prompt_name:
             event_data = {"step": "Loading Workflow Prompt", "type": "system_message", "details": f"Loading '{self.executor.active_prompt_name}'"}
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
             mcp_client = self.executor.dependencies['STATE'].get('mcp_client')
             if not mcp_client: raise RuntimeError("MCP client is not connected.")
 
@@ -1631,7 +1631,7 @@ Ranking:"""
         # }
         # event_data = {"step": "Calling LLM for Planning", "type": "system_message", "details": details_payload}
         # self.executor._log_system_event(event_data)
-        # yield self.executor._format_sse(event_data)
+        # yield self.executor._format_sse_with_depth(event_data)
         # --- MODIFICATION END ---
 
 
@@ -1720,7 +1720,7 @@ Ranking:"""
                     }
                     
                     # Yield SSE event for live UI display
-                    yield self.executor._format_sse({
+                    yield self.executor._format_sse_with_depth({
                         "step": "Knowledge Retrieved",
                         "type": "knowledge_retrieval",
                         "details": event_details
@@ -1834,7 +1834,7 @@ Ranking:"""
             available_prompts=prompts_context  # Pass prompts context
         )
 
-        yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+        yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt=planning_prompt,
             reason=f"Generating a strategic meta-plan for the goal: '{self.executor.workflow_goal_prompt[:100]}'",
@@ -1843,7 +1843,7 @@ Ranking:"""
             source=self.executor.source
             # No user_uuid/session_id needed here directly as _call_llm takes from self.executor
         )
-        yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+        yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
         # --- MODIFICATION START: Build payload *after* LLM call to include tokens ---
         details_payload = {
@@ -1856,7 +1856,7 @@ Ranking:"""
         }
         event_data = {"step": "Calling LLM for Planning", "type": "system_message", "details": details_payload}
         self.executor._log_system_event(event_data)
-        yield self.executor._format_sse(event_data)
+        yield self.executor._format_sse_with_depth(event_data)
         # --- MODIFICATION END ---
 
         # Log summary of planning (verbose details logged at debug level)
@@ -1871,7 +1871,7 @@ Ranking:"""
         updated_session = await session_manager.get_session(user_uuid, session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
         try:
             # Check for empty or invalid response from LLM
@@ -1903,7 +1903,7 @@ Ranking:"""
                 self.executor.temp_data_holder = plan_object.get("response", "I'm sorry, I don't have a response for that.")
                 event_data = {"step": "Conversational Response Identified", "type": "system_message", "details": self.executor.temp_data_holder}
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
                 return
 
             plan_object_is_dict = isinstance(plan_object, dict)
@@ -1917,7 +1917,7 @@ Ranking:"""
                     "details": "Planner returned a direct action instead of a plan. System is correcting the format."
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
                 phase = {
                     "phase": 1,

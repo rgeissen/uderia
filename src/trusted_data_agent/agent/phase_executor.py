@@ -409,21 +409,21 @@ class PhaseExecutor:
             }
         }
         self.executor._log_system_event(event_data)
-        yield self.executor._format_sse(event_data)
+        yield self.executor._format_sse_with_depth(event_data)
 
         self.executor.current_loop_items = self._extract_loop_items(loop_over_key)
 
         if not self.executor.current_loop_items:
             event_data = {"step": "Skipping Empty Loop", "type": "system_message", "details": f"No items found from '{loop_over_key}' to loop over."}
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
             event_data = {
                 "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                 "type": "phase_end",
                 "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "skipped", "execution_depth": self.executor.execution_depth}
             }
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
             return
 
         is_fast_path_candidate = (
@@ -457,20 +457,20 @@ class PhaseExecutor:
                     }
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
             tool_scope = self.executor.dependencies['STATE'].get('tool_scopes', {}).get(tool_name)
 
             if tool_scope == 'column':
                 event_data = {"step": "Plan Optimization", "type": "plan_optimization", "details": f"FASTPATH Data Expansion: Preparing column-level iteration for '{tool_name}'."}
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
-                yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
                 tool_constraints, constraint_events = await self.executor._get_tool_constraints(tool_name)
                 for event in constraint_events:
                     yield event
-                yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
                 required_type = tool_constraints.get("dataType")
 
@@ -481,7 +481,7 @@ class PhaseExecutor:
                 if not db_name:
                     raise RuntimeError(f"Cannot perform column-level FASTPATH for tool '{tool_name}' because 'database_name' is missing from the phase arguments.")
 
-                yield self.executor._format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth({"target": "db", "state": "busy"}, "status_indicator_update")
                 for table_item in tables_to_process:
                     table_name = get_argument_by_canonical_name(table_item, 'object_name')
                     if not table_name: continue
@@ -515,22 +515,22 @@ class PhaseExecutor:
                                     skip_details = f"Tool '{tool_name}' requires a {required_type} column, but '{col_name}' is '{col_type}'. Skipping."
                                     event_data = {"step": "Skipping Incompatible Column", "type": "plan_optimization", "details": skip_details}
                                     self.executor._log_system_event(event_data)
-                                    yield self.executor._format_sse(event_data)
+                                    yield self.executor._format_sse_with_depth(event_data)
                                     continue
                             expanded_loop_items.append({**table_item, "column_name": col_name})
                     else:
                         app_logger.warning(f"Data expansion: Failed to get columns for table '{table_name}'. Tool `base_columnDescription` may have failed. Result: {cols_result}")
 
-                yield self.executor._format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
+                yield self.executor._format_sse_with_depth({"target": "db", "state": "idle"}, "status_indicator_update")
                 self.executor.current_loop_items = expanded_loop_items
 
                 if not self.executor.current_loop_items:
                     event_data = {"step": "Skipping Empty Loop", "type": "system_message", "details": f"No compatible columns found for '{tool_name}'."}
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
                     event_data = {"step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}", "type": "phase_end", "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "skipped", "execution_depth": self.executor.execution_depth}}
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
                     return
 
             event_data = {
@@ -539,7 +539,7 @@ class PhaseExecutor:
                 "details": f"FASTPATH enabled for tool loop: '{tool_name}'"
             }
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
             static_phase_args = phase.get("arguments", {})
 
@@ -557,11 +557,11 @@ class PhaseExecutor:
                         allowed_arg_names.update(AppConfig.ARGUMENT_SYNONYM_MAP.get(canonical_name, set()))
 
             all_loop_results = []
-            yield self.executor._format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": "db", "state": "busy"}, "status_indicator_update")
             for i, item in enumerate(self.executor.current_loop_items):
                 event_data = {"step": f"Processing Loop Item {i+1}/{len(self.executor.current_loop_items)}", "type": "system_message", "details": item}
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
                 item_data = item if isinstance(item, dict) else {}
                 resolved_item_args = self.executor._resolve_arguments(static_phase_args, loop_item=item_data)
@@ -600,7 +600,7 @@ class PhaseExecutor:
                 # --- MODIFICATION END ---
                 all_loop_results.append(enriched_tool_output)
 
-            yield self.executor._format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": "db", "state": "idle"}, "status_indicator_update")
 
             phase_result_key = f"result_of_phase_{phase_num}"
             self.executor.workflow_state[phase_result_key] = all_loop_results
@@ -615,7 +615,7 @@ class PhaseExecutor:
             for i, item in enumerate(self.executor.current_loop_items):
                 event_data = {"step": f"Processing Loop Item {i+1}/{len(self.executor.current_loop_items)}", "type": "system_message", "details": item}
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
 
                 try:
                     async for event in self._execute_standard_phase(phase, is_loop_iteration=True, loop_item=item):
@@ -640,7 +640,7 @@ class PhaseExecutor:
                     self.executor._add_to_structured_data(error_result)
                     event_data = {"step": "Loop Item Failed", "details": error_result, "type": "error"}
                     self.executor._log_system_event(event_data, "tool_result")
-                    yield self.executor._format_sse(event_data, "tool_result")
+                    yield self.executor._format_sse_with_depth(event_data, "tool_result")
 
                 self.executor.processed_loop_items.append(item)
 
@@ -659,7 +659,7 @@ class PhaseExecutor:
             "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
         }
         self.executor._log_system_event(event_data)
-        yield self.executor._format_sse(event_data)
+        yield self.executor._format_sse_with_depth(event_data)
 
     def _is_numeric(self, value: any) -> bool:
         """Checks if a value can be reliably converted to a number."""
@@ -694,7 +694,7 @@ class PhaseExecutor:
                 }
             }
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
         if len(relevant_tools) > 1:
             event_data = {
@@ -703,7 +703,7 @@ class PhaseExecutor:
                 "details": f"Multi-tool phase detected. Agent will dispatch {len(relevant_tools)} tools based on scope."
             }
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
             all_phase_results = []
             for tool_name in relevant_tools:
@@ -729,7 +729,7 @@ class PhaseExecutor:
                         "details": f"Dispatcher is invoking column iteration for '{tool_name}' because 'column_name' was missing."
                     }
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
 
                     action_for_orchestrator = {"tool_name": tool_name, "arguments": current_args}
                     try:
@@ -784,7 +784,7 @@ class PhaseExecutor:
                     "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
             return
 
 
@@ -816,7 +816,7 @@ class PhaseExecutor:
             action_for_history.setdefault("metadata", {})["execution_depth"] = self.executor.execution_depth
             action_for_history.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
             
-            yield self.executor._format_sse({
+            yield self.executor._format_sse_with_depth({
                 "step": "Tool Execution Result",
                 "details": self.executor.last_tool_output,
                 "tool_name": "TDA_ContextReport"
@@ -840,7 +840,7 @@ class PhaseExecutor:
                     "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
             return
         # --- END SYSTEM TOOL BYPASS ---
 
@@ -880,7 +880,7 @@ class PhaseExecutor:
                 "details": f"FASTPATH initiated for '{tool_name}'."
             }
             self.executor._log_system_event(event_data)
-            yield self.executor._format_sse(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
             fast_path_action = {"tool_name": tool_name, "arguments": strategic_args}
 
@@ -971,7 +971,7 @@ class PhaseExecutor:
             if call_id_for_completion:
                 completion_event_payload["call_id"] = call_id_for_completion
 
-            yield self.executor._format_sse(completion_event_payload, "context_state_update")
+            yield self.executor._format_sse_with_depth(completion_event_payload, "context_state_update")
 
             if not is_loop_iteration:
                 event_data = {
@@ -980,7 +980,7 @@ class PhaseExecutor:
                     "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
                 }
                 self.executor._log_system_event(event_data)
-                yield self.executor._format_sse(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
             return
 
         # --- Tactical LLM Path (Slow Path) ---
@@ -1001,20 +1001,20 @@ class PhaseExecutor:
                 self.executor.events_to_yield.append(event)
 
             tactical_call_id = str(uuid.uuid4())
-            yield self.executor._format_sse({"step": "Calling LLM for Tactical Action", "type": "system_message", "details": {"summary": f"Deciding next action for phase goal: '{phase_goal}'", "call_id": tactical_call_id}})
-            yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"step": "Calling LLM for Tactical Action", "type": "system_message", "details": {"summary": f"Deciding next action for phase goal: '{phase_goal}'", "call_id": tactical_call_id}})
+            yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
             next_action, input_tokens, output_tokens = await self._get_next_tactical_action(
                 phase_goal, relevant_tools, enriched_args, strategic_args, executable_prompt
             )
 
-            yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             current_action_str = json.dumps(next_action, sort_keys=True)
             if current_action_str == self.executor.last_action_str:
                 app_logger.warning(f"LOOP DETECTED: Repeating action: {current_action_str}")
                 self.executor.last_failed_action_info = "Your last attempt failed because it was an exact repeat of the previous failed action. You MUST choose a different tool or different arguments."
-                yield self.executor._format_sse({"step": "System Error", "details": "Repetitive action detected.", "type": "error"}, "tool_result")
+                yield self.executor._format_sse_with_depth({"step": "System Error", "details": "Repetitive action detected.", "type": "error"}, "tool_result")
                 self.executor.last_action_str = None
                 continue
             self.executor.last_action_str = current_action_str
@@ -1027,7 +1027,7 @@ class PhaseExecutor:
             updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
             # --- MODIFICATION END ---
             if updated_session:
-                yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id }, "token_update")
+                yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id }, "token_update")
 
             if isinstance(next_action, str) and next_action == "SYSTEM_ACTION_COMPLETE":
                 app_logger.info("Tactical LLM decided phase is complete.")
@@ -1075,12 +1075,12 @@ class PhaseExecutor:
                 app_logger.warning(f"Action failed. Attempt {phase_attempts}/{max_phase_attempts} for phase.")
                 # Loop continues for retry
 
-        yield self.executor._format_sse(
+        yield self.executor._format_sse_with_depth(
             {"target": "context", "state": "processing_complete", "call_id": tactical_call_id},
             "context_state_update"
         )
         if not is_loop_iteration:
-            yield self.executor._format_sse({
+            yield self.executor._format_sse_with_depth({
                 "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                 "type": "phase_end",
                 "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
@@ -1099,7 +1099,7 @@ class PhaseExecutor:
             raise ValueError("Action from tactical LLM is missing a 'tool_name' or 'prompt_name'.")
 
         if prompt_name:
-            yield self.executor._format_sse({
+            yield self.executor._format_sse_with_depth({
                 "step": "Prompt Execution Granted",
                 "details": f"Executing prompt '{prompt_name}' as a sub-task.",
                 "type": "workaround"
@@ -1116,9 +1116,9 @@ class PhaseExecutor:
         )
 
         if is_date_orchestrator_target:
-            yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
             async for event in self._classify_date_query_type(): yield event
-            yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             if self.executor.temp_data_holder and self.executor.temp_data_holder.get('type') == 'range':
                 async for event in orchestrators.execute_date_range_orchestrator(
@@ -1248,7 +1248,7 @@ class PhaseExecutor:
         )
 
 
-        yield self.executor._format_sse({
+        yield self.executor._format_sse_with_depth({
             "step": "System Correction",
             "type": "workaround",
             "details": {
@@ -1279,8 +1279,8 @@ class PhaseExecutor:
 
         reason = f"Proactively refining arguments for '{tool_name}' to prevent tool failure."
         call_id = str(uuid.uuid4())
-        yield self.executor._format_sse({"step": "Calling LLM for Argument Refinement", "type": "system_message", "details": {"summary": reason, "call_id": call_id}})
-        yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+        yield self.executor._format_sse_with_depth({"step": "Calling LLM for Argument Refinement", "type": "system_message", "details": {"summary": reason, "call_id": call_id}})
+        yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt=refinement_prompt, reason=reason,
@@ -1290,12 +1290,12 @@ class PhaseExecutor:
             # user_uuid implicitly passed
         )
 
-        yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+        yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
 
         try:
             json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_text, re.DOTALL)
@@ -1313,7 +1313,7 @@ class PhaseExecutor:
 
                 action['arguments'] = corrected_args
                 app_logger.debug(f"Argument refinement successful. New args for '{tool_name}': {corrected_args}")
-                yield self.executor._format_sse({
+                yield self.executor._format_sse_with_depth({
                     "step": "System Correction",
                     "type": "workaround",
                     "details": {
@@ -1386,7 +1386,7 @@ class PhaseExecutor:
                 "metadata": {"tool_name": tool_name},
                 "results": [{"response": answer_content}]
             }
-            yield self.executor._format_sse({"step": "Tool Execution Result", "details": self.executor.last_tool_output, "tool_name": tool_name}, "tool_result")
+            yield self.executor._format_sse_with_depth({"step": "Tool Execution Result", "details": self.executor.last_tool_output, "tool_name": tool_name}, "tool_result")
             # --- MODIFICATION START: Use action_for_history ---
             self.executor.turn_action_history.append({"action": action_for_history, "result": self.executor.last_tool_output})
             # --- MODIFICATION START: Add timestamp if missing (defensive) ---
@@ -1414,11 +1414,11 @@ class PhaseExecutor:
 
         for attempt in range(max_retries):
             if 'notification' in action:
-                yield self.executor._format_sse({"step": "System Notification", "details": action['notification'], "type": "workaround"})
+                yield self.executor._format_sse_with_depth({"step": "System Notification", "details": action['notification'], "type": "workaround"})
                 del action['notification']
 
             if not is_fast_path:
-                 yield self.executor._format_sse({"step": "Tool Execution Intent", "details": action, "tool_name": tool_name}, "tool_intent")
+                 yield self.executor._format_sse_with_depth({"step": "Tool Execution Intent", "details": action, "tool_name": tool_name}, "tool_intent")
 
             status_target = "db"
             call_id_for_tool = None
@@ -1435,13 +1435,13 @@ class PhaseExecutor:
                 }
                 reason = reason_map.get(tool_name, f"Executing client-side tool: {tool_name}")
 
-                yield self.executor._format_sse({
+                yield self.executor._format_sse_with_depth({
                     "step": f"Calling LLM for {tool_name}",
                     "type": "system_message",
                     "details": {"summary": reason, "call_id": call_id_for_tool}
                 })
 
-            yield self.executor._format_sse({"target": status_target, "state": "busy"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": status_target, "state": "busy"}, "status_indicator_update")
 
             full_context_for_tool = {
                 "original_user_input": self.executor.original_user_input,
@@ -1460,7 +1460,7 @@ class PhaseExecutor:
             )
             # --- MODIFICATION END ---
 
-            yield self.executor._format_sse({"target": status_target, "state": "idle"}, "status_indicator_update")
+            yield self.executor._format_sse_with_depth({"target": status_target, "state": "idle"}, "status_indicator_update")
 
             if input_tokens > 0 or output_tokens > 0:
                 # Accumulate turn tokens for client-side tool LLM calls
@@ -1472,7 +1472,7 @@ class PhaseExecutor:
                 # --- MODIFICATION END ---
                 if updated_session:
                     final_call_id = tool_result.get("metadata", {}).get("call_id") if isinstance(tool_result, dict) else None
-                    yield self.executor._format_sse({
+                    yield self.executor._format_sse_with_depth({
                         "statement_input": input_tokens,
                         "statement_output": output_tokens,
                         "turn_input": self.executor.turn_input_tokens,
@@ -1495,7 +1495,7 @@ class PhaseExecutor:
 
 
             if isinstance(tool_result, dict) and tool_result.get("status") == "error":
-                yield self.executor._format_sse({"details": tool_result, "tool_name": tool_name}, "tool_error")
+                yield self.executor._format_sse_with_depth({"details": tool_result, "tool_name": tool_name}, "tool_error")
 
                 error_data_str = str(tool_result.get('data', ''))
                 error_summary = str(tool_result.get('error_message', ''))
@@ -1513,13 +1513,13 @@ class PhaseExecutor:
                     }
                     event_data = {"step": "System Self-Correction", "type": "workaround", "details": correction_details}
                     self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
 
                     corrected_action, correction_events = await self._attempt_tool_self_correction(action, tool_result)
 
                     for event_data, event_name in correction_events:
                         self.executor._log_system_event(event_data, event_name=event_name)
-                        yield self.executor._format_sse(event_data, event=event_name)
+                        yield self.executor._format_sse_with_depth(event_data, event=event_name)
 
                     if corrected_action:
                         if "FINAL_ANSWER" in corrected_action:
@@ -1554,17 +1554,17 @@ class PhaseExecutor:
                             "summary": "Unable to find a correction. Aborting retries for this action.",
                             "details": tool_result
                         }
-                        yield self.executor._format_sse({"step": "System Self-Correction Failed", "type": "error", "details": correction_failed_details})
+                        yield self.executor._format_sse_with_depth({"step": "System Self-Correction Failed", "type": "error", "details": correction_failed_details})
                         break
                 else:
                     persistent_failure_details = {
                         "summary": f"Tool '{tool_name}' failed after {max_retries} attempts.",
                         "details": tool_result
                     }
-                    yield self.executor._format_sse({"step": "Persistent Failure", "type": "error", "details": persistent_failure_details})
+                    yield self.executor._format_sse_with_depth({"step": "Persistent Failure", "type": "error", "details": persistent_failure_details})
             else:
                 if not is_fast_path:
-                     yield self.executor._format_sse({"step": "Tool Execution Result", "details": tool_result, "tool_name": tool_name}, "tool_result")
+                     yield self.executor._format_sse_with_depth({"step": "Tool Execution Result", "details": tool_result, "tool_name": tool_name}, "tool_result")
                 break
         
         # --- MODIFICATION START: Move logging out of the loop ---
@@ -1658,7 +1658,7 @@ class PhaseExecutor:
             for arg_name, value in enriched_args.items():
                 if arg_name not in initial_args or initial_args.get(arg_name) is None:
                     app_logger.info(f"Proactively inferred '{arg_name}' from turn history: '{value}'")
-                    events_to_yield.append(self.executor._format_sse({
+                    events_to_yield.append(self.executor._format_sse_with_depth({
                         "step": "System Correction",
                         "details": f"System inferred '{arg_name}: {value}' from the current turn's actions.",
                         "type": "workaround",
@@ -1820,7 +1820,7 @@ class PhaseExecutor:
             if not normalized_action.get("tool_name") and not normalized_action.get("prompt_name"):
                 if len(relevant_tools) == 1:
                     normalized_action["tool_name"] = relevant_tools[0]
-                    self.executor.events_to_yield.append(self.executor._format_sse({
+                    self.executor.events_to_yield.append(self.executor._format_sse_with_depth({
                         "step": "System Correction",
                         "type": "workaround",
                         "correction_type": "inferred_tool_name",
@@ -1828,7 +1828,7 @@ class PhaseExecutor:
                     }))
                 elif executable_prompt:
                     normalized_action["prompt_name"] = executable_prompt
-                    self.executor.events_to_yield.append(self.executor._format_sse({
+                    self.executor.events_to_yield.append(self.executor._format_sse_with_depth({
                         "step": "System Correction",
                         "type": "workaround",
                         "correction_type": "inferred_prompt_name",
@@ -1867,7 +1867,7 @@ class PhaseExecutor:
         )
         reason="Classifying date query."
         call_id = str(uuid.uuid4())
-        yield self.executor._format_sse({"step": "Calling LLM", "details": {"summary": reason, "call_id": call_id}})
+        yield self.executor._format_sse_with_depth({"step": "Calling LLM", "details": {"summary": reason, "call_id": call_id}})
         response_str, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt=classification_prompt, reason=reason,
             system_prompt_override="You are a JSON-only responding assistant.", raise_on_error=True,
@@ -1878,7 +1878,7 @@ class PhaseExecutor:
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
         try:
             json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_str, re.DOTALL)
             if not json_match: raise json.JSONDecodeError("No JSON found in LLM response", response_str, 0)
@@ -1894,7 +1894,7 @@ class PhaseExecutor:
         This version is robust to conversational text mixed with the JSON output.
         """
         call_id = str(uuid.uuid4())
-        yield self.executor._format_sse({"step": "Attempting LLM-based Recovery", "type": "system_message", "details": {"summary": "The current plan is stuck. Asking LLM to generate a new plan.", "call_id": call_id}})
+        yield self.executor._format_sse_with_depth({"step": "Attempting LLM-based Recovery", "type": "system_message", "details": {"summary": "The current plan is stuck. Asking LLM to generate a new plan.", "call_id": call_id}})
 
         last_error = "No specific error message found."
         failed_tool_name = "N/A (Phase Failed)"
@@ -1924,7 +1924,7 @@ class PhaseExecutor:
         )
 
         reason = "Recovering from persistent phase failure."
-        yield self.executor._format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+        yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt=recovery_prompt,
             reason=reason,
@@ -1932,13 +1932,13 @@ class PhaseExecutor:
             source=self.executor.source
             # user_uuid implicitly passed
         )
-        yield self.executor._format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
+        yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse({"statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id}, "token_update")
+            yield self.executor._format_sse_with_depth({"statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id}, "token_update")
 
         try:
             json_match = re.search(r"```json\s*\n(.*?)```|(\[.*?\]|\{.*?\})", response_text, re.DOTALL)
@@ -1967,7 +1967,7 @@ class PhaseExecutor:
             else:
                 raise ValueError("Recovered plan is not a valid list or action object.")
 
-            yield self.executor._format_sse({"step": "Recovery Plan Generated", "type": "system_message", "details": new_plan})
+            yield self.executor._format_sse_with_depth({"step": "Recovery Plan Generated", "type": "system_message", "details": new_plan})
 
             self.executor.meta_plan = new_plan
             self.executor.current_phase_index = 0
