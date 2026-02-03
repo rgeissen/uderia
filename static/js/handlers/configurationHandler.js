@@ -1482,6 +1482,44 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
         errorText.textContent = '';
     }
 
+    // Auto-fill credentials from an existing config for the same provider
+    async function autoFillCredentials(provider) {
+        const existingConfig = configState.llmConfigurations.find(c => c.provider === provider);
+        if (!existingConfig) return;
+
+        try {
+            const headers = {};
+            const authToken = localStorage.getItem('tda_auth_token');
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
+            const response = await fetch(`/api/v1/llm/configurations/${existingConfig.id}`, {
+                method: 'GET',
+                headers
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.status === 'success' && result.configuration?.credentials) {
+                    const creds = result.configuration.credentials;
+                    credentialsContainer.querySelectorAll('[data-credential]').forEach(input => {
+                        const fieldId = input.dataset.credential;
+                        if (creds[fieldId] !== undefined) {
+                            if (input.type === 'radio') {
+                                input.checked = (input.value === creds[fieldId]);
+                            } else {
+                                input.value = creds[fieldId];
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to auto-fill credentials:', error);
+        }
+    }
+
     // Function to render credential fields based on selected provider
     function renderCredentialFields(provider) {
         const template = LLM_PROVIDER_TEMPLATES[provider];
@@ -1700,15 +1738,24 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
     // Initial render of credential fields
     renderCredentialFields(selectedProvider);
 
+    // Auto-fill credentials for new configs on initial render
+    if (!isEdit) {
+        autoFillCredentials(selectedProvider);
+    }
+
     // Provider change handler (only for new configs)
     if (!isEdit) {
-        providerSelect.addEventListener('change', () => {
-            renderCredentialFields(providerSelect.value);
+        providerSelect.addEventListener('change', async () => {
+            const newProvider = providerSelect.value;
+            renderCredentialFields(newProvider);
             // Clear model selection and cached models when provider changes
             modelInput.value = '';
             modelDisplay.textContent = '-- Select a model --';
             modelList.innerHTML = '';
             cachedModels = [];
+
+            // Auto-fill credentials from existing config for same provider
+            await autoFillCredentials(newProvider);
         });
     }
 
