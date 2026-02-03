@@ -169,20 +169,37 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
 function updateKnowledgeIndicatorStatus(profile) {
     const knowledgeDot = document.getElementById('knowledge-status-dot');
     if (!knowledgeDot) return;
-    
+
     // Check if ANY active-for-consumption profile has knowledge collections
     let hasActiveKnowledgeCollections = false;
-    
+
     if (window.configState && window.configState.profiles) {
-        const activeProfiles = window.configState.profiles.filter(p => 
+        const activeProfiles = window.configState.profiles.filter(p =>
             window.configState.activeForConsumptionProfileIds.includes(p.id)
         );
-        
-        hasActiveKnowledgeCollections = activeProfiles.some(p => 
+
+        // Check active profiles directly
+        hasActiveKnowledgeCollections = activeProfiles.some(p =>
             p.knowledgeConfig?.collections?.length > 0
         );
+
+        // Also check child profiles of active genie coordinators
+        if (!hasActiveKnowledgeCollections) {
+            for (const p of activeProfiles) {
+                if (p.profile_type === 'genie' && p.genieConfig?.slaveProfiles?.length > 0) {
+                    const childHasKnowledge = p.genieConfig.slaveProfiles.some(childId => {
+                        const child = window.configState.profiles.find(cp => cp.id === childId);
+                        return child?.knowledgeConfig?.collections?.length > 0;
+                    });
+                    if (childHasKnowledge) {
+                        hasActiveKnowledgeCollections = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
-    
+
     if (hasActiveKnowledgeCollections) {
         knowledgeDot.classList.remove('knowledge-idle', 'knowledge-active');
         knowledgeDot.classList.add('knowledge-configured');

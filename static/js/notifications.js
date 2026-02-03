@@ -426,7 +426,7 @@ export function subscribeToNotifications() {
                     state.lastRagCaseData = event;
                     UI.blinkCcrDot();
                 }
-                if (event.type === 'knowledge_retrieval') {
+                if (event.type === 'knowledge_retrieval' || event.type === 'knowledge_retrieval_complete') {
                     const collections = event.data?.collections || [];
                     const documentCount = event.data?.document_count || 0;
                     if (!state.isViewingHistoricalTurn) UI.blinkKnowledgeDot();

@@ -717,23 +717,11 @@ After gathering information from profiles, provide a synthesized answer that:
                         "target": "llm", "state": "busy"
                     })
 
-                # --- Status indicator: MCP (db) busy when child profile tool starts ---
-                elif event_kind == "on_tool_start":
-                    self._emit_event("status_indicator_update", {
-                        "target": "db", "state": "busy"
-                    })
-
-                # --- Status indicator: MCP (db) idle when child profile tool completes ---
-                elif event_kind == "on_tool_end":
-                    self._emit_event("status_indicator_update", {
-                        "target": "db", "state": "idle"
-                    })
-
-                # --- Status indicator: MCP (db) idle on tool error ---
-                elif event_kind == "on_tool_error":
-                    self._emit_event("status_indicator_update", {
-                        "target": "db", "state": "idle"
-                    })
+                # Note: on_tool_start/on_tool_end/on_tool_error events here are for
+                # SlaveSessionTool invocations (child profile calls), NOT actual MCP tool
+                # calls. The genie coordinator does not use MCP tools directly — child
+                # profiles handle their own MCP status indicators in their own streams.
+                # No MCP status_indicator_update is emitted here.
 
                 # Track token usage from LLM calls
                 # Some providers emit on_llm_end, others emit on_chat_model_end
