@@ -3519,221 +3519,59 @@ async def export_collection(collection_id: int):
 
     The export includes:
     - collection_metadata.json: Collection configuration from database
-    - chroma_data/: ChromaDB collection data (embeddings + documents)
+    - documents.jsonl: Batched document data with pre-computed embeddings
 
     This allows fast import on other servers without re-embedding.
     """
-    import zipfile
-    import tempfile
     import shutil
     from quart import send_file
-    import os
 
     try:
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
 
-        # Get optional export_path parameter
         export_path = request.args.get('export_path', '').strip()
 
-        # Get collection from database
-        from trusted_data_agent.core.collection_db import CollectionDatabase
-        db = CollectionDatabase()
-        collection = db.get_collection_by_id(collection_id)
+        from trusted_data_agent.core.collection_utils import export_collection_to_zip
 
-        if not collection:
-            return jsonify({"status": "error", "message": f"Collection {collection_id} not found"}), 404
-
-        # Check ownership
-        if collection['owner_user_id'] != user_uuid:
-            return jsonify({"status": "error", "message": "You don't own this collection"}), 403
-
-        # Get ChromaDB collection name and path
-        collection_name = collection['collection_name']
-        chroma_base_path = Path(__file__).resolve().parents[3] / ".chromadb_rag_cache"
-
-        # Find the ChromaDB collection directory (UUID-based)
-        retriever = get_rag_retriever()
-        if not retriever:
-            return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
-
-        # Get the actual ChromaDB collection to find its UUID
-        chroma_collection = None
-        try:
-            chroma_collection = retriever.client.get_collection(name=collection_name)
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"ChromaDB collection not found: {e}"}), 404
-
-        # ChromaDB uses segments for vector storage
-        # The directory names are segment IDs, not collection IDs
-        # We need to query the ChromaDB SQLite to find the segment ID for this collection
-        chroma_uuid = str(chroma_collection.id)
-
-        # Query ChromaDB's SQLite database to find the segment ID
-        import sqlite3
-        chroma_db_path = chroma_base_path / "chroma.sqlite3"
-
-        try:
-            conn = sqlite3.connect(str(chroma_db_path))
-            cursor = conn.cursor()
-
-            # Get VECTOR segment ID
-            cursor.execute("SELECT id FROM segments WHERE collection = ? AND scope = 'VECTOR'", (chroma_uuid,))
-            result = cursor.fetchone()
-            if not result:
-                conn.close()
-                app_logger.error(f"No vector segment found for collection {chroma_uuid}")
-                return jsonify({"status": "error", "message": "ChromaDB segment not found"}), 404
-            segment_id = result[0]
-            chroma_collection_path = chroma_base_path / segment_id
-
-            # Get METADATA segment ID (for embedding data)
-            cursor.execute("SELECT id FROM segments WHERE collection = ? AND scope = 'METADATA'", (chroma_uuid,))
-            metadata_result = cursor.fetchone()
-            metadata_segment_id = metadata_result[0] if metadata_result else None
-
-            app_logger.info(f"Export: Collection UUID: {chroma_uuid}, Vector Segment ID: {segment_id}, Metadata Segment ID: {metadata_segment_id}")
-            app_logger.info(f"Export: ChromaDB data path: {chroma_collection_path}")
-
-        except Exception as e:
-            conn.close()
-            app_logger.error(f"Error querying ChromaDB database: {e}", exc_info=True)
-            return jsonify({"status": "error", "message": f"Failed to locate ChromaDB data: {e}"}), 500
-
-        if not chroma_collection_path.exists():
-            return jsonify({"status": "error", "message": "ChromaDB segment directory not found"}), 404
-
-        # Get actual document count from ChromaDB
-        try:
-            actual_document_count = chroma_collection.count()
-            app_logger.info(f"Export: ChromaDB collection has {actual_document_count} documents")
-        except Exception as e:
-            app_logger.warning(f"Failed to get document count from ChromaDB: {e}")
-            actual_document_count = collection.get('document_count', 0)
-
-        # Create temporary directory for export
-        temp_dir = tempfile.mkdtemp()
-        temp_export_dir = Path(temp_dir)
-
-        try:
-            # 1. Save collection metadata
-            metadata = {
-                "collection_id": collection_id,
-                "name": collection['name'],
-                "description": collection['description'],
-                "repository_type": collection['repository_type'],
-                "mcp_server_id": collection.get('mcp_server_id'),  # For planner repositories
-                "chunking_strategy": collection['chunking_strategy'],
-                "chunk_size": collection['chunk_size'],
-                "chunk_overlap": collection['chunk_overlap'],
-                "embedding_model": collection['embedding_model'],
-                "collection_name": collection_name,
-                "chroma_uuid": chroma_uuid,
-                "chroma_segment_id": segment_id,
-                "document_count": actual_document_count,
-                "exported_at": datetime.now(timezone.utc).isoformat(),
-                "export_version": "1.0"
-            }
-
-            metadata_file = temp_export_dir / "collection_metadata.json"
-            with open(metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=2)
-
-            # 2. Export all documents with embeddings using ChromaDB API
-            # This is the proper way - ChromaDB handles all internal consistency
+        # Determine output path
+        if export_path:
             try:
-                # Get all documents with their embeddings and metadata
-                all_data = chroma_collection.get(include=['embeddings', 'documents', 'metadatas'])
-
-                # Convert embeddings to lists (they might be numpy arrays)
-                # and handle NaN/Infinity values
-                embeddings_list = []
-                for emb in all_data['embeddings']:
-                    if isinstance(emb, list):
-                        embeddings_list.append(emb)
-                    else:
-                        # Convert numpy array to list
-                        embeddings_list.append(emb.tolist() if hasattr(emb, 'tolist') else list(emb))
-
-                # Save complete document data
-                documents_file = temp_export_dir / "documents.json"
-                documents_export = {
-                    'ids': all_data['ids'],
-                    'documents': all_data['documents'],
-                    'metadatas': all_data['metadatas'],
-                    'embeddings': embeddings_list
-                }
-
-                with open(documents_file, 'w') as f:
-                    json.dump(documents_export, f, allow_nan=False)
-
-                app_logger.info(f"Export: Saved {len(all_data['ids'])} documents with embeddings and metadata")
+                custom_export_dir = Path(export_path).expanduser().resolve()
+                if not custom_export_dir.is_dir() and custom_export_dir.exists():
+                    return jsonify({"status": "error", "message": f"Export path is not a directory: {export_path}"}), 400
             except Exception as e:
-                app_logger.warning(f"Failed to export documents: {e}", exc_info=True)
+                return jsonify({"status": "error", "message": f"Invalid export path: {str(e)}"}), 400
+            output_dir = custom_export_dir
+        else:
+            output_dir = None
 
-            # 4. Create zip file
-            # Sanitize collection name for filesystem (remove invalid characters including slashes)
-            safe_name = re.sub(r'[<>:"/\\|?*]', '-', collection['name'])  # Replace invalid chars with dash
-            safe_name = safe_name.replace(' ', '_')  # Replace spaces with underscores
-            safe_name = safe_name.strip('-_')  # Remove leading/trailing dashes/underscores
-            zip_filename = f"collection_{collection_id}_{safe_name}.zip"
+        zip_path = await export_collection_to_zip(
+            collection_id=collection_id,
+            user_uuid=user_uuid,
+            output_path=output_dir,
+        )
 
-            # Determine zip file location
-            if export_path:
-                # Validate and create custom export directory
-                try:
-                    custom_export_dir = Path(export_path).expanduser().resolve()
-                    if not custom_export_dir.exists():
-                        custom_export_dir.mkdir(parents=True, exist_ok=True)
-                    if not custom_export_dir.is_dir():
-                        raise ValueError(f"Export path is not a directory: {export_path}")
-                    zip_path = custom_export_dir / zip_filename
-                    app_logger.info(f"Export: Using custom directory: {custom_export_dir}")
-                except Exception as e:
-                    app_logger.error(f"Invalid export path '{export_path}': {e}")
-                    return jsonify({
-                        "status": "error",
-                        "message": f"Invalid export path: {str(e)}"
-                    }), 400
-            else:
-                # Use temp directory for browser download
-                zip_path = Path(temp_dir) / zip_filename
+        if export_path:
+            return jsonify({
+                "status": "success",
+                "message": f"Collection exported to {zip_path}",
+                "file_path": str(zip_path),
+                "file_size_mb": round(zip_path.stat().st_size / 1024 / 1024, 2)
+            }), 200
+        else:
+            response = await send_file(
+                str(zip_path),
+                as_attachment=True,
+                attachment_filename=zip_path.name,
+                mimetype='application/zip'
+            )
+            return response
 
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for file_path in temp_export_dir.rglob('*'):
-                    if file_path.is_file() and file_path != zip_path:
-                        arcname = file_path.relative_to(temp_export_dir)
-                        zipf.write(file_path, arcname)
-
-            app_logger.info(f"Exported collection {collection_id} to {zip_filename} ({zip_path.stat().st_size / 1024 / 1024:.2f} MB)")
-
-            # If custom export path, save file there and return success message
-            if export_path:
-                # File already saved to custom location, clean up temp directory
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return jsonify({
-                    "status": "success",
-                    "message": f"Collection exported to {zip_path}",
-                    "file_path": str(zip_path),
-                    "file_size_mb": round(zip_path.stat().st_size / 1024 / 1024, 2)
-                }), 200
-            else:
-                # Send file to browser and clean up after
-                response = await send_file(
-                    str(zip_path),
-                    as_attachment=True,
-                    attachment_filename=zip_filename,
-                    mimetype='application/zip'
-                )
-                # Schedule cleanup (Quart will clean up after sending)
-                return response
-
-        except Exception as e:
-            # Clean up temp directory on error
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise e
-
+    except ValueError as e:
+        status_code = 404 if "not found" in str(e).lower() else 403
+        return jsonify({"status": "error", "message": str(e)}), status_code
     except Exception as e:
         app_logger.error(f"Error exporting collection: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -3752,11 +3590,11 @@ async def import_collection():
     - Extract collection metadata
     - Restore ChromaDB data (no re-embedding needed)
     - Create new collection in database with new owner
+
+    Supports both legacy documents.json and batched documents.jsonl formats.
     """
-    import zipfile
     import tempfile
     import shutil
-    import os
 
     try:
         user_uuid = _get_user_uuid_from_request()
@@ -3781,7 +3619,6 @@ async def import_collection():
                 if not uploaded_file.filename.endswith('.zip'):
                     return jsonify({"status": "error", "message": "File must be a .zip archive"}), 400
 
-                # Save uploaded file
                 zip_path = temp_path / "import.zip"
                 await uploaded_file.save(str(zip_path))
                 app_logger.info(f"Import: Received uploaded file {uploaded_file.filename}")
@@ -3794,221 +3631,49 @@ async def import_collection():
                 if not import_path:
                     return jsonify({"status": "error", "message": "import_path required"}), 400
 
-                # Validate and resolve server path
                 try:
                     server_zip_path = Path(import_path).expanduser().resolve()
-
                     if not server_zip_path.exists():
                         raise FileNotFoundError(f"File not found: {import_path}")
-
                     if not server_zip_path.is_file():
                         raise ValueError(f"Path is not a file: {import_path}")
-
                     if not str(server_zip_path).endswith('.zip'):
                         raise ValueError(f"File must be a .zip archive")
 
-                    # Copy to temp directory for processing
                     zip_path = temp_path / "import.zip"
                     shutil.copy2(server_zip_path, zip_path)
                     app_logger.info(f"Import: Using server file {server_zip_path}")
 
                 except Exception as e:
                     app_logger.error(f"Invalid import path '{import_path}': {e}")
-                    return jsonify({
-                        "status": "error",
-                        "message": f"Invalid import path: {str(e)}"
-                    }), 400
+                    return jsonify({"status": "error", "message": f"Invalid import path: {str(e)}"}), 400
             else:
                 return jsonify({
                     "status": "error",
                     "message": "Request must be multipart/form-data (file upload) or application/json (server path)"
                 }), 400
 
-            # Extract zip
-            extract_path = temp_path / "extracted"
-            extract_path.mkdir()
+            # Delegate to shared utility
+            from trusted_data_agent.core.collection_utils import import_collection_from_zip
 
-            with zipfile.ZipFile(zip_path, 'r') as zipf:
-                zipf.extractall(extract_path)
-
-            # Read metadata
-            metadata_file = extract_path / "collection_metadata.json"
-            if not metadata_file.exists():
-                return jsonify({"status": "error", "message": "Invalid export: metadata file missing"}), 400
-
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-
-            # Validate export version
-            if metadata.get('export_version') != "1.0":
-                return jsonify({"status": "error", "message": "Unsupported export version"}), 400
-
-            # Check if documents data exists
-            documents_file = extract_path / "documents.json"
-            if not documents_file.exists():
-                return jsonify({"status": "error", "message": "Invalid export: documents.json missing"}), 400
-
-            # Generate new collection name (avoid conflicts)
-            import time
-            original_name = metadata['name']
-            new_collection_name = f"col_{user_uuid}_{int(time.time())}"
-
-            # Get the RAG retriever to recreate the collection using ChromaDB's API
-            retriever = get_rag_retriever()
-            if not retriever:
-                return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
-
-            # Get the embedding model
-            embedding_model = metadata.get('embedding_model', 'all-MiniLM-L6-v2')
-
-            # Create embedding function
-            from chromadb.utils import embedding_functions
-            embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model)
-
-            # Import documents using ChromaDB's proper API
-            # IMPORTANT: Use the retriever's client to avoid synchronization issues
-            # Creating a separate client can cause timing problems where the documents
-            # aren't immediately visible when we reload
-            chroma_client = retriever.client
-
-            try:
-                # Get repository type and create metadata
-                repo_type = metadata.get('repository_type', 'knowledge')
-                collection_metadata = {
-                    "hnsw:space": "cosine",
-                    "repository_type": repo_type
-                }
-
-                # Create new collection
-                app_logger.info(f"Creating ChromaDB collection: {new_collection_name}")
-                chroma_collection = chroma_client.create_collection(
-                    name=new_collection_name,
-                    metadata=collection_metadata,
-                    embedding_function=embedding_func
-                )
-                app_logger.info(f"Created ChromaDB collection: {new_collection_name}")
-
-                # Load documents data from export
-                documents_file = extract_path / "documents.json"
-
-                if documents_file.exists():
-                    app_logger.info(f"Loading documents from documents.json")
-
-                    with open(documents_file, 'r') as f:
-                        documents_data = json.load(f)
-
-                    ids = documents_data.get('ids', [])
-                    documents = documents_data.get('documents', [])
-                    metadatas = documents_data.get('metadatas', [])
-                    embeddings = documents_data.get('embeddings', [])
-
-                    app_logger.info(f"Loaded {len(ids)} IDs, {len(documents)} documents, {len(metadatas)} metadatas, {len(embeddings)} embeddings")
-
-                    # Add documents with their pre-computed embeddings
-                    # ChromaDB will handle all internal indexing and metadata
-                    if ids and documents and embeddings:
-                        try:
-                            chroma_collection.add(
-                                ids=ids,
-                                documents=documents,
-                                metadatas=metadatas if metadatas else None,
-                                embeddings=embeddings
-                            )
-                            app_logger.info(f"Successfully added {len(ids)} documents to ChromaDB collection")
-                        except Exception as add_error:
-                            app_logger.error(f"Failed to add documents to ChromaDB: {add_error}", exc_info=True)
-                            raise
-                    else:
-                        app_logger.warning(f"No valid document data found in export - ids={len(ids)}, docs={len(documents)}, embs={len(embeddings)}")
-                else:
-                    app_logger.warning(f"documents.json not found - collection will be empty")
-
-                # Verify import
-                document_count = chroma_collection.count()
-                app_logger.info(f"Imported collection has {document_count} documents")
-
-            except Exception as e:
-                app_logger.error(f"Failed to import collection into ChromaDB: {e}", exc_info=True)
-                return jsonify({"status": "error", "message": f"Failed to import collection: {e}"}), 500
-
-            # Create collection in our database
-            from trusted_data_agent.core.collection_db import CollectionDatabase
-            db = CollectionDatabase()
-
-            # For planner repositories, associate with current MCP server (not the original one)
-            # This ensures the imported collection is immediately usable
-            repo_type = metadata.get('repository_type', 'knowledge')
-            if repo_type == 'planner':
-                current_mcp_server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
-                app_logger.info(f"Associating imported planner collection with current MCP server: {current_mcp_server_id}")
-                assigned_mcp_server_id = current_mcp_server_id
-            else:
-                # Knowledge repositories don't need MCP server association
-                assigned_mcp_server_id = None
-
-            new_collection = {
-                "name": f"{original_name} (Imported)",
-                "collection_name": new_collection_name,
-                "description": metadata.get('description', ''),
-                "repository_type": repo_type,
-                "mcp_server_id": assigned_mcp_server_id,
-                "chunking_strategy": metadata.get('chunking_strategy', 'recursive'),
-                "chunk_size": metadata.get('chunk_size', 1000),
-                "chunk_overlap": metadata.get('chunk_overlap', 200),
-                "embedding_model": embedding_model,
-                "owner_user_id": user_uuid,
-                "enabled": True,
-                "visibility": "private"
-            }
-
-            collection_id = db.create_collection(new_collection)
-
-            # For planner repositories, update APP_STATE to include the new collection
-            if new_collection['repository_type'] == 'planner':
-                # Get the full collection metadata from database
-                from trusted_data_agent.core.collection_db import get_collection_db
-                collection_db = get_collection_db()
-                imported_collection_meta = collection_db.get_collection_by_id(collection_id)
-
-                # Add to APP_STATE rag_collections list
-                rag_collections = APP_STATE.get("rag_collections", [])
-                rag_collections.append(imported_collection_meta)
-                APP_STATE["rag_collections"] = rag_collections
-                app_logger.info(f"Added imported planner collection to APP_STATE (total: {len(rag_collections)})")
-
-            # Reload ChromaDB collections in retriever
-            try:
-                retriever.reload_collections_for_mcp_server()
-                app_logger.info(f"Reloaded RAG collections after import")
-                app_logger.info(f"Retriever now has collection IDs: {list(retriever.collections.keys())}")
-
-                # Verify the imported collection using the retriever's loaded collection
-                if collection_id in retriever.collections:
-                    imported_collection = retriever.collections[collection_id]
-                    actual_count = imported_collection.count()
-                    app_logger.info(f"Imported collection has {actual_count} documents (verified from retriever)")
-                else:
-                    app_logger.warning(f"Collection {collection_id} not found in retriever.collections after reload")
-                    actual_count = document_count
-
-            except Exception as e:
-                app_logger.warning(f"Failed to verify import: {e}", exc_info=True)
-                actual_count = document_count
-
-            app_logger.info(f"Imported collection {collection_id} for user {user_uuid} from {uploaded_file.filename}")
+            result = await import_collection_from_zip(
+                zip_path=zip_path,
+                user_uuid=user_uuid,
+            )
 
             return jsonify({
                 "status": "success",
-                "message": f"Collection imported successfully",
-                "collection_id": collection_id,
-                "collection_name": new_collection['name'],
-                "document_count": actual_count
+                "message": "Collection imported successfully",
+                "collection_id": result["collection_id"],
+                "collection_name": result["collection_name"],
+                "document_count": result["document_count"],
             }), 200
 
         finally:
-            # Clean up temp directory
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
         app_logger.error(f"Error importing collection: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500

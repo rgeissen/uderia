@@ -96,6 +96,9 @@ def init_database():
         # Create global settings table (for three-tier configuration)
         _create_global_settings_table()
 
+        # Create agent packs tables (for agent pack install/uninstall tracking)
+        _create_agent_packs_tables()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -348,6 +351,60 @@ def _create_global_settings_table():
 
     except Exception as e:
         logger.error(f"Error creating global settings table: {e}", exc_info=True)
+
+
+def _create_agent_packs_tables():
+    """
+    Create the agent pack installation tracking tables.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "09_agent_packs.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.info("Applied schema: 09_agent_packs.sql")
+        else:
+            # Inline fallback if schema file not found
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS agent_pack_installations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    version VARCHAR(50),
+                    author VARCHAR(255),
+                    coordinator_tag VARCHAR(50) NOT NULL,
+                    coordinator_profile_id VARCHAR(100),
+                    owner_user_id VARCHAR(36) NOT NULL,
+                    installed_at DATETIME NOT NULL,
+                    manifest_json TEXT NOT NULL,
+                    FOREIGN KEY (owner_user_id) REFERENCES users(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS agent_pack_resources (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pack_installation_id INTEGER NOT NULL,
+                    resource_type VARCHAR(20) NOT NULL,
+                    resource_id VARCHAR(100) NOT NULL,
+                    resource_tag VARCHAR(50),
+                    resource_role VARCHAR(20),
+                    FOREIGN KEY (pack_installation_id) REFERENCES agent_pack_installations(id)
+                );
+            """)
+            logger.info("Created agent pack tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating agent packs tables: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

@@ -12,6 +12,7 @@ import { state } from '../state.js';
 import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import { showAppBanner } from '../bannerSystem.js';
 import { markSaving } from '../configDirtyState.js';
+import { loadAgentPacks } from './agentPackHandler.js';
 
 // ============================================================================
 // SESSION PAGINATION STATE
@@ -2623,6 +2624,11 @@ function initializeConfigTabs() {
                     content.classList.remove('active');
                 }
             });
+
+            // Lazy-load agent packs when tab is activated
+            if (targetTabId === 'agent-packs-tab') {
+                loadAgentPacks();
+            }
         });
     });
 }

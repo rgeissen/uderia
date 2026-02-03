@@ -173,6 +173,7 @@ def create_app():
     app.config['RESPONSE_TIMEOUT'] = 1800 # Set to 30 minutes (adjust as needed, or use None for unlimited)
     # You might also want to set REQUEST_TIMEOUT if needed, though less relevant here
     app.config['REQUEST_TIMEOUT'] = None
+    app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB (agent packs can be large)
     # --- MODIFICATION END ---
 
     from trusted_data_agent.api.routes import api_bp
@@ -182,6 +183,7 @@ def create_app():
     from trusted_data_agent.api.system_prompts_routes import system_prompts_bp
     from trusted_data_agent.api.knowledge_routes import knowledge_api_bp
     from trusted_data_agent.api.contact_routes import contact_bp
+    from trusted_data_agent.api.agent_pack_routes import agent_pack_bp
 
     app.register_blueprint(api_bp)
     app.register_blueprint(rest_api_bp, url_prefix="/api")
@@ -190,6 +192,7 @@ def create_app():
     app.register_blueprint(system_prompts_bp)  # Phase 3: System prompts (database-backed)
     app.register_blueprint(knowledge_api_bp, url_prefix="/api")  # Knowledge repository endpoints
     app.register_blueprint(contact_bp)  # Contact form endpoint for promotional website
+    app.register_blueprint(agent_pack_bp, url_prefix="/api")  # Agent pack management
 
     @app.route('/favicon.ico')
     async def favicon():
