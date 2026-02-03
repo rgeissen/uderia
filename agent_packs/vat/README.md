@@ -47,14 +47,14 @@ After restart, create a session with `@VAT` to test.
 
 | Collection | Tag | Docs | Chunks |
 |---|---|---|---|
-| VAT Product | @PRODUCT_SME | 152 | ~8,600 |
+| VAT Product | @PRODUCT_SME | 142 | ~8,000 |
 | VAT Sales | @SALES_SME | 78 | ~2,500 |
-| VAT CTF | @CTF_SME | 142 | ~6,000 |
-| VAT UseCases | @UCS_SME | 493 | ~4,800 |
-| VAT AIF | @AIF_SME | 30 | ~1,100 |
-| VAT DS | @DS_SME | 89 | ~1,400 |
-| VAT Delivery | @DEL_SME | 44 | ~1,200 |
-| VAT EVS | @EVS_SME | 33 | ~1,500 |
+| VAT CTF | @CTF_SME | 138 | ~5,800 |
+| VAT UseCases | @UCS_SME | 486 | ~4,700 |
+| VAT Systems | @SYS_SME | 28 | ~1,000 |
+| VAT DS | @DS_SME | 105 | ~1,600 |
+| VAT Delivery | @DEL_SME | 43 | ~1,200 |
+| VAT Agentic | @AGT_SME | 38 | ~1,700 |
 | VAT CSA | @CSA_SME | 30 | ~800 |
 
 **10 Profiles:**

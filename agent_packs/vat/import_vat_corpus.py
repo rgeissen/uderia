@@ -34,10 +34,10 @@ CORPUS_FILES = [
     "Sales_Corpus.json",
     "CTF_Corpus.json",
     "UseCases_Corpus.json",
-    "AIF_Corpus.json",
+    "Systems_Corpus.json",
     "DS_Corpus.json",
     "Delivery_Corpus.json",
-    "EVS_Corpus.json",
+    "Agentic_Corpus.json",
     "CSA_Corpus.json",
 ]
 
