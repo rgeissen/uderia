@@ -395,6 +395,7 @@ def _create_agent_packs_tables():
                     resource_id VARCHAR(100) NOT NULL,
                     resource_tag VARCHAR(50),
                     resource_role VARCHAR(20),
+                    is_owned BOOLEAN NOT NULL DEFAULT 1,
                     FOREIGN KEY (pack_installation_id) REFERENCES agent_pack_installations(id)
                 );
             """)

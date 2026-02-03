@@ -7,6 +7,9 @@
  * Exposed on window.agentPackHandler for inline onclick handlers.
  */
 
+import { configState, renderProfiles } from './configurationHandler.js';
+import { loadKnowledgeRepositories } from './knowledgeRepositoryHandler.js';
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function _headers(json = true) {
@@ -115,23 +118,34 @@ async function handleInstallAgentPack() {
         const file = fileInput.files[0];
         if (!file) return;
 
-        // Read the ZIP to preview manifest
+        // Read the ZIP client-side to check if any expert requires MCP
         let manifest = null;
+        let requiresMcp = false;
         try {
-            // We only need to check if requires_mcp, so try to read manifest
-            // Using JSZip would be ideal, but we can also just upload and let server validate
-            // For simplicity, proceed directly to upload and optionally ask for MCP
-        } catch (e) { /* ignore preview errors */ }
+            if (typeof JSZip !== 'undefined') {
+                const zip = await JSZip.loadAsync(file);
+                const manifestEntry = zip.file('manifest.json');
+                if (manifestEntry) {
+                    manifest = JSON.parse(await manifestEntry.async('text'));
+                    requiresMcp = (manifest.experts || []).some(e => e.requires_mcp === true);
+                }
+            }
+        } catch (e) {
+            // If we can't read the ZIP client-side, fall back to always asking
+            requiresMcp = true;
+        }
 
-        // Check if we need MCP server selection
-        // We'll ask the user to optionally provide an MCP server ID
+        // Only show MCP picker if the pack actually needs it AND servers are available
         let mcpServerId = null;
-
-        // Simple approach: show a prompt if user wants to bind to an MCP server
-        // In a full implementation, we'd parse the manifest first.
-        // For now, ask if they have an MCP server to bind planner repos to.
-        if (window.configState && window.configState.mcpServers && window.configState.mcpServers.length > 0) {
+        if (requiresMcp && window.configState?.mcpServers?.length > 0) {
             mcpServerId = await _showMcpServerPicker();
+        }
+
+        // ALWAYS show LLM config picker
+        const llmConfigId = await _showLlmConfigPicker();
+        if (!llmConfigId) {
+            // User cancelled or prerequisite error (no default profile / no LLM configs)
+            return;
         }
 
         // Upload
@@ -151,6 +165,7 @@ async function handleInstallAgentPack() {
             const formData = new FormData();
             formData.append('file', file);
             if (mcpServerId) formData.append('mcp_server_id', mcpServerId);
+            formData.append('llm_configuration_id', llmConfigId);
 
             const token = localStorage.getItem('tda_auth_token');
             const res = await fetch('/api/v1/agent-packs/import', {
@@ -166,6 +181,10 @@ async function handleInstallAgentPack() {
 
             _notify('success', `Agent pack installed: ${data.name || 'Unknown'} (${data.experts_created} experts, ${data.collections_created} collections)`);
             await loadAgentPacks();
+            // Refresh profiles and knowledge repositories so new resources appear immediately
+            await configState.loadProfiles();
+            renderProfiles();
+            loadKnowledgeRepositories();
         } catch (err) {
             _notify('error', `Install failed: ${err.message}`);
         } finally {
@@ -215,6 +234,71 @@ function _showMcpServerPicker() {
         };
         overlay.querySelector('#mcp-picker-confirm').onclick = () => {
             const val = overlay.querySelector('#mcp-server-picker-select').value || null;
+            overlay.remove();
+            resolve(val);
+        };
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { overlay.remove(); resolve(null); }
+        });
+    });
+}
+
+// ── LLM Configuration Picker (mandatory modal) ──────────────────────────────
+
+function _showLlmConfigPicker() {
+    return new Promise((resolve) => {
+        const llmConfigs = window.configState?.llmConfigurations || [];
+
+        // Guard: no LLM configurations at all
+        if (llmConfigs.length === 0) {
+            _notify('error', 'No LLM configurations available. Please add one in Setup first.');
+            resolve(null);
+            return;
+        }
+
+        // Guard: no default profile set
+        const defaultProfileId = window.configState?.defaultProfileId;
+        if (!defaultProfileId) {
+            _notify('error', 'No default profile is set. Please set a default profile in Setup → Profiles before importing an agent pack.');
+            resolve(null);
+            return;
+        }
+
+        // Determine default selection from the default profile's LLM config
+        const defaultProfile = (window.configState?.profiles || []).find(p => p.id === defaultProfileId);
+        const defaultLlmConfigId = defaultProfile?.llmConfigurationId || '';
+
+        // Build options HTML with provider + model info
+        const optionsHtml = llmConfigs.map(c => {
+            const selected = c.id === defaultLlmConfigId ? 'selected' : '';
+            const label = `${_esc(c.name)} (${_esc(c.provider)} / ${_esc(c.model)})`;
+            return `<option value="${_esc(c.id)}" ${selected}>${label}</option>`;
+        }).join('');
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]';
+        overlay.innerHTML = `
+            <div class="glass-panel rounded-xl p-6 w-full max-w-md border border-white/10 shadow-2xl">
+                <h3 class="text-lg font-bold text-white mb-2">LLM Configuration</h3>
+                <p class="text-sm text-gray-400 mb-4">Select which LLM configuration to use for all profiles created by this agent pack.</p>
+                <select id="llm-config-picker-select" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4 focus:outline-none focus:border-blue-500">
+                    ${optionsHtml}
+                </select>
+                <div class="flex justify-end gap-3">
+                    <button id="llm-picker-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+                    <button id="llm-picker-confirm" class="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">Continue</button>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#llm-picker-cancel').onclick = () => {
+            overlay.remove();
+            resolve(null);
+        };
+        overlay.querySelector('#llm-picker-confirm').onclick = () => {
+            const val = overlay.querySelector('#llm-config-picker-select').value || null;
             overlay.remove();
             resolve(val);
         };
@@ -286,6 +370,10 @@ async function handleUninstallAgentPack(installationId, packName) {
             }
             _notify('success', `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed)`);
             await loadAgentPacks();
+            // Refresh profiles and knowledge repositories so removed resources disappear immediately
+            await configState.loadProfiles();
+            renderProfiles();
+            loadKnowledgeRepositories();
         } catch (err) {
             _notify('error', `Uninstall failed: ${err.message}`);
         }

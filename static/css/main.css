@@ -4983,3 +4983,30 @@ button.bg-gray-700.px-2:hover {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+/* ── Agent Pack Badges ─────────────────────────────────────────────────────── */
+
+.agent-pack-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: rgba(6, 182, 212, 0.15);
+    color: #22d3ee;
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: 9999px;
+    white-space: nowrap;
+}
+
+.agent-pack-indicator {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.25rem;
+    color: #22d3ee;
+    opacity: 0.8;
+}
+.agent-pack-indicator:hover {
+    opacity: 1;
+}

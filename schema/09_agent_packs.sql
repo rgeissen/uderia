@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS agent_pack_installations (
     FOREIGN KEY (owner_user_id) REFERENCES users(id)
 );
 
--- Maps pack → resources it created (for clean uninstall)
+-- Maps pack → resources (many-to-many junction table)
+-- Authoritative source of truth for pack ↔ resource relationships.
 CREATE TABLE IF NOT EXISTS agent_pack_resources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pack_installation_id INTEGER NOT NULL,
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS agent_pack_resources (
     resource_id VARCHAR(100) NOT NULL,    -- profile ID or collection ID
     resource_tag VARCHAR(50),             -- profile tag (NULL for collections)
     resource_role VARCHAR(20),            -- 'coordinator', 'expert', or 'collection'
+    is_owned BOOLEAN NOT NULL DEFAULT 1,  -- 1 = created by pack, 0 = references existing
     FOREIGN KEY (pack_installation_id) REFERENCES agent_pack_installations(id)
 );
 
@@ -43,3 +45,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_pack_resources_pack_id
 
 CREATE INDEX IF NOT EXISTS idx_agent_pack_resources_resource
     ON agent_pack_resources(resource_type, resource_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_pack_resources_unique
+    ON agent_pack_resources(pack_installation_id, resource_type, resource_id);

@@ -49,6 +49,7 @@ async def import_agent_pack(current_user):
     try:
         content_type = request.content_type or ""
         mcp_server_id = None
+        llm_configuration_id = None
 
         if "multipart/form-data" in content_type:
             files = await request.files
@@ -60,6 +61,7 @@ async def import_agent_pack(current_user):
 
             form = await request.form
             mcp_server_id = form.get("mcp_server_id") or None
+            llm_configuration_id = form.get("llm_configuration_id") or None
 
             # Save to temp file
             tmp = tempfile.NamedTemporaryFile(suffix=".agentpack", delete=False)
@@ -75,6 +77,7 @@ async def import_agent_pack(current_user):
             if not zip_path.exists():
                 return jsonify({"status": "error", "message": f"File not found: {zip_path}"}), 404
             mcp_server_id = data.get("mcp_server_id") or None
+            llm_configuration_id = data.get("llm_configuration_id") or None
 
         else:
             return jsonify({
@@ -87,6 +90,7 @@ async def import_agent_pack(current_user):
             zip_path=zip_path,
             user_uuid=user_uuid,
             mcp_server_id=mcp_server_id,
+            llm_configuration_id=llm_configuration_id,
         )
         return jsonify({"status": "success", **result}), 200
 

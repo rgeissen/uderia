@@ -103,6 +103,7 @@ class AgentPackManager:
         zip_path: Path,
         user_uuid: str,
         mcp_server_id: str | None = None,
+        llm_configuration_id: str | None = None,
     ) -> dict:
         """Import an agent pack: validate → import collections → create profiles → record.
 
@@ -110,6 +111,8 @@ class AgentPackManager:
             zip_path: Path to the .agentpack ZIP file.
             user_uuid: Owner user UUID.
             mcp_server_id: MCP server ID for tool_enabled profiles (required if pack has any).
+            llm_configuration_id: LLM configuration ID to assign to all created profiles.
+                If None, falls back to active config or first available.
 
         Returns:
             {
@@ -172,15 +175,27 @@ class AgentPackManager:
                     "Please provide mcp_server_id."
                 )
 
-            # Step 4: Get active LLM configuration
-            llm_config_id = config_manager.get_active_llm_configuration_id(user_uuid)
+            # Step 4: Resolve LLM configuration
+            # Use explicitly provided value first, then fall back to auto-detection
+            llm_config_id = llm_configuration_id
+
             if not llm_config_id:
-                # Fallback: use first available
+                # Fallback: active config
+                llm_config_id = config_manager.get_active_llm_configuration_id(user_uuid)
+
+            if not llm_config_id:
+                # Fallback: first available
                 configs = config_manager.get_llm_configurations(user_uuid)
                 if configs:
                     llm_config_id = configs[0].get("id")
+
             if not llm_config_id:
                 raise ValueError("No LLM configuration available. Please add one in Uderia first.")
+
+            # Validate the config exists
+            all_configs = config_manager.get_llm_configurations(user_uuid)
+            if llm_config_id not in {c.get("id") for c in all_configs}:
+                raise ValueError(f"LLM configuration '{llm_config_id}' not found. It may have been deleted.")
 
             # Step 5: Import collections
             app_logger.info(f"Importing {len(manifest['collections'])} collections...")
@@ -206,7 +221,10 @@ class AgentPackManager:
                     populate_knowledge_docs=True,
                 )
 
-                ref_to_collection_id[ref] = result["collection_id"]
+                ref_to_collection_id[ref] = {
+                    "id": result["collection_id"],
+                    "name": result["collection_name"],
+                }
                 app_logger.info(f"  Imported collection '{ref}' -> id={result['collection_id']} ({result['document_count']} docs)")
 
             # Step 6: Create expert profiles
@@ -252,7 +270,7 @@ class AgentPackManager:
                 coordinator_profile_id=coordinator_profile_id,
                 expert_profile_ids=created_expert_ids,
                 expert_tags=[e["tag"] for e in manifest["experts"]],
-                collection_ids=list(ref_to_collection_id.values()),
+                collection_ids=[info["id"] for info in ref_to_collection_id.values()],
                 collection_refs=list(ref_to_collection_id.keys()),
                 user_uuid=user_uuid,
             )
@@ -459,19 +477,23 @@ class AgentPackManager:
     async def uninstall_pack(self, installation_id: int, user_uuid: str) -> dict:
         """Remove all resources created by an agent pack.
 
-        Returns: {"profiles_deleted": int, "collections_deleted": int}
+        Uses conditional deletion: only deletes resources that are not
+        referenced by any other pack (many-to-many safe).
+
+        Returns: {"profiles_deleted": int, "collections_deleted": int,
+                  "profiles_kept": int, "collections_kept": int}
         """
         from trusted_data_agent.core.config_manager import get_config_manager
         from trusted_data_agent.agent.rag_retriever import get_rag_retriever
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
 
         config_manager = get_config_manager()
+        pack_db = AgentPackDB(self.db_path)
 
-        # Get installation and resources
+        # Verify installation exists and is owned by user
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-
         try:
-            # Verify installation exists and is owned by user
             cursor.execute(
                 "SELECT id, name, owner_user_id FROM agent_pack_installations WHERE id = ?",
                 (installation_id,)
@@ -481,76 +503,88 @@ class AgentPackManager:
                 raise ValueError(f"Agent pack installation {installation_id} not found")
             if row[2] != user_uuid:
                 raise ValueError("You don't own this agent pack installation")
-
             pack_name = row[1]
-
-            # Get all resources
-            cursor.execute(
-                "SELECT resource_type, resource_id, resource_tag, resource_role "
-                "FROM agent_pack_resources WHERE pack_installation_id = ?",
-                (installation_id,)
-            )
-            resources = cursor.fetchall()
-
         finally:
             conn.close()
 
-        # Delete resources: profiles first (coordinator, then experts), then collections
+        # Get all resources BEFORE removing junction rows
+        resources = pack_db.get_resources_for_pack(installation_id)
+
+        # Step 1: Remove junction rows for THIS pack
+        pack_db.remove_pack_resources(installation_id)
+
+        # Step 2: Delete resources that are no longer referenced by ANY pack
         profiles_deleted = 0
         collections_deleted = 0
+        profiles_kept = 0
+        collections_kept = 0
 
-        # Sort: coordinator profiles first, then experts, then collections
-        profiles = [(rt, rid, rtag, role) for rt, rid, rtag, role in resources if rt == "profile"]
-        collections = [(rt, rid, rtag, role) for rt, rid, rtag, role in resources if rt == "collection"]
+        # Separate profiles and collections; process profiles first
+        profile_resources = [r for r in resources if r["resource_type"] == "profile"]
+        collection_resources = [r for r in resources if r["resource_type"] == "collection"]
 
-        # Delete coordinator first
-        coordinators = [p for p in profiles if p[3] == "coordinator"]
-        experts_list = [p for p in profiles if p[3] == "expert"]
+        # Sort profiles: coordinator first, then experts
+        coordinators = [r for r in profile_resources if r["resource_role"] == "coordinator"]
+        experts_list = [r for r in profile_resources if r["resource_role"] == "expert"]
 
-        for _, profile_id, tag, _ in coordinators + experts_list:
-            try:
-                success = config_manager.remove_profile(profile_id, user_uuid)
-                if success:
-                    profiles_deleted += 1
-                    app_logger.info(f"  Deleted profile @{tag} (id={profile_id})")
-                else:
-                    app_logger.warning(f"  Profile @{tag} (id={profile_id}) not found or already deleted")
-            except Exception as e:
-                app_logger.warning(f"  Failed to delete profile @{tag}: {e}")
+        for res in coordinators + experts_list:
+            still_referenced = pack_db.is_pack_managed(res["resource_type"], res["resource_id"])
+
+            if not still_referenced and res.get("is_owned", 1):
+                try:
+                    success = config_manager.remove_profile(res["resource_id"], user_uuid)
+                    if success:
+                        profiles_deleted += 1
+                        app_logger.info(f"  Deleted profile @{res['resource_tag']} (id={res['resource_id']})")
+                    else:
+                        app_logger.warning(f"  Profile @{res['resource_tag']} not found or already deleted")
+                except Exception as e:
+                    app_logger.warning(f"  Failed to delete profile @{res['resource_tag']}: {e}")
+            else:
+                profiles_kept += 1
+                app_logger.info(f"  Kept profile @{res['resource_tag']} (still referenced by another pack)")
 
         # Delete collections
         retriever = get_rag_retriever()
-        for _, collection_id_str, _, _ in collections:
-            try:
-                collection_id = int(collection_id_str)
-                if retriever:
-                    success = retriever.remove_collection(collection_id, user_id=user_uuid)
-                    if success:
-                        collections_deleted += 1
-                        app_logger.info(f"  Deleted collection id={collection_id}")
-                    else:
-                        app_logger.warning(f"  Collection id={collection_id} not found or already deleted")
-                else:
-                    app_logger.warning(f"  RAG retriever not available, cannot delete collection {collection_id}")
-            except Exception as e:
-                app_logger.warning(f"  Failed to delete collection {collection_id_str}: {e}")
+        for res in collection_resources:
+            still_referenced = pack_db.is_pack_managed(res["resource_type"], res["resource_id"])
 
-        # Delete installation records
+            if not still_referenced and res.get("is_owned", 1):
+                try:
+                    collection_id = int(res["resource_id"])
+                    if retriever:
+                        success = retriever.remove_collection(collection_id, user_id=user_uuid)
+                        if success:
+                            collections_deleted += 1
+                            app_logger.info(f"  Deleted collection id={collection_id}")
+                        else:
+                            app_logger.warning(f"  Collection id={collection_id} not found or already deleted")
+                    else:
+                        app_logger.warning(f"  RAG retriever not available, cannot delete collection {collection_id}")
+                except Exception as e:
+                    app_logger.warning(f"  Failed to delete collection {res['resource_id']}: {e}")
+            else:
+                collections_kept += 1
+                app_logger.info(f"  Kept collection {res['resource_id']} (still referenced by another pack)")
+
+        # Step 3: Delete installation record
         conn = sqlite3.connect(self.db_path)
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM agent_pack_resources WHERE pack_installation_id = ?", (installation_id,))
             cursor.execute("DELETE FROM agent_pack_installations WHERE id = ?", (installation_id,))
             conn.commit()
         finally:
             conn.close()
 
         app_logger.info(f"Uninstalled agent pack '{pack_name}' (id={installation_id}): "
-                       f"{profiles_deleted} profiles, {collections_deleted} collections deleted")
+                       f"{profiles_deleted} profiles deleted, {profiles_kept} kept, "
+                       f"{collections_deleted} collections deleted, {collections_kept} kept")
 
         return {
             "profiles_deleted": profiles_deleted,
             "collections_deleted": collections_deleted,
+            "profiles_kept": profiles_kept,
+            "collections_kept": collections_kept,
         }
 
     async def list_packs(self, user_uuid: str) -> list[dict]:
@@ -611,7 +645,7 @@ class AgentPackManager:
 
             # Get resources
             cursor.execute(
-                "SELECT resource_type, resource_id, resource_tag, resource_role "
+                "SELECT resource_type, resource_id, resource_tag, resource_role, is_owned "
                 "FROM agent_pack_resources WHERE pack_installation_id = ?",
                 (installation_id,)
             )
@@ -662,12 +696,12 @@ class AgentPackManager:
         collection_ref = expert.get("collection_ref")
 
         if profile_type == "rag_focused" and collection_ref:
-            collection_id = ref_to_collection_id.get(collection_ref)
-            if collection_id:
+            collection_info = ref_to_collection_id.get(collection_ref)
+            if collection_info:
                 knowledge_config = expert.get("knowledgeConfig", {}).copy()
                 knowledge_config["collections"] = [{
-                    "id": collection_id,
-                    "name": expert.get("collection_ref", ""),
+                    "id": collection_info["id"],
+                    "name": collection_info["name"],
                 }]
 
                 # Include synthesis prompt override
@@ -681,9 +715,9 @@ class AgentPackManager:
             if mcp_server_id:
                 profile_data["mcpServerId"] = mcp_server_id
             if collection_ref:
-                collection_id = ref_to_collection_id.get(collection_ref)
-                if collection_id:
-                    profile_data["ragCollections"] = [collection_id]
+                collection_info = ref_to_collection_id.get(collection_ref)
+                if collection_info:
+                    profile_data["ragCollections"] = [collection_info["id"]]
 
         return profile_data
 

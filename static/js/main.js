@@ -104,9 +104,19 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
     const profile = overrideProfile || defaultProfile;
     updateKnowledgeIndicatorStatus(profile);
 
+    // Helper to build agent pack indicator HTML (cube icon)
+    const packIndicatorHtml = (profile) => {
+        const packInfo = profile.agent_packs?.[0];
+        if (!packInfo) return '';
+        return `<span class="agent-pack-indicator" title="${packInfo.name}">` +
+            `<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">` +
+            `<path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>` +
+            `</svg></span>`;
+    };
+
     // Update default profile - PURE INDUSTRIAL SOLID COLORS
     if (defaultProfile && defaultProfile.tag) {
-        headerDefaultProfileTag.textContent = `@${defaultProfile.tag}`;
+        headerDefaultProfileTag.innerHTML = `@${defaultProfile.tag}` + packIndicatorHtml(defaultProfile);
         if (defaultProfile.color) {
             // PURE INDUSTRIAL: Solid color, flat monolithic design
             headerDefaultProfile.style.setProperty('--profile-tag-bg', defaultProfile.color);
@@ -131,7 +141,7 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
 
     // Update override profile - PURE INDUSTRIAL SOLID COLORS
     if (overrideProfile && overrideProfile.tag) {
-        headerOverrideProfileTag.textContent = `@${overrideProfile.tag}`;
+        headerOverrideProfileTag.innerHTML = `@${overrideProfile.tag}` + packIndicatorHtml(overrideProfile);
         if (overrideProfile.color) {
             // PURE INDUSTRIAL: Solid color, flat monolithic design
             headerOverrideProfile.style.setProperty('--profile-tag-bg', overrideProfile.color);
@@ -712,7 +722,16 @@ async function initializeRAGAutoCompletion() {
                 header.appendChild(badge);
                 header.appendChild(name);
             }
-            
+
+            // Add agent pack label if profile belongs to a pack
+            if (profile.agent_packs?.length) {
+                const packLabel = document.createElement('span');
+                packLabel.className = 'text-xs opacity-75';
+                packLabel.style.color = '#22d3ee';
+                packLabel.textContent = profile.agent_packs[0].name;
+                header.appendChild(packLabel);
+            }
+
             profileItem.appendChild(header);
 
             if (profile.description) {

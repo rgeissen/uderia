@@ -2770,11 +2770,14 @@ function renderProfileCard(profile) {
                                         'genie': '#F15F22'          // Orange - Coordinate (CORRECTED - Teradata brand)
                                     };
                                     const tagColor = profileTypeColors[profile.profile_type] || profile.color || '#F15F22';
+                                    const packBadges = (profile.agent_packs || []).map(p =>
+                                        `<span class="agent-pack-badge"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>${escapeHtml(p.name)}</span>`
+                                    ).join('');
                                     return `
                                 <span class="profile-tag profile-tag--md"
                                       style="--profile-tag-bg: ${tagColor}; --profile-tag-border: ${tagColor}; --profile-tag-text: #FFFFFF;">
                                     @${escapeHtml(profile.tag)}
-                                </span>`;
+                                </span>` + packBadges;
                                 })()}
                                 <button type="button" data-action="copy-profile-id" data-profile-id="${profile.id}"
                                     class="inline-flex items-center justify-center p-1 ml-1 text-gray-400 hover:text-[#F15F22] transition-colors rounded hover:bg-white/5 group relative"
@@ -2885,7 +2888,8 @@ function renderProfileCard(profile) {
                                     const slaveProfile = configState.profiles.find(p => p.id === slaveId);
                                     if (!slaveProfile) return '<span class="text-gray-400">Unknown</span>';
                                     const color = profileTypeColors[slaveProfile.profile_type] || '#9ca3af';
-                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${color}; --profile-tag-border: ${color}; --profile-tag-text: #FFFFFF;">@${escapeHtml(slaveProfile.tag)}</span>`;
+                                    const packIcon = (slaveProfile.agent_packs?.length) ? `<span class="agent-pack-indicator" title="${escapeHtml(slaveProfile.agent_packs[0].name)}"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></span>` : '';
+                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${color}; --profile-tag-border: ${color}; --profile-tag-text: #FFFFFF;">@${escapeHtml(slaveProfile.tag)}</span>${packIcon}`;
                                 });
                                 return slaveTags.join(', ');
                             })()}</p>
@@ -3013,6 +3017,16 @@ function renderProfileCard(profile) {
                                     <span class="flex-1">Edit Profile</span>
                                 </button>
                                 <div class="border-t border-gray-700 my-1"></div>
+                                ${(profile.agent_packs?.length > 0) ? `
+                                <button type="button" disabled
+                                    class="w-full text-left px-4 py-2.5 text-sm text-gray-600 cursor-not-allowed flex items-center gap-3"
+                                    title="Managed by: ${escapeHtml((profile.agent_packs || []).map(p => p.name).join(', '))} — uninstall the pack(s) to remove">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    <span class="flex-1">Delete Profile</span>
+                                </button>
+                                ` : `
                                 <button type="button" data-action="delete-profile" data-profile-id="${profile.id}"
                                     class="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3">
                                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3020,6 +3034,7 @@ function renderProfileCard(profile) {
                                     </svg>
                                     <span class="flex-1">Delete Profile</span>
                                 </button>
+                                `}
                             </div>
                         </div>
                     </div>

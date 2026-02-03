@@ -2590,7 +2590,18 @@ async def get_rag_collections():
             coll_ratings = ratings_map.get(coll["id"], {"average_rating": 0.0, "rating_count": 0})
             coll["average_rating"] = coll_ratings["average_rating"]
             coll["rating_count"] = coll_ratings["rating_count"]
-        
+
+        # Enrich collections with agent pack relationships
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        try:
+            pack_db = AgentPackDB()
+            for coll in enhanced_collections:
+                coll["agent_packs"] = pack_db.get_packs_for_resource("collection", str(coll["id"]))
+        except Exception as e:
+            app_logger.warning(f"Failed to enrich collections with agent pack data: {e}")
+            for coll in enhanced_collections:
+                coll["agent_packs"] = []
+
         return jsonify({"status": "success", "collections": enhanced_collections}), 200
     except Exception as e:
         app_logger.error(f"Error getting RAG collections: {e}", exc_info=True)
@@ -2783,7 +2794,19 @@ async def delete_rag_collection(collection_id: int):
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"status": "error", "message": "Authentication required"}), 401
-        
+
+        # Agent pack constraint: block deletion of pack-managed collections
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        pack_db = AgentPackDB()
+        packs = pack_db.get_packs_for_resource("collection", str(collection_id))
+        if packs:
+            pack_names = ", ".join(p["name"] for p in packs)
+            return jsonify({
+                "status": "error",
+                "message": f"This collection is managed by agent pack(s): {pack_names}. "
+                           f"Uninstall the pack(s) to remove it."
+            }), 409
+
         retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
@@ -4887,7 +4910,18 @@ async def get_profiles():
             # Set type name if not already set by provider
             if "providerName" not in profile and colors.get("name"):
                 profile["typeName"] = colors["name"]
-        
+
+        # Enrich profiles with agent pack relationships
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        try:
+            pack_db = AgentPackDB()
+            for profile in profiles:
+                profile["agent_packs"] = pack_db.get_packs_for_resource("profile", profile.get("id", ""))
+        except Exception as e:
+            app_logger.warning(f"Failed to enrich profiles with agent pack data: {e}")
+            for profile in profiles:
+                profile["agent_packs"] = []
+
         return jsonify({
             "status": "success",
             "profiles": profiles,
@@ -5707,6 +5741,21 @@ async def update_profile(profile_id: str):
         if not current_profile:
             return jsonify({"status": "error", "message": f"Profile '{profile_id}' not found"}), 404
 
+        # Agent pack constraint: block modification of structural fields on pack-managed profiles
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        pack_db = AgentPackDB()
+        if pack_db.is_pack_managed("profile", profile_id):
+            protected_fields = {"tag", "profile_type", "knowledgeConfig"}
+            changed_protected = protected_fields & set(data.keys())
+            if changed_protected:
+                packs = pack_db.get_packs_for_resource("profile", profile_id)
+                pack_names = ", ".join(p["name"] for p in packs)
+                return jsonify({
+                    "status": "error",
+                    "message": f"Cannot modify {', '.join(changed_protected)} on a profile "
+                               f"managed by: {pack_names}. Uninstall the pack(s) first."
+                }), 409
+
         # CRITICAL: Skip reclassification logic entirely for llm_only profiles
         # LLM-only profiles don't use MCP tools/prompts and never need reclassification
         profile_type = data.get("profile_type", current_profile.get("profile_type", "tool_enabled"))
@@ -5851,7 +5900,19 @@ async def delete_profile(profile_id: str):
         user_uuid = _get_user_uuid_from_request()
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
-        
+
+        # Agent pack constraint: block deletion of pack-managed profiles
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        pack_db = AgentPackDB()
+        packs = pack_db.get_packs_for_resource("profile", profile_id)
+        if packs:
+            pack_names = ", ".join(p["name"] for p in packs)
+            return jsonify({
+                "status": "error",
+                "message": f"This profile is managed by agent pack(s): {pack_names}. "
+                           f"Uninstall the pack(s) to remove it."
+            }), 409
+
         success = config_manager.remove_profile(profile_id, user_uuid)
         
         if not success:

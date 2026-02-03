@@ -1212,6 +1212,9 @@ function createKnowledgeRepositoryCard(repo) {
                             Owner
                         </span>
                     </div>
+                    ${(repo.agent_packs || []).length > 0 ? `<div class="flex flex-wrap gap-1 mb-1">${(repo.agent_packs || []).map(p =>
+                        `<span class="agent-pack-badge"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>${p.name}</span>`
+                    ).join('')}</div>` : ''}
                     <p class="text-xs text-gray-500">Collection ID: ${repoId}</p>
                 </div>
             </div>
@@ -1254,9 +1257,15 @@ function createKnowledgeRepositoryCard(repo) {
                     </svg>
                     Export
                 </button>
-                <button class="delete-knowledge-repo-btn px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white" data-repo-id="${repoId}">
-                    Delete
-                </button>
+                ${(repo.agent_packs?.length > 0)
+                    ? `<button class="px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed" disabled
+                            title="Managed by: ${(repo.agent_packs || []).map(p => p.name).join(', ')} — uninstall the pack(s) to remove">
+                        Delete
+                    </button>`
+                    : `<button class="delete-knowledge-repo-btn px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white" data-repo-id="${repoId}">
+                        Delete
+                    </button>`
+                }
             </div>
         </div>
     `;

@@ -5330,11 +5330,22 @@ function createCollectionCard(col) {
             const title = document.createElement('h2');
             title.className = 'text-lg font-semibold text-white';
             title.textContent = col.name;
-            
+
+            // Agent pack badges
+            if (col.agent_packs?.length) {
+                col.agent_packs.forEach(p => {
+                    const badge = document.createElement('span');
+                    badge.className = 'agent-pack-badge';
+                    badge.innerHTML = `<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>${escapeHtml(p.name)}`;
+                    title.appendChild(document.createTextNode(' '));
+                    title.appendChild(badge);
+                });
+            }
+
             const collectionId = document.createElement('p');
             collectionId.className = 'text-xs text-gray-500';
             collectionId.textContent = `Collection ID: ${col.id}`;
-            
+
             titleSection.appendChild(title);
             titleSection.appendChild(collectionId);
             
@@ -5494,15 +5505,23 @@ function createCollectionCard(col) {
                 });
                 actions.appendChild(unsubscribeBtn);
             } else {
-                // Owned collection - show Delete button (disabled for ID 0)
+                // Owned collection - show Delete button (disabled for ID 0 or pack-managed)
+                const isPackManaged = col.agent_packs?.length > 0;
+                const packNames = isPackManaged ? col.agent_packs.map(p => p.name).join(', ') : '';
                 const deleteBtn = document.createElement('button');
                 deleteBtn.type = 'button';
-                deleteBtn.className = col.id === 0
-                    ? 'px-3 py-1 rounded-md bg-gray-800 text-sm text-gray-600 cursor-not-allowed'
-                    : 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
+                if (isPackManaged) {
+                    deleteBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+                    deleteBtn.disabled = true;
+                    deleteBtn.title = `Managed by: ${packNames} — uninstall the pack(s) to remove`;
+                } else if (col.id === 0) {
+                    deleteBtn.className = 'px-3 py-1 rounded-md bg-gray-800 text-sm text-gray-600 cursor-not-allowed';
+                    deleteBtn.disabled = true;
+                } else {
+                    deleteBtn.className = 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
+                }
                 deleteBtn.textContent = 'Delete';
-                deleteBtn.disabled = col.id === 0;
-                if (col.id !== 0) {
+                if (!isPackManaged && col.id !== 0) {
                     deleteBtn.addEventListener('click', () => {
                         if (window.ragCollectionManagement) {
                             window.ragCollectionManagement.deleteRagCollection(col.id, col.name);
