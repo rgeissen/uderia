@@ -438,7 +438,7 @@ def _run_user_table_migrations():
             cursor.execute("SELECT marketplace_visible FROM users LIMIT 1")
         except sqlite3.OperationalError:
             logger.info("Adding marketplace_visible column to users table for marketplace listing")
-            cursor.execute("ALTER TABLE users ADD COLUMN marketplace_visible BOOLEAN NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE users ADD COLUMN marketplace_visible BOOLEAN NOT NULL DEFAULT 1")
             conn.commit()
 
         conn.close()

@@ -50,7 +50,7 @@ class User(Base):
     consumption_profile_id = Column(Integer, ForeignKey('consumption_profiles.id'), nullable=True, index=True)
     
     # Marketplace visibility
-    marketplace_visible = Column(Boolean, default=False, nullable=False)  # Opt-in to marketplace listing (username + email)
+    marketplace_visible = Column(Boolean, default=True, nullable=False)  # Opt-in to marketplace listing (username + email)
 
     # OAuth fields
     oauth_provider = Column(String(50), nullable=True, index=True)  # 'google', 'github', 'microsoft', etc.
@@ -1162,3 +1162,160 @@ class ProviderAvailableModel(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+class MarketplaceAgentPack(Base):
+    """Published agent pack in the intelligence marketplace."""
+
+    __tablename__ = 'marketplace_agent_packs'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(String(50), nullable=True)
+    author = Column(String(255), nullable=True)
+    pack_type = Column(String(20), nullable=False, default='genie')
+    publisher_user_id = Column(String(36), ForeignKey('users.id'), nullable=False, index=True)
+    source_installation_id = Column(Integer, nullable=True)
+    profile_count = Column(Integer, default=0)
+    collection_count = Column(Integer, default=0)
+    coordinator_tag = Column(String(50), nullable=True)
+    profile_tags = Column(Text, nullable=True)  # JSON array
+    manifest_summary = Column(Text, nullable=True)  # JSON manifest preview
+    file_path = Column(Text, nullable=False)
+    file_size_bytes = Column(Integer, default=0)
+    visibility = Column(String(20), default='public')
+    download_count = Column(Integer, default=0)
+    install_count = Column(Integer, default=0)
+    published_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    publisher = relationship("User")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_marketplace_agent_packs_visibility', 'visibility'),
+        Index('idx_marketplace_agent_packs_pack_type', 'pack_type'),
+        Index('idx_marketplace_agent_packs_published_at', 'published_at'),
+    )
+
+    def __repr__(self):
+        return f"<MarketplaceAgentPack(id='{self.id}', name='{self.name}', publisher='{self.publisher_user_id}')>"
+
+    def to_dict(self, include_publisher=False):
+        """Convert to dictionary for API responses."""
+        import json as _json
+        data = {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'version': self.version,
+            'author': self.author,
+            'pack_type': self.pack_type,
+            'publisher_user_id': self.publisher_user_id,
+            'source_installation_id': self.source_installation_id,
+            'profile_count': self.profile_count,
+            'collection_count': self.collection_count,
+            'coordinator_tag': self.coordinator_tag,
+            'profile_tags': _json.loads(self.profile_tags) if self.profile_tags else [],
+            'manifest_summary': _json.loads(self.manifest_summary) if self.manifest_summary else None,
+            'file_size_bytes': self.file_size_bytes,
+            'visibility': self.visibility,
+            'download_count': self.download_count,
+            'install_count': self.install_count,
+            'published_at': self.published_at.isoformat() if self.published_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_publisher and self.publisher:
+            data['publisher_username'] = self.publisher.username
+            data['publisher_display_name'] = self.publisher.display_name or self.publisher.username
+            data['publisher_email'] = self.publisher.email if self.publisher.marketplace_visible else None
+        return data
+
+
+class AgentPackRating(Base):
+    """User rating/review for a published agent pack."""
+
+    __tablename__ = 'agent_pack_ratings'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    pack_id = Column(String(36), ForeignKey('marketplace_agent_packs.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    rating = Column(Integer, nullable=False)  # 1-5 stars
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User")
+    pack = relationship("MarketplaceAgentPack")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_agent_pack_ratings_unique', 'pack_id', 'user_id', unique=True),
+    )
+
+    def __repr__(self):
+        return f"<AgentPackRating(pack_id='{self.pack_id}', user_id='{self.user_id}', rating={self.rating})>"
+
+    def to_dict(self, include_user_info=False):
+        """Convert to dictionary for API responses."""
+        data = {
+            'id': self.id,
+            'pack_id': self.pack_id,
+            'user_id': self.user_id,
+            'rating': self.rating,
+            'comment': self.comment,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_user_info and self.user:
+            data['username'] = self.user.username
+            data['user_display_name'] = self.user.display_name or self.user.username
+        return data
+
+
+class MarketplaceSharingGrant(Base):
+    """Targeted sharing grants for marketplace resources (collections and agent packs)."""
+
+    __tablename__ = 'marketplace_sharing_grants'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resource_type = Column(String(20), nullable=False)   # 'collection' or 'agent_pack'
+    resource_id = Column(String(100), nullable=False)     # collection ID (as string) or marketplace_agent_packs.id
+    grantor_user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    grantee_user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    grantor = relationship("User", foreign_keys=[grantor_user_id])
+    grantee = relationship("User", foreign_keys=[grantee_user_id])
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_sharing_grants_grantee', 'grantee_user_id', 'resource_type'),
+        Index('idx_sharing_grants_resource', 'resource_type', 'resource_id'),
+        Index('idx_sharing_grants_unique', 'resource_type', 'resource_id', 'grantee_user_id', unique=True),
+    )
+
+    def __repr__(self):
+        return f"<MarketplaceSharingGrant(type='{self.resource_type}', resource='{self.resource_id}', grantee='{self.grantee_user_id}')>"
+
+    def to_dict(self, include_user_info=False):
+        """Convert to dictionary for API responses."""
+        data = {
+            'id': self.id,
+            'resource_type': self.resource_type,
+            'resource_id': self.resource_id,
+            'grantor_user_id': self.grantor_user_id,
+            'grantee_user_id': self.grantee_user_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+        if include_user_info:
+            if self.grantee:
+                data['grantee_username'] = self.grantee.username
+                data['grantee_display_name'] = self.grantee.display_name or self.grantee.username
+            if self.grantor:
+                data['grantor_username'] = self.grantor.username
+        return data

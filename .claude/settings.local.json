@@ -55,7 +55,8 @@
       "WebFetch(domain:ai.google.dev)",
       "WebFetch(domain:reference.langchain.com)",
       "Bash(__NEW_LINE_605ad94a90e017c3__ echo \"\")",
-      "Bash(git -C /Users/rainer.geissendoerfer/my_private_code/uderia diff --stat HEAD)"
+      "Bash(git -C /Users/rainer.geissendoerfer/my_private_code/uderia diff --stat HEAD)",
+      "Bash(JWT=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYmZhYTI1YTMtMzMyZC00YjYwLWFlYzgtNTE4OGZjMDRkNGU0IiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc3MDI5NDMyNiwiaWF0IjoxNzcwMjA3OTI2LCJqdGkiOiJTNE9Rd3BQb1gtQWZkMVpvOGJCVlFaT1ppY3M0ZGtmbXlnSlJ2OWhUTlJzIn0.6GrlKYIk2fJ6DG2MxkttyTYwi2ZuKZawGgvGZFBRlXA\")"
     ],
     "additionalDirectories": [
       "/private/tmp"

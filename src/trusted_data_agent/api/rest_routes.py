@@ -2553,11 +2553,24 @@ async def get_rag_collections():
             # --- MARKETPLACE PHASE 2: Add ownership indicators ---
             coll_copy["is_owned"] = retriever.is_user_collection_owner(coll["id"], user_uuid)
             coll_copy["is_subscribed"] = retriever.is_subscribed_collection(coll["id"], user_uuid)
-            
-            # Add subscription_id if user is subscribed (needed for unsubscribe action)
+
+            # Add sharing_count for owned collections
+            if coll_copy["is_owned"]:
+                from trusted_data_agent.auth.database import get_db_session as _get_db_sharing
+                from trusted_data_agent.auth.models import MarketplaceSharingGrant as _MSG
+                try:
+                    with _get_db_sharing() as _sess:
+                        coll_copy["sharing_count"] = _sess.query(_MSG).filter_by(
+                            resource_type="collection",
+                            resource_id=str(coll["id"]),
+                        ).count()
+                except Exception:
+                    coll_copy["sharing_count"] = 0
+
+            # Add subscription_id and shared_with_me if user is subscribed but not owner
             if coll_copy["is_subscribed"] and not coll_copy["is_owned"]:
                 from trusted_data_agent.auth.database import get_db_session
-                from trusted_data_agent.auth.models import CollectionSubscription
+                from trusted_data_agent.auth.models import CollectionSubscription, MarketplaceSharingGrant, User
                 with get_db_session() as session:
                     subscription = session.query(CollectionSubscription).filter_by(
                         user_id=user_uuid,
@@ -2565,6 +2578,17 @@ async def get_rag_collections():
                     ).first()
                     if subscription:
                         coll_copy["subscription_id"] = subscription.id
+
+                    # Check if this collection was shared via a grant
+                    grant = session.query(MarketplaceSharingGrant).filter_by(
+                        resource_type="collection",
+                        resource_id=str(coll["id"]),
+                        grantee_user_id=user_uuid,
+                    ).first()
+                    if grant:
+                        coll_copy["shared_with_me"] = True
+                        grantor = session.query(User).filter_by(id=grant.grantor_user_id).first()
+                        coll_copy["shared_by_username"] = (grantor.display_name or grantor.username) if grantor else "Unknown"
             # --- MARKETPLACE PHASE 2 END ---
             
             # Get document count if collection is active
@@ -7473,7 +7497,7 @@ async def browse_marketplace_collections():
     Browse public marketplace collections.
     
     Query parameters:
-    - visibility: Filter by visibility (public, unlisted). Default: public
+    - visibility: Filter by visibility (public). Default: public
     - search: Search in name and description
     - repository_type: Filter by repository type (planner, knowledge). Default: all
     - sort_by: Sort order - "rating" (by average rating), "subscribers" (by subscriber count), "recent" (by date). Default: subscribers
@@ -7572,8 +7596,78 @@ async def browse_marketplace_collections():
                 coll_copy["is_owner"] = False
                 coll_copy["is_subscribed"] = False
             
+            coll_copy["shared_with_me"] = False
             marketplace_collections.append(coll_copy)
-        
+
+        # --- Second pass: include collections shared with current user via targeted grants ---
+        if user_uuid:
+            from trusted_data_agent.auth.database import get_db_session as _get_db
+            from trusted_data_agent.auth.models import MarketplaceSharingGrant as _MSG, User as _User
+            already_ids = {c["id"] for c in marketplace_collections}
+            with _get_db() as _sess:
+                grants = _sess.query(_MSG).filter_by(
+                    grantee_user_id=user_uuid,
+                    resource_type="collection",
+                ).all()
+                grant_map = {}
+                for g in grants:
+                    try:
+                        cid = int(g.resource_id)
+                        if cid not in already_ids:
+                            grant_map[cid] = g.grantor_user_id
+                    except (ValueError, TypeError):
+                        continue
+
+            for shared_cid, grantor_uid in grant_map.items():
+                # Find the collection in all_collections
+                source_coll = next((c for c in all_collections if c["id"] == shared_cid), None)
+                if not source_coll:
+                    continue
+
+                # Apply repository_type filter
+                if repository_type_filter:
+                    coll_repo_type = source_coll.get("repository_type", "planner")
+                    if coll_repo_type != repository_type_filter:
+                        continue
+
+                # Apply search filter
+                if search_query:
+                    name_match = search_query in source_coll.get("name", "").lower()
+                    desc_match = search_query in source_coll.get("description", "").lower()
+                    if not (name_match or desc_match):
+                        continue
+
+                shared_copy = source_coll.copy()
+                shared_copy["is_owner"] = False
+                shared_copy["shared_with_me"] = True
+                shared_copy["is_subscribed"] = retriever.is_subscribed_collection(shared_cid, user_uuid)
+
+                # Get subscription_id if subscribed
+                if shared_copy["is_subscribed"]:
+                    from trusted_data_agent.auth.models import CollectionSubscription
+                    with _get_db() as _sess2:
+                        sub = _sess2.query(CollectionSubscription).filter_by(
+                            user_id=user_uuid, source_collection_id=shared_cid
+                        ).first()
+                        if sub:
+                            shared_copy["subscription_id"] = sub.id
+
+                # Get grantor username
+                with _get_db() as _sess3:
+                    grantor = _sess3.query(_User).filter_by(id=grantor_uid).first()
+                    shared_copy["shared_by_username"] = (grantor.display_name or grantor.username) if grantor else "Unknown"
+
+                # Get document count
+                if shared_cid in retriever.collections:
+                    try:
+                        shared_copy["count"] = retriever.collections[shared_cid].count()
+                    except Exception:
+                        shared_copy["count"] = 0
+                else:
+                    shared_copy["count"] = 0
+
+                marketplace_collections.append(shared_copy)
+
         # Add rating statistics in bulk (efficient single query)
         collection_ids = [c["id"] for c in marketplace_collections]
         ratings_map = collection_db.get_bulk_collection_ratings(collection_ids)
@@ -7844,7 +7938,7 @@ async def publish_collection_to_marketplace(collection_id: int):
     
     Request body:
     {
-        "visibility": "public",  // or "unlisted"
+        "visibility": "public"
         "marketplace_metadata": {
             "category": "analytics",
             "tags": ["sql", "reporting"],
@@ -7881,8 +7975,8 @@ async def publish_collection_to_marketplace(collection_id: int):
         visibility = data.get("visibility", "public")
         marketplace_metadata = data.get("marketplace_metadata", {})
         
-        if visibility not in ["public", "unlisted"]:
-            return jsonify({"status": "error", "message": "Visibility must be 'public' or 'unlisted'"}), 400
+        if visibility not in ["public"]:
+            return jsonify({"status": "error", "message": "Visibility must be 'public'"}), 400
         
         # Update collection in database
         from trusted_data_agent.core.collection_db import get_collection_db
@@ -7971,18 +8065,36 @@ async def unpublish_collection_from_marketplace(collection_id: int):
         if not success:
             return jsonify({"status": "error", "message": "Failed to update collection"}), 500
         
+        # Clean up targeted sharing grants and their auto-created subscriptions
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import MarketplaceSharingGrant, CollectionSubscription
+        with get_db_session() as session:
+            grants = session.query(MarketplaceSharingGrant).filter_by(
+                resource_type="collection",
+                resource_id=str(collection_id),
+            ).all()
+            for grant in grants:
+                # Remove auto-created subscription for each grantee
+                sub = session.query(CollectionSubscription).filter_by(
+                    user_id=grant.grantee_user_id,
+                    source_collection_id=collection_id,
+                ).first()
+                if sub:
+                    session.delete(sub)
+                session.delete(grant)
+
         # Reload collections into APP_STATE
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
         APP_STATE["rag_collections"] = config_manager.get_rag_collections()
-        
+
         app_logger.info(f"User {user_uuid} unpublished collection {collection_id} from marketplace")
-        
+
         return jsonify({
             "status": "success",
             "message": "Collection unpublished from marketplace"
         }), 200
-        
+
     except Exception as e:
         app_logger.error(f"Error unpublishing collection: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -8082,6 +8194,316 @@ async def rate_marketplace_collection(collection_id: int):
         
     except Exception as e:
         app_logger.error(f"Error rating collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ============================================================================
+# MARKETPLACE SHARING (TARGETED) API ENDPOINTS
+# ============================================================================
+
+@rest_api_bp.route("/v1/marketplace/shareable-users", methods=["GET"])
+async def list_shareable_users():
+    """
+    List users eligible for targeted sharing (marketplace_visible=true).
+
+    Query params:
+    - search: optional filter on username, display_name, or email
+
+    Returns:
+    {
+        "status": "success",
+        "users": [{"id": "...", "username": "...", "display_name": "...", "email": "..."}]
+    }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        search = request.args.get("search", "").strip().lower()
+
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import User
+
+        with get_db_session() as session:
+            query = session.query(User).filter(
+                User.marketplace_visible == True,
+                User.is_active == True,
+                User.id != user_uuid
+            )
+
+            if search:
+                like_pattern = f"%{search}%"
+                query = query.filter(
+                    (User.username.ilike(like_pattern)) |
+                    (User.display_name.ilike(like_pattern)) |
+                    (User.email.ilike(like_pattern))
+                )
+
+            users = query.order_by(User.username).limit(50).all()
+
+            result = []
+            for u in users:
+                result.append({
+                    "id": u.id,
+                    "username": u.username,
+                    "display_name": u.display_name or u.username,
+                    "email": u.email,
+                })
+
+        return jsonify({"status": "success", "users": result}), 200
+
+    except Exception as e:
+        app_logger.error(f"Error listing shareable users: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/share", methods=["POST"])
+async def share_marketplace_resource():
+    """
+    Share a marketplace resource with specific users.
+
+    Request body:
+    {
+        "resource_type": "collection" | "agent_pack",
+        "resource_id": "42",          // collection ID or agent pack installation ID
+        "user_ids": ["uuid-1", ...]
+    }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        data = await request.get_json()
+        resource_type = data.get("resource_type")
+        resource_id = str(data.get("resource_id", ""))
+        user_ids = data.get("user_ids", [])
+
+        if resource_type not in ("collection", "agent_pack"):
+            return jsonify({"status": "error", "message": "resource_type must be 'collection' or 'agent_pack'"}), 400
+
+        if not resource_id:
+            return jsonify({"status": "error", "message": "resource_id is required"}), 400
+
+        if not user_ids or not isinstance(user_ids, list):
+            return jsonify({"status": "error", "message": "user_ids must be a non-empty list"}), 400
+
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import User, MarketplaceSharingGrant, CollectionSubscription
+
+        # --- Validate ownership and resolve the grant resource_id ---
+        grant_resource_id = resource_id  # may be replaced for agent packs
+
+        if resource_type == "collection":
+            # Validate collection ownership
+            retriever = get_rag_retriever()
+            if not retriever:
+                return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
+
+            coll_meta = retriever.get_collection_metadata(int(resource_id))
+            if not coll_meta:
+                return jsonify({"status": "error", "message": "Collection not found"}), 404
+
+            if not retriever.is_user_collection_owner(int(resource_id), user_uuid):
+                return jsonify({"status": "error", "message": "Only collection owners can share"}), 403
+
+        elif resource_type == "agent_pack":
+            # resource_id is the installation_id — validate ownership (lightweight, no export)
+            import sqlite3
+            from pathlib import Path
+            DB_PATH = Path("tda_auth.db")
+
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT * FROM agent_pack_installations WHERE id = ? AND owner_user_id = ?",
+                (int(resource_id), user_uuid),
+            )
+            pack_row = cursor.fetchone()
+            conn.close()
+            if not pack_row:
+                return jsonify({"status": "error", "message": "Agent pack not found or not owned by you"}), 404
+
+            # grant_resource_id stays as resource_id (installation_id) — no marketplace record needed
+
+        # --- Create grants ---
+        created_grants = []
+        with get_db_session() as session:
+            for uid in user_ids:
+                # Skip self
+                if uid == user_uuid:
+                    continue
+
+                # Verify target user exists and is active
+                target_user = session.query(User).filter_by(id=uid, is_active=True).first()
+                if not target_user:
+                    continue
+
+                # Check if grant already exists
+                existing = session.query(MarketplaceSharingGrant).filter_by(
+                    resource_type=resource_type,
+                    resource_id=grant_resource_id,
+                    grantee_user_id=uid,
+                ).first()
+                if existing:
+                    created_grants.append(existing.to_dict(include_user_info=True))
+                    continue
+
+                # Create grant
+                grant = MarketplaceSharingGrant(
+                    resource_type=resource_type,
+                    resource_id=grant_resource_id,
+                    grantor_user_id=user_uuid,
+                    grantee_user_id=uid,
+                )
+                session.add(grant)
+
+                # For collections: auto-create subscription
+                if resource_type == "collection":
+                    existing_sub = session.query(CollectionSubscription).filter_by(
+                        user_id=uid,
+                        source_collection_id=int(resource_id),
+                    ).first()
+                    if not existing_sub:
+                        sub = CollectionSubscription(
+                            user_id=uid,
+                            source_collection_id=int(resource_id),
+                            enabled=True,
+                        )
+                        session.add(sub)
+
+                session.flush()
+                created_grants.append(grant.to_dict(include_user_info=True))
+
+        app_logger.info(f"User {user_uuid} shared {resource_type} '{grant_resource_id}' with {len(created_grants)} user(s)")
+
+        return jsonify({
+            "status": "success",
+            "grants_created": len(created_grants),
+            "grants": created_grants,
+        }), 201
+
+    except Exception as e:
+        app_logger.error(f"Error sharing marketplace resource: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/share/<resource_type>/<resource_id>", methods=["GET"])
+async def list_sharing_grants(resource_type: str, resource_id: str):
+    """
+    List current sharing grants for a resource (owner only).
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        if resource_type not in ("collection", "agent_pack"):
+            return jsonify({"status": "error", "message": "Invalid resource_type"}), 400
+
+        # Validate ownership
+        if resource_type == "collection":
+            retriever = get_rag_retriever()
+            if not retriever or not retriever.is_user_collection_owner(int(resource_id), user_uuid):
+                return jsonify({"status": "error", "message": "Not found or not owner"}), 403
+        elif resource_type == "agent_pack":
+            # resource_id is the installation_id — validate ownership
+            import sqlite3
+            from pathlib import Path
+            DB_PATH = Path("tda_auth.db")
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT owner_user_id FROM agent_pack_installations WHERE id = ?",
+                (int(resource_id),),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if not row or row["owner_user_id"] != user_uuid:
+                return jsonify({"status": "error", "message": "Not found or not owner"}), 403
+
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import MarketplaceSharingGrant
+
+        with get_db_session() as session:
+            grants = session.query(MarketplaceSharingGrant).filter_by(
+                resource_type=resource_type,
+                resource_id=resource_id,
+            ).all()
+
+            result = [g.to_dict(include_user_info=True) for g in grants]
+
+        return jsonify({
+            "status": "success",
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "grants": result,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error listing sharing grants: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/share/<grant_id>", methods=["DELETE"])
+async def revoke_sharing_grant(grant_id: str):
+    """
+    Revoke a specific sharing grant (grantor only).
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import MarketplaceSharingGrant, CollectionSubscription
+
+        grantee_username = None
+        with get_db_session() as session:
+            grant = session.query(MarketplaceSharingGrant).filter_by(id=grant_id).first()
+            if not grant:
+                return jsonify({"status": "error", "message": "Grant not found"}), 404
+
+            if grant.grantor_user_id != user_uuid:
+                return jsonify({"status": "error", "message": "Only the grantor can revoke"}), 403
+
+            resource_type = grant.resource_type
+            resource_id = grant.resource_id
+            grantee_user_id = grant.grantee_user_id
+            if grant.grantee:
+                grantee_username = grant.grantee.username
+
+            # Delete the grant
+            session.delete(grant)
+
+            # For collections: remove the auto-created subscription
+            # (only if collection is NOT publicly listed — if public, user keeps access through browse)
+            if resource_type == "collection":
+                retriever = get_rag_retriever()
+                coll_meta = retriever.get_collection_metadata(int(resource_id)) if retriever else None
+                is_public = coll_meta and coll_meta.get("is_marketplace_listed", False)
+
+                if not is_public:
+                    sub = session.query(CollectionSubscription).filter_by(
+                        user_id=grantee_user_id,
+                        source_collection_id=int(resource_id),
+                    ).first()
+                    if sub:
+                        session.delete(sub)
+
+        app_logger.info(f"User {user_uuid} revoked sharing grant {grant_id} for {resource_type} '{resource_id}'")
+
+        return jsonify({
+            "status": "success",
+            "message": f"Access revoked{' for ' + grantee_username if grantee_username else ''}",
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error revoking sharing grant: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

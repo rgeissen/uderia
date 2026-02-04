@@ -105,6 +105,21 @@ function renderAgentPacks() {
                             class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">
                         Export
                     </button>
+                    ${pack.marketplace_pack_id
+                        ? `<span class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 flex items-center gap-1">
+                               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                               Published
+                           </span>`
+                        : `<button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
+                                  class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">
+                              Publish
+                          </button>`
+                    }
+                    <button onclick="if(window.openShareModal) window.openShareModal('agent_pack', '${pack.installation_id}', '${_esc(pack.name)}')"
+                            class="px-3 py-1.5 text-xs rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                        Share${pack.sharing_count > 0 ? ` (${pack.sharing_count})` : ''}
+                    </button>
                     <button onclick="window.agentPackHandler.handleUninstallAgentPack(${pack.installation_id}, '${_esc(pack.name)}')"
                             class="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
                         Uninstall
@@ -877,6 +892,315 @@ async function handleUninstallAgentPack(installationId, packName) {
     }
 }
 
+// ── Publish to Marketplace ────────────────────────────────────────────────────
+
+let _publishPackModalInitialized = false;
+let _packExistingGrants = [];  // Existing grants loaded on modal open
+
+/**
+ * Initialize the static publish pack modal (call once at startup).
+ */
+function initializePublishPackModal() {
+    if (_publishPackModalInitialized) return;
+    _publishPackModalInitialized = true;
+
+    const modal = document.getElementById('publish-pack-modal-overlay');
+    const closeBtn = document.getElementById('publish-pack-modal-close');
+    const cancelBtn = document.getElementById('publish-pack-cancel');
+    const form = document.getElementById('publish-pack-form');
+
+    if (closeBtn) closeBtn.addEventListener('click', () => closePublishPackModal());
+    if (cancelBtn) cancelBtn.addEventListener('click', () => closePublishPackModal());
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await _handlePublishPack();
+        });
+    }
+
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closePublishPackModal();
+        });
+    }
+
+    // Visibility change handler — show/hide user picker section + update button text
+    const visibilitySelect = document.getElementById('publish-pack-visibility');
+    if (visibilitySelect) {
+        visibilitySelect.addEventListener('change', () => {
+            const section = document.getElementById('publish-pack-users-section');
+            if (!section) return;
+            if (visibilitySelect.value === 'targeted') {
+                section.classList.remove('hidden');
+                _loadPackShareableUsers('');
+            } else {
+                section.classList.add('hidden');
+            }
+            _updatePublishPackButtonText();
+        });
+    }
+
+    // Search input in user picker
+    const searchInput = document.getElementById('publish-pack-users-search');
+    if (searchInput) {
+        let debounce = null;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => _loadPackShareableUsers(searchInput.value), 300);
+        });
+    }
+}
+
+/**
+ * Open the publish pack modal for a given installation.
+ * Fetches existing grants to adaptively pre-select visibility and pre-check users.
+ */
+async function openPublishPackModal(installationId, packName) {
+    initializePublishPackModal();
+
+    const modal = document.getElementById('publish-pack-modal-overlay');
+    const modalContent = document.getElementById('publish-pack-modal-content');
+    const packIdInput = document.getElementById('publish-pack-id');
+    const packNameEl = document.getElementById('publish-pack-name');
+    const visibilitySelect = document.getElementById('publish-pack-visibility');
+    const usersSection = document.getElementById('publish-pack-users-section');
+
+    if (!modal || !modalContent) return;
+
+    // Reset state
+    _packExistingGrants = [];
+    if (packIdInput) packIdInput.value = installationId;
+    if (packNameEl) packNameEl.textContent = packName;
+    if (visibilitySelect) visibilitySelect.value = '';
+    if (usersSection) usersSection.classList.add('hidden');
+
+    // Show modal with animation
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.add('opacity-100');
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+
+    // Fetch existing grants to determine adaptive state
+    try {
+        const res = await fetch(`/api/v1/marketplace/share/agent_pack/${installationId}`, { headers: _headers(false) });
+        const data = await res.json();
+        _packExistingGrants = (data.status === 'success' && data.grants) ? data.grants : [];
+
+        if (_packExistingGrants.length > 0) {
+            // Pre-select "Targeted" and show user picker with pre-checked users
+            if (visibilitySelect) visibilitySelect.value = 'targeted';
+            if (usersSection) usersSection.classList.remove('hidden');
+            await _loadPackShareableUsers('');
+        }
+    } catch { /* ignore, use defaults */ }
+
+    _updatePublishPackButtonText();
+}
+
+/**
+ * Close the publish pack modal.
+ */
+function closePublishPackModal() {
+    const modal = document.getElementById('publish-pack-modal-overlay');
+    const modalContent = document.getElementById('publish-pack-modal-content');
+    const form = document.getElementById('publish-pack-form');
+
+    if (!modal || !modalContent) return;
+
+    modal.classList.remove('opacity-100');
+    modalContent.classList.remove('scale-100', 'opacity-100');
+    modalContent.classList.add('scale-95', 'opacity-0');
+
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        if (form) form.reset();
+        _packExistingGrants = [];
+    }, 300);
+}
+
+/**
+ * Handle publish pack form submission with grant sync.
+ */
+async function _handlePublishPack() {
+    const installationId = document.getElementById('publish-pack-id')?.value;
+    const visibility = document.getElementById('publish-pack-visibility')?.value;
+    const submitBtn = document.getElementById('publish-pack-submit');
+
+    if (!installationId || !visibility) {
+        _notify('error', 'Please select a visibility option');
+        return;
+    }
+
+    // For targeted: collect selected user IDs and sync grants
+    if (visibility === 'targeted') {
+        const selectedUserIds = [...document.querySelectorAll('.publish-pack-user-cb:checked')].map(cb => cb.value);
+
+        // Build map of existing grants by user ID
+        const existingGrantsByUserId = {};
+        _packExistingGrants.forEach(g => { existingGrantsByUserId[g.grantee_user_id] = g.id; });
+        const existingUserIds = new Set(Object.keys(existingGrantsByUserId));
+
+        // Determine what to create and revoke
+        const toCreate = selectedUserIds.filter(uid => !existingUserIds.has(uid));
+        const toRevoke = [...existingUserIds].filter(uid => !selectedUserIds.includes(uid));
+
+        // Allow 0 selected only when revoking existing grants
+        if (selectedUserIds.length === 0 && _packExistingGrants.length === 0) {
+            _notify('error', 'Please select at least one user to share with');
+            return;
+        }
+
+        // Nothing changed
+        if (toCreate.length === 0 && toRevoke.length === 0) {
+            _notify('info', 'No changes to save');
+            closePublishPackModal();
+            return;
+        }
+
+        const originalText = submitBtn?.textContent || 'Save Changes';
+        if (submitBtn) { submitBtn.textContent = 'Saving...'; submitBtn.disabled = true; }
+
+        try {
+            // Create new grants
+            if (toCreate.length > 0) {
+                const res = await fetch('/api/v1/marketplace/share', {
+                    method: 'POST',
+                    headers: _headers(true),
+                    body: JSON.stringify({
+                        resource_type: 'agent_pack',
+                        resource_id: String(installationId),
+                        user_ids: toCreate,
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok || data.status === 'error') {
+                    throw new Error(data.message || `Share failed (${res.status})`);
+                }
+            }
+
+            // Revoke removed grants
+            for (const uid of toRevoke) {
+                const res = await fetch(`/api/v1/marketplace/share/${existingGrantsByUserId[uid]}`, {
+                    method: 'DELETE',
+                    headers: _headers(false),
+                });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.message || `Revoke failed (${res.status})`);
+                }
+            }
+
+            const msg = toRevoke.length > 0 && toCreate.length === 0
+                ? `Removed sharing for ${toRevoke.length} user(s)`
+                : `Sharing updated`;
+            _notify('success', msg);
+
+            closePublishPackModal();
+            await loadAgentPacks();
+            if (window.refreshMarketplace) window.refreshMarketplace();
+        } catch (err) {
+            _notify('error', `Failed: ${err.message}`);
+        } finally {
+            if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; }
+        }
+        return;
+    }
+
+    // Public: full publish to marketplace with file export
+    const originalText = submitBtn?.textContent || 'Publish Agent Pack';
+    if (submitBtn) { submitBtn.textContent = 'Publishing...'; submitBtn.disabled = true; }
+
+    try {
+        const res = await fetch(`/api/v1/agent-packs/${installationId}/publish`, {
+            method: 'POST',
+            headers: _headers(true),
+            body: JSON.stringify({ visibility }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') {
+            throw new Error(data.message || `Publish failed (${res.status})`);
+        }
+        _notify('success', 'Agent pack published to marketplace');
+
+        closePublishPackModal();
+        await loadAgentPacks();
+        if (window.refreshMarketplace) window.refreshMarketplace();
+    } catch (err) {
+        _notify('error', `Failed: ${err.message}`);
+    } finally {
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; }
+    }
+}
+
+/**
+ * Load shareable users into the pack publish modal user picker.
+ * Pre-checks users who have existing grants.
+ */
+async function _loadPackShareableUsers(search) {
+    const listEl = document.getElementById('publish-pack-users-list');
+    if (!listEl) return;
+
+    try {
+        const url = `/api/v1/marketplace/shareable-users${search ? `?search=${encodeURIComponent(search)}` : ''}`;
+        const res = await fetch(url, { headers: _headers(false) });
+        const data = await res.json();
+
+        if (!res.ok || !data.users?.length) {
+            listEl.innerHTML = '<p class="text-sm text-gray-500 text-center py-2">No eligible users found</p>';
+            return;
+        }
+
+        // Preserve manual selections OR pre-check from existing grants
+        const prevChecked = new Set();
+        listEl.querySelectorAll('.publish-pack-user-cb:checked').forEach(cb => prevChecked.add(cb.value));
+        const grantedUserIds = new Set(_packExistingGrants.map(g => g.grantee_user_id));
+
+        listEl.innerHTML = data.users.map(u => {
+            const isChecked = prevChecked.has(u.id) || grantedUserIds.has(u.id);
+            return `
+            <label class="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer">
+                <input type="checkbox" value="${u.id}" class="publish-pack-user-cb accent-indigo-500"
+                       ${isChecked ? 'checked' : ''}>
+                <span class="text-sm text-white">${_esc(u.display_name)}</span>
+                <span class="text-xs text-gray-500">${_esc(u.username)}</span>
+                ${u.email ? `<span class="text-xs text-gray-600 ml-auto">${_esc(u.email)}</span>` : ''}
+            </label>`;
+        }).join('');
+
+        // Update count on checkbox change
+        listEl.querySelectorAll('.publish-pack-user-cb').forEach(cb => {
+            cb.addEventListener('change', _updatePublishPackShareCount);
+        });
+        _updatePublishPackShareCount();
+    } catch {
+        listEl.innerHTML = '<p class="text-sm text-red-400 text-center py-2">Failed to load users</p>';
+    }
+}
+
+function _updatePublishPackShareCount() {
+    const countEl = document.getElementById('publish-pack-users-count');
+    if (!countEl) return;
+    const checked = document.querySelectorAll('.publish-pack-user-cb:checked').length;
+    countEl.textContent = `${checked} user${checked !== 1 ? 's' : ''} selected`;
+}
+
+/**
+ * Update the submit button text based on visibility and existing grants.
+ */
+function _updatePublishPackButtonText() {
+    const submitBtn = document.getElementById('publish-pack-submit');
+    const visibility = document.getElementById('publish-pack-visibility')?.value;
+    if (!submitBtn) return;
+    if (visibility === 'targeted') {
+        submitBtn.textContent = _packExistingGrants.length > 0 ? 'Save Changes' : 'Share';
+    } else {
+        submitBtn.textContent = 'Publish Agent Pack';
+    }
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 window.agentPackHandler = {
@@ -886,6 +1210,12 @@ window.agentPackHandler = {
     handleCreateAgentPack,
     handleExportAgentPack,
     handleUninstallAgentPack,
+    openPublishPackModal,
+    initializePublishPackModal,
+    // Exposed for marketplace install flow reuse
+    showMcpServerPicker: _showMcpServerPicker,
+    showLlmConfigPicker: _showLlmConfigPicker,
+    showTagConflictDialog: _showTagConflictDialog,
 };
 
 export {
@@ -895,4 +1225,6 @@ export {
     handleCreateAgentPack,
     handleExportAgentPack,
     handleUninstallAgentPack,
+    openPublishPackModal,
+    initializePublishPackModal,
 };
