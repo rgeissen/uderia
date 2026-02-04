@@ -25,6 +25,7 @@ class OAuthSession:
     NONCE_SESSION_KEY = 'oauth_nonce'
     PROVIDER_SESSION_KEY = 'oauth_provider'
     RETURN_TO_SESSION_KEY = 'oauth_return_to'
+    LINK_USER_SESSION_KEY = 'oauth_link_user_id'
     
     STATE_EXPIRY_MINUTES = 15
     
@@ -105,6 +106,7 @@ class OAuthSession:
         session.pop(OAuthSession.NONCE_SESSION_KEY, None)
         session.pop(OAuthSession.PROVIDER_SESSION_KEY, None)
         session.pop(OAuthSession.RETURN_TO_SESSION_KEY, None)
+        session.pop(OAuthSession.LINK_USER_SESSION_KEY, None)
 
 
 class OAuthAuthorizationBuilder:

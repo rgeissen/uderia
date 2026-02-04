@@ -19,6 +19,7 @@ from trusted_data_agent.auth.security import (
     hash_password,
     verify_password,
     generate_auth_token,
+    verify_auth_token,
     revoke_token,
     check_user_lockout,
     check_progressive_delay,
@@ -2654,13 +2655,40 @@ async def oauth_callback(provider):
         
         # Validate callback request
         is_valid, code, state, error_msg = await OAuthCallbackValidator.validate_callback_request(provider)
-        
+
         if not is_valid:
             OAuthErrorHandler.log_oauth_event(provider, 'callback', success=False, details=error_msg)
             error_params = urlencode({'error': error_msg or 'OAuth authorization failed'})
             return redirect(f"/login?{error_params}")
-        
-        # Handle OAuth callback
+
+        # Check if this is an account linking flow (user_id stored during initiate)
+        link_user_id = session.pop(OAuthSession.LINK_USER_SESSION_KEY, None)
+
+        if link_user_id:
+            from trusted_data_agent.auth.oauth_handlers import link_oauth_to_existing_user
+            callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider)
+
+            success, message = await link_oauth_to_existing_user(
+                user_id=link_user_id,
+                provider_name=provider,
+                code=code,
+                redirect_uri=callback_uri
+            )
+
+            return_to = '/?tab=profile&section=connected_accounts'
+            if success:
+                OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=link_user_id, success=True)
+                logger.info(f"Successfully linked {provider} to user {link_user_id}")
+                separator = '&' if '?' in return_to else '?'
+                return redirect(f"{return_to}{separator}link_success={provider}")
+            else:
+                OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=link_user_id, success=False, details=message)
+                logger.warning(f"Failed to link {provider} to user {link_user_id}: {message}")
+                separator = '&' if '?' in return_to else '?'
+                error_encoded = urlencode({'link_error': message})
+                return redirect(f"{return_to}{separator}{error_encoded}")
+
+        # Handle regular OAuth login callback
         handler = OAuthHandler(provider)
         callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider)
         
@@ -2723,56 +2751,75 @@ async def oauth_callback(provider):
 
 
 @auth_bp.route('/oauth/<provider>/link', methods=['GET'])
-@require_auth
 async def initiate_oauth_link(provider):
     """
     Initiate OAuth flow to link provider account to existing user.
-    
-    Requires authentication.
-    
+
+    Authentication via query parameter (browser navigation cannot send headers).
+    The JWT token is passed as ?token=<jwt> and verified manually.
+    The user_id is stored in the session so the callback can retrieve it.
+
     Returns:
         Redirect to OAuth provider authorization endpoint
     """
     from trusted_data_agent.auth.oauth_middleware import (
         OAuthAuthorizationBuilder,
+        OAuthSession,
         validate_oauth_provider,
         OAuthErrorHandler
     )
-    
+    from quart import redirect
+
     try:
+        # Authenticate via query parameter (window.location.href can't send headers)
+        token = request.args.get('token')
+        if not token:
+            return jsonify({
+                'status': 'error',
+                'message': 'Authentication required. Please login.'
+            }), 401
+
+        payload = verify_auth_token(token)
+        if not payload:
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid or expired token'
+            }), 401
+
+        user_id = payload.get('user_id')
+        if not user_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid token payload'
+            }), 401
+
         # Validate provider
         if not validate_oauth_provider(provider):
             return jsonify({
                 'status': 'error',
                 'message': f'OAuth provider "{provider}" is not configured'
             }), 404
-        
-        current_user = await get_current_user()
-        if not current_user:
-            return jsonify({
-                'status': 'error',
-                'message': 'User not authenticated'
-            }), 401
-        
-        # Build authorization URL for linking
-        auth_url = await OAuthAuthorizationBuilder.build_authorization_url_for_linking(
+
+        # Store user_id in session so the callback can identify who to link to
+        session[OAuthSession.LINK_USER_SESSION_KEY] = user_id
+
+        # Build authorization URL (uses the regular callback URL)
+        auth_url = await OAuthAuthorizationBuilder.build_authorization_url(
             provider_name=provider,
-            user_id=current_user['id']
+            return_to='/?tab=profile&section=connected_accounts'
         )
-        
+
         if not auth_url:
-            OAuthErrorHandler.log_oauth_event(provider, 'link_initiate', user_id=current_user['id'], success=False)
+            OAuthErrorHandler.log_oauth_event(provider, 'link_initiate', user_id=user_id, success=False)
             return jsonify({
                 'status': 'error',
                 'message': 'Failed to build authorization URL'
             }), 500
-        
-        OAuthErrorHandler.log_oauth_event(provider, 'link_initiate', user_id=current_user['id'], success=True)
-        
-        # Redirect to OAuth provider
-        from quart import redirect
+
+        OAuthErrorHandler.log_oauth_event(provider, 'link_initiate', user_id=user_id, success=True)
+
         return redirect(auth_url)
-    
+
     except Exception as e:
         logger.error(f"Error initiating OAuth link for {provider}: {e}", exc_info=True)
         return jsonify({

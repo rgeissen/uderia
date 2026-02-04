@@ -10,6 +10,19 @@ class OAuthClient {
     }
 
     /**
+     * Get authorization headers with JWT token
+     * @param {boolean} includeContentType - Whether to include Content-Type header
+     * @returns {Object} Headers object
+     */
+    _getAuthHeaders(includeContentType = true) {
+        const headers = {};
+        if (includeContentType) headers['Content-Type'] = 'application/json';
+        const token = localStorage.getItem('tda_auth_token');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return headers;
+    }
+
+    /**
      * Get list of available OAuth providers
      * @returns {Promise<Array>} List of provider objects
      */
@@ -17,7 +30,7 @@ class OAuthClient {
         try {
             const response = await fetch(`${this.apiBase}/oauth/providers`);
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 return data.providers || [];
             }
@@ -34,8 +47,10 @@ class OAuthClient {
      */
     async getLinkedAccounts() {
         try {
-            const response = await fetch(`${this.apiBase}/oauth/accounts`);
-            
+            const response = await fetch(`${this.apiBase}/oauth/accounts`, {
+                headers: this._getAuthHeaders(false)
+            });
+
             if (!response.ok) {
                 if (response.status === 401) {
                     // Not authenticated
@@ -43,9 +58,9 @@ class OAuthClient {
                 }
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 return data.accounts || [];
             }
@@ -61,7 +76,9 @@ class OAuthClient {
      * @param {string} provider - OAuth provider name
      */
     initiateOAuthLink(provider) {
-        window.location.href = `${this.apiBase}/oauth/${provider}/link`;
+        const token = localStorage.getItem('tda_auth_token');
+        const params = token ? `?token=${encodeURIComponent(token)}` : '';
+        window.location.href = `${this.apiBase}/oauth/${provider}/link${params}`;
     }
 
     /**
@@ -75,14 +92,12 @@ class OAuthClient {
                 `${this.apiBase}/oauth/${provider}/disconnect`,
                 {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: this._getAuthHeaders()
                 }
             );
-            
+
             const data = await response.json();
-            
+
             return {
                 success: data.status === 'success',
                 message: data.message || 'Operation failed'
