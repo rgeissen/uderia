@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any
 
-from quart import Blueprint, request, jsonify
+from quart import Blueprint, request, jsonify, session
 from sqlalchemy.exc import IntegrityError
 
 from trusted_data_agent.auth.database import get_db_session
