@@ -2830,7 +2830,7 @@ async def initiate_oauth_link(provider):
 
 @auth_bp.route('/oauth/<provider>/link/callback', methods=['GET'])
 @require_auth
-async def oauth_link_callback(provider):
+async def oauth_link_callback(current_user, provider):
     """
     Handle OAuth callback for account linking.
     
@@ -2866,31 +2866,23 @@ async def oauth_link_callback(provider):
                 'message': error_msg or 'OAuth authorization failed'
             }), 400
         
-        # Get current user
-        current_user = await get_current_user()
-        if not current_user:
-            return jsonify({
-                'status': 'error',
-                'message': 'User not authenticated'
-            }), 401
-        
         # Link OAuth account
         callback_uri = OAuthCallbackValidator.get_callback_redirect_uri(provider) + '/link/callback'
         success, message = await link_oauth_to_existing_user(
-            user_id=current_user['id'],
+            user_id=current_user.id,
             provider_name=provider,
             code=code,
             redirect_uri=callback_uri
         )
-        
+
         if success:
-            OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=current_user['id'], success=True)
+            OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=current_user.id, success=True)
             return jsonify({
                 'status': 'success',
                 'message': message
             }), 200
         else:
-            OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=current_user['id'], success=False, details=message)
+            OAuthErrorHandler.log_oauth_event(provider, 'link', user_id=current_user.id, success=False, details=message)
             return jsonify({
                 'status': 'error',
                 'message': message
@@ -2907,46 +2899,38 @@ async def oauth_link_callback(provider):
 
 @auth_bp.route('/oauth/<provider>/disconnect', methods=['POST'])
 @require_auth
-async def disconnect_oauth(provider):
+async def disconnect_oauth(current_user, provider):
     """
     Disconnect/unlink an OAuth account from the current user.
-    
+
     Requires authentication.
-    
+
     Returns:
         JSON response with success/error status
     """
     from trusted_data_agent.auth.oauth_handlers import unlink_oauth_from_user
     from trusted_data_agent.auth.oauth_middleware import OAuthErrorHandler
-    
+
     try:
-        # Get current user
-        current_user = await get_current_user()
-        if not current_user:
-            return jsonify({
-                'status': 'error',
-                'message': 'User not authenticated'
-            }), 401
-        
         # Unlink OAuth account
         success, message = await unlink_oauth_from_user(
-            user_id=current_user['id'],
+            user_id=current_user.id,
             provider_name=provider
         )
-        
+
         if success:
-            OAuthErrorHandler.log_oauth_event(provider, 'disconnect', user_id=current_user['id'], success=True)
+            OAuthErrorHandler.log_oauth_event(provider, 'disconnect', user_id=current_user.id, success=True)
             return jsonify({
                 'status': 'success',
                 'message': message
             }), 200
         else:
-            OAuthErrorHandler.log_oauth_event(provider, 'disconnect', user_id=current_user['id'], success=False, details=message)
+            OAuthErrorHandler.log_oauth_event(provider, 'disconnect', user_id=current_user.id, success=False, details=message)
             return jsonify({
                 'status': 'error',
                 'message': message
             }), 400
-    
+
     except Exception as e:
         logger.error(f"Error disconnecting OAuth account for {provider}: {e}", exc_info=True)
         OAuthErrorHandler.log_oauth_event(provider, 'disconnect', success=False, details=str(e))
@@ -2958,38 +2942,31 @@ async def disconnect_oauth(provider):
 
 @auth_bp.route('/oauth/accounts', methods=['GET'])
 @require_auth
-async def get_oauth_accounts():
+async def get_oauth_accounts(current_user):
     """
     Get list of OAuth accounts linked to the current user.
-    
+
     Requires authentication.
-    
+
     Returns:
         JSON with list of linked OAuth accounts
     """
     try:
-        current_user = await get_current_user()
-        if not current_user:
-            return jsonify({
-                'status': 'error',
-                'message': 'User not authenticated'
-            }), 401
-        
-        with get_db_session() as session:
-            user = session.query(User).filter_by(id=current_user['id']).first()
+        with get_db_session() as db_session:
+            user = db_session.query(User).filter_by(id=current_user.id).first()
             if not user:
                 return jsonify({
                     'status': 'error',
                     'message': 'User not found'
                 }), 404
-            
+
             oauth_accounts = [account.to_dict() for account in user.oauth_accounts]
-        
+
         return jsonify({
             'status': 'success',
             'accounts': oauth_accounts
         }), 200
-    
+
     except Exception as e:
         logger.error(f"Error fetching OAuth accounts: {e}", exc_info=True)
         return jsonify({
