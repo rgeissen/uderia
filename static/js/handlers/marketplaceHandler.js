@@ -655,7 +655,8 @@ async function handleAgentPackInstall(packOrId, button) {
         }
         // Refresh profiles and collections so subscribed resources appear immediately
         if (window.configState?.loadProfiles) {
-            window.configState.loadProfiles();
+            await window.configState.loadProfiles();
+            if (window.renderProfiles) window.renderProfiles();
         }
         if (window.loadRagCollections) {
             window.loadRagCollections();
@@ -775,7 +776,8 @@ async function handleAgentPackUnsubscribe(pack, button) {
         }
         // Refresh profiles and collections so unsubscribed resources disappear immediately
         if (window.configState?.loadProfiles) {
-            window.configState.loadProfiles();
+            await window.configState.loadProfiles();
+            if (window.renderProfiles) window.renderProfiles();
         }
         if (window.loadRagCollections) {
             window.loadRagCollections();
@@ -859,18 +861,41 @@ function openAgentPackForkModal(pack) {
 
     overlay.querySelector('#fork-agent-pack-submit').onclick = async () => {
         const submitBtn = overlay.querySelector('#fork-agent-pack-submit');
-        submitBtn.textContent = 'Forking...';
-        submitBtn.disabled = true;
 
         try {
+            // Close the fork info modal first so the pickers render cleanly
+            closeModal();
+
+            // Show MCP server picker only if the pack has tool-enabled profiles
+            let mcpServerId = null;
+            if (pack.has_tool_profiles && window.agentPackHandler?.showMcpServerPicker) {
+                if (window.configState?.mcpServers?.length > 0) {
+                    mcpServerId = await window.agentPackHandler.showMcpServerPicker();
+                }
+            }
+
+            // Always show LLM config picker
+            let llmConfigId = null;
+            if (window.agentPackHandler?.showLlmConfigPicker) {
+                llmConfigId = await window.agentPackHandler.showLlmConfigPicker();
+                if (!llmConfigId) return; // User cancelled
+            }
+
+            // Show a brief notification while forking
+            showNotification('info', `Forking "${pack.name}"...`);
+
             const token = await window.authClient.getToken();
+            const body = { conflict_strategy: 'expand' };
+            if (mcpServerId) body.mcp_server_id = mcpServerId;
+            if (llmConfigId) body.llm_configuration_id = llmConfigId;
+
             const response = await fetch(`/api/v1/marketplace/agent-packs/${pack.id}/fork`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ conflict_strategy: 'expand' }),
+                body: JSON.stringify(body),
             });
 
             const result = await response.json();
@@ -885,17 +910,21 @@ function openAgentPackForkModal(pack) {
             }
 
             showNotification('success', msg);
-            closeModal();
 
-            // Reload both marketplace and installed packs
+            // Reload marketplace, agent packs, profiles and collections
             loadMarketplaceAgentPacks();
             if (window.agentPackHandler?.loadAgentPacks) {
                 window.agentPackHandler.loadAgentPacks();
             }
+            if (window.configState?.loadProfiles) {
+                await window.configState.loadProfiles();
+                if (window.renderProfiles) window.renderProfiles();
+            }
+            if (window.loadRagCollections) {
+                window.loadRagCollections();
+            }
         } catch (err) {
             showNotification('error', 'Fork failed: ' + err.message);
-            submitBtn.textContent = 'Fork Agent Pack';
-            submitBtn.disabled = false;
         }
     };
 }

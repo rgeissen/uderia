@@ -1272,7 +1272,8 @@ async function handleUnsubscribeAgentPack(marketplacePackId, packName) {
         if (window.refreshMarketplace) window.refreshMarketplace();
         // Refresh profiles and collections so unsubscribed resources disappear
         if (window.configState?.loadProfiles) {
-            window.configState.loadProfiles();
+            await window.configState.loadProfiles();
+            if (window.renderProfiles) window.renderProfiles();
         }
         if (window.loadRagCollections) {
             window.loadRagCollections();
