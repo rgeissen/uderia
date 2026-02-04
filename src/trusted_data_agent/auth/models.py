@@ -1319,3 +1319,24 @@ class MarketplaceSharingGrant(Base):
             if self.grantor:
                 data['grantor_username'] = self.grantor.username
         return data
+
+
+class MarketplaceTargetedUser(Base):
+    """Users who can see a targeted marketplace asset in Browse."""
+
+    __tablename__ = 'marketplace_targeted_users'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resource_type = Column(String(20), nullable=False)    # 'collection' or 'agent_pack'
+    resource_id = Column(String(100), nullable=False)      # collection_id or marketplace_agent_packs.id
+    user_id = Column(String(36), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_targeted_user', 'resource_type', 'resource_id', 'user_id', unique=True),
+        Index('idx_targeted_by_user', 'user_id', 'resource_type'),
+    )

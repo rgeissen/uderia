@@ -971,17 +971,23 @@ class AgentPackManager:
     # ── List ───────────────────────────────────────────────────────────────────
 
     async def list_packs(self, user_uuid: str) -> list[dict]:
-        """List installed agent packs for user."""
+        """List agent packs for user (owned + subscribed via sharing grants)."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, name, description, version, author, coordinator_tag, "
-                "coordinator_profile_id, pack_type, installed_at "
-                "FROM agent_pack_installations WHERE owner_user_id = ? "
-                "ORDER BY installed_at DESC",
-                (user_uuid,)
+                "SELECT DISTINCT i.id, i.name, i.description, i.version, i.author, "
+                "i.coordinator_tag, i.coordinator_profile_id, i.pack_type, i.installed_at, "
+                "CASE WHEN i.owner_user_id = ? THEN 1 ELSE 0 END AS is_owned "
+                "FROM agent_pack_installations i "
+                "LEFT JOIN marketplace_sharing_grants msg "
+                "  ON msg.resource_type = 'agent_pack' "
+                "  AND msg.resource_id = CAST(i.id AS TEXT) "
+                "  AND msg.grantee_user_id = ? "
+                "WHERE i.owner_user_id = ? OR msg.id IS NOT NULL "
+                "ORDER BY i.installed_at DESC",
+                (user_uuid, user_uuid, user_uuid)
             )
             rows = cursor.fetchall()
 
@@ -1018,6 +1024,7 @@ class AgentPackManager:
                     "experts_count": experts_count,
                     "collections_count": counts.get("collection", 0),
                     "installed_at": row["installed_at"],
+                    "is_owned": bool(row["is_owned"]),
                 })
 
             return packs

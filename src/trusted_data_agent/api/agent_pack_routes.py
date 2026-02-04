@@ -14,12 +14,14 @@ Endpoints:
 - DELETE /v1/agent-packs/<installation_id>   Uninstall a pack
 
 Marketplace endpoints:
-- POST   /v1/agent-packs/<installation_id>/publish    Publish to marketplace (metadata only)
-- GET    /v1/marketplace/agent-packs                  Browse published packs
-- GET    /v1/marketplace/agent-packs/<pack_id>        Pack details
-- POST   /v1/marketplace/agent-packs/<pack_id>/install Subscribe (logical sharing grant)
-- POST   /v1/marketplace/agent-packs/<pack_id>/rate   Rate a pack
-- DELETE /v1/marketplace/agent-packs/<pack_id>        Unpublish a pack
+- POST   /v1/agent-packs/<installation_id>/publish         Publish to marketplace (metadata only)
+- GET    /v1/marketplace/agent-packs                       Browse published packs
+- GET    /v1/marketplace/agent-packs/<pack_id>             Pack details
+- POST   /v1/marketplace/agent-packs/<pack_id>/install     Subscribe (logical sharing grant)
+- DELETE /v1/marketplace/agent-packs/<pack_id>/subscribe   Unsubscribe (remove sharing grant)
+- POST   /v1/marketplace/agent-packs/<pack_id>/fork        Fork (physical copy into user's account)
+- POST   /v1/marketplace/agent-packs/<pack_id>/rate        Rate a pack
+- DELETE /v1/marketplace/agent-packs/<pack_id>             Unpublish a pack
 """
 
 import json
@@ -258,13 +260,16 @@ async def list_agent_packs(current_user):
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Check which packs are published to marketplace
+            # Check which packs are published to marketplace (include visibility)
             cursor.execute(
-                "SELECT id, source_installation_id FROM marketplace_agent_packs "
+                "SELECT id, source_installation_id, visibility FROM marketplace_agent_packs "
                 "WHERE publisher_user_id = ?",
                 (user_uuid,)
             )
-            published = {row["source_installation_id"]: row["id"] for row in cursor.fetchall()}
+            published = {
+                row["source_installation_id"]: {"id": row["id"], "visibility": row["visibility"]}
+                for row in cursor.fetchall()
+            }
 
             # Get sharing counts by installation_id (grants use installation_id as resource_id)
             installation_ids = [str(p["installation_id"]) for p in packs]
@@ -280,59 +285,22 @@ async def list_agent_packs(current_user):
                 sharing_counts = {row["resource_id"]: row["cnt"] for row in cursor.fetchall()}
 
             for pack in packs:
-                mp_id = published.get(pack["installation_id"])
-                pack["marketplace_pack_id"] = mp_id
-                pack["sharing_count"] = sharing_counts.get(str(pack["installation_id"]), 0)
-
-            # ── Include packs shared WITH the current user ──
-            cursor.execute(
-                "SELECT g.resource_id, g.grantor_user_id, u.username AS shared_by_username, "
-                "u.display_name AS shared_by_display_name "
-                "FROM marketplace_sharing_grants g "
-                "JOIN users u ON g.grantor_user_id = u.id "
-                "WHERE g.resource_type = 'agent_pack' AND g.grantee_user_id = ?",
-                (user_uuid,),
-            )
-            shared_grants = cursor.fetchall()
-
-            for grant in shared_grants:
-                inst_id = int(grant["resource_id"])
-                # Fetch source pack details from installations table
-                cursor.execute(
-                    "SELECT * FROM agent_pack_installations WHERE id = ?",
-                    (inst_id,),
-                )
-                source_pack = cursor.fetchone()
-                if not source_pack:
-                    continue
-
-                # Count resources
-                cursor.execute(
-                    "SELECT resource_type, COUNT(*) as cnt "
-                    "FROM agent_pack_resources WHERE pack_installation_id = ? "
-                    "GROUP BY resource_type",
-                    (inst_id,),
-                )
-                counts = {r["resource_type"]: r["cnt"] for r in cursor.fetchall()}
-
-                shared_pack = {
-                    "installation_id": source_pack["id"],
-                    "name": source_pack["name"],
-                    "description": source_pack["description"],
-                    "version": source_pack["version"],
-                    "author": source_pack["author"],
-                    "pack_type": source_pack["pack_type"] or "genie",
-                    "coordinator_tag": source_pack["coordinator_tag"],
-                    "profile_count": counts.get("profile", 0),
-                    "collection_count": counts.get("collection", 0),
-                    "installed_at": source_pack["installed_at"],
-                    "shared_with_me": True,
-                    "is_readonly": True,
-                    "shared_by_username": grant["shared_by_display_name"] or grant["shared_by_username"],
-                    "marketplace_pack_id": None,
-                    "sharing_count": 0,
-                }
-                packs.append(shared_pack)
+                if pack.get("is_owned", True):
+                    # Only enrich owned packs with publish/sharing info
+                    mp = published.get(pack["installation_id"])
+                    pack["marketplace_pack_id"] = mp["id"] if mp else None
+                    pack["marketplace_visibility"] = mp["visibility"] if mp else None
+                    pack["sharing_count"] = sharing_counts.get(str(pack["installation_id"]), 0)
+                else:
+                    # Subscribed packs — find the marketplace_pack_id for unsubscribe
+                    cursor.execute(
+                        "SELECT id FROM marketplace_agent_packs WHERE source_installation_id = ?",
+                        (pack["installation_id"],),
+                    )
+                    mp_row = cursor.fetchone()
+                    pack["marketplace_pack_id"] = mp_row["id"] if mp_row else None
+                    pack["marketplace_visibility"] = None
+                    pack["sharing_count"] = 0
 
             conn.close()
         except Exception as e:
@@ -408,6 +376,12 @@ async def publish_agent_pack(current_user, installation_id: int):
     try:
         data = (await request.get_json()) or {}
         visibility = data.get("visibility", "public")
+        user_ids = data.get("user_ids", [])
+
+        if visibility not in ("public", "targeted"):
+            return jsonify({"status": "error", "message": "Visibility must be 'public' or 'targeted'"}), 400
+        if visibility == "targeted" and not user_ids:
+            return jsonify({"status": "error", "message": "Targeted publish requires at least one user"}), 400
 
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
@@ -487,10 +461,18 @@ async def publish_agent_pack(current_user, installation_id: int):
                 "", 0, visibility, now, now,
             ),
         )
+        # Insert targeted users if targeted publish
+        if visibility == "targeted" and user_ids:
+            for uid in user_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO marketplace_targeted_users (id, resource_type, resource_id, user_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), "agent_pack", marketplace_pack_id, uid, now),
+                )
+
         conn.commit()
         conn.close()
 
-        app_logger.info(f"Agent pack '{pack_row['name']}' published to marketplace (id={marketplace_pack_id})")
+        app_logger.info(f"Agent pack '{pack_row['name']}' published to marketplace (id={marketplace_pack_id}, visibility={visibility})")
         return jsonify({
             "status": "success",
             "marketplace_pack_id": marketplace_pack_id,
@@ -534,6 +516,11 @@ async def unpublish_agent_pack(current_user, pack_id: str):
             "DELETE FROM marketplace_sharing_grants WHERE resource_type = 'agent_pack' AND resource_id = ?",
             (source_inst_id,),
         )
+        # Delete targeted user entries
+        cursor.execute(
+            "DELETE FROM marketplace_targeted_users WHERE resource_type = 'agent_pack' AND resource_id = ?",
+            (pack_id,),
+        )
         # Delete ratings
         cursor.execute("DELETE FROM agent_pack_ratings WHERE pack_id = ?", (pack_id,))
         # Delete marketplace record
@@ -549,6 +536,130 @@ async def unpublish_agent_pack(current_user, pack_id: str):
         return jsonify({"status": "error", "message": f"Unpublish failed: {e}"}), 500
 
 
+# ── Targeted Users ──────────────────────────────────────────────────────────
+
+@agent_pack_bp.route("/v1/marketplace/agent-packs/<pack_id>/targeted-users", methods=["GET"])
+@require_auth
+async def get_agent_pack_targeted_users(current_user, pack_id: str):
+    """Get the list of targeted users for a published agent pack."""
+    user_uuid = current_user.id
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Verify publisher ownership
+        cursor.execute(
+            "SELECT publisher_user_id FROM marketplace_agent_packs WHERE id = ?",
+            (pack_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Marketplace pack not found"}), 404
+        if row["publisher_user_id"] != user_uuid:
+            conn.close()
+            return jsonify({"status": "error", "message": "Only the publisher can view targeted users"}), 403
+
+        # Get targeted users with user info
+        cursor.execute(
+            """SELECT t.user_id, u.username, u.display_name
+               FROM marketplace_targeted_users t
+               LEFT JOIN users u ON t.user_id = u.id
+               WHERE t.resource_type = 'agent_pack' AND t.resource_id = ?""",
+            (pack_id,),
+        )
+        users = [
+            {"user_id": r["user_id"], "username": r["username"], "display_name": r["display_name"] or r["username"]}
+            for r in cursor.fetchall()
+        ]
+        conn.close()
+
+        return jsonify({"status": "success", "users": users}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get targeted users: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Failed: {e}"}), 500
+
+
+@agent_pack_bp.route("/v1/marketplace/agent-packs/<pack_id>/targeted-users", methods=["PUT"])
+@require_auth
+async def update_agent_pack_targeted_users(current_user, pack_id: str):
+    """Update the targeted users list for a published agent pack."""
+    user_uuid = current_user.id
+
+    try:
+        data = (await request.get_json()) or {}
+        new_user_ids = data.get("user_ids", [])
+
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Verify publisher ownership
+        cursor.execute(
+            "SELECT publisher_user_id FROM marketplace_agent_packs WHERE id = ?",
+            (pack_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Marketplace pack not found"}), 404
+        if row["publisher_user_id"] != user_uuid:
+            conn.close()
+            return jsonify({"status": "error", "message": "Only the publisher can update targeted users"}), 403
+
+        # Get current targeted user IDs
+        cursor.execute(
+            "SELECT user_id FROM marketplace_targeted_users WHERE resource_type = 'agent_pack' AND resource_id = ?",
+            (pack_id,),
+        )
+        existing_ids = {r["user_id"] for r in cursor.fetchall()}
+        new_ids = set(new_user_ids)
+
+        # Delete removed users
+        to_remove = existing_ids - new_ids
+        if to_remove:
+            placeholders = ",".join("?" * len(to_remove))
+            cursor.execute(
+                f"DELETE FROM marketplace_targeted_users WHERE resource_type = 'agent_pack' AND resource_id = ? AND user_id IN ({placeholders})",
+                [pack_id] + list(to_remove),
+            )
+
+        # Insert new users
+        now = datetime.now(timezone.utc).isoformat()
+        to_add = new_ids - existing_ids
+        for uid in to_add:
+            cursor.execute(
+                "INSERT OR IGNORE INTO marketplace_targeted_users (id, resource_type, resource_id, user_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), "agent_pack", pack_id, uid, now),
+            )
+
+        conn.commit()
+
+        # Return updated list
+        cursor.execute(
+            """SELECT t.user_id, u.username, u.display_name
+               FROM marketplace_targeted_users t
+               LEFT JOIN users u ON t.user_id = u.id
+               WHERE t.resource_type = 'agent_pack' AND t.resource_id = ?""",
+            (pack_id,),
+        )
+        users = [
+            {"user_id": r["user_id"], "username": r["username"], "display_name": r["display_name"] or r["username"]}
+            for r in cursor.fetchall()
+        ]
+        conn.close()
+
+        app_logger.info(f"Updated targeted users for agent pack {pack_id}: {len(users)} users")
+        return jsonify({"status": "success", "users": users}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to update targeted users: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Failed: {e}"}), 500
+
+
 # ── Browse ───────────────────────────────────────────────────────────────────
 
 @agent_pack_bp.route("/v1/marketplace/agent-packs", methods=["GET"])
@@ -556,7 +667,7 @@ async def unpublish_agent_pack(current_user, pack_id: str):
 async def browse_marketplace_agent_packs(current_user):
     """Browse published agent packs with pagination, search, and sorting.
 
-    Query params: page, per_page, search, sort_by, pack_type, visibility
+    Query params: page, per_page, search, sort_by, pack_type
     """
     user_uuid = current_user.id
 
@@ -566,17 +677,16 @@ async def browse_marketplace_agent_packs(current_user):
         search = request.args.get("search", "").strip()
         sort_by = request.args.get("sort_by", "recent")
         pack_type = request.args.get("pack_type", "all")
-        visibility = request.args.get("visibility", "public")
 
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
 
-        # Build query — browse only shows publicly published packs
-        # (shared packs appear in My Assets > Agent Packs instead)
+        # Build query — browse shows public packs + targeted packs visible to current user
         where_clauses = [
-            "p.visibility = ?"
+            "(p.visibility = 'public' OR (p.visibility = 'targeted' AND p.id IN "
+            "(SELECT resource_id FROM marketplace_targeted_users WHERE resource_type = 'agent_pack' AND user_id = ?)))"
         ]
-        params = [visibility]
+        params = [user_uuid]
 
         if pack_type != "all":
             where_clauses.append("p.pack_type = ?")
@@ -657,8 +767,22 @@ async def browse_marketplace_agent_packs(current_user):
                 "published_at": row["published_at"],
                 "is_publisher": row["publisher_user_id"] == user_uuid,
                 "has_tool_profiles": bool(has_tool),
+                "_source_installation_id": row["source_installation_id"],
             }
             packs.append(pack)
+
+        # Check subscription status for current user
+        for pack in packs:
+            src_id = pack.pop("_source_installation_id", None)
+            if src_id and not pack.get("is_publisher"):
+                cursor.execute(
+                    "SELECT COUNT(*) FROM marketplace_sharing_grants "
+                    "WHERE resource_type = 'agent_pack' AND resource_id = ? AND grantee_user_id = ?",
+                    (str(src_id), user_uuid),
+                )
+                pack["is_subscribed"] = cursor.fetchone()[0] > 0
+            else:
+                pack["is_subscribed"] = False
 
         conn.close()
 
@@ -755,7 +879,13 @@ async def get_marketplace_agent_pack_details(current_user, pack_id: str):
 @agent_pack_bp.route("/v1/marketplace/agent-packs/<pack_id>/install", methods=["POST"])
 @require_auth
 async def subscribe_marketplace_agent_pack(current_user, pack_id: str):
-    """Subscribe to a marketplace agent pack (logical sharing grant, no file import)."""
+    """Subscribe to a marketplace agent pack.
+
+    Creates a sharing grant AND materialises the pack's resources for the
+    subscriber: profiles are copied into the subscriber's config (marked
+    ``is_subscribed``), and ``CollectionSubscription`` rows are created for
+    every collection in the pack.
+    """
     user_uuid = current_user.id
 
     try:
@@ -775,6 +905,14 @@ async def subscribe_marketplace_agent_pack(current_user, pack_id: str):
         publisher_user_id = row["publisher_user_id"]
         source_installation_id = row["source_installation_id"]
         pack_name = row["name"]
+
+        # Fetch pack resources (profiles + collections)
+        cursor.execute(
+            "SELECT resource_type, resource_id, resource_tag, resource_role "
+            "FROM agent_pack_resources WHERE pack_installation_id = ?",
+            (source_installation_id,),
+        )
+        pack_resources = [dict(r) for r in cursor.fetchall()]
         conn.close()
 
         # Cannot subscribe to own pack
@@ -783,7 +921,7 @@ async def subscribe_marketplace_agent_pack(current_user, pack_id: str):
 
         # Create a sharing grant (logical access)
         from trusted_data_agent.auth.database import get_db_session
-        from trusted_data_agent.auth.models import MarketplaceSharingGrant
+        from trusted_data_agent.auth.models import MarketplaceSharingGrant, CollectionSubscription
 
         with get_db_session() as session:
             # Check for existing grant
@@ -803,6 +941,40 @@ async def subscribe_marketplace_agent_pack(current_user, pack_id: str):
             )
             session.add(grant)
 
+            # Create collection subscriptions for every collection in the pack
+            for res in pack_resources:
+                if res["resource_type"] == "collection":
+                    collection_id = int(res["resource_id"])
+                    existing_sub = session.query(CollectionSubscription).filter_by(
+                        user_id=user_uuid,
+                        source_collection_id=collection_id,
+                    ).first()
+                    if not existing_sub:
+                        session.add(CollectionSubscription(
+                            user_id=user_uuid,
+                            source_collection_id=collection_id,
+                            enabled=True,
+                        ))
+
+        # Copy profiles from publisher's config into subscriber's config
+        from trusted_data_agent.core.config_manager import get_config_manager
+        import copy
+
+        config_manager = get_config_manager()
+        profiles_added = 0
+        for res in pack_resources:
+            if res["resource_type"] == "profile":
+                src_profile = config_manager.get_profile(res["resource_id"], publisher_user_id)
+                if src_profile:
+                    profile_copy = copy.deepcopy(src_profile)
+                    profile_copy["is_subscribed"] = True
+                    profile_copy["source_pack_installation_id"] = source_installation_id
+                    # Avoid duplicates
+                    existing = config_manager.get_profile(profile_copy["id"], user_uuid)
+                    if not existing:
+                        config_manager.add_profile(profile_copy, user_uuid)
+                        profiles_added += 1
+
         # Increment install_count (subscriber count)
         conn = sqlite3.connect(str(DB_PATH))
         conn.execute(
@@ -812,16 +984,231 @@ async def subscribe_marketplace_agent_pack(current_user, pack_id: str):
         conn.commit()
         conn.close()
 
-        app_logger.info(f"User {user_uuid} subscribed to marketplace agent pack '{pack_name}' (pack_id={pack_id})")
+        collections_added = sum(1 for r in pack_resources if r["resource_type"] == "collection")
+        app_logger.info(
+            f"User {user_uuid} subscribed to marketplace agent pack '{pack_name}' "
+            f"(pack_id={pack_id}, profiles={profiles_added}, collections={collections_added})"
+        )
         return jsonify({
             "status": "success",
             "message": f"Subscribed to {pack_name}",
             "name": pack_name,
+            "profiles_added": profiles_added,
+            "collections_added": collections_added,
         }), 200
 
     except Exception as e:
         app_logger.error(f"Marketplace agent pack subscribe failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Subscribe failed: {e}"}), 500
+
+
+# ── Unsubscribe from Marketplace ────────────────────────────────────────────
+
+@agent_pack_bp.route("/v1/marketplace/agent-packs/<pack_id>/subscribe", methods=["DELETE"])
+@require_auth
+async def unsubscribe_marketplace_agent_pack(current_user, pack_id: str):
+    """Unsubscribe from a marketplace agent pack.
+
+    Removes the sharing grant AND cleans up all resources that were
+    materialised during subscribe: subscribed profiles are removed from the
+    subscriber's config, and ``CollectionSubscription`` rows created by the
+    pack subscription are deleted.
+    """
+    user_uuid = current_user.id
+
+    try:
+        # Find the marketplace pack and its resources
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT source_installation_id, name FROM marketplace_agent_packs WHERE id = ?",
+            (pack_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Marketplace pack not found"}), 404
+
+        source_installation_id = row["source_installation_id"]
+        pack_name = row["name"]
+
+        # Fetch pack resources for cleanup
+        cursor.execute(
+            "SELECT resource_type, resource_id "
+            "FROM agent_pack_resources WHERE pack_installation_id = ?",
+            (source_installation_id,),
+        )
+        pack_resources = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        # Delete the sharing grant and collection subscriptions
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import MarketplaceSharingGrant, CollectionSubscription
+
+        with get_db_session() as session:
+            grant = session.query(MarketplaceSharingGrant).filter_by(
+                resource_type="agent_pack",
+                resource_id=str(source_installation_id),
+                grantee_user_id=user_uuid,
+            ).first()
+            if not grant:
+                return jsonify({"status": "error", "message": "Not subscribed to this pack"}), 404
+            session.delete(grant)
+
+            # Delete collection subscriptions created by this pack
+            for res in pack_resources:
+                if res["resource_type"] == "collection":
+                    collection_id = int(res["resource_id"])
+                    sub = session.query(CollectionSubscription).filter_by(
+                        user_id=user_uuid,
+                        source_collection_id=collection_id,
+                    ).first()
+                    if sub:
+                        session.delete(sub)
+
+        # Remove subscribed profiles from subscriber's config
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+        profiles = config_manager.get_profiles(user_uuid)
+        remaining = [
+            p for p in profiles
+            if not (
+                p.get("is_subscribed")
+                and p.get("source_pack_installation_id") == source_installation_id
+            )
+        ]
+        profiles_removed = len(profiles) - len(remaining)
+        if profiles_removed > 0:
+            config_manager.save_profiles(remaining, user_uuid)
+
+        # Decrement install_count
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute(
+            "UPDATE marketplace_agent_packs SET install_count = MAX(0, install_count - 1), "
+            "updated_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), pack_id),
+        )
+        conn.commit()
+        conn.close()
+
+        collections_removed = sum(1 for r in pack_resources if r["resource_type"] == "collection")
+        app_logger.info(
+            f"User {user_uuid} unsubscribed from agent pack '{pack_name}' "
+            f"(pack_id={pack_id}, profiles_removed={profiles_removed}, collections_removed={collections_removed})"
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Unsubscribed from {pack_name}",
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Agent pack unsubscribe failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Unsubscribe failed: {e}"}), 500
+
+
+# ── Fork from Marketplace ───────────────────────────────────────────────────
+
+@agent_pack_bp.route("/v1/marketplace/agent-packs/<pack_id>/fork", methods=["POST"])
+@require_auth
+async def fork_marketplace_agent_pack(current_user, pack_id: str):
+    """Fork a marketplace agent pack — creates a physical copy under the current user's account.
+
+    Body (JSON): {"mcp_server_id": "...", "llm_configuration_id": "...", "conflict_strategy": "expand"}
+    """
+    user_uuid = current_user.id
+    tmp_path = None
+
+    try:
+        data = (await request.get_json()) or {}
+        mcp_server_id = data.get("mcp_server_id") or None
+        llm_configuration_id = data.get("llm_configuration_id") or None
+        conflict_strategy = data.get("conflict_strategy", "expand")
+
+        # Find the marketplace pack
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT source_installation_id, publisher_user_id, name "
+            "FROM marketplace_agent_packs WHERE id = ?",
+            (pack_id,),
+        )
+        mp_row = cursor.fetchone()
+        if not mp_row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Marketplace pack not found"}), 404
+
+        if mp_row["publisher_user_id"] == user_uuid:
+            conn.close()
+            return jsonify({"status": "error", "message": "Cannot fork your own pack"}), 400
+
+        source_installation_id = mp_row["source_installation_id"]
+        pack_name = mp_row["name"]
+        publisher_user_id = mp_row["publisher_user_id"]
+
+        # Get profile IDs from source installation resources
+        cursor.execute(
+            "SELECT resource_id FROM agent_pack_resources "
+            "WHERE pack_installation_id = ? AND resource_type = 'profile'",
+            (source_installation_id,),
+        )
+        profile_ids = [r["resource_id"] for r in cursor.fetchall()]
+        conn.close()
+
+        if not profile_ids:
+            return jsonify({"status": "error", "message": "Source pack has no profiles to fork"}), 400
+
+        manager = _manager()
+
+        # Step 1: Export from publisher's context
+        zip_path = await manager.export_pack(
+            profile_ids=profile_ids,
+            user_uuid=publisher_user_id,
+            pack_name=f"{pack_name} (Fork)",
+            pack_description=f"Forked from {pack_name}",
+        )
+        tmp_path = zip_path
+
+        # Step 2: Import into current user's account
+        result = await manager.import_pack(
+            zip_path=zip_path,
+            user_uuid=user_uuid,
+            mcp_server_id=mcp_server_id,
+            llm_configuration_id=llm_configuration_id,
+            conflict_strategy=conflict_strategy,
+        )
+
+        # Increment download_count on the marketplace pack
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute(
+            "UPDATE marketplace_agent_packs SET download_count = download_count + 1, "
+            "updated_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), pack_id),
+        )
+        conn.commit()
+        conn.close()
+
+        app_logger.info(
+            f"User {user_uuid} forked agent pack '{pack_name}' "
+            f"(pack_id={pack_id}) -> installation_id={result.get('installation_id')}"
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully forked '{pack_name}'",
+            **result,
+        }), 201
+
+    except ValueError as e:
+        app_logger.warning(f"Agent pack fork validation error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        app_logger.error(f"Agent pack fork failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Fork failed: {e}"}), 500
+    finally:
+        if tmp_path and Path(tmp_path).exists():
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 # ── Rate ─────────────────────────────────────────────────────────────────────

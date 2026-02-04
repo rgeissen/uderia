@@ -317,25 +317,25 @@ function createAgentPackMarketplaceCard(pack) {
 
     // Pack type badge
     const packTypeBadges = {
-        genie:  { bg: 'bg-orange-100 dark:bg-orange-500/20', text: 'text-orange-600 dark:text-orange-400', label: 'Coordinator' },
-        bundle: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-400', label: 'Bundle' },
-        single: { bg: 'bg-blue-100 dark:bg-blue-500/20',     text: 'text-blue-600 dark:text-blue-400',     label: 'Single' },
+        genie:  { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Coordinator' },
+        bundle: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Bundle' },
+        single: { bg: 'bg-blue-500/20',   text: 'text-blue-400',   label: 'Single' },
     };
     const badge = packTypeBadges[packType] || packTypeBadges.genie;
 
     // Profile tags chips
     const profileTags = (pack.profile_tags || []).slice(0, 8);
     const tagsHtml = profileTags.map(t =>
-        `<span class="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 font-mono">@${escapeHtml(t)}</span>`
+        `<span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">@${escapeHtml(t)}</span>`
     ).join('');
     const moreTagsCount = (pack.profile_tags || []).length - 8;
 
     // Publisher info
     let publisherHtml = '';
     if (pack.publisher_username) {
-        publisherHtml = `<span class="text-gray-600 dark:text-gray-400">${escapeHtml(pack.publisher_username)}</span>`;
+        publisherHtml = `<span class="text-gray-300">${escapeHtml(pack.publisher_username)}</span>`;
         if (pack.publisher_email) {
-            publisherHtml += ` <span class="text-gray-500 dark:text-gray-600">(${escapeHtml(pack.publisher_email)})</span>`;
+            publisherHtml += ` <span class="text-gray-400">(${escapeHtml(pack.publisher_email)})</span>`;
         }
     }
 
@@ -344,22 +344,17 @@ function createAgentPackMarketplaceCard(pack) {
         <div class="flex items-start justify-between gap-2">
             <div class="flex-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">${escapeHtml(pack.name)}</h2>
-                    ${pack.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300">v${escapeHtml(pack.version)}</span>` : ''}
+                    <h2 class="text-lg font-semibold text-white">${escapeHtml(pack.name)}</h2>
+                    ${pack.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(pack.version)}</span>` : ''}
                     <span class="px-2 py-0.5 text-xs rounded-full ${badge.bg} ${badge.text}">${badge.label}</span>
-                    ${pack.shared_with_me ? `<span class="px-2 py-0.5 text-xs rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400">Shared with you</span>` : ''}
+                    ${pack.is_subscribed ? `<span class="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400">Subscribed</span>` : ''}
                 </div>
-                ${pack.author ? `<p class="text-xs text-gray-500 mt-0.5">by ${escapeHtml(pack.author)}</p>` : ''}
+                ${pack.author ? `<p class="text-sm text-gray-400 mt-0.5">by ${escapeHtml(pack.author)}</p>` : ''}
             </div>
         </div>
 
         <!-- Description -->
-        ${pack.description ? `<p class="text-xs text-gray-600 dark:text-gray-400">${escapeHtml(pack.description)}</p>` : ''}
-
-        <!-- Shared by info -->
-        ${pack.shared_with_me && pack.shared_by_username ? `
-            <p class="text-xs text-indigo-600 dark:text-indigo-400">Shared by ${escapeHtml(pack.shared_by_username)}</p>
-        ` : ''}
+        ${pack.description ? `<p class="text-sm text-gray-300">${escapeHtml(pack.description)}</p>` : ''}
 
         <!-- Profile tags -->
         ${profileTags.length > 0 ? `
@@ -369,69 +364,79 @@ function createAgentPackMarketplaceCard(pack) {
             </div>
         ` : ''}
 
-        <!-- Metadata row -->
-        <div class="flex items-center gap-4 text-xs text-gray-500">
-            ${publisherHtml ? `
-                <div class="flex items-center gap-1">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                    </svg>
-                    ${publisherHtml}
-                </div>
-            ` : ''}
-            <div class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Publisher -->
+        ${publisherHtml ? `
+            <div class="flex items-center gap-1.5 text-sm text-gray-400">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                </svg>
+                ${publisherHtml}
+            </div>
+        ` : ''}
+
+        <!-- Stats -->
+        <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-300">
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
                 <span>${pack.profile_count || 0} profiles</span>
             </div>
-            <div class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
                 </svg>
                 <span>${pack.collection_count || 0} collections</span>
             </div>
-            <div class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 <span>${pack.install_count || 0} subscribers</span>
             </div>
             ${rating > 0 ? `
-                <div class="flex items-center gap-1 text-yellow-500 dark:text-yellow-400">
-                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+                <div class="flex items-center gap-1.5 text-yellow-400">
+                    <svg class="w-4 h-4 flex-shrink-0 fill-current" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                     </svg>
                     <span>${rating.toFixed(1)}</span>
-                    ${pack.rating_count > 0 ? `<span class="text-xs text-gray-500">(${pack.rating_count})</span>` : ''}
+                    ${pack.rating_count > 0 ? `<span class="text-gray-400">(${pack.rating_count})</span>` : ''}
                 </div>
             ` : `
-                <div class="text-xs text-gray-500">No ratings yet</div>
+                <span class="text-gray-400">No ratings</span>
             `}
         </div>
 
         <!-- Actions -->
         <div class="mt-2 flex gap-2 flex-wrap">
-            ${pack.shared_with_me ? `
-                <button class="agent-pack-subscribe-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white"
-                        data-pack-id="${pack.id}">
-                    Subscribe
+            ${isPublisher ? `
+                <button class="agent-pack-unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
+                        data-pack-id="${pack.id}"
+                        data-pack-name="${escapeHtml(pack.name)}">
+                    Unpublish
                 </button>
-            ` : !isPublisher ? `
-                <button class="agent-pack-subscribe-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white"
-                        data-pack-id="${pack.id}">
-                    Subscribe
+            ` : `
+                ${pack.is_subscribed ? `
+                    <button class="agent-pack-unsubscribe-btn px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-500 text-sm text-white"
+                            data-pack-id="${pack.id}"
+                            data-pack-name="${escapeHtml(pack.name)}">
+                        Unsubscribe
+                    </button>
+                ` : `
+                    <button class="agent-pack-subscribe-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white"
+                            data-pack-id="${pack.id}">
+                        Subscribe
+                    </button>
+                `}
+                <button class="agent-pack-fork-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white"
+                        data-pack-id="${pack.id}"
+                        data-pack-name="${escapeHtml(pack.name)}">
+                    Fork
                 </button>
                 <button class="agent-pack-rate-btn px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-sm text-white"
                         data-pack-id="${pack.id}"
                         data-pack-name="${escapeHtml(pack.name)}">
                     Rate
-                </button>
-            ` : `
-                <button class="agent-pack-unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
-                        data-pack-id="${pack.id}"
-                        data-pack-name="${escapeHtml(pack.name)}">
-                    Unpublish
                 </button>
             `}
         </div>
@@ -439,11 +444,19 @@ function createAgentPackMarketplaceCard(pack) {
 
     // Attach event listeners
     const subscribeBtn = card.querySelector('.agent-pack-subscribe-btn');
+    const unsubscribeBtn = card.querySelector('.agent-pack-unsubscribe-btn');
+    const forkBtn = card.querySelector('.agent-pack-fork-btn');
     const rateBtn = card.querySelector('.agent-pack-rate-btn');
     const unpublishBtn = card.querySelector('.agent-pack-unpublish-btn');
 
     if (subscribeBtn) {
         subscribeBtn.addEventListener('click', () => handleAgentPackInstall(pack, subscribeBtn));
+    }
+    if (unsubscribeBtn) {
+        unsubscribeBtn.addEventListener('click', () => handleAgentPackUnsubscribe(pack, unsubscribeBtn));
+    }
+    if (forkBtn) {
+        forkBtn.addEventListener('click', () => openAgentPackForkModal(pack));
     }
     if (rateBtn) {
         rateBtn.addEventListener('click', () => openAgentPackRateModal(pack));
@@ -640,6 +653,13 @@ async function handleAgentPackInstall(packOrId, button) {
         if (window.agentPackHandler?.loadAgentPacks) {
             window.agentPackHandler.loadAgentPacks();
         }
+        // Refresh profiles and collections so subscribed resources appear immediately
+        if (window.configState?.loadProfiles) {
+            window.configState.loadProfiles();
+        }
+        if (window.loadRagCollections) {
+            window.loadRagCollections();
+        }
 
     } catch (error) {
         console.error('Agent pack subscribe failed:', error);
@@ -705,6 +725,179 @@ async function handleAgentPackUnpublish(packId, packName, button) {
             button.disabled = false;
         }
     }
+}
+
+/**
+ * Unsubscribe from a marketplace agent pack (remove sharing grant).
+ */
+async function handleAgentPackUnsubscribe(pack, button) {
+    const confirmed = window.showConfirmation
+        ? await new Promise(resolve => {
+            window.showConfirmation(
+                'Unsubscribe from Agent Pack',
+                `Are you sure you want to unsubscribe from "${pack.name}"?\n\nYou will lose read-only access to this pack.`,
+                () => resolve(true),
+                () => resolve(false)
+            );
+        })
+        : confirm(`Unsubscribe from "${pack.name}"?`);
+
+    if (!confirmed) return;
+
+    const originalText = button.textContent;
+    button.textContent = 'Unsubscribing...';
+    button.disabled = true;
+
+    try {
+        const token = await window.authClient.getToken();
+        if (!token) {
+            showNotification('error', 'Authentication required.');
+            button.textContent = originalText;
+            button.disabled = false;
+            return;
+        }
+
+        const response = await fetch(`/api/v1/marketplace/agent-packs/${pack.id}/subscribe`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Unsubscribe failed');
+        }
+
+        showNotification('success', `Unsubscribed from ${pack.name}`);
+        loadMarketplaceAgentPacks();
+
+        if (window.agentPackHandler?.loadAgentPacks) {
+            window.agentPackHandler.loadAgentPacks();
+        }
+        // Refresh profiles and collections so unsubscribed resources disappear immediately
+        if (window.configState?.loadProfiles) {
+            window.configState.loadProfiles();
+        }
+        if (window.loadRagCollections) {
+            window.loadRagCollections();
+        }
+    } catch (error) {
+        console.error('Unsubscribe failed:', error);
+        showNotification('error', 'Failed to unsubscribe: ' + error.message);
+    } finally {
+        button.textContent = originalText;
+        button.disabled = false;
+    }
+}
+
+/**
+ * Open fork modal for a marketplace agent pack.
+ */
+function openAgentPackForkModal(pack) {
+    let overlay = document.getElementById('fork-agent-pack-modal-overlay');
+    if (overlay) overlay.remove();
+
+    overlay = document.createElement('div');
+    overlay.id = 'fork-agent-pack-modal-overlay';
+    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] opacity-0 transition-opacity duration-300';
+    overlay.innerHTML = `
+        <div id="fork-agent-pack-modal-content" class="glass-panel rounded-xl p-6 w-full max-w-lg border border-white/10 shadow-2xl transform scale-95 opacity-0 transition-all duration-300">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Fork Agent Pack</h3>
+                <button id="fork-agent-pack-close" class="text-gray-400 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="bg-white/5 rounded-lg p-4 border border-white/10 mb-4">
+                <p class="text-sm text-gray-400 mb-1">Forking from:</p>
+                <p class="text-white font-semibold">${escapeHtml(pack.name)}</p>
+                ${pack.description ? `<p class="text-sm text-gray-400 mt-1">${escapeHtml(pack.description)}</p>` : ''}
+            </div>
+
+            <div class="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
+                <div class="flex gap-3">
+                    <svg class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="text-sm text-blue-200">
+                        <p class="font-semibold mb-1">What is forking?</p>
+                        <p>Forking creates a complete copy of this agent pack including all profiles and collections. You'll own the fork and can modify it independently.</p>
+                        ${pack.has_tool_profiles ? `<p class="mt-1 text-xs text-blue-300">This pack contains tool-enabled profiles. You may need to configure an MCP server after forking.</p>` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <button id="fork-agent-pack-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+                <button id="fork-agent-pack-submit" class="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">Fork Agent Pack</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const content = overlay.querySelector('#fork-agent-pack-modal-content');
+
+    // Show with animation
+    requestAnimationFrame(() => {
+        overlay.classList.add('opacity-100');
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+    });
+
+    const closeModal = () => {
+        overlay.classList.remove('opacity-100');
+        content.classList.remove('scale-100', 'opacity-100');
+        content.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => overlay.remove(), 300);
+    };
+
+    overlay.querySelector('#fork-agent-pack-close').onclick = closeModal;
+    overlay.querySelector('#fork-agent-pack-cancel').onclick = closeModal;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+    overlay.querySelector('#fork-agent-pack-submit').onclick = async () => {
+        const submitBtn = overlay.querySelector('#fork-agent-pack-submit');
+        submitBtn.textContent = 'Forking...';
+        submitBtn.disabled = true;
+
+        try {
+            const token = await window.authClient.getToken();
+            const response = await fetch(`/api/v1/marketplace/agent-packs/${pack.id}/fork`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ conflict_strategy: 'expand' }),
+            });
+
+            const result = await response.json();
+            if (!response.ok || result.status === 'error') {
+                throw new Error(result.message || 'Fork failed');
+            }
+
+            let msg = `Successfully forked "${pack.name}"`;
+            if (result.tag_remap && Object.keys(result.tag_remap).length > 0) {
+                const remaps = Object.entries(result.tag_remap).map(([k, v]) => `@${k} → @${v}`).join(', ');
+                msg += ` (tags renamed: ${remaps})`;
+            }
+
+            showNotification('success', msg);
+            closeModal();
+
+            // Reload both marketplace and installed packs
+            loadMarketplaceAgentPacks();
+            if (window.agentPackHandler?.loadAgentPacks) {
+                window.agentPackHandler.loadAgentPacks();
+            }
+        } catch (err) {
+            showNotification('error', 'Fork failed: ' + err.message);
+            submitBtn.textContent = 'Fork Agent Pack';
+            submitBtn.disabled = false;
+        }
+    };
 }
 
 /**
@@ -891,8 +1084,8 @@ async function loadMarketplaceCollections() {
             // Filter out Default Collection (ID 0), filter by repository type
             // Preserve actual is_owned from API (shared collections have is_owned: false)
             collections = collections
-                .filter(c => c.id !== 0 && c.repository_type === currentRepositoryType)
-                .map(c => ({ ...c, is_owner: c.is_owned !== undefined ? c.is_owned : true }));
+                .filter(c => c.id !== 0 && c.repository_type === currentRepositoryType && c.is_owned !== false)
+                .map(c => ({ ...c, is_owner: true }));
         } else {
             // /api/v1/marketplace/collections returns {collections: [], total_pages: n}
             collections = data.collections || [];
@@ -988,58 +1181,51 @@ function createCollectionCard(collection) {
         
         <!-- Description -->
         ${collection.description ? `
-            <p class="text-xs text-gray-400">${escapeHtml(collection.description)}</p>
+            <p class="text-sm text-gray-300">${escapeHtml(collection.description)}</p>
         ` : ''}
 
         <!-- Shared by info -->
         ${collection.shared_with_me && collection.shared_by_username ? `
-            <p class="text-xs text-indigo-400">Shared by ${escapeHtml(collection.shared_by_username)}</p>
+            <p class="text-sm text-indigo-400">Shared by ${escapeHtml(collection.shared_by_username)}</p>
         ` : ''}
 
-        <!-- Metadata -->
-        <div class="flex items-center gap-4 text-xs text-gray-500">
-            <div class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                </svg>
-                <span class="text-gray-400">${escapeHtml(collection.owner_username || 'Unknown')}</span>
-            </div>
-            <div class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Owner -->
+        <div class="flex items-center gap-1.5 text-sm text-gray-400">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+            <span class="text-gray-300">${escapeHtml(collection.owner_username || 'Unknown')}</span>
+        </div>
+
+        <!-- Stats -->
+        <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-300">
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                 </svg>
                 <span>${subscriberCount} subscriber${subscriberCount !== 1 ? 's' : ''}</span>
             </div>
-            <div class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
                 </svg>
                 <span>${collection.rag_case_count || 0} ${repositoryType === 'knowledge' ? 'document' : 'case'}${(collection.rag_case_count || 0) !== 1 ? 's' : ''}</span>
             </div>
             ${rating > 0 ? `
-                <div class="flex items-center gap-1 text-yellow-400">
-                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+                <div class="flex items-center gap-1.5 text-yellow-400">
+                    <svg class="w-4 h-4 flex-shrink-0 fill-current" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                     </svg>
                     <span>${rating.toFixed(1)}</span>
-                    ${collection.rating_count > 0 ? `<span class="text-xs text-gray-500">(${collection.rating_count})</span>` : ''}
+                    ${collection.rating_count > 0 ? `<span class="text-gray-400">(${collection.rating_count})</span>` : ''}
                 </div>
             ` : `
-                <div class="text-xs text-gray-500">No ratings yet</div>
+                <span class="text-gray-400">No ratings</span>
             `}
         </div>
         
         <!-- Actions -->
         <div class="mt-2 flex gap-2 flex-wrap">
-            ${collection.shared_with_me ? `
-                <span class="px-3 py-1 text-xs rounded-md bg-white/5 text-gray-500">Read-only</span>
-                <button class="fork-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white"
-                        data-collection-id="${collection.id}"
-                        data-collection-name="${escapeHtml(collection.name)}"
-                        data-collection-description="${escapeHtml(collection.description || '')}">
-                    Fork
-                </button>
-            ` : `
                 ${!isOwner && !isSubscribed ? `
                     <button class="subscribe-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white"
                             data-collection-id="${collection.id}">
@@ -1072,17 +1258,26 @@ function createCollectionCard(collection) {
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}"
                             data-collection-description="${escapeHtml(collection.description || '')}">
-                        Publish${collection.sharing_count > 0 ? ` (${collection.sharing_count} shared)` : ''}
+                        Publish
                     </button>
                 ` : ''}
                 ${isOwner && collection.id !== 0 && collection.is_marketplace_listed ? `
+                    <span class="px-3 py-1 text-xs rounded-md bg-green-500/10 text-green-400 flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        Published (${collection.visibility === 'targeted' ? 'Targeted' : 'Public'})
+                    </span>
+                    <button class="publish-btn px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-sm text-gray-300"
+                            data-collection-id="${collection.id}"
+                            data-collection-name="${escapeHtml(collection.name)}"
+                            data-collection-description="${escapeHtml(collection.description || '')}">
+                        Edit
+                    </button>
                     <button class="unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}">
                         Unpublish
                     </button>
                 ` : ''}
-            `}
         </div>
     `;
     
@@ -1502,7 +1697,7 @@ async function handleFork() {
 /**
  * Initialize publish modal
  */
-let _collExistingGrants = [];  // Existing grants loaded on modal open
+let _collExistingTargetedUsers = [];  // Existing targeted users loaded on modal open
 
 function initializePublishModal() {
     const modal = document.getElementById('publish-collection-modal-overlay');
@@ -1579,13 +1774,13 @@ async function _loadPublishShareableUsers(search) {
             return;
         }
 
-        // Preserve manual selections OR pre-check from existing grants
+        // Preserve manual selections OR pre-check from existing targeted users
         const prevSelected = new Set();
         listEl.querySelectorAll('input[type=checkbox]:checked').forEach(cb => prevSelected.add(cb.value));
-        const grantedUserIds = new Set(_collExistingGrants.map(g => g.grantee_user_id));
+        const targetedUserIds = new Set(_collExistingTargetedUsers.map(t => t.user_id));
 
         listEl.innerHTML = data.users.map(u => {
-            const isChecked = prevSelected.has(u.id) || grantedUserIds.has(u.id);
+            const isChecked = prevSelected.has(u.id) || targetedUserIds.has(u.id);
             return `
             <label class="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer">
                 <input type="checkbox" value="${u.id}" class="publish-share-user-cb accent-indigo-500"
@@ -1614,14 +1809,17 @@ function _updatePublishShareCount() {
 }
 
 /**
- * Update the submit button text based on visibility and existing grants.
+ * Update the submit button text based on visibility and existing publish state.
  */
 function _updatePublishCollectionButtonText() {
     const submitBtn = document.getElementById('publish-collection-submit');
     const visibility = document.getElementById('publish-visibility')?.value;
+    const isAlreadyPublished = document.getElementById('publish-collection-marketplace-id')?.value === 'true';
     if (!submitBtn) return;
-    if (visibility === 'targeted') {
-        submitBtn.textContent = _collExistingGrants.length > 0 ? 'Save Changes' : 'Share';
+    if (isAlreadyPublished) {
+        submitBtn.textContent = 'Save Changes';
+    } else if (visibility === 'targeted') {
+        submitBtn.textContent = 'Publish (Targeted)';
     } else {
         submitBtn.textContent = 'Publish Collection';
     }
@@ -1629,12 +1827,13 @@ function _updatePublishCollectionButtonText() {
 
 /**
  * Open publish modal.
- * Fetches existing grants to adaptively pre-select visibility and pre-check users.
+ * Fetches current publish state to adaptively pre-select visibility and pre-check targeted users.
  */
 async function openPublishModal(collection) {
     const modal = document.getElementById('publish-collection-modal-overlay');
     const modalContent = document.getElementById('publish-collection-modal-content');
     const collectionIdInput = document.getElementById('publish-collection-id');
+    const marketplaceIdInput = document.getElementById('publish-collection-marketplace-id');
     const collectionName = document.getElementById('publish-collection-name');
     const collectionDescription = document.getElementById('publish-collection-description');
     const visibilitySelect = document.getElementById('publish-visibility');
@@ -1643,8 +1842,9 @@ async function openPublishModal(collection) {
     if (!modal || !modalContent) return;
 
     // Reset state
-    _collExistingGrants = [];
+    _collExistingTargetedUsers = [];
     if (collectionIdInput) collectionIdInput.value = collection.id;
+    if (marketplaceIdInput) marketplaceIdInput.value = '';
     if (collectionName) collectionName.textContent = collection.name;
     if (collectionDescription) collectionDescription.textContent = collection.description || 'No description';
     if (visibilitySelect) visibilitySelect.value = '';
@@ -1658,21 +1858,27 @@ async function openPublishModal(collection) {
         modalContent.classList.add('scale-100', 'opacity-100');
     }, 10);
 
-    // Fetch existing grants to determine adaptive state
+    // Determine adaptive state from collection's publish status
     try {
         const token = window.authClient?.getToken();
-        if (token) {
-            const res = await fetch(`/api/v1/marketplace/share/collection/${collection.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
-            const data = await res.json();
-            _collExistingGrants = (data.status === 'success' && data.grants) ? data.grants : [];
+        if (token && collection.is_marketplace_listed) {
+            // Already published — store flag for submit handler
+            if (marketplaceIdInput) marketplaceIdInput.value = 'true';
 
-            if (_collExistingGrants.length > 0) {
-                // Pre-select "Targeted" and show user picker with pre-checked users
+            const collVisibility = collection.visibility || 'public';
+            if (collVisibility === 'targeted') {
+                // Fetch targeted users
+                const res = await fetch(`/api/v1/marketplace/collections/${collection.id}/targeted-users`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await res.json();
+                _collExistingTargetedUsers = (data.status === 'success' && data.users) ? data.users : [];
+
                 if (visibilitySelect) visibilitySelect.value = 'targeted';
                 if (usersSection) usersSection.classList.remove('hidden');
                 await _loadPublishShareableUsers('');
+            } else {
+                if (visibilitySelect) visibilitySelect.value = 'public';
             }
         }
     } catch { /* ignore, use defaults */ }
@@ -1697,7 +1903,7 @@ function closePublishModal() {
     setTimeout(() => {
         modal.classList.add('hidden');
         if (form) form.reset();
-        _collExistingGrants = [];
+        _collExistingTargetedUsers = [];
     }, 300);
 }
 
@@ -1720,75 +1926,50 @@ async function handlePublish() {
         return;
     }
 
-    // For targeted: grant sync (create new, revoke removed)
+    // For targeted: publish with user_ids or update targeted users
     if (visibility === 'targeted') {
         const selectedUserIds = [...document.querySelectorAll('.publish-share-user-cb:checked')].map(cb => cb.value);
-
-        // Build map of existing grants by user ID
-        const existingGrantsByUserId = {};
-        _collExistingGrants.forEach(g => { existingGrantsByUserId[g.grantee_user_id] = g.id; });
-        const existingUserIds = new Set(Object.keys(existingGrantsByUserId));
-
-        // Determine what to create and revoke
-        const toCreate = selectedUserIds.filter(uid => !existingUserIds.has(uid));
-        const toRevoke = [...existingUserIds].filter(uid => !selectedUserIds.includes(uid));
-
-        // Allow 0 selected only when revoking existing grants
-        if (selectedUserIds.length === 0 && _collExistingGrants.length === 0) {
-            showNotification('error', 'Please select at least one user to share with');
+        if (selectedUserIds.length === 0) {
+            showNotification('error', 'Please select at least one user');
             return;
         }
 
-        // Nothing changed
-        if (toCreate.length === 0 && toRevoke.length === 0) {
-            showNotification('info', 'No changes to save');
-            closePublishModal();
-            return;
-        }
-
-        const originalText = submitBtn?.textContent || 'Save Changes';
-        if (submitBtn) { submitBtn.textContent = 'Saving...'; submitBtn.disabled = true; }
+        const existingMarketplaceId = document.getElementById('publish-collection-marketplace-id')?.value;
+        const isAlreadyPublished = existingMarketplaceId === 'true';
+        const originalText = submitBtn?.textContent || 'Publish';
+        if (submitBtn) { submitBtn.textContent = 'Publishing...'; submitBtn.disabled = true; }
 
         try {
             const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 
-            // Create new grants
-            if (toCreate.length > 0) {
-                const res = await fetch('/api/v1/marketplace/share', {
-                    method: 'POST', headers,
-                    body: JSON.stringify({
-                        resource_type: 'collection',
-                        resource_id: collectionId,
-                        user_ids: toCreate,
-                    }),
+            if (isAlreadyPublished) {
+                // Already published — update targeted users list
+                const res = await fetch(`/api/v1/marketplace/collections/${collectionId}/targeted-users`, {
+                    method: 'PUT', headers,
+                    body: JSON.stringify({ user_ids: selectedUserIds }),
                 });
                 const data = await res.json();
                 if (!res.ok || data.status === 'error') {
-                    throw new Error(data.message || 'Share failed');
+                    throw new Error(data.message || 'Update failed');
                 }
-            }
-
-            // Revoke removed grants
-            for (const uid of toRevoke) {
-                const res = await fetch(`/api/v1/marketplace/share/${existingGrantsByUserId[uid]}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` },
+                showNotification('success', 'Targeted users updated');
+            } else {
+                // New targeted publish — creates marketplace record + targeted users
+                const res = await fetch(`/api/v1/rag/collections/${collectionId}/publish`, {
+                    method: 'POST', headers,
+                    body: JSON.stringify({ visibility: 'targeted', user_ids: selectedUserIds }),
                 });
-                if (!res.ok) {
-                    const data = await res.json();
-                    throw new Error(data.message || 'Revoke failed');
+                const data = await res.json();
+                if (!res.ok || data.status === 'error') {
+                    throw new Error(data.message || data.error || 'Publish failed');
                 }
+                showNotification('success', 'Collection published to targeted users');
             }
-
-            const msg = toRevoke.length > 0 && toCreate.length === 0
-                ? `Removed sharing for ${toRevoke.length} user(s)`
-                : 'Sharing updated';
-            showNotification('success', msg);
 
             closePublishModal();
             loadMarketplaceContent();
         } catch (error) {
-            console.error('Share failed:', error);
+            console.error('Publish failed:', error);
             showNotification('error', 'Failed: ' + error.message);
         } finally {
             if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; }
@@ -2054,232 +2235,6 @@ async function handleRate() {
         }
     }
 }
-
-// ============================================================================
-// TARGETED SHARING — Share Modal + Grant Management
-// ============================================================================
-
-/**
- * Open the share modal for a resource (collection or agent pack).
- * Shows a user picker + list of existing grants with revoke buttons.
- */
-async function openShareModal(resourceType, resourceId, resourceName) {
-    const token = window.authClient?.getToken();
-    if (!token) {
-        showNotification('error', 'Authentication required');
-        return;
-    }
-
-    // Build overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]';
-    overlay.id = 'share-modal-overlay';
-    overlay.innerHTML = `
-        <div class="glass-panel rounded-xl p-6 w-full max-w-lg border border-white/10 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h3 class="text-lg font-bold text-white mb-1">Share</h3>
-            <p class="text-sm text-gray-400 mb-4">
-                Share <span class="text-white font-medium">${escapeHtml(resourceName)}</span> with specific users.
-                Check to grant access, uncheck to revoke.
-            </p>
-
-            <!-- User picker -->
-            <div class="mb-4">
-                <div class="relative mb-2">
-                    <input type="text" id="share-modal-search" placeholder="Search users..."
-                           class="w-full p-2 pl-8 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:border-blue-500">
-                    <svg class="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                </div>
-                <div id="share-modal-users-list" class="max-h-48 overflow-y-auto space-y-1 bg-white/5 rounded-lg p-2 border border-white/10">
-                    <p class="text-sm text-gray-500 text-center py-2">Loading...</p>
-                </div>
-                <p id="share-modal-status" class="text-xs text-gray-400 mt-1"></p>
-            </div>
-
-            <hr class="border-white/10 my-4">
-
-            <!-- Current access info -->
-            <div>
-                <label class="block text-sm font-medium text-gray-300 mb-2">Current Access</label>
-                <div id="share-modal-access-list" class="space-y-1">
-                    <p class="text-sm text-gray-500 text-center py-2">No users have access yet</p>
-                </div>
-            </div>
-
-            <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-white/10">
-                <button id="share-modal-close" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Close</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    // Close handlers
-    const closeModal = () => overlay.remove();
-    overlay.querySelector('#share-modal-close').onclick = closeModal;
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-
-    // Maps: userId → grantId (for revoke), userId → grant data
-    let grantsByUserId = {};
-    const authHeaders = { 'Authorization': `Bearer ${token}` };
-
-    // Grant access to a user (check handler)
-    const _grantUser = async (userId, cb) => {
-        cb.disabled = true;
-        const statusEl = overlay.querySelector('#share-modal-status');
-        statusEl.textContent = 'Sharing...';
-        statusEl.className = 'text-xs text-gray-400 mt-1';
-        try {
-            const res = await fetch('/api/v1/marketplace/share', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders },
-                body: JSON.stringify({ resource_type: resourceType, resource_id: resourceId, user_ids: [userId] }),
-            });
-            const data = await res.json();
-            if (!res.ok || data.status === 'error') throw new Error(data.message || 'Share failed');
-            statusEl.textContent = 'Access granted';
-            statusEl.className = 'text-xs text-green-400 mt-1';
-            // Refresh grants to get the new grant ID
-            await _loadGrants();
-        } catch (err) {
-            cb.checked = false;
-            cb.disabled = false;
-            statusEl.textContent = `Failed: ${err.message}`;
-            statusEl.className = 'text-xs text-red-400 mt-1';
-        }
-    };
-
-    // Revoke access from a user (uncheck handler)
-    const _revokeUser = async (userId, cb) => {
-        const grantId = grantsByUserId[userId];
-        if (!grantId) { cb.checked = false; return; }
-        cb.disabled = true;
-        const statusEl = overlay.querySelector('#share-modal-status');
-        statusEl.textContent = 'Revoking...';
-        statusEl.className = 'text-xs text-gray-400 mt-1';
-        try {
-            const res = await fetch(`/api/v1/marketplace/share/${grantId}`, {
-                method: 'DELETE',
-                headers: authHeaders,
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Revoke failed');
-            statusEl.textContent = 'Access revoked';
-            statusEl.className = 'text-xs text-yellow-400 mt-1';
-            await _loadGrants();
-        } catch (err) {
-            cb.checked = true;
-            cb.disabled = false;
-            statusEl.textContent = `Failed: ${err.message}`;
-            statusEl.className = 'text-xs text-red-400 mt-1';
-        }
-    };
-
-    // Render user list with current grant state
-    const _renderUsers = (users) => {
-        const listEl = overlay.querySelector('#share-modal-users-list');
-        if (!users?.length) {
-            listEl.innerHTML = '<p class="text-sm text-gray-500 text-center py-2">No eligible users found</p>';
-            return;
-        }
-        const sharedCount = Object.keys(grantsByUserId).length;
-        const statusEl = overlay.querySelector('#share-modal-status');
-        statusEl.textContent = sharedCount > 0 ? `Shared with ${sharedCount} user${sharedCount !== 1 ? 's' : ''}` : '';
-        statusEl.className = 'text-xs text-gray-400 mt-1';
-
-        listEl.innerHTML = users.map(u => {
-            const isGranted = !!grantsByUserId[u.id];
-            return `
-            <label class="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer">
-                <input type="checkbox" value="${u.id}" class="share-modal-user-cb accent-indigo-500"
-                       ${isGranted ? 'checked' : ''}>
-                <span class="text-sm text-white">${escapeHtml(u.display_name)}</span>
-                <span class="text-xs text-gray-500">${escapeHtml(u.username)}</span>
-                ${u.email ? `<span class="text-xs text-gray-600 ml-auto">${escapeHtml(u.email)}</span>` : ''}
-            </label>`;
-        }).join('');
-
-        listEl.querySelectorAll('.share-modal-user-cb').forEach(cb => {
-            cb.addEventListener('change', () => {
-                if (cb.checked) {
-                    _grantUser(cb.value, cb);
-                } else {
-                    _revokeUser(cb.value, cb);
-                }
-            });
-        });
-    };
-
-    // Cache last loaded users so we can re-render without re-fetching
-    let cachedUsers = [];
-
-    // Load shareable users from API
-    const _loadUsers = async (search) => {
-        const listEl = overlay.querySelector('#share-modal-users-list');
-        try {
-            const url = `/api/v1/marketplace/shareable-users${search ? `?search=${encodeURIComponent(search)}` : ''}`;
-            const res = await fetch(url, { headers: authHeaders });
-            const data = await res.json();
-            cachedUsers = (res.ok && data.users) ? data.users : [];
-            _renderUsers(cachedUsers);
-        } catch {
-            listEl.innerHTML = '<p class="text-sm text-red-400 text-center py-2">Failed to load users</p>';
-        }
-    };
-
-    // Load existing grants (populates grantsByUserId, re-renders user list + access info)
-    const _loadGrants = async () => {
-        try {
-            const res = await fetch(`/api/v1/marketplace/share/${resourceType}/${resourceId}`, {
-                headers: authHeaders,
-            });
-            const data = await res.json();
-            grantsByUserId = {};
-            const accessEl = overlay.querySelector('#share-modal-access-list');
-
-            if (res.ok && data.grants?.length) {
-                data.grants.forEach(g => { grantsByUserId[g.grantee_user_id] = g.id; });
-                // Render current access info
-                accessEl.innerHTML = data.grants.map(g => `
-                    <div class="flex items-center justify-between p-2 rounded bg-white/5 border border-white/5">
-                        <div class="flex items-center gap-2">
-                            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                            </svg>
-                            <span class="text-sm text-white">${escapeHtml(g.grantee_display_name || g.grantee_username || g.grantee_user_id)}</span>
-                        </div>
-                        <span class="text-xs text-gray-500">${g.created_at ? new Date(g.created_at).toLocaleDateString() : ''}</span>
-                    </div>
-                `).join('');
-            } else {
-                accessEl.innerHTML = '<p class="text-sm text-gray-500 text-center py-2">No users have access yet</p>';
-            }
-
-            // Re-render user list with updated grant state
-            if (cachedUsers.length) {
-                _renderUsers(cachedUsers);
-            }
-        } catch {
-            // Silent — grants just won't be pre-checked
-        }
-    };
-
-    // Search input handler
-    const searchInput = overlay.querySelector('#share-modal-search');
-    let debounce = null;
-    searchInput.addEventListener('input', () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => _loadUsers(searchInput.value), 300);
-    });
-
-    // Initial load — grants first, then users
-    await _loadGrants();
-    _loadUsers('');
-}
-
-// Expose openShareModal globally for agentPackHandler
-window.openShareModal = openShareModal;
 
 // Export refresh function for external use
 export function refreshMarketplace() {

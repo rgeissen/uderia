@@ -1091,15 +1091,15 @@ async function calculateRagImpactKPIs() {
         
         for (const collection of collections) {
 
-            if (collection.count) {
-                totalCases += collection.count;
-
                 // Skip knowledge repositories - they have chunks, not case rows
                 const repositoryType = collection.repository_type || 'planner';
                 if (repositoryType === 'knowledge') {
                     console.log(`[RAG KPI] Skipping knowledge repository: ${collection.name} (ID: ${collection.id})`);
                     continue;
                 }
+
+            if (collection.count) {
+                totalCases += collection.count;
 
                 // Fetch all rows for accurate metrics (not limited) - only for planner repositories
                 try {

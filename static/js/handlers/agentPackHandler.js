@@ -69,6 +69,7 @@ function renderAgentPacks() {
 
         const packType = pack.pack_type || 'genie';
         const badge = PACK_TYPE_BADGES[packType] || PACK_TYPE_BADGES.genie;
+        const isOwned = pack.is_owned !== false;
 
         // Info line: show coordinator for genie packs, profile count for others
         let infoItems = '';
@@ -83,6 +84,52 @@ function renderAgentPacks() {
         infoItems += `<span>Collections: <span class="text-gray-300">${pack.collections_count ?? '?'}</span></span>`;
         if (installed) {
             infoItems += `<span>Installed: <span class="text-gray-300">${installed}</span></span>`;
+        }
+
+        // Action buttons differ for owned vs subscribed packs
+        let actionButtons = '';
+        if (isOwned) {
+            actionButtons = `
+                    <button onclick="window.agentPackHandler.handleExportAgentPack(${pack.installation_id})"
+                            class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">
+                        Export
+                    </button>
+                    ${pack.marketplace_pack_id
+                        ? `<span class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 flex items-center gap-1">
+                               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                               Published (${pack.marketplace_visibility === 'targeted' ? 'Targeted' : 'Public'})
+                           </span>
+                           <button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
+                                   class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">
+                               Edit
+                           </button>
+                           <button onclick="window.agentPackHandler.handleUnpublishFromMyAssets('${pack.marketplace_pack_id}')"
+                                   class="px-3 py-1.5 text-xs rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-colors">
+                               Unpublish
+                           </button>`
+                        : `<button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
+                                  class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">
+                              Publish
+                          </button>`
+                    }
+                    <button onclick="window.agentPackHandler.handleUninstallAgentPack(${pack.installation_id}, '${_esc(pack.name)}')"
+                            class="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                        Uninstall
+                    </button>`;
+        } else {
+            // Subscribed pack — limited actions
+            actionButtons = `
+                    <span class="px-3 py-1.5 text-xs rounded-lg flex items-center gap-1" style="background:#4f46e5;color:#fff;">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                        Subscribed
+                    </span>
+                    ${pack.marketplace_pack_id
+                        ? `<button onclick="window.agentPackHandler.handleUnsubscribeAgentPack('${pack.marketplace_pack_id}', '${_esc(pack.name)}')"
+                                  class="px-3 py-1.5 text-xs rounded-lg transition-colors" style="background:#ea580c;color:#fff;">
+                              Unsubscribe
+                          </button>`
+                        : ''
+                    }`;
         }
 
         return `
@@ -101,29 +148,7 @@ function renderAgentPacks() {
                     </div>
                 </div>
                 <div class="flex items-center gap-2 ml-4 shrink-0">
-                    <button onclick="window.agentPackHandler.handleExportAgentPack(${pack.installation_id})"
-                            class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">
-                        Export
-                    </button>
-                    ${pack.marketplace_pack_id
-                        ? `<span class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 flex items-center gap-1">
-                               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                               Published
-                           </span>`
-                        : `<button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
-                                  class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">
-                              Publish
-                          </button>`
-                    }
-                    <button onclick="if(window.openShareModal) window.openShareModal('agent_pack', '${pack.installation_id}', '${_esc(pack.name)}')"
-                            class="px-3 py-1.5 text-xs rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors flex items-center gap-1">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                        Share${pack.sharing_count > 0 ? ` (${pack.sharing_count})` : ''}
-                    </button>
-                    <button onclick="window.agentPackHandler.handleUninstallAgentPack(${pack.installation_id}, '${_esc(pack.name)}')"
-                            class="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
-                        Uninstall
-                    </button>
+                    ${actionButtons}
                 </div>
             </div>
         </div>`;
@@ -895,7 +920,7 @@ async function handleUninstallAgentPack(installationId, packName) {
 // ── Publish to Marketplace ────────────────────────────────────────────────────
 
 let _publishPackModalInitialized = false;
-let _packExistingGrants = [];  // Existing grants loaded on modal open
+let _packExistingTargetedUsers = [];  // Existing targeted users loaded on modal open
 
 /**
  * Initialize the static publish pack modal (call once at startup).
@@ -954,7 +979,7 @@ function initializePublishPackModal() {
 
 /**
  * Open the publish pack modal for a given installation.
- * Fetches existing grants to adaptively pre-select visibility and pre-check users.
+ * Fetches current publish state to adaptively pre-select visibility and pre-check targeted users.
  */
 async function openPublishPackModal(installationId, packName) {
     initializePublishPackModal();
@@ -962,6 +987,7 @@ async function openPublishPackModal(installationId, packName) {
     const modal = document.getElementById('publish-pack-modal-overlay');
     const modalContent = document.getElementById('publish-pack-modal-content');
     const packIdInput = document.getElementById('publish-pack-id');
+    const marketplaceIdInput = document.getElementById('publish-pack-marketplace-id');
     const packNameEl = document.getElementById('publish-pack-name');
     const visibilitySelect = document.getElementById('publish-pack-visibility');
     const usersSection = document.getElementById('publish-pack-users-section');
@@ -969,8 +995,9 @@ async function openPublishPackModal(installationId, packName) {
     if (!modal || !modalContent) return;
 
     // Reset state
-    _packExistingGrants = [];
+    _packExistingTargetedUsers = [];
     if (packIdInput) packIdInput.value = installationId;
+    if (marketplaceIdInput) marketplaceIdInput.value = '';
     if (packNameEl) packNameEl.textContent = packName;
     if (visibilitySelect) visibilitySelect.value = '';
     if (usersSection) usersSection.classList.add('hidden');
@@ -983,17 +1010,30 @@ async function openPublishPackModal(installationId, packName) {
         modalContent.classList.add('scale-100', 'opacity-100');
     }, 10);
 
-    // Fetch existing grants to determine adaptive state
+    // Fetch current pack data to determine adaptive state
     try {
-        const res = await fetch(`/api/v1/marketplace/share/agent_pack/${installationId}`, { headers: _headers(false) });
-        const data = await res.json();
-        _packExistingGrants = (data.status === 'success' && data.grants) ? data.grants : [];
+        const packsRes = await fetch('/api/v1/agent-packs', { headers: _headers(false) });
+        const packsData = await packsRes.json();
+        const thisPack = (packsData.packs || []).find(p => p.installation_id === Number(installationId));
+        const marketplacePackId = thisPack?.marketplace_pack_id;
+        const marketplaceVisibility = thisPack?.marketplace_visibility;
 
-        if (_packExistingGrants.length > 0) {
-            // Pre-select "Targeted" and show user picker with pre-checked users
-            if (visibilitySelect) visibilitySelect.value = 'targeted';
-            if (usersSection) usersSection.classList.remove('hidden');
-            await _loadPackShareableUsers('');
+        if (marketplacePackId) {
+            // Already published — store marketplace ID for submit handler
+            if (marketplaceIdInput) marketplaceIdInput.value = marketplacePackId;
+
+            if (marketplaceVisibility === 'targeted') {
+                // Fetch targeted users
+                const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}/targeted-users`, { headers: _headers(false) });
+                const data = await res.json();
+                _packExistingTargetedUsers = (data.status === 'success' && data.users) ? data.users : [];
+
+                if (visibilitySelect) visibilitySelect.value = 'targeted';
+                if (usersSection) usersSection.classList.remove('hidden');
+                await _loadPackShareableUsers('');
+            } else {
+                if (visibilitySelect) visibilitySelect.value = 'public';
+            }
         }
     } catch { /* ignore, use defaults */ }
 
@@ -1034,69 +1074,44 @@ async function _handlePublishPack() {
         return;
     }
 
-    // For targeted: collect selected user IDs and sync grants
+    // For targeted: publish with user_ids or update targeted users
     if (visibility === 'targeted') {
         const selectedUserIds = [...document.querySelectorAll('.publish-pack-user-cb:checked')].map(cb => cb.value);
-
-        // Build map of existing grants by user ID
-        const existingGrantsByUserId = {};
-        _packExistingGrants.forEach(g => { existingGrantsByUserId[g.grantee_user_id] = g.id; });
-        const existingUserIds = new Set(Object.keys(existingGrantsByUserId));
-
-        // Determine what to create and revoke
-        const toCreate = selectedUserIds.filter(uid => !existingUserIds.has(uid));
-        const toRevoke = [...existingUserIds].filter(uid => !selectedUserIds.includes(uid));
-
-        // Allow 0 selected only when revoking existing grants
-        if (selectedUserIds.length === 0 && _packExistingGrants.length === 0) {
-            _notify('error', 'Please select at least one user to share with');
+        if (selectedUserIds.length === 0) {
+            _notify('error', 'Please select at least one user');
             return;
         }
 
-        // Nothing changed
-        if (toCreate.length === 0 && toRevoke.length === 0) {
-            _notify('info', 'No changes to save');
-            closePublishPackModal();
-            return;
-        }
-
-        const originalText = submitBtn?.textContent || 'Save Changes';
-        if (submitBtn) { submitBtn.textContent = 'Saving...'; submitBtn.disabled = true; }
+        const existingMarketplaceId = document.getElementById('publish-pack-marketplace-id')?.value;
+        const originalText = submitBtn?.textContent || 'Publish';
+        if (submitBtn) { submitBtn.textContent = 'Publishing...'; submitBtn.disabled = true; }
 
         try {
-            // Create new grants
-            if (toCreate.length > 0) {
-                const res = await fetch('/api/v1/marketplace/share', {
-                    method: 'POST',
+            if (existingMarketplaceId) {
+                // Already published — update targeted users list
+                const res = await fetch(`/api/v1/marketplace/agent-packs/${existingMarketplaceId}/targeted-users`, {
+                    method: 'PUT',
                     headers: _headers(true),
-                    body: JSON.stringify({
-                        resource_type: 'agent_pack',
-                        resource_id: String(installationId),
-                        user_ids: toCreate,
-                    }),
+                    body: JSON.stringify({ user_ids: selectedUserIds }),
                 });
                 const data = await res.json();
                 if (!res.ok || data.status === 'error') {
-                    throw new Error(data.message || `Share failed (${res.status})`);
+                    throw new Error(data.message || `Update failed (${res.status})`);
                 }
-            }
-
-            // Revoke removed grants
-            for (const uid of toRevoke) {
-                const res = await fetch(`/api/v1/marketplace/share/${existingGrantsByUserId[uid]}`, {
-                    method: 'DELETE',
-                    headers: _headers(false),
+                _notify('success', 'Targeted users updated');
+            } else {
+                // New targeted publish — creates marketplace record + targeted users
+                const res = await fetch(`/api/v1/agent-packs/${installationId}/publish`, {
+                    method: 'POST',
+                    headers: _headers(true),
+                    body: JSON.stringify({ visibility: 'targeted', user_ids: selectedUserIds }),
                 });
-                if (!res.ok) {
-                    const data = await res.json();
-                    throw new Error(data.message || `Revoke failed (${res.status})`);
+                const data = await res.json();
+                if (!res.ok || data.status === 'error') {
+                    throw new Error(data.message || `Publish failed (${res.status})`);
                 }
+                _notify('success', 'Agent pack published to targeted users');
             }
-
-            const msg = toRevoke.length > 0 && toCreate.length === 0
-                ? `Removed sharing for ${toRevoke.length} user(s)`
-                : `Sharing updated`;
-            _notify('success', msg);
 
             closePublishPackModal();
             await loadAgentPacks();
@@ -1109,7 +1124,7 @@ async function _handlePublishPack() {
         return;
     }
 
-    // Public: full publish to marketplace with file export
+    // Public: publish to marketplace
     const originalText = submitBtn?.textContent || 'Publish Agent Pack';
     if (submitBtn) { submitBtn.textContent = 'Publishing...'; submitBtn.disabled = true; }
 
@@ -1153,13 +1168,13 @@ async function _loadPackShareableUsers(search) {
             return;
         }
 
-        // Preserve manual selections OR pre-check from existing grants
+        // Preserve manual selections OR pre-check from existing targeted users
         const prevChecked = new Set();
         listEl.querySelectorAll('.publish-pack-user-cb:checked').forEach(cb => prevChecked.add(cb.value));
-        const grantedUserIds = new Set(_packExistingGrants.map(g => g.grantee_user_id));
+        const targetedUserIds = new Set(_packExistingTargetedUsers.map(t => t.user_id));
 
         listEl.innerHTML = data.users.map(u => {
-            const isChecked = prevChecked.has(u.id) || grantedUserIds.has(u.id);
+            const isChecked = prevChecked.has(u.id) || targetedUserIds.has(u.id);
             return `
             <label class="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer">
                 <input type="checkbox" value="${u.id}" class="publish-pack-user-cb accent-indigo-500"
@@ -1188,16 +1203,82 @@ function _updatePublishPackShareCount() {
 }
 
 /**
- * Update the submit button text based on visibility and existing grants.
+ * Update the submit button text based on visibility and existing publish state.
  */
 function _updatePublishPackButtonText() {
     const submitBtn = document.getElementById('publish-pack-submit');
     const visibility = document.getElementById('publish-pack-visibility')?.value;
+    const existingMarketplaceId = document.getElementById('publish-pack-marketplace-id')?.value;
     if (!submitBtn) return;
-    if (visibility === 'targeted') {
-        submitBtn.textContent = _packExistingGrants.length > 0 ? 'Save Changes' : 'Share';
+    if (existingMarketplaceId) {
+        // Already published — show "Save Changes"
+        submitBtn.textContent = 'Save Changes';
+    } else if (visibility === 'targeted') {
+        submitBtn.textContent = 'Publish (Targeted)';
     } else {
         submitBtn.textContent = 'Publish Agent Pack';
+    }
+}
+
+/**
+ * Unpublish an agent pack from My Assets card.
+ */
+async function handleUnpublishFromMyAssets(marketplacePackId) {
+    if (!confirm('Are you sure you want to unpublish this agent pack from the marketplace?')) return;
+    try {
+        const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}`, {
+            method: 'DELETE',
+            headers: _headers(false),
+        });
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') {
+            throw new Error(data.message || `Unpublish failed (${res.status})`);
+        }
+        _notify('success', 'Agent pack unpublished from marketplace');
+        await loadAgentPacks();
+        if (window.refreshMarketplace) window.refreshMarketplace();
+    } catch (err) {
+        _notify('error', `Failed: ${err.message}`);
+    }
+}
+
+// ── Unsubscribe from Agent Pack ───────────────────────────────────────────────
+
+async function handleUnsubscribeAgentPack(marketplacePackId, packName) {
+    const confirmed = window.showConfirmation
+        ? await new Promise(resolve => {
+            window.showConfirmation(
+                'Unsubscribe from Agent Pack',
+                `Are you sure you want to unsubscribe from "${packName}"?\n\nAll subscribed profiles and collection subscriptions from this pack will be removed.`,
+                () => resolve(true),
+                () => resolve(false)
+            );
+        })
+        : confirm(`Unsubscribe from "${packName}"?`);
+
+    if (!confirmed) return;
+
+    try {
+        const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}/subscribe`, {
+            method: 'DELETE',
+            headers: _headers(false),
+        });
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') {
+            throw new Error(data.message || `Unsubscribe failed (${res.status})`);
+        }
+        _notify('success', `Unsubscribed from ${packName}`);
+        await loadAgentPacks();
+        if (window.refreshMarketplace) window.refreshMarketplace();
+        // Refresh profiles and collections so unsubscribed resources disappear
+        if (window.configState?.loadProfiles) {
+            window.configState.loadProfiles();
+        }
+        if (window.loadRagCollections) {
+            window.loadRagCollections();
+        }
+    } catch (err) {
+        _notify('error', `Failed: ${err.message}`);
     }
 }
 
@@ -1210,6 +1291,8 @@ window.agentPackHandler = {
     handleCreateAgentPack,
     handleExportAgentPack,
     handleUninstallAgentPack,
+    handleUnsubscribeAgentPack,
+    handleUnpublishFromMyAssets,
     openPublishPackModal,
     initializePublishPackModal,
     // Exposed for marketplace install flow reuse

@@ -7548,10 +7548,23 @@ async def browse_marketplace_collections():
             if user_uuid and coll.get("owner_user_id") == user_uuid:
                 continue
             
-            # Check visibility filter
+            # Check visibility — show public + targeted (if user is in targeted list)
             coll_visibility = coll.get("visibility", "private")
-            if visibility_filter == "public" and coll_visibility != "public":
-                continue
+            if coll_visibility == "public":
+                pass  # always visible in browse
+            elif coll_visibility == "targeted" and user_uuid:
+                from trusted_data_agent.auth.database import get_db_session as _get_db_vis
+                from trusted_data_agent.auth.models import MarketplaceTargetedUser as _MTU
+                with _get_db_vis() as _sess_vis:
+                    targeted = _sess_vis.query(_MTU).filter_by(
+                        resource_type="collection",
+                        resource_id=str(coll["id"]),
+                        user_id=user_uuid,
+                    ).first()
+                    if not targeted:
+                        continue
+            else:
+                continue  # private or targeted without user — skip
             
             # Repository type filter (if provided)
             if repository_type_filter:
@@ -7598,75 +7611,6 @@ async def browse_marketplace_collections():
             
             coll_copy["shared_with_me"] = False
             marketplace_collections.append(coll_copy)
-
-        # --- Second pass: include collections shared with current user via targeted grants ---
-        if user_uuid:
-            from trusted_data_agent.auth.database import get_db_session as _get_db
-            from trusted_data_agent.auth.models import MarketplaceSharingGrant as _MSG, User as _User
-            already_ids = {c["id"] for c in marketplace_collections}
-            with _get_db() as _sess:
-                grants = _sess.query(_MSG).filter_by(
-                    grantee_user_id=user_uuid,
-                    resource_type="collection",
-                ).all()
-                grant_map = {}
-                for g in grants:
-                    try:
-                        cid = int(g.resource_id)
-                        if cid not in already_ids:
-                            grant_map[cid] = g.grantor_user_id
-                    except (ValueError, TypeError):
-                        continue
-
-            for shared_cid, grantor_uid in grant_map.items():
-                # Find the collection in all_collections
-                source_coll = next((c for c in all_collections if c["id"] == shared_cid), None)
-                if not source_coll:
-                    continue
-
-                # Apply repository_type filter
-                if repository_type_filter:
-                    coll_repo_type = source_coll.get("repository_type", "planner")
-                    if coll_repo_type != repository_type_filter:
-                        continue
-
-                # Apply search filter
-                if search_query:
-                    name_match = search_query in source_coll.get("name", "").lower()
-                    desc_match = search_query in source_coll.get("description", "").lower()
-                    if not (name_match or desc_match):
-                        continue
-
-                shared_copy = source_coll.copy()
-                shared_copy["is_owner"] = False
-                shared_copy["shared_with_me"] = True
-                shared_copy["is_subscribed"] = retriever.is_subscribed_collection(shared_cid, user_uuid)
-
-                # Get subscription_id if subscribed
-                if shared_copy["is_subscribed"]:
-                    from trusted_data_agent.auth.models import CollectionSubscription
-                    with _get_db() as _sess2:
-                        sub = _sess2.query(CollectionSubscription).filter_by(
-                            user_id=user_uuid, source_collection_id=shared_cid
-                        ).first()
-                        if sub:
-                            shared_copy["subscription_id"] = sub.id
-
-                # Get grantor username
-                with _get_db() as _sess3:
-                    grantor = _sess3.query(_User).filter_by(id=grantor_uid).first()
-                    shared_copy["shared_by_username"] = (grantor.display_name or grantor.username) if grantor else "Unknown"
-
-                # Get document count
-                if shared_cid in retriever.collections:
-                    try:
-                        shared_copy["count"] = retriever.collections[shared_cid].count()
-                    except Exception:
-                        shared_copy["count"] = 0
-                else:
-                    shared_copy["count"] = 0
-
-                marketplace_collections.append(shared_copy)
 
         # Add rating statistics in bulk (efficient single query)
         collection_ids = [c["id"] for c in marketplace_collections]
@@ -7975,32 +7919,54 @@ async def publish_collection_to_marketplace(collection_id: int):
         visibility = data.get("visibility", "public")
         marketplace_metadata = data.get("marketplace_metadata", {})
         
-        if visibility not in ["public"]:
-            return jsonify({"status": "error", "message": "Visibility must be 'public'"}), 400
-        
+        if visibility not in ["public", "targeted"]:
+            return jsonify({"status": "error", "message": "Visibility must be 'public' or 'targeted'"}), 400
+
+        user_ids = data.get("user_ids", [])
+        if visibility == "targeted" and not user_ids:
+            return jsonify({"status": "error", "message": "Targeted publish requires at least one user"}), 400
+
         # Update collection in database
         from trusted_data_agent.core.collection_db import get_collection_db
         collection_db = get_collection_db()
-        
+
         # Prepare update data
         updates = {
             "visibility": visibility,
             "is_marketplace_listed": True,
             "marketplace_metadata": marketplace_metadata
         }
-        
+
         # Update in database
         success = collection_db.update_collection(collection_id, updates)
         if not success:
             return jsonify({"status": "error", "message": "Collection not found"}), 404
-        
+
+        # Insert targeted users if targeted publish
+        if visibility == "targeted" and user_ids:
+            from trusted_data_agent.auth.database import get_db_session
+            from trusted_data_agent.auth.models import MarketplaceTargetedUser
+            with get_db_session() as session:
+                for uid in user_ids:
+                    existing = session.query(MarketplaceTargetedUser).filter_by(
+                        resource_type="collection",
+                        resource_id=str(collection_id),
+                        user_id=uid,
+                    ).first()
+                    if not existing:
+                        session.add(MarketplaceTargetedUser(
+                            resource_type="collection",
+                            resource_id=str(collection_id),
+                            user_id=uid,
+                        ))
+
         # Reload collections into APP_STATE
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
         APP_STATE["rag_collections"] = config_manager.get_rag_collections()
-        
+
         app_logger.info(f"User {user_uuid} published collection {collection_id} with visibility '{visibility}'")
-        
+
         return jsonify({
             "status": "success",
             "message": "Collection published to marketplace",
@@ -8083,6 +8049,14 @@ async def unpublish_collection_from_marketplace(collection_id: int):
                     session.delete(sub)
                 session.delete(grant)
 
+        # Clean up targeted user entries
+        from trusted_data_agent.auth.models import MarketplaceTargetedUser
+        with get_db_session() as session:
+            session.query(MarketplaceTargetedUser).filter_by(
+                resource_type="collection",
+                resource_id=str(collection_id),
+            ).delete()
+
         # Reload collections into APP_STATE
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
@@ -8100,11 +8074,111 @@ async def unpublish_collection_from_marketplace(collection_id: int):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/marketplace/collections/<int:collection_id>/targeted-users", methods=["GET"])
+async def get_collection_targeted_users(collection_id: int):
+    """Get the list of targeted users for a published collection."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Verify ownership
+        retriever = get_rag_retriever()
+        if not retriever or not retriever.is_user_collection_owner(collection_id, user_uuid):
+            return jsonify({"status": "error", "message": "Only the collection owner can view targeted users"}), 403
+
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import MarketplaceTargetedUser, User
+        with get_db_session() as session:
+            entries = session.query(MarketplaceTargetedUser).filter_by(
+                resource_type="collection",
+                resource_id=str(collection_id),
+            ).all()
+            users = []
+            for entry in entries:
+                u = session.query(User).filter_by(id=entry.user_id).first()
+                users.append({
+                    "user_id": entry.user_id,
+                    "username": u.username if u else "Unknown",
+                    "display_name": (u.display_name or u.username) if u else "Unknown",
+                })
+
+        return jsonify({"status": "success", "users": users}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get collection targeted users: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/collections/<int:collection_id>/targeted-users", methods=["PUT"])
+async def update_collection_targeted_users(collection_id: int):
+    """Update the targeted users list for a published collection."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Verify ownership
+        retriever = get_rag_retriever()
+        if not retriever or not retriever.is_user_collection_owner(collection_id, user_uuid):
+            return jsonify({"status": "error", "message": "Only the collection owner can update targeted users"}), 403
+
+        data = await request.get_json()
+        new_user_ids = data.get("user_ids", [])
+
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.models import MarketplaceTargetedUser, User
+
+        with get_db_session() as session:
+            # Get current targeted user IDs
+            current = session.query(MarketplaceTargetedUser).filter_by(
+                resource_type="collection",
+                resource_id=str(collection_id),
+            ).all()
+            existing_ids = {e.user_id for e in current}
+            new_ids = set(new_user_ids)
+
+            # Delete removed users
+            for entry in current:
+                if entry.user_id not in new_ids:
+                    session.delete(entry)
+
+            # Insert new users
+            for uid in new_ids - existing_ids:
+                session.add(MarketplaceTargetedUser(
+                    resource_type="collection",
+                    resource_id=str(collection_id),
+                    user_id=uid,
+                ))
+
+        # Return updated list
+        with get_db_session() as session:
+            entries = session.query(MarketplaceTargetedUser).filter_by(
+                resource_type="collection",
+                resource_id=str(collection_id),
+            ).all()
+            users = []
+            for entry in entries:
+                u = session.query(User).filter_by(id=entry.user_id).first()
+                users.append({
+                    "user_id": entry.user_id,
+                    "username": u.username if u else "Unknown",
+                    "display_name": (u.display_name or u.username) if u else "Unknown",
+                })
+
+        app_logger.info(f"Updated targeted users for collection {collection_id}: {len(users)} users")
+        return jsonify({"status": "success", "users": users}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to update collection targeted users: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/marketplace/collections/<int:collection_id>/rate", methods=["POST"])
 async def rate_marketplace_collection(collection_id: int):
     """
     Rate and review a marketplace collection.
-    
+
     Request body:
     {
         "rating": 5,  // 1-5 stars
