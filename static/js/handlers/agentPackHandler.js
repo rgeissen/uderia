@@ -1,7 +1,7 @@
 /**
  * agentPackHandler.js
  *
- * Handles agent pack install, list, uninstall, and export via the
+ * Handles agent pack install, create, list, uninstall, and export via the
  * /api/v1/agent-packs REST endpoints.
  *
  * Exposed on window.agentPackHandler for inline onclick handlers.
@@ -29,6 +29,21 @@ function _notify(type, msg) {
 
 let installedPacks = [];
 
+// ── Profile type display config ──────────────────────────────────────────────
+
+const PROFILE_CLASS_CONFIG = {
+    genie:        { label: 'Coordinator', color: '#F15F22', bgClass: 'bg-orange-500/10', textClass: 'text-orange-400' },
+    tool_enabled: { label: 'Optimizer',   color: '#9333ea', bgClass: 'bg-purple-500/10', textClass: 'text-purple-400' },
+    rag_focused:  { label: 'Knowledge',   color: '#3b82f6', bgClass: 'bg-blue-500/10',   textClass: 'text-blue-400'   },
+    llm_only:     { label: 'Conversation',color: '#4ade80', bgClass: 'bg-green-500/10',  textClass: 'text-green-400'  },
+};
+
+const PACK_TYPE_BADGES = {
+    genie:  { label: 'Coordinator', bgClass: 'bg-orange-500/15', textClass: 'text-orange-400' },
+    bundle: { label: 'Bundle',      bgClass: 'bg-purple-500/15', textClass: 'text-purple-400' },
+    single: { label: 'Single',      bgClass: 'bg-blue-500/15',   textClass: 'text-blue-400'   },
+};
+
 // ── Render ───────────────────────────────────────────────────────────────────
 
 function renderAgentPacks() {
@@ -42,7 +57,7 @@ function renderAgentPacks() {
                     <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
                 <p class="text-lg font-medium">No agent packs installed</p>
-                <p class="text-sm mt-1">Click "Install" to upload an .agentpack file</p>
+                <p class="text-sm mt-1">Click "Install" to upload an .agentpack file or "Create" to build one from your profiles</p>
             </div>`;
         return;
     }
@@ -51,6 +66,25 @@ function renderAgentPacks() {
         const installed = pack.installed_at
             ? new Date(pack.installed_at).toLocaleDateString()
             : '';
+
+        const packType = pack.pack_type || 'genie';
+        const badge = PACK_TYPE_BADGES[packType] || PACK_TYPE_BADGES.genie;
+
+        // Info line: show coordinator for genie packs, profile count for others
+        let infoItems = '';
+        if (pack.coordinator_tag) {
+            infoItems += `<span>Coordinator: <span class="text-gray-300">@${_esc(pack.coordinator_tag)}</span></span>`;
+        }
+        if (packType === 'genie' && pack.experts_count != null) {
+            infoItems += `<span>Experts: <span class="text-gray-300">${pack.experts_count}</span></span>`;
+        } else if (pack.profiles_count != null) {
+            infoItems += `<span>Profiles: <span class="text-gray-300">${pack.profiles_count}</span></span>`;
+        }
+        infoItems += `<span>Collections: <span class="text-gray-300">${pack.collections_count ?? '?'}</span></span>`;
+        if (installed) {
+            infoItems += `<span>Installed: <span class="text-gray-300">${installed}</span></span>`;
+        }
+
         return `
         <div class="glass-panel rounded-lg p-5 mb-4 border border-white/5 hover:border-white/10 transition-colors">
             <div class="flex items-start justify-between">
@@ -58,14 +92,12 @@ function renderAgentPacks() {
                     <div class="flex items-center gap-3 mb-1">
                         <h4 class="text-white font-semibold text-base">${_esc(pack.name)}</h4>
                         ${pack.version ? `<span class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-300">v${_esc(pack.version)}</span>` : ''}
+                        <span class="text-xs px-2 py-0.5 rounded-full ${badge.bgClass} ${badge.textClass}">${badge.label}</span>
                     </div>
                     ${pack.author ? `<p class="text-xs text-gray-500 mb-2">by ${_esc(pack.author)}</p>` : ''}
                     ${pack.description ? `<p class="text-sm text-gray-400 mb-3">${_esc(pack.description)}</p>` : ''}
                     <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500">
-                        <span>Coordinator: <span class="text-gray-300">@${_esc(pack.coordinator_tag)}</span></span>
-                        <span>Experts: <span class="text-gray-300">${pack.experts_count ?? '?'}</span></span>
-                        <span>Collections: <span class="text-gray-300">${pack.collections_count ?? '?'}</span></span>
-                        ${installed ? `<span>Installed: <span class="text-gray-300">${installed}</span></span>` : ''}
+                        ${infoItems}
                     </div>
                 </div>
                 <div class="flex items-center gap-2 ml-4 shrink-0">
@@ -127,7 +159,9 @@ async function handleInstallAgentPack() {
                 const manifestEntry = zip.file('manifest.json');
                 if (manifestEntry) {
                     manifest = JSON.parse(await manifestEntry.async('text'));
-                    requiresMcp = (manifest.experts || []).some(e => e.requires_mcp === true);
+                    // Check both v1.0 (experts) and v1.1 (profiles) formats
+                    const profiles = manifest.profiles || manifest.experts || [];
+                    requiresMcp = profiles.some(e => e.requires_mcp === true);
                 }
             }
         } catch (e) {
@@ -148,6 +182,22 @@ async function handleInstallAgentPack() {
             return;
         }
 
+        // Check for tag conflicts client-side
+        let conflictStrategy = null;
+        if (manifest) {
+            const packProfiles = manifest.profiles || manifest.experts || [];
+            const packTags = packProfiles.map(p => p.tag).filter(Boolean);
+            const existingTags = new Set(
+                (configState.profiles || []).map(p => p.tag).filter(Boolean)
+            );
+            const conflicting = packTags.filter(t => existingTags.has(t));
+
+            if (conflicting.length > 0) {
+                conflictStrategy = await _showTagConflictDialog(conflicting);
+                if (conflictStrategy === null) return; // User cancelled
+            }
+        }
+
         // Upload
         const installBtn = document.getElementById('install-agent-pack-btn');
         const originalText = installBtn ? installBtn.innerHTML : '';
@@ -166,6 +216,7 @@ async function handleInstallAgentPack() {
             formData.append('file', file);
             if (mcpServerId) formData.append('mcp_server_id', mcpServerId);
             formData.append('llm_configuration_id', llmConfigId);
+            if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
 
             const token = localStorage.getItem('tda_auth_token');
             const res = await fetch('/api/v1/agent-packs/import', {
@@ -179,7 +230,14 @@ async function handleInstallAgentPack() {
                 throw new Error(data.message || `Import failed (${res.status})`);
             }
 
-            _notify('success', `Agent pack installed: ${data.name || 'Unknown'} (${data.experts_created} experts, ${data.collections_created} collections)`);
+            let successMsg = `Agent pack installed: ${data.name || 'Unknown'} (${data.profiles_created || data.experts_created || 0} profiles, ${data.collections_created} collections)`;
+            if (data.tag_remap && Object.keys(data.tag_remap).length > 0) {
+                const remapList = Object.entries(data.tag_remap)
+                    .map(([old, nw]) => `@${old} → @${nw}`)
+                    .join(', ');
+                successMsg += ` | Tags renamed: ${remapList}`;
+            }
+            _notify('success', successMsg);
             await loadAgentPacks();
             // Refresh profiles and knowledge repositories so new resources appear immediately
             await configState.loadProfiles();
@@ -308,6 +366,433 @@ function _showLlmConfigPicker() {
     });
 }
 
+// ── Tag Conflict Dialog ──────────────────────────────────────────────────────
+
+function _showTagConflictDialog(conflictingTags) {
+    return new Promise((resolve) => {
+        const tagList = conflictingTags
+            .map(t => `<span class="inline-block px-2 py-0.5 rounded bg-red-500/15 text-red-300 text-xs font-mono mr-1 mb-1">@${_esc(t)}</span>`)
+            .join('');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]';
+        overlay.innerHTML = `
+            <div class="glass-panel rounded-xl p-6 w-full max-w-lg border border-white/10 shadow-2xl">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667
+                                     1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34
+                                     16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Tag Conflict</h3>
+                </div>
+
+                <p class="text-sm text-gray-400 mb-3">
+                    The following tags in this agent pack already exist in your profiles:
+                </p>
+                <div class="mb-4">${tagList}</div>
+
+                <p class="text-sm text-gray-400 mb-5">How would you like to proceed?</p>
+
+                <div class="space-y-2 mb-5">
+                    <button id="conflict-replace-btn"
+                            class="w-full text-left px-4 py-3 rounded-lg border border-white/10
+                                   hover:border-red-500/30 hover:bg-red-500/5 transition-colors group">
+                        <div class="text-sm font-medium text-white group-hover:text-red-300">Replace Existing</div>
+                        <div class="text-xs text-gray-500 mt-0.5">Delete the existing profiles with these tags and import the new ones</div>
+                    </button>
+
+                    <button id="conflict-expand-btn"
+                            class="w-full text-left px-4 py-3 rounded-lg border border-white/10
+                                   hover:border-blue-500/30 hover:bg-blue-500/5 transition-colors group">
+                        <div class="text-sm font-medium text-white group-hover:text-blue-300">Expand Tags</div>
+                        <div class="text-xs text-gray-500 mt-0.5">Auto-rename conflicting tags (e.g. @${_esc(conflictingTags[0])} → @${_esc(conflictingTags[0])}2) and update all references</div>
+                    </button>
+                </div>
+
+                <div class="flex justify-end">
+                    <button id="conflict-cancel-btn"
+                            class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300
+                                   hover:bg-white/10 transition-colors">Cancel</button>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#conflict-replace-btn').onclick = () => {
+            overlay.remove();
+            resolve('replace');
+        };
+        overlay.querySelector('#conflict-expand-btn').onclick = () => {
+            overlay.remove();
+            resolve('expand');
+        };
+        overlay.querySelector('#conflict-cancel-btn').onclick = () => {
+            overlay.remove();
+            resolve(null);
+        };
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { overlay.remove(); resolve(null); }
+        });
+    });
+}
+
+// ── Create Agent Pack ───────────────────────────────────────────────────────
+
+async function handleCreateAgentPack() {
+    const profiles = window.configState?.profiles || [];
+    if (profiles.length === 0) {
+        _notify('error', 'No profiles available. Create at least one profile first.');
+        return;
+    }
+
+    const result = await _showCreatePackModal(profiles);
+    if (!result) return; // Cancelled
+
+    const createBtn = document.getElementById('create-agent-pack-btn');
+    const originalText = createBtn ? createBtn.innerHTML : '';
+    if (createBtn) {
+        createBtn.disabled = true;
+        createBtn.innerHTML = `
+            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Creating...`;
+    }
+
+    try {
+        const res = await fetch('/api/v1/agent-packs/create', {
+            method: 'POST',
+            headers: _headers(true),
+            body: JSON.stringify({
+                profile_ids: result.profileIds,
+                name: result.name,
+                description: result.description,
+            }),
+        });
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.message || `Create failed (${res.status})`);
+        }
+
+        // Trigger download
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${result.name.replace(/\s+/g, '_')}.agentpack`;
+        const cd = res.headers.get('content-disposition');
+        if (cd) {
+            const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (match) a.download = match[1].replace(/['"]/g, '');
+        }
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        _notify('success', `Agent pack "${result.name}" created and downloaded`);
+    } catch (err) {
+        _notify('error', `Create failed: ${err.message}`);
+    } finally {
+        if (createBtn) {
+            createBtn.disabled = false;
+            createBtn.innerHTML = originalText;
+        }
+    }
+}
+
+// ── Fetch Collections (for summary display) ─────────────────────────────────
+
+async function _fetchCollections() {
+    try {
+        const res = await fetch('/api/v1/rag/collections', { headers: _headers(false) });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.collections || [];
+    } catch { return []; }
+}
+
+// ── Create Pack Modal ────────────────────────────────────────────────────────
+
+async function _showCreatePackModal(profiles) {
+    // Fetch all collections once so we can resolve planner IDs to names
+    const allCollections = await _fetchCollections();
+
+    return new Promise((resolve) => {
+        // Group profiles by profile_type
+        const groups = {};
+        for (const p of profiles) {
+            const pt = p.profile_type || 'llm_only';
+            if (!groups[pt]) groups[pt] = [];
+            groups[pt].push(p);
+        }
+
+        const groupOrder = ['genie', 'tool_enabled', 'rag_focused', 'llm_only'];
+        const activeClasses = groupOrder.filter(pt => groups[pt]?.length > 0);
+        const initialClass = activeClasses[0] || 'llm_only';
+
+        // Build lookup for child resolution
+        const profileById = {};
+        for (const p of profiles) { profileById[p.id] = p; }
+
+        // Track selections across tab switches
+        const selectedIds = new Set();
+        let activeClass = initialClass;
+
+        // Build class tab HTML
+        const tabsHtml = activeClasses.map((pt, i) => {
+            const cfg = PROFILE_CLASS_CONFIG[pt] || PROFILE_CLASS_CONFIG.llm_only;
+            const total = groups[pt].length;
+            return `
+                <button data-class="${pt}"
+                        class="create-pack-class-tab w-full flex items-center gap-2.5 px-4 py-3.5 text-left transition-colors border-l-2 ${i === 0 ? 'bg-white/10 border-white/40' : 'border-transparent hover:bg-white/5'}">
+                    <div class="w-2.5 h-2.5 rounded-full shrink-0" style="background: ${cfg.color}"></div>
+                    <span class="create-pack-tab-label text-sm font-medium ${i === 0 ? 'text-white' : 'text-gray-400'}">${cfg.label}</span>
+                    <span class="text-xs text-gray-600 ml-0.5">(${total})</span>
+                    <span class="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-white/10 text-gray-500 create-pack-count-badge" data-class="${pt}">0</span>
+                </button>`;
+        }).join('');
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]';
+        overlay.innerHTML = `
+            <div class="glass-panel rounded-xl p-6 w-full max-w-2xl border border-white/10 shadow-2xl max-h-[85vh] flex flex-col">
+                <h3 class="text-lg font-bold text-white mb-4">Create Agent Pack</h3>
+
+                <div class="space-y-4 flex-1 flex flex-col" style="min-height: 0;">
+                    <!-- Name + Description row -->
+                    <div class="flex gap-4">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Pack Name <span class="text-red-400">*</span></label>
+                            <input id="create-pack-name" type="text" placeholder="My Agent Pack"
+                                   class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500" />
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                            <input id="create-pack-desc" type="text" placeholder="Optional description"
+                                   class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-blue-500" />
+                        </div>
+                    </div>
+
+                    <!-- Two-panel profile selection -->
+                    <div class="flex-1 flex flex-col" style="min-height: 0;">
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Select Profiles</label>
+                        <div class="flex rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden flex-1" style="min-height: 200px; max-height: 320px;">
+                            <!-- Left: class tabs -->
+                            <div id="create-pack-class-tabs" class="w-52 shrink-0 border-r border-white/10 overflow-y-auto">
+                                ${tabsHtml}
+                            </div>
+                            <!-- Right: profiles for selected class -->
+                            <div id="create-pack-profile-list" class="flex-1 overflow-y-auto p-2"></div>
+                        </div>
+                    </div>
+
+                    <!-- Summary strip -->
+                    <div id="create-pack-summary" class="rounded-lg border border-white/10 bg-white/[0.02] px-4 py-2.5">
+                        <div id="create-pack-summary-content" class="text-xs text-gray-500">No profiles selected</div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-white/5">
+                    <button id="create-pack-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+                    <button id="create-pack-confirm" disabled
+                            class="px-4 py-2 text-sm rounded-lg bg-neutral-600 text-white hover:bg-neutral-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                        Create
+                    </button>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        const nameInput = overlay.querySelector('#create-pack-name');
+        const confirmBtn = overlay.querySelector('#create-pack-confirm');
+        const profileListDiv = overlay.querySelector('#create-pack-profile-list');
+        const summaryContent = overlay.querySelector('#create-pack-summary-content');
+        const classTabs = overlay.querySelectorAll('.create-pack-class-tab');
+
+        // Render profiles for a given class into the right panel (clickable cards)
+        function renderProfileList(pt) {
+            const grp = groups[pt] || [];
+            const cfg = PROFILE_CLASS_CONFIG[pt] || PROFILE_CLASS_CONFIG.llm_only;
+
+            if (grp.length === 0) {
+                profileListDiv.innerHTML = `<div class="text-sm text-gray-500 py-8 text-center">No profiles in this class</div>`;
+                return;
+            }
+
+            profileListDiv.innerHTML = grp.map(p => {
+                const isSelected = selectedIds.has(p.id);
+                return `
+                    <div data-profile-id="${_esc(p.id)}" data-tag="${_esc(p.tag)}" data-type="${_esc(pt)}"
+                         class="create-pack-profile-card flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all"
+                         style="border-left: 3px solid ${isSelected ? cfg.color : 'transparent'}; ${isSelected ? `background: ${cfg.color}10` : ''}">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm ${isSelected ? 'text-white' : 'text-gray-300'}">
+                                <span class="${isSelected ? 'text-gray-200' : 'text-gray-400'}">@${_esc(p.tag)}</span>
+                                <span class="ml-1.5">${_esc(p.name || p.tag)}</span>
+                            </div>
+                            ${p.description ? `<div class="text-xs text-gray-500 mt-0.5 truncate">${_esc(p.description)}</div>` : ''}
+                        </div>
+                        ${isSelected ? `
+                            <svg class="w-4 h-4 shrink-0" style="color: ${cfg.color}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                        ` : ''}
+                    </div>`;
+            }).join('');
+
+            // Click handlers — toggle selection on card click
+            profileListDiv.querySelectorAll('.create-pack-profile-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const pid = card.dataset.profileId;
+                    if (selectedIds.has(pid)) selectedIds.delete(pid);
+                    else selectedIds.add(pid);
+                    renderProfileList(activeClass);
+                    updateState();
+                });
+            });
+        }
+
+        // Switch active class tab
+        function setActiveTab(pt) {
+            activeClass = pt;
+            classTabs.forEach(tab => {
+                const isActive = tab.dataset.class === pt;
+                tab.classList.toggle('bg-white/10', isActive);
+                tab.classList.toggle('border-white/40', isActive);
+                tab.classList.toggle('border-transparent', !isActive);
+                tab.classList.toggle('hover:bg-white/5', !isActive);
+                const label = tab.querySelector('.create-pack-tab-label');
+                if (label) {
+                    label.classList.toggle('text-white', isActive);
+                    label.classList.toggle('text-gray-400', !isActive);
+                }
+            });
+            renderProfileList(pt);
+        }
+
+        // Update badges, summary, and confirm button state
+        function updateState() {
+            const name = (nameInput.value || '').trim();
+            confirmBtn.disabled = !name || selectedIds.size === 0;
+
+            // Update count badges on each tab
+            for (const pt of activeClasses) {
+                const badge = overlay.querySelector(`.create-pack-count-badge[data-class="${pt}"]`);
+                if (!badge) continue;
+                const count = (groups[pt] || []).filter(p => selectedIds.has(p.id)).length;
+                badge.textContent = count;
+                badge.classList.toggle('bg-blue-500/20', count > 0);
+                badge.classList.toggle('text-blue-400', count > 0);
+                badge.classList.toggle('bg-white/10', count === 0);
+                badge.classList.toggle('text-gray-500', count === 0);
+            }
+
+            // Calculate auto-includes
+            const autoChildren = [];
+            const allIds = new Set(selectedIds);
+
+            for (const id of selectedIds) {
+                const prof = profileById[id];
+                if (!prof || prof.profile_type !== 'genie') continue;
+                const childIds = prof.genieConfig?.slaveProfiles || [];
+                for (const cid of childIds) {
+                    if (!selectedIds.has(cid)) {
+                        const child = profileById[cid];
+                        if (child) {
+                            autoChildren.push(`@${child.tag}`);
+                            allIds.add(cid);
+                        }
+                    }
+                }
+            }
+
+            // Collect knowledge and planner repository names
+            const knowledgeRepos = new Set();
+            const plannerRepos = new Set();
+            for (const id of allIds) {
+                const prof = profileById[id];
+                if (!prof) continue;
+                // Knowledge collections (objects with name)
+                const kCollections = prof.knowledgeConfig?.collections || [];
+                for (const kc of kCollections) {
+                    if (kc.name) knowledgeRepos.add(kc.name);
+                }
+                // Planner collections (integer IDs — resolve to name)
+                const plannerIds = prof.ragCollections || [];
+                for (const pid of plannerIds) {
+                    if (pid === '*') continue;
+                    const coll = allCollections.find(c => c.id === pid);
+                    if (coll) plannerRepos.add(coll.name || `Collection ${pid}`);
+                }
+            }
+
+            // Build summary
+            if (selectedIds.size === 0) {
+                summaryContent.innerHTML = 'No profiles selected';
+                return;
+            }
+
+            // Line 1: profile count + auto-includes
+            let line1 = `<span class="text-gray-300 font-medium">${selectedIds.size}</span> profile${selectedIds.size !== 1 ? 's' : ''} selected`;
+            if (autoChildren.length > 0) {
+                line1 += ` &middot; <span class="text-gray-300 font-medium">+${autoChildren.length}</span> auto-included (${autoChildren.join(', ')})`;
+            }
+
+            // Line 2: repository names with color-coded dots
+            const repoItems = [];
+            for (const name of knowledgeRepos) repoItems.push(`<span class="text-blue-400">&#9679;</span> ${_esc(name)}`);
+            for (const name of plannerRepos) repoItems.push(`<span class="text-purple-400">&#9679;</span> ${_esc(name)}`);
+
+            if (repoItems.length > 0) {
+                summaryContent.innerHTML = `
+                    <div>${line1}</div>
+                    <div class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                        ${repoItems.map(r => `<span>${r}</span>`).join('')}
+                    </div>`;
+            } else {
+                summaryContent.innerHTML = line1;
+            }
+        }
+
+        // Event listeners
+        classTabs.forEach(tab => {
+            tab.addEventListener('click', () => setActiveTab(tab.dataset.class));
+        });
+        nameInput.addEventListener('input', updateState);
+
+        // Initial render
+        setActiveTab(initialClass);
+        updateState();
+
+        // Cancel / close
+        overlay.querySelector('#create-pack-cancel').onclick = () => {
+            overlay.remove();
+            resolve(null);
+        };
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { overlay.remove(); resolve(null); }
+        });
+
+        // Confirm
+        confirmBtn.onclick = () => {
+            const name = (nameInput.value || '').trim();
+            const description = (overlay.querySelector('#create-pack-desc').value || '').trim();
+            overlay.remove();
+            resolve({ profileIds: Array.from(selectedIds), name, description });
+        };
+
+        // Focus name input
+        setTimeout(() => nameInput.focus(), 100);
+    });
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 async function handleExportAgentPack(installationId) {
@@ -398,6 +883,7 @@ window.agentPackHandler = {
     loadAgentPacks,
     renderAgentPacks,
     handleInstallAgentPack,
+    handleCreateAgentPack,
     handleExportAgentPack,
     handleUninstallAgentPack,
 };
@@ -406,6 +892,7 @@ export {
     loadAgentPacks,
     renderAgentPacks,
     handleInstallAgentPack,
+    handleCreateAgentPack,
     handleExportAgentPack,
     handleUninstallAgentPack,
 };

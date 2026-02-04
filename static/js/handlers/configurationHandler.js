@@ -964,9 +964,9 @@ class ConfigurationState {
 
         const profileType = defaultProfile?.profile_type || 'tool_enabled';
 
-        // Conversation Focused (LLM) and Knowledge Focused (RAG) profiles only need LLM
+        // Conversation, Knowledge, and Genie profiles only need LLM
         // Tool Focused (MCP) profiles need both MCP and LLM
-        if (profileType === 'llm_only' || profileType === 'rag_focused') {
+        if (profileType === 'llm_only' || profileType === 'rag_focused' || profileType === 'genie') {
             return !!(llmConfig && llmConfig.model);
         } else {
             return !!(mcpServer && llmConfig && llmConfig.model);
@@ -1408,7 +1408,7 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
                         </div>
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button id="llm-modal-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white">
+                        <button id="llm-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
                             Cancel
                         </button>
                         <button id="llm-modal-save" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
@@ -1920,7 +1920,7 @@ export function showMCPServerModal(serverId = null) {
                             class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none">
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button id="mcp-modal-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white">
+                        <button id="mcp-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
                             Cancel
                         </button>
                         <button id="mcp-modal-save" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
@@ -2025,7 +2025,7 @@ Claude Desktop format:
                         <div class="bg-red-500/20 border border-red-500/50 rounded-md p-3 text-sm text-red-400"></div>
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button id="import-mcp-modal-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white">
+                        <button id="import-mcp-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
                             Cancel
                         </button>
                         <button id="import-mcp-modal-import" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
@@ -4817,7 +4817,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         // Query toggle is only relevant for tool_enabled profiles (planner/executor RAG).
         const setPlannerAutocompleteOnly = (autocompleteOnly) => {
             const queryHeader = modal.querySelector('#planner-query-column-header');
-            const queryToggles = modal.querySelectorAll('.planner-query-toggle');
+            // Scope to planner container only — don't hide knowledge repo toggles
+            const plannerList = modal.querySelector('#profile-modal-planner-collections');
+            const queryToggles = plannerList ? plannerList.querySelectorAll('.planner-query-toggle') : [];
             if (queryHeader) queryHeader.style.display = autocompleteOnly ? 'none' : '';
             queryToggles.forEach(toggle => toggle.style.display = autocompleteOnly ? 'none' : '');
         };

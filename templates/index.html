@@ -85,7 +85,7 @@
                     <span class="font-medium" id="delete-confirmation-message">Are you sure?</span>
                 </div>
                 <div class="flex items-center gap-x-2">
-                    <button id="delete-confirmation-cancel" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors text-xs font-medium">
+                    <button id="delete-confirmation-cancel" class="px-3 py-1 bg-neutral-700 hover:bg-neutral-600 text-white rounded transition-colors text-xs font-medium">
                         Cancel
                     </button>
                     <button id="delete-confirmation-ok" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors text-xs font-medium">
@@ -2519,12 +2519,20 @@
                                             <h3 class="text-xl font-bold text-white">Agent Packs</h3>
                                             <p class="text-sm text-gray-400 mt-1">Install and manage agent packs</p>
                                         </div>
-                                        <button id="install-agent-pack-btn" onclick="window.agentPackHandler.handleInstallAgentPack()" class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                                            </svg>
-                                            Install
-                                        </button>
+                                        <div class="flex items-center gap-2">
+                                            <button id="create-agent-pack-btn" onclick="window.agentPackHandler.handleCreateAgentPack()" class="flex items-center gap-2 px-4 py-2 bg-neutral-600 text-white rounded-lg hover:bg-neutral-500 transition-colors text-sm font-medium">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                                </svg>
+                                                Create
+                                            </button>
+                                            <button id="install-agent-pack-btn" onclick="window.agentPackHandler.handleInstallAgentPack()" class="flex items-center gap-2 px-4 py-2 bg-neutral-600 text-white rounded-lg hover:bg-neutral-500 transition-colors text-sm font-medium">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                                </svg>
+                                                Install
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="mb-4 p-4 rounded-lg border transition-all duration-300"
                                          style="background: linear-gradient(135deg, rgba(107, 114, 128, 0.1), rgba(107, 114, 128, 0.05)); border-color: rgba(107, 114, 128, 0.3);">
@@ -2534,7 +2542,7 @@
                                             </svg>
                                             <div>
                                                 <p class="text-white font-medium">Pre-built multi-agent teams bundled with knowledge and planner repositories</p>
-                                                <p class="text-sm text-gray-400 mt-1">Install an .agentpack file to create a coordinator profile with specialized expert profiles and their associated knowledge and planner repositories</p>
+                                                <p class="text-sm text-gray-400 mt-1">Install an .agentpack file or create one from your existing profiles and repositories</p>
                                             </div>
                                         </div>
                                     </div>
@@ -4969,7 +4977,7 @@
                     <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium">
                         Change Password
                     </button>
-                    <button type="button" id="change-password-form-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white font-medium">
+                    <button type="button" id="change-password-form-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white font-medium">
                         Cancel
                     </button>
                 </div>
@@ -5047,7 +5055,7 @@
                     <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition-colors text-white font-medium">
                         Save
                     </button>
-                    <button type="button" id="user-form-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white font-medium">
+                    <button type="button" id="user-form-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white font-medium">
                         Cancel
                     </button>
                 </div>
@@ -5150,7 +5158,7 @@
                     <button type="button" id="doc-upload-config-reset-btn" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors text-white font-medium">
                         Reset to Defaults
                     </button>
-                    <button type="button" id="doc-upload-config-cancel" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white font-medium">
+                    <button type="button" id="doc-upload-config-cancel" class="px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white font-medium">
                         Cancel
                     </button>
                 </div>
@@ -5252,7 +5260,7 @@
                            required>
                 </div>
                 <div class="flex justify-end gap-3">
-                    <button type="button" id="prompt-input-modal-cancel" class="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors font-semibold">Cancel</button>
+                    <button type="button" id="prompt-input-modal-cancel" class="px-4 py-2 rounded-md bg-neutral-700 hover:bg-neutral-600 transition-colors font-semibold text-white">Cancel</button>
                     <button type="submit" id="prompt-input-modal-ok" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold">OK</button>
                 </div>
             </form>
@@ -5517,7 +5525,7 @@
                 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
-                    <button type="button" id="add-rag-collection-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="add-rag-collection-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="add-rag-collection-submit" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold text-white">
@@ -5733,7 +5741,7 @@
                     <span>Documents are chunked, embedded, and made searchable through semantic similarity</span>
                 </div>
                 <div class="flex gap-3">
-                    <button type="button" id="add-knowledge-repository-cancel" class="px-5 py-2.5 rounded-lg bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="add-knowledge-repository-cancel" class="px-5 py-2.5 rounded-lg bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" form="add-knowledge-repository-form" id="add-knowledge-repository-submit" class="px-5 py-2.5 rounded-lg bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold text-white shadow-lg">
@@ -5809,7 +5817,7 @@
 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 pt-4 border-t border-gray-600">
-                    <button type="button" id="template-editor-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="template-editor-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="template-editor-submit" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold text-white">
@@ -5869,7 +5877,7 @@
                 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
-                    <button type="button" id="edit-rag-collection-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="edit-rag-collection-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="edit-rag-collection-submit" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold text-white">
@@ -5990,7 +5998,7 @@
 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 pt-4 border-t border-gray-600">
-                    <button type="button" id="sql-template-populator-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="sql-template-populator-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="sql-template-populator-submit" class="px-4 py-2 rounded-md bg-[#F15F22] hover:bg-[#D9501A] transition-colors font-semibold text-white">
@@ -6027,7 +6035,7 @@
             <h3 id="confirm-modal-title" class="text-xl font-bold mb-4">Confirm Action</h3>
             <p id="confirm-modal-body" class="text-gray-300 mb-6"></p>
             <div class="flex justify-end gap-3">
-                <button type="button" id="confirm-modal-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors">Cancel</button>
+                <button type="button" id="confirm-modal-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors text-white">Cancel</button>
                 <button type="button" id="confirm-modal-confirm" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold">Confirm</button>
             </div>
         </div>
@@ -6041,7 +6049,7 @@
             <form id="prompt-modal-form">
                 <div id="prompt-modal-inputs" class="space-y-4 mb-6"></div>
                 <div class="flex justify-end gap-3">
-                    <button type="button" id="prompt-modal-close" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors">Cancel</button>
+                    <button type="button" id="prompt-modal-close" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors text-white">Cancel</button>
                     <button type="submit" class="px-4 py-2 rounded-md bg-teradata-orange hover:bg-teradata-orange-dark transition-colors font-semibold">Run</button>
                 </div>
             </form>
@@ -6923,7 +6931,7 @@
 
             <!-- Modal Footer -->
             <div class="flex gap-3 pt-4">
-                <button type="button" id="profile-modal-cancel" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors text-white">
+                <button type="button" id="profile-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
                     Cancel
                 </button>
                 <button type="submit" id="profile-modal-save" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
@@ -7755,7 +7763,7 @@
                 </div>
             </div>
             <div class="flex justify-end gap-3 mt-6">
-                <button id="cancel-token-btn" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors">Cancel</button>
+                <button id="cancel-token-btn" class="px-4 py-2 bg-neutral-600 hover:bg-neutral-700 text-white rounded-md transition-colors">Cancel</button>
                 <button id="confirm-create-token-btn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors">Create Token</button>
             </div>
         </div>
@@ -7841,7 +7849,7 @@
                 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
-                    <button type="button" id="fork-collection-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="fork-collection-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="fork-collection-submit" class="px-4 py-2 rounded-md bg-[#F15F22] hover:bg-[#D9501A] transition-colors font-semibold text-white">
@@ -7902,7 +7910,7 @@
                 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
-                    <button type="button" id="publish-collection-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="publish-collection-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="publish-collection-submit" class="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 transition-colors font-semibold text-white">
@@ -7980,7 +7988,7 @@
                 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
-                    <button type="button" id="rate-collection-cancel" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="rate-collection-cancel" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" id="rate-collection-submit" class="px-4 py-2 rounded-md bg-[#F15F22] hover:bg-[#D9501A] transition-colors font-semibold text-white">
@@ -8085,7 +8093,7 @@
 
                 <!-- Modal Footer -->
                 <div class="flex justify-end gap-3 pt-4 border-t border-gray-600">
-                    <button type="button" id="cancel-consumption-profile" class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors font-semibold text-white">
+                    <button type="button" id="cancel-consumption-profile" class="px-4 py-2 rounded-md bg-neutral-600 hover:bg-neutral-500 transition-colors font-semibold text-white">
                         Cancel
                     </button>
                     <button type="submit" class="px-4 py-2 rounded-md bg-[#F15F22] hover:bg-[#D9501A] transition-colors font-semibold text-white">

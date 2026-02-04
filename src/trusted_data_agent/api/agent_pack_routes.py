@@ -8,6 +8,7 @@ CollectionDatabase, ChromaDB).
 Endpoints:
 - POST   /v1/agent-packs/import              Import an .agentpack file
 - POST   /v1/agent-packs/export              Export a genie coordinator as .agentpack
+- POST   /v1/agent-packs/create              Create .agentpack from selected profiles
 - GET    /v1/agent-packs                     List installed packs
 - GET    /v1/agent-packs/<installation_id>   Get pack details
 - DELETE /v1/agent-packs/<installation_id>   Uninstall a pack
@@ -50,6 +51,7 @@ async def import_agent_pack(current_user):
         content_type = request.content_type or ""
         mcp_server_id = None
         llm_configuration_id = None
+        conflict_strategy = None
 
         if "multipart/form-data" in content_type:
             files = await request.files
@@ -62,6 +64,7 @@ async def import_agent_pack(current_user):
             form = await request.form
             mcp_server_id = form.get("mcp_server_id") or None
             llm_configuration_id = form.get("llm_configuration_id") or None
+            conflict_strategy = form.get("conflict_strategy") or None
 
             # Save to temp file
             tmp = tempfile.NamedTemporaryFile(suffix=".agentpack", delete=False)
@@ -78,6 +81,7 @@ async def import_agent_pack(current_user):
                 return jsonify({"status": "error", "message": f"File not found: {zip_path}"}), 404
             mcp_server_id = data.get("mcp_server_id") or None
             llm_configuration_id = data.get("llm_configuration_id") or None
+            conflict_strategy = data.get("conflict_strategy") or None
 
         else:
             return jsonify({
@@ -91,6 +95,7 @@ async def import_agent_pack(current_user):
             user_uuid=user_uuid,
             mcp_server_id=mcp_server_id,
             llm_configuration_id=llm_configuration_id,
+            conflict_strategy=conflict_strategy,
         )
         return jsonify({"status": "success", **result}), 200
 
@@ -151,6 +156,53 @@ async def export_agent_pack(current_user):
     except Exception as e:
         app_logger.error(f"Agent pack export failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Export failed: {e}"}), 500
+
+
+# ── Create ───────────────────────────────────────────────────────────────────
+
+@agent_pack_bp.route("/v1/agent-packs/create", methods=["POST"])
+@require_auth
+async def create_agent_pack(current_user):
+    """Create an .agentpack file from selected profiles.
+
+    Body (JSON): {"profile_ids": [...], "name": "...", "description": "..."}
+    Returns: .agentpack ZIP file download.
+    """
+    user_uuid = current_user.id
+
+    try:
+        data = await request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Request body required"}), 400
+
+        profile_ids = data.get("profile_ids", [])
+        if not profile_ids:
+            return jsonify({"status": "error", "message": "profile_ids is required"}), 400
+
+        manager = _manager()
+        zip_path = await manager.export_pack(
+            profile_ids=profile_ids,
+            user_uuid=user_uuid,
+            pack_name=data.get("name", "Agent Pack"),
+            pack_description=data.get("description", ""),
+        )
+
+        return await send_file(
+            str(zip_path),
+            mimetype="application/zip",
+            as_attachment=True,
+            attachment_filename=zip_path.name,
+        )
+
+    except ValueError as e:
+        app_logger.warning(f"Agent pack create validation error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except RuntimeError as e:
+        app_logger.error(f"Agent pack create runtime error: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e:
+        app_logger.error(f"Agent pack create failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Create failed: {e}"}), 500
 
 
 # ── List ──────────────────────────────────────────────────────────────────────

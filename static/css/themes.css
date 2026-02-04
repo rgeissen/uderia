@@ -971,10 +971,10 @@
     background-color: var(--button-bg-hover) !important;
 }
 
-/* Light theme - Gray button styling */
-[data-theme="light"] button.bg-gray-600,
-[data-theme="light"] button.bg-gray-700,
-[data-theme="light"] button.bg-gray-800 {
+/* Light theme - Gray button styling (only when button doesn't explicitly request white text) */
+[data-theme="light"] button.bg-gray-600:not(.text-white),
+[data-theme="light"] button.bg-gray-700:not(.text-white),
+[data-theme="light"] button.bg-gray-800:not(.text-white) {
     color: var(--text-primary) !important;
 }
 
@@ -1117,6 +1117,27 @@
 [data-theme="light"] .bg-red-600 svg,
 [data-theme="light"] .bg-rose-500 svg,
 [data-theme="light"] .bg-rose-600 svg {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Neutral buttons - white text on dark neutral backgrounds */
+[data-theme="light"] .bg-neutral-500,
+[data-theme="light"] .bg-neutral-600,
+[data-theme="light"] .bg-neutral-700,
+[data-theme="light"] .bg-neutral-800,
+[data-theme="light"] [class*="bg-neutral-5"],
+[data-theme="light"] [class*="bg-neutral-6"],
+[data-theme="light"] [class*="bg-neutral-7"],
+[data-theme="light"] [class*="bg-neutral-8"] {
+    color: white !important;
+}
+
+/* Neutral button icons */
+[data-theme="light"] .bg-neutral-500 svg,
+[data-theme="light"] .bg-neutral-600 svg,
+[data-theme="light"] .bg-neutral-700 svg,
+[data-theme="light"] .bg-neutral-800 svg {
     color: white !important;
     stroke: white !important;
 }
