@@ -433,6 +433,14 @@ def _run_user_table_migrations():
             cursor.execute("ALTER TABLE users ADD COLUMN last_failed_login_at TIMESTAMP")
             conn.commit()
 
+        # Migration: Add marketplace_visible column for marketplace opt-in
+        try:
+            cursor.execute("SELECT marketplace_visible FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding marketplace_visible column to users table for marketplace listing")
+            cursor.execute("ALTER TABLE users ADD COLUMN marketplace_visible BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+
         conn.close()
 
     except Exception as e:

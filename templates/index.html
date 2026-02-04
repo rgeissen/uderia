@@ -4985,6 +4985,28 @@
         </div>
     </div>
     
+    <!-- User Profile Modal -->
+    <div id="user-profile-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden" style="opacity: 0; transition: opacity 0.3s ease;">
+        <div id="user-profile-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden" style="max-height: 85vh; transform: scale(0.95); opacity: 0; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;">
+            <!-- Header -->
+            <div class="flex justify-between items-center p-6" style="border-bottom: 1px solid var(--border-primary);">
+                <h2 class="text-xl font-bold" style="color: var(--text-primary);">User Profile</h2>
+                <button type="button" id="profile-modal-close" class="p-2 rounded-full transition-colors" style="color: var(--text-muted);" onmouseover="this.style.backgroundColor='var(--hover-bg)'; this.style.color='var(--text-primary)';" onmouseout="this.style.backgroundColor='transparent'; this.style.color='var(--text-muted)';">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <!-- Scrollable body -->
+            <div id="profile-modal-body" class="overflow-y-auto p-6 space-y-6" style="max-height: calc(85vh - 80px);">
+                <!-- Sections rendered dynamically by userProfileHandler.js -->
+                <div class="flex items-center justify-center py-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-500 border-t-transparent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- User Management Modal -->
     <div id="user-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
         <div class="glass-panel rounded-xl shadow-2xl w-full max-w-md p-6">
@@ -6167,6 +6189,8 @@
     <script type="module" src="{{ url_for('static', filename='js/handlers/genieHandler.js') }}?v=3.1"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/splitViewHandler.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/agentPackHandler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/oauth.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/handlers/userProfileHandler.js') }}"></script>
     <!-- RAG Case Modal -->
     <div id="rag-case-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
         <div id="rag-case-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-4xl p-6 transform scale-95 opacity-0 flex flex-col" style="height: 90vh;">
@@ -7588,11 +7612,11 @@
             });
         }
         
-        // Handle profile button (placeholder)
+        // Handle profile button
         const profileButton = document.getElementById('user-profile-button');
         if (profileButton) {
             profileButton.addEventListener('click', () => {
-                window.showAppBanner('Profile page coming soon!', 'info', 3000);
+                window.UserProfileManager?.openProfile();
             });
         }
         

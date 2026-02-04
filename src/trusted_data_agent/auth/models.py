@@ -49,6 +49,9 @@ class User(Base):
     # Consumption profile
     consumption_profile_id = Column(Integer, ForeignKey('consumption_profiles.id'), nullable=True, index=True)
     
+    # Marketplace visibility
+    marketplace_visible = Column(Boolean, default=False, nullable=False)  # Opt-in to marketplace listing (username + email)
+
     # OAuth fields
     oauth_provider = Column(String(50), nullable=True, index=True)  # 'google', 'github', 'microsoft', etc.
     oauth_id = Column(String(255), nullable=True)  # Provider's unique user ID

@@ -5010,3 +5010,175 @@ button.bg-gray-700.px-2:hover {
 .agent-pack-indicator:hover {
     opacity: 1;
 }
+
+/* =========================================================================
+   USER PROFILE MODAL — Industrial, Theme-Aware
+   ========================================================================= */
+
+/* Profile Sections */
+.profile-section {
+    background: var(--card-bg);
+    border: 1px solid var(--border-primary);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+}
+
+.profile-section-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Identity Header Card */
+.profile-identity-card {
+    background: linear-gradient(135deg, var(--card-bg) 0%, var(--bg-tertiary, var(--card-bg)) 100%);
+    border-color: var(--teradata-orange);
+    border-left-width: 3px;
+}
+
+/* Large Avatar */
+.profile-avatar-large {
+    width: 64px;
+    height: 64px;
+    min-width: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.25rem;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.1), 0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* Key-Value Grid (matches status-kv-grid pattern) */
+.profile-kv-grid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 0.5rem 1rem;
+    align-items: center;
+}
+
+.profile-kv-key {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.profile-kv-value {
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+}
+
+/* Action Buttons */
+.profile-action-btn {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.375rem;
+    color: var(--teradata-orange);
+    background: rgba(241, 95, 34, 0.1);
+    border: 1px solid rgba(241, 95, 34, 0.25);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.profile-action-btn:hover {
+    background: rgba(241, 95, 34, 0.2);
+    border-color: rgba(241, 95, 34, 0.4);
+}
+
+/* Editable Field Inputs */
+.profile-field-input {
+    background: var(--input-bg, var(--bg-tertiary));
+    border: 1px solid var(--border-secondary, var(--border-primary));
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.profile-field-input:focus {
+    border-color: var(--teradata-orange);
+    box-shadow: 0 0 0 2px rgba(241, 95, 34, 0.2);
+}
+
+/* Quota Progress Bar */
+.profile-quota-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-tertiary, #374151);
+    overflow: hidden;
+}
+.profile-quota-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Toggle Switch (Marketplace) */
+.profile-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+.profile-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.profile-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: var(--bg-tertiary, #374151);
+    border-radius: 24px;
+    transition: background 0.3s ease;
+    border: 1px solid var(--border-primary);
+}
+.profile-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    bottom: 2px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.profile-toggle input:checked + .profile-toggle-slider {
+    background: var(--teradata-orange);
+    border-color: var(--teradata-orange);
+}
+.profile-toggle input:checked + .profile-toggle-slider::before {
+    transform: translateX(20px);
+}
+
+/* Light Theme Overrides */
+[data-theme="light"] .profile-section {
+    background: var(--card-bg);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] .profile-avatar-large {
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.1);
+}
+[data-theme="light"] .profile-field-input {
+    background: #fff;
+    border-color: var(--border-primary);
+}
+
+/* Responsive: Smaller screens */
+@media (max-width: 640px) {
+    .profile-kv-grid {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
+    .profile-kv-key {
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+}

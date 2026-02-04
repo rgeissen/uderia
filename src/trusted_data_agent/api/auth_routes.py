@@ -1220,15 +1220,99 @@ async def get_current_user_info(current_user):
             'username': current_user.username,
             'user_uuid': current_user.id,
             'display_name': current_user.display_name,
+            'full_name': current_user.full_name,
             'email': current_user.email,
+            'email_verified': current_user.email_verified,
             'is_admin': current_user.is_admin,
             'profile_tier': user_tier,
             'license_tier': license_tier,
             'is_active': current_user.is_active,
+            'oauth_provider': current_user.oauth_provider,
+            'marketplace_visible': current_user.marketplace_visible,
             'created_at': current_user.created_at.isoformat(),
             'last_login_at': current_user.last_login_at.isoformat() if current_user.last_login_at else None
         }
     }), 200
+
+
+@auth_bp.route('/me', methods=['PUT'])
+@require_auth
+async def update_current_user_profile(current_user):
+    """
+    Update current user's profile (display_name, full_name, marketplace_visible).
+
+    Requires: Authorization header with Bearer token
+
+    Request Body:
+        {
+            "display_name": "New Name",
+            "full_name": "Full Name",
+            "marketplace_visible": true
+        }
+
+    Response:
+        200: Updated user information
+        400: Validation error
+        401: Not authenticated
+    """
+    data = await request.get_json()
+    if not data:
+        return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+    allowed_fields = ['display_name', 'full_name', 'marketplace_visible']
+    updates = {k: v for k, v in data.items() if k in allowed_fields}
+
+    if not updates:
+        return jsonify({'status': 'error', 'message': 'No valid fields to update'}), 400
+
+    # Validate string fields
+    if 'display_name' in updates:
+        val = updates['display_name']
+        if val is not None and len(str(val)) > 100:
+            return jsonify({'status': 'error', 'message': 'Display name too long (max 100 characters)'}), 400
+    if 'full_name' in updates:
+        val = updates['full_name']
+        if val is not None and len(str(val)) > 255:
+            return jsonify({'status': 'error', 'message': 'Full name too long (max 255 characters)'}), 400
+    if 'marketplace_visible' in updates:
+        if not isinstance(updates['marketplace_visible'], bool):
+            return jsonify({'status': 'error', 'message': 'marketplace_visible must be a boolean'}), 400
+
+    try:
+        with get_db_session() as session:
+            user = session.query(User).filter_by(id=current_user.id).first()
+            if not user:
+                return jsonify({'status': 'error', 'message': 'User not found'}), 404
+
+            for field, value in updates.items():
+                if field == 'marketplace_visible':
+                    setattr(user, field, value)
+                else:
+                    setattr(user, field, value.strip() if value else None)
+
+            user.updated_at = datetime.utcnow()
+            session.commit()
+
+            from trusted_data_agent.auth.admin import get_user_tier
+            user_tier = get_user_tier(user)
+
+            return jsonify({
+                'status': 'success',
+                'message': 'Profile updated successfully',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'display_name': user.display_name,
+                    'full_name': user.full_name,
+                    'email': user.email,
+                    'profile_tier': user_tier,
+                    'marketplace_visible': user.marketplace_visible,
+                }
+            }), 200
+
+    except Exception as e:
+        logger.error(f"Error updating user profile: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to update profile'}), 500
 
 
 @auth_bp.route('/me/features', methods=['GET'])
