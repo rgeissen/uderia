@@ -1437,7 +1437,8 @@ class PlanExecutor:
                 conversation_history=conversation_history,
                 knowledge_context=knowledge_context_str if knowledge_enabled else None,
                 document_context=self.document_context,
-                multimodal_content=self.multimodal_content
+                multimodal_content=self.multimodal_content,
+                turn_number=self.current_turn_number
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
@@ -2549,34 +2550,13 @@ The following domain knowledge may be relevant to this conversation:
         if is_conversation_with_tools:
             app_logger.info("🔧 Conversation profile with MCP Tools - LangChain agent mode")
 
-            # Emit execution_start lifecycle event for conversation_with_tools
-            try:
-                start_event = self._emit_lifecycle_event("execution_start", {
-                    "profile_type": "conversation_with_tools",
-                    "profile_tag": self._get_current_profile_tag(),
-                    "query": self.original_user_input[:200] if self.original_user_input else "",
-                })
-                yield start_event
-                app_logger.info("✅ Emitted execution_start event for conversation_with_tools profile")
-            except Exception as e:
-                app_logger.warning(f"Failed to emit execution_start event: {e}")
+            # Note: Lifecycle events (execution_start/execution_complete) are NOT emitted here.
+            # The conversation_agent_start/conversation_agent_complete events from ConversationAgentExecutor
+            # carry all necessary data (query, profile_type, profile_tag, turn_id, tokens, tools_used)
+            # to render a single combined start/end card in the Live Status panel.
 
             async for event in self._execute_conversation_with_tools():
                 yield event
-
-            # Emit execution_complete lifecycle event for conversation_with_tools
-            try:
-                complete_event = self._emit_lifecycle_event("execution_complete", {
-                    "profile_type": "conversation_with_tools",
-                    "profile_tag": self._get_current_profile_tag(),
-                    "total_input_tokens": self.turn_input_tokens,
-                    "total_output_tokens": self.turn_output_tokens,
-                    "success": True
-                })
-                yield complete_event
-                app_logger.info("✅ Emitted execution_complete event for conversation_with_tools profile")
-            except Exception as e:
-                app_logger.warning(f"Failed to emit execution_complete event: {e}")
 
             return
         # --- CONVERSATION WITH TOOLS END ---

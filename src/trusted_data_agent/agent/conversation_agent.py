@@ -73,7 +73,8 @@ class ConversationAgentExecutor:
         conversation_history: Optional[List[Dict]] = None,
         knowledge_context: Optional[str] = None,
         document_context: Optional[str] = None,
-        multimodal_content: Optional[List[Dict]] = None
+        multimodal_content: Optional[List[Dict]] = None,
+        turn_number: Optional[int] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -94,6 +95,7 @@ class ConversationAgentExecutor:
             knowledge_context: Optional pre-retrieved knowledge context to inject
             document_context: Optional extracted text from uploaded documents
             multimodal_content: Optional list of native multimodal blocks for providers that support it
+            turn_number: Optional turn number for status title tracking in the UI
         """
         self.profile = profile
         self.profile_id = profile.get("id")
@@ -109,6 +111,7 @@ class ConversationAgentExecutor:
         self.knowledge_context = knowledge_context
         self.document_context = document_context
         self.multimodal_content = multimodal_content
+        self.turn_number = turn_number
 
         # Collect events during execution for session storage/replay
         self.collected_events = []
@@ -271,11 +274,14 @@ RESPONSE FORMAT:
         start_time = time.time()
         logger.info(f"ConversationAgentExecutor executing query: {query[:100]}...")
 
-        # Emit agent start event
+        # Emit agent start event (carries combined data for single Live Status card)
         await self._emit_event("conversation_agent_start", {
             "session_id": self.session_id,
             "profile_tag": self.profile_tag,
-            "available_tools": [tool.name for tool in self.mcp_tools]
+            "profile_type": "conversation_with_tools",
+            "available_tools": [tool.name for tool in self.mcp_tools],
+            "query": query[:200] if query else "",
+            "turn_id": self.turn_number,
         })
 
         try:
@@ -669,14 +675,16 @@ RESPONSE FORMAT:
             # Calculate total duration
             total_duration_ms = int((time.time() - start_time) * 1000)
 
-            # Emit agent complete event (include token counts for Live Status display)
+            # Emit agent complete event (carries combined data for single Live Status card)
             await self._emit_event("conversation_agent_complete", {
                 "total_duration_ms": total_duration_ms,
                 "tools_used": tools_used,
                 "success": True,
                 "session_id": self.session_id,
                 "input_tokens": total_input_tokens,
-                "output_tokens": total_output_tokens
+                "output_tokens": total_output_tokens,
+                "profile_tag": self.profile_tag,
+                "profile_type": "conversation_with_tools",
             })
 
             logger.info(
@@ -711,13 +719,15 @@ RESPONSE FORMAT:
             # Calculate duration
             total_duration_ms = int((time.time() - start_time) * 1000)
 
-            # Emit error completion event
+            # Emit error completion event (carries combined data for single Live Status card)
             await self._emit_event("conversation_agent_complete", {
                 "total_duration_ms": total_duration_ms,
                 "tools_used": self.tools_invoked,
                 "success": False,
                 "error": str(e),
-                "session_id": self.session_id
+                "session_id": self.session_id,
+                "profile_tag": self.profile_tag,
+                "profile_type": "conversation_with_tools",
             })
 
             return {

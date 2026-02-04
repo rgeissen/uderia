@@ -2293,11 +2293,19 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             case 'conversation_agent_start': {
                 const toolCount = details.available_tools?.length || 0;
                 const profileTag = details.profile_tag || 'CONV';
-                const profileType = details.profile_type;
+                const profileType = details.profile_type || 'conversation_with_tools';
+                const query = details.query || '';
+                const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
                         <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        <div class="status-kv-key">Type</div>
+                        <div class="status-kv-value">${profileType}</div>
+                        ${queryPreview ? `
+                        <div class="status-kv-key">Query</div>
+                        <div class="status-kv-value text-gray-300">"${queryPreview}"</div>
+                        ` : ''}
                         <div class="status-kv-key">Tools</div>
                         <div class="status-kv-value">${toolCount} available</div>
                     </div>
@@ -2415,6 +2423,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const toolCount = details.tools_used?.length || 0;
                 const statusText = details.success ? '✓ Complete' : '✗ Failed';
                 const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+                const completeProfileTag = details.profile_tag || 'CONV';
+                const completeProfileType = details.profile_type || 'conversation_with_tools';
 
                 // Token counts (if available)
                 const inputTokens = details.input_tokens;
@@ -2448,6 +2458,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value ${statusClass} font-semibold">${statusText}</div>
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(completeProfileTag, completeProfileType)}</div>
                         <div class="status-kv-key">Tools Used</div>
                         <div class="status-kv-value">${toolCount}</div>
                         <div class="status-kv-key">Total Time</div>
@@ -3277,7 +3289,14 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         }
         // Extract profile_type from event details if available (conversation_agent_start event)
         const profileType = details?.profile_type || 'conversation_with_tools';
-        statusTitle.textContent = _formatStatusTitle(profileType);
+        // Capture turn number from conversation_agent_start (replaces lifecycle execution_start)
+        if (type === 'conversation_agent_start' && details?.turn_id) {
+            state.currentTurnNumber = details.turn_id;
+        }
+        // On completion, transition title from "Live Status - ..." to "<Brand> - Turn X"
+        // (replaces lifecycle execution_complete title transition)
+        const isLive = type !== 'conversation_agent_complete';
+        statusTitle.textContent = _formatStatusTitle(profileType, isLive);
         // Render conversation agent events using custom renderer
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
