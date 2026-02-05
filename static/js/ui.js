@@ -4821,6 +4821,16 @@ export function handleViewSwitch(viewId) {
  * Separated to allow dirty state checking to interrupt the flow
  */
 function performViewSwitch(viewId) {
+    // 0. Close ALL z-50 modals using CSS selector (comprehensive approach)
+    // This catches all modals including profile-modal, classification-modal, etc.
+    document.querySelectorAll('.fixed.z-50, [class*="z-50"].fixed').forEach(modal => {
+        modal.classList.add('hidden');
+        modal.style.display = 'none'; // Force inline style as fallback
+        if (!modal.classList.contains('hidden')) {
+            console.log(`[ViewSwitch] Force-closed modal: ${modal.id || 'unnamed'}`);
+        }
+    });
+
     // 1. Log all app views found
     const appViews = document.querySelectorAll('.app-view');
 
@@ -4936,7 +4946,12 @@ function performViewSwitch(viewId) {
             console.error('[UI DEBUG] AdminManager not initialized');
         }
     }
-    
+
+    // 8b. If switching to Flow Builder view, initialize the React app
+    if (viewId === 'flow-builder-view') {
+        initializeFlowBuilder();
+    }
+
     // 9. If switching to Conversation view, initialize panels based on admin settings
     if (viewId === 'conversation-view') {
         console.log('[handleViewSwitch] Conversation view detected, checking for initializePanels:', typeof window.initializePanels);
@@ -6775,3 +6790,139 @@ export async function deleteKnowledgeRepository(collectionId, collectionName) {
         }
     );
 }
+
+// ============================================================================
+// FLOW BUILDER INITIALIZATION
+// ============================================================================
+
+/**
+ * Initialize the Flow Builder React application
+ * Lazy-loads the bundle only when the view is first accessed
+ */
+let flowBuilderInitialized = false;
+let flowBuilderUnmount = null;
+
+async function initializeFlowBuilder() {
+    console.log('[FlowBuilder] Initializing Flow Builder view');
+
+    // CRITICAL: Force-hide any modals that might be blocking the view
+    // This addresses a bug where the consumption profile modal appears over Flow Builder
+    // Force-hide ALL z-50 modals before initialization (comprehensive approach)
+    console.log('[FlowBuilder] Force-hiding all z-50 modals before initialization...');
+    document.querySelectorAll('.fixed.z-50, [class*="z-50"].fixed').forEach(modal => {
+        const wasHidden = modal.classList.contains('hidden');
+        modal.classList.add('hidden');
+        modal.style.display = 'none'; // Force inline style as fallback
+        if (!wasHidden) {
+            console.log(`[FlowBuilder] Force-hid modal: ${modal.id || 'unnamed'}`);
+        }
+    });
+
+    const container = document.getElementById('flow-builder-root');
+    if (!container) {
+        console.error('[FlowBuilder] Container element not found');
+        return;
+    }
+
+    // If already initialized, just ensure React app is mounted
+    if (flowBuilderInitialized && window.mountFlowBuilder) {
+        console.log('[FlowBuilder] Already initialized, skipping');
+        return;
+    }
+
+    // Get authentication token
+    const jwtToken = localStorage.getItem('tda_auth_token');
+    if (!jwtToken) {
+        console.warn('[FlowBuilder] No JWT token found, user may need to login');
+        container.innerHTML = `
+            <div class="h-full flex items-center justify-center text-white">
+                <div class="text-center">
+                    <h2 class="text-xl font-bold mb-2">Authentication Required</h2>
+                    <p class="text-gray-400">Please log in to use the Flow Builder.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // Show loading state
+    container.innerHTML = `
+        <div class="h-full flex items-center justify-center">
+            <div class="text-center">
+                <div class="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p class="text-gray-400">Loading Flow Builder...</p>
+            </div>
+        </div>
+    `;
+
+    try {
+        // Check if bundle is already loaded
+        if (!window.mountFlowBuilder) {
+            // Lazy-load the Flow Builder CSS
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/static/js/flowBuilder/dist/flowBuilder.main.css';
+            document.head.appendChild(link);
+
+            // Lazy-load the Flow Builder bundle
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = '/static/js/flowBuilder/dist/flowBuilder.bundle.js';
+
+            await new Promise((resolve, reject) => {
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('Failed to load Flow Builder bundle'));
+                document.head.appendChild(script);
+            });
+
+            // Wait for mount function to be available
+            await new Promise((resolve, reject) => {
+                let attempts = 0;
+                const checkMount = () => {
+                    if (window.mountFlowBuilder) {
+                        resolve();
+                    } else if (attempts++ > 50) {
+                        reject(new Error('Flow Builder mount function not available'));
+                    } else {
+                        setTimeout(checkMount, 100);
+                    }
+                };
+                checkMount();
+            });
+        }
+
+        // Clear loading state
+        container.innerHTML = '';
+
+        // Mount the Flow Builder React app
+        const uderiaUrl = window.location.origin;
+        const flowBuilderUrl = 'http://localhost:5051'; // Flow Builder backend
+
+        flowBuilderUnmount = window.mountFlowBuilder(container, {
+            jwtToken,
+            uderiaUrl,
+            flowBuilderUrl
+        });
+
+        flowBuilderInitialized = true;
+        console.log('[FlowBuilder] Successfully initialized');
+
+    } catch (error) {
+        console.error('[FlowBuilder] Failed to initialize:', error);
+        container.innerHTML = `
+            <div class="h-full flex items-center justify-center text-white">
+                <div class="text-center">
+                    <h2 class="text-xl font-bold mb-2 text-rose-400">Failed to Load Flow Builder</h2>
+                    <p class="text-gray-400 mb-4">${error.message}</p>
+                    <p class="text-gray-500 text-sm">Make sure the Flow Builder backend is running on port 5051</p>
+                    <button onclick="initializeFlowBuilder()" class="mt-4 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded text-white">
+                        Retry
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Expose for retry button
+window.initializeFlowBuilder = initializeFlowBuilder;

@@ -207,7 +207,7 @@ def create_app():
             "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net", # Allow inline scripts for auth pages + marked.js
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", # Allow inline styles for G2Plot tooltips etc.
             "font-src 'self' https://fonts.gstatic.com",
-            "connect-src 'self' *.googleapis.com https://*.withgoogle.com https://unpkg.com https://api.github.com", # Added unpkg and GitHub API
+            "connect-src 'self' *.googleapis.com https://*.withgoogle.com https://unpkg.com https://api.github.com http://localhost:5051 http://127.0.0.1:5051", # Added unpkg, GitHub API, Flow Builder
             "worker-src 'self' blob:",
             "img-src 'self' data:",
             "media-src 'self' blob:" # Allow media from blobs for TTS audio

@@ -1021,14 +1021,15 @@ const AdminManager = {
         const modal = document.getElementById('consumption-profile-modal');
         const title = document.getElementById('consumption-profile-modal-title');
         const form = document.getElementById('consumption-profile-form');
-        
+
         if (!modal || !title || !form) return;
-        
+
         title.textContent = 'Create Consumption Profile';
         form.reset();
         document.getElementById('consumption-profile-id').value = '';
         document.getElementById('consumption-profile-is-active').checked = true;
         modal.classList.remove('hidden');
+        modal.style.display = ''; // Remove any inline display style
     },
 
     /**
@@ -1055,8 +1056,9 @@ const AdminManager = {
         document.getElementById('consumption-profile-prompts-day').value = profile.prompts_per_day || '';
         document.getElementById('consumption-profile-input-tokens').value = profile.input_tokens_per_month || '';
         document.getElementById('consumption-profile-output-tokens').value = profile.output_tokens_per_month || '';
-        
+
         modal.classList.remove('hidden');
+        modal.style.display = ''; // Remove any inline display style
     },
 
     /**
@@ -1066,6 +1068,7 @@ const AdminManager = {
         const modal = document.getElementById('consumption-profile-modal');
         if (modal) {
             modal.classList.add('hidden');
+            modal.style.display = 'none'; // Also set inline style as fallback
             document.getElementById('consumption-profile-form').reset();
         }
     },

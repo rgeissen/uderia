@@ -1,0 +1,23 @@
+# Flow Builder Backend Dependencies
+# Separate from Uderia core to maintain isolation
+
+# Web framework (async, matches Uderia)
+quart>=0.19.0
+quart-cors>=0.7.0
+hypercorn>=0.16.0
+
+# HTTP client for calling Uderia REST API
+httpx>=0.26.0
+
+# Database
+aiosqlite>=0.19.0
+
+# Utilities
+python-dateutil>=2.8.0
+uuid6>=2024.1.12
+
+# Expression evaluation (sandboxed)
+simpleeval>=0.9.13
+
+# Type hints
+typing-extensions>=4.9.0

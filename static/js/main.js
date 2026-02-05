@@ -1195,6 +1195,30 @@ function hideWelcomeScreen() {
 window.hideWelcomeScreen = hideWelcomeScreen;
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // CRITICAL: Ensure ALL z-50 modals are hidden on page load
+    // Uses CSS selector to catch ALL modals, not just a hardcoded list
+    console.log('[Startup] Hiding all z-50 modals on page load...');
+    document.querySelectorAll('.fixed.z-50, [class*="z-50"].fixed').forEach(modal => {
+        if (!modal.classList.contains('hidden')) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+            console.log(`[Startup] Force-hid modal: ${modal.id || 'unnamed'}`);
+        }
+    });
+
+    // Add global Escape key handler to close any open z-50 modals
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.fixed.z-50, [class*="z-50"].fixed').forEach(modal => {
+                if (!modal.classList.contains('hidden')) {
+                    modal.classList.add('hidden');
+                    modal.style.display = 'none';
+                    console.log(`[Escape] Closed modal: ${modal.id || 'unnamed'}`);
+                }
+            });
+        }
+    });
+
     const savedShowWelcomeScreen = localStorage.getItem('showWelcomeScreenAtStartup');
     state.showWelcomeScreenAtStartup = savedShowWelcomeScreen === null ? true : savedShowWelcomeScreen === 'true';
     const welcomeScreenCheckbox = document.getElementById('toggle-welcome-screen-checkbox');

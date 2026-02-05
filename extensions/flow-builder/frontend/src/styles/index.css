@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Uderia-compatible base styles */
+:root {
+  --uderia-bg: #0f0f0f;
+  --uderia-panel: rgba(17, 24, 39, 0.8);
+  --uderia-border: rgba(255, 255, 255, 0.1);
+  --uderia-orange: #F15F22;
+  --uderia-orange-light: #ff7f45;
+
+  /* Profile colors */
+  --profile-tool: #9333ea;
+  --profile-llm: #4ade80;
+  --profile-rag: #3b82f6;
+  --profile-genie: #F15F22;
+
+  /* Node states */
+  --node-pending: #6b7280;
+  --node-running: #f59e0b;
+  --node-success: #10b981;
+  --node-error: #ef4444;
+  --node-condition: #06b6d4;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--uderia-bg);
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Glass panel effect (matches Uderia) */
+.glass-panel {
+  background: var(--uderia-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--uderia-border);
+  border-radius: 0.5rem;
+}
+
+/* React Flow customizations */
+.react-flow__node {
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.react-flow__node.selected {
+  box-shadow: 0 0 0 2px var(--uderia-orange);
+}
+
+.react-flow__edge-path {
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 2;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--uderia-orange);
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid white;
+  background: #374151;
+}
+
+.react-flow__handle:hover {
+  background: var(--uderia-orange);
+}
+
+.react-flow__handle-top {
+  top: -5px;
+}
+
+.react-flow__handle-bottom {
+  bottom: -5px;
+}
+
+.react-flow__handle-left {
+  left: -5px;
+}
+
+.react-flow__handle-right {
+  right: -5px;
+}
+
+/* Mini map */
+.react-flow__minimap {
+  background: var(--uderia-panel);
+  border: 1px solid var(--uderia-border);
+  border-radius: 4px;
+}
+
+/* Controls */
+.react-flow__controls {
+  background: var(--uderia-panel);
+  border: 1px solid var(--uderia-border);
+  border-radius: 4px;
+}
+
+.react-flow__controls-button {
+  background: transparent;
+  border-bottom: 1px solid var(--uderia-border);
+  color: white;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Node palette items */
+.node-palette-item {
+  @apply flex items-center gap-2 p-2 rounded cursor-grab;
+  @apply border border-transparent hover:border-white/20;
+  @apply bg-gray-800/50 hover:bg-gray-700/50;
+  @apply transition-all duration-150;
+}
+
+.node-palette-item:active {
+  cursor: grabbing;
+}
+
+/* Execution status steps (matches Uderia Live Status) */
+.status-step {
+  @apply p-3 rounded-md mb-2;
+  @apply border-l-4;
+  @apply bg-gray-800/50;
+}
+
+.status-step.active {
+  @apply border-l-amber-400;
+  @apply bg-amber-900/20;
+}
+
+.status-step.completed {
+  @apply border-l-emerald-400;
+  @apply bg-emerald-900/20;
+}
+
+.status-step.error {
+  @apply border-l-red-400;
+  @apply bg-red-900/20;
+}
+
+.status-step.pending {
+  @apply border-l-gray-400;
+  @apply opacity-50;
+}
+
+/* Progress animation */
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.progress-indicator {
+  animation: progress-pulse 1.5s ease-in-out infinite;
+}
+
+/* Node type icons */
+.node-icon {
+  @apply w-5 h-5 flex items-center justify-center rounded;
+  @apply text-xs font-bold;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
