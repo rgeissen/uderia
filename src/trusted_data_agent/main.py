@@ -229,7 +229,12 @@ def create_app():
         except Exception as e:
             app_logger.error(f"Failed to initialize authentication database: {e}", exc_info=True)
             raise  # Fatal error - cannot run without auth database
-        
+
+        # Check voice feature credentials (after init_database syncs TTS mode)
+        if APP_CONFIG.VOICE_CONVERSATION_ENABLED:
+            if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+                app_logger.warning("Voice feature enabled but GOOGLE_APPLICATION_CREDENTIALS not set — credentials must be provided via config UI")
+
         # Load configuration from tda_config.json and apply to APP_CONFIG
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
@@ -309,25 +314,19 @@ def create_app():
 app = create_app()
 
 async def main(args): # MODIFIED: Accept args
-    print("\n--- Starting Hypercorn Server for Quart App ---")
     host = args.host
     port = args.port
     # Store host/port in APP_STATE so startup() can print the ready message after RAG initialization
     APP_STATE['server_host'] = host
     APP_STATE['server_port'] = port
-    print(f"Server starting on http://{host}:{port} - please wait for initialization...")
+    app_logger.info(f"Starting server on http://{host}:{port} — please wait for initialization...")
     config = Config()
     config.bind = [f"{host}:{port}"] # MODIFIED: Use dynamic host and port
     config.accesslog = None
     config.errorlog = None
-    # --- MODIFICATION START: Add longer Hypercorn timeouts (Good Practice) ---
-    # While Quart's RESPONSE_TIMEOUT was the main fix, setting these high
-    # ensures Hypercorn doesn't impose its own shorter limits.
-    config.worker_timeout = 600 # e.g., 10 minutes
-    config.read_timeout = 600  # e.g., 10 minutes
-    app_logger.info(f"Hypercorn worker timeout set to {config.worker_timeout} seconds.")
-    app_logger.info(f"Hypercorn read timeout set to {config.read_timeout} seconds.")
-    # --- MODIFICATION END ---
+    # Longer Hypercorn timeouts to avoid premature disconnects on long-running SSE streams
+    config.worker_timeout = 600
+    config.read_timeout = 600
     await hypercorn.asyncio.serve(app, config)
 
 if __name__ == "__main__":
@@ -350,24 +349,13 @@ if __name__ == "__main__":
 
     if args.nogitcall:
         APP_CONFIG.GITHUB_API_ENABLED = False
-        print("\n--- GITHUB API DISABLED: Star count fetching is disabled. ---\n")
+        app_logger.info("GitHub API disabled (--nogitcall)")
     else:
         APP_CONFIG.GITHUB_API_ENABLED = True
-        print("\n--- GITHUB API ENABLED: Star count will be fetched from GitHub. ---\n")
 
     if args.offline:
         os.environ['HF_HUB_OFFLINE'] = '1'
-        print("\n--- OFFLINE MODE: Using cached HuggingFace models only (no remote checks). ---\n")
-
-    print("\n--- CHARTING ENABLED: Charting configuration is active. ---\n")
-
-    if APP_CONFIG.VOICE_CONVERSATION_ENABLED:
-        if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-            print("\n--- ⚠️ VOICE FEATURE WARNING ---\n")
-            print("The 'GOOGLE_APPLICATION_CREDENTIALS' environment variable is not set.")
-            print("The voice conversation feature will require credentials to be provided in the config UI.")
-        else:
-            print("\n--- VOICE FEATURE ENABLED: Credentials found in environment. ---\n")
+        app_logger.info("Offline mode: using cached HuggingFace models only")
 
     try:
         asyncio.run(main(args)) # MODIFIED: Pass args to main

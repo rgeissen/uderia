@@ -385,7 +385,7 @@ class RAGTemplateManager:
             available_mcp_tools = set(APP_STATE['mcp_tools'].keys())
             logger.debug(f"Validating against {len(available_mcp_tools)} MCP tools from APP_STATE")
         else:
-            logger.warning(
+            logger.debug(
                 f"APP_STATE['mcp_tools'] not available - cannot validate against MCP server. "
                 f"This is normal during initial template loading before MCP server connection."
             )

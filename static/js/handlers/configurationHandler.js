@@ -981,6 +981,10 @@ export const configState = new ConfigurationState();
 // Also expose to window to avoid circular imports
 window.configState = configState;
 
+// Deferred: renderProfiles is defined later in this file but referenced via
+// window.renderProfiles by modules that cannot import it directly (circular dep).
+// The assignment is done after the function definition — search "window.renderProfiles =".
+
 // ============================================================================
 // UI RENDERING - MCP SERVERS
 // ============================================================================
@@ -2844,6 +2848,9 @@ export function renderProfiles() {
     // Attach event listeners to profile action buttons
     attachProfileEventListeners();
 }
+
+// Expose on window for modules that can't import directly (circular dependency)
+window.renderProfiles = renderProfiles;
 
 function renderProfileCard(profile) {
         const isDefault = profile.id === configState.defaultProfileId;
@@ -5123,28 +5130,16 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
 
         container.innerHTML = '';
 
-        // Get all profiles except self (allow nested Genies)
-        // Only include profiles that are active for consumption
-        const availableProfiles = configState.profiles.filter(p => {
-            const isNotSelf = p.id !== currentGenieProfile?.id;  // Exclude self-reference
-            const isActive = configState.activeForConsumptionProfileIds.includes(p.id);  // Only active profiles
-            return isNotSelf && isActive;
-        });
-
         // Get currently selected children (if editing)
         const selectedSlaves = currentGenieProfile?.genieConfig?.slaveProfiles || [];
 
-        if (availableProfiles.length === 0) {
-            const hasInactiveProfiles = configState.profiles.some(p =>
-                p.id !== currentGenieProfile?.id &&
-                !configState.activeForConsumptionProfileIds.includes(p.id)
-            );
+        // Get all profiles except self (allow nested Genies, inactive profiles, pack-managed children)
+        const availableProfiles = configState.profiles.filter(p => {
+            return p.id !== currentGenieProfile?.id;  // Exclude only self-reference
+        });
 
-            if (hasInactiveProfiles) {
-                container.innerHTML = '<p class="text-gray-500 text-sm italic">No active profiles available. Activate profiles in the main list before selecting them as children.</p>';
-            } else {
-                container.innerHTML = '<p class="text-gray-500 text-sm italic">No profiles available. Create other profile types first.</p>';
-            }
+        if (availableProfiles.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-sm italic">No profiles available. Create other profile types first.</p>';
             return;
         }
 

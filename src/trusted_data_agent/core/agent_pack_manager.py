@@ -972,6 +972,9 @@ class AgentPackManager:
 
     async def list_packs(self, user_uuid: str) -> list[dict]:
         """List agent packs for user (owned + subscribed via sharing grants)."""
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
@@ -1004,10 +1007,14 @@ class AgentPackManager:
                 profile_count = counts.get("profile", 0)
                 pack_type = row["pack_type"] or "genie"
 
-                # For genie packs, experts_count = total profiles - 1 (coordinator)
-                # For other packs, experts_count = 0
-                if pack_type == "genie" and row["coordinator_tag"]:
-                    experts_count = max(profile_count - 1, 0)
+                # For genie packs, derive experts_count from LIVE coordinator profile
+                # (the resources table is a snapshot from install time and becomes stale)
+                if pack_type == "genie" and row["coordinator_profile_id"]:
+                    coord_prof = config_manager.get_profile(row["coordinator_profile_id"], user_uuid)
+                    if coord_prof:
+                        experts_count = len(coord_prof.get("genieConfig", {}).get("slaveProfiles", []))
+                    else:
+                        experts_count = max(profile_count - 1, 0)
                 else:
                     experts_count = 0
 

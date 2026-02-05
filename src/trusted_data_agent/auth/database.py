@@ -370,7 +370,7 @@ def _create_agent_packs_tables():
             with open(schema_path, 'r') as f:
                 sql = f.read()
             cursor.executescript(sql)
-            logger.info("Applied schema: 09_agent_packs.sql")
+            logger.debug("Applied schema: 09_agent_packs.sql")
         else:
             # Inline fallback if schema file not found
             cursor.executescript("""
@@ -584,7 +584,7 @@ def _sync_tts_mode_to_config():
             if setting:
                 tts_mode = setting.setting_value
                 APP_CONFIG.VOICE_CONVERSATION_ENABLED = (tts_mode != 'disabled')
-                logger.info(f"TTS mode synced from database: {tts_mode} (voice_enabled={APP_CONFIG.VOICE_CONVERSATION_ENABLED})")
+                logger.debug(f"TTS mode synced from database: {tts_mode} (voice_enabled={APP_CONFIG.VOICE_CONVERSATION_ENABLED})")
     except Exception as e:
         logger.warning(f"Could not sync TTS mode from database: {e}")
 
@@ -775,7 +775,7 @@ def _bootstrap_prompt_system():
         # Check if prompt tables already exist
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='prompts'")
         if cursor.fetchone():
-            logger.info("Prompt system tables already exist, skipping bootstrap")
+            logger.debug("Prompt system tables already exist, skipping bootstrap")
             conn.close()
             return
         
@@ -1169,5 +1169,5 @@ def _bootstrap_provider_models():
         logger.error(f"Failed to bootstrap provider models: {e}", exc_info=True)
 
 
-# Initialize database on module import (authentication is always enabled)
-init_database()
+# Database initialization is handled by the @app.before_serving startup hook in main.py.
+# Do NOT call init_database() at module import time — it causes duplicate initialization.

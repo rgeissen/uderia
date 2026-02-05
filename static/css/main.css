@@ -1364,6 +1364,96 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
     opacity: 1;
 }
 
+/* =========================================================================
+   CUSTOM TOOLTIPS — Industrial glass-panel style via [data-tooltip]
+   JS-driven: tooltip div appended to <body> with position:fixed to escape
+   overflow containers. See tooltip handler in index.html.
+   ========================================================================= */
+
+.custom-tooltip {
+    position: fixed;
+    z-index: 99999;
+    width: max-content;
+    max-width: 320px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.55;
+    text-align: left;
+    white-space: normal;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.custom-tooltip.tooltip-above {
+    transform: translateY(-4px);
+}
+
+.custom-tooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Arrow */
+.custom-tooltip::before {
+    content: "";
+    position: absolute;
+    left: var(--arrow-left, 50%);
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+}
+
+.custom-tooltip.tooltip-below::before {
+    top: -12px;
+    border-bottom-color: rgba(15, 23, 42, 0.92);
+}
+
+.custom-tooltip.tooltip-above::before {
+    bottom: -12px;
+    border-top-color: rgba(15, 23, 42, 0.92);
+}
+
+/* =========================================================================
+   APP BANNER TOAST — floating notification above modals
+   Used by showAppBanner() when a modal overlay is open.
+   ========================================================================= */
+
+.app-banner-toast {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    z-index: 99990;
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    pointer-events: none;
+    white-space: nowrap;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
+                0 2px 8px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-banner-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
 #status-window-content .status-kv-grid {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -5532,6 +5622,7 @@ button.bg-gray-700.px-2:hover {
     }
     .profile-two-col > .profile-section {
         margin: 0;
+        min-width: 0;
     }
 }
 

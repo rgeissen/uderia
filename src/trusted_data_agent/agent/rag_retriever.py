@@ -91,7 +91,7 @@ class RAGRetriever:
             ChromaDB embedding function for the specified model
         """
         if embedding_model not in self.embedding_functions_cache:
-            logger.info(f"Creating new embedding function for model: {embedding_model}")
+            logger.debug(f"Creating new embedding function for model: {embedding_model}")
             self.embedding_functions_cache[embedding_model] = embedding_functions.SentenceTransformerEmbeddingFunction(
                 model_name=embedding_model
             )
@@ -424,16 +424,16 @@ class RAGRetriever:
                 try:
                     collection = self.client.get_collection(name=coll_name)
                     doc_count = collection.count()
-                    logger.info(f"Loaded existing collection '{coll_name}' with {doc_count} documents")
+                    logger.debug(f"Loaded existing collection '{coll_name}' with {doc_count} documents")
                 except Exception as get_error:
                     # Collection doesn't exist, create it
-                    logger.info(f"Collection '{coll_name}' not found ({get_error}), creating new empty collection")
+                    logger.debug(f"Collection '{coll_name}' not found ({get_error}), creating new empty collection")
                     collection = self.client.create_collection(
                         name=coll_name,
                         embedding_function=embedding_func,
                         metadata={"hnsw:space": "cosine"}
                     )
-                    logger.info(f"Created new empty collection '{coll_name}'")
+                    logger.debug(f"Created new empty collection '{coll_name}'")
 
                 self.collections[coll_id] = collection
             except KeyError as e:
@@ -460,11 +460,21 @@ class RAGRetriever:
         
         if not self.collections and filter_by_mcp:
             logger.warning(f"No active RAG collections loaded for MCP server ID '{current_mcp_server_id}'!")
-        
+        elif self.collections:
+            total_docs = sum(c.count() for c in self.collections.values())
+            logger.info(f"Loaded {len(self.collections)} collections ({total_docs:,} documents total)")
+
         # Refresh vector stores for all collections if configured
         if APP_CONFIG.RAG_REFRESH_ON_STARTUP:
+            maintenance_skipped = 0
             for coll_id in self.collections:
+                # Track skipped maintenance for summary
+                coll_meta = self.get_collection_metadata(coll_id)
+                if coll_meta and coll_meta.get("repository_type") == "knowledge":
+                    maintenance_skipped += 1
                 self._maintain_vector_store(coll_id)
+            if maintenance_skipped:
+                logger.debug(f"Skipped maintenance for {maintenance_skipped} knowledge repositories (no file-based cases)")
     
     def _auto_rebuild_if_needed(self):
         """
@@ -1119,7 +1129,7 @@ class RAGRetriever:
         # --- KNOWLEDGE REPOSITORIES: Skip maintenance (no JSON files, direct ChromaDB storage) ---
         coll_meta = self.get_collection_metadata(collection_id)
         if coll_meta and coll_meta.get("repository_type") == "knowledge":
-            logger.info(f"Skipping maintenance for collection '{collection_id}': Knowledge repository (no file-based cases)")
+            logger.debug(f"Skipping maintenance for collection '{collection_id}': Knowledge repository (no file-based cases)")
             return
         # --- KNOWLEDGE REPOSITORIES END ---
         

@@ -50,7 +50,7 @@ def _get_or_create_jwt_secret() -> str:
             with open(key_file, 'r', encoding='utf-8') as f:
                 stored_key = f.read().strip()
                 if stored_key:
-                    logger.info(f"Loaded JWT secret key from {key_file}")
+                    logger.debug(f"Loaded JWT secret key from {key_file}")
                     return stored_key
         
         # Generate new key and save it

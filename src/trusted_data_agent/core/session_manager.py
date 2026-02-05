@@ -30,7 +30,7 @@ def _initialize_sessions_dir():
     """Creates the main sessions directory if it doesn't exist."""
     try:
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-        app_logger.info(f"Session directory ensured at: {SESSIONS_DIR}")
+        app_logger.debug(f"Session directory ensured at: {SESSIONS_DIR}")
     except OSError as e:
         app_logger.error(f"Could not create session directory '{SESSIONS_DIR}'. Session persistence will fail. Error: {e}", exc_info=True)
         raise # Re-raise to prevent startup if dir fails

@@ -1273,7 +1273,8 @@
                             <!-- Metrics Grid -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                                 <!-- Total Sessions Card -->
-                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(241, 95, 34, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'">
+                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(241, 95, 34, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'"
+                                     data-tooltip="Total number of conversation sessions created. Each session represents an independent conversation thread with its own context and history.">
                                     <div class="flex items-center justify-between">
                                         <div>
                                             <p class="text-gray-400 text-sm font-medium">Total Sessions</p>
@@ -1288,7 +1289,8 @@
                                 </div>
                                 
                                 <!-- Total Tokens Card -->
-                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(251, 146, 60, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'">
+                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(251, 146, 60, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'"
+                                     data-tooltip="Combined input and output tokens consumed across all sessions. Input tokens are the prompts sent to the LLM; output tokens are the generated responses. Higher token counts correlate with longer or more complex conversations.">
                                     <div class="flex items-center justify-between">
                                         <div>
                                             <p class="text-gray-400 text-sm font-medium">Total Tokens</p>
@@ -1306,7 +1308,8 @@
                                 </div>
                                 
                                 <!-- Success Rate Card -->
-                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(34, 197, 94, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'">
+                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(34, 197, 94, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'"
+                                     data-tooltip="Percentage of queries that completed successfully without errors. A successful query is one where the agent produced a final response without encountering unrecoverable tool failures or LLM errors.">
                                     <div class="flex items-center justify-between">
                                         <div>
                                             <p class="text-gray-400 text-sm font-medium">Success Rate</p>
@@ -1321,7 +1324,8 @@
                                 </div>
                                 
                                 <!-- Estimated Cost Card -->
-                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(234, 179, 8, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'">
+                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(234, 179, 8, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'"
+                                     data-tooltip="Estimated LLM usage cost based on provider-specific token pricing. Calculated from actual input/output token counts multiplied by the per-token rate for each model used.">
                                     <div class="flex items-center justify-between">
                                         <div>
                                             <p class="text-gray-400 text-sm font-medium">Est. Cost</p>
@@ -1336,7 +1340,8 @@
                                 </div>
                                 
                                 <!-- Execution Velocity Card -->
-                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(249, 115, 22, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'">
+                                <div class="rounded-xl p-4 border transition-all" style="background-color: var(--card-bg); border-color: var(--border-primary);" onmouseover="this.style.borderColor='rgba(249, 115, 22, 0.5)'" onmouseout="this.style.borderColor='var(--border-primary)'"
+                                     data-tooltip="Session activity over the last 24 hours displayed as a sparkline. Each point represents the number of sessions created in that time window, showing usage patterns and peak activity periods.">
                                     <div class="flex items-center justify-between">
                                         <div class="flex-1">
                                             <p class="text-gray-400 text-sm font-medium">Velocity (24h)</p>
@@ -1349,7 +1354,8 @@
                             <!-- Model Distribution, Expensive Sessions & Questions -->
                             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
                                 <!-- Model Distribution -->
-                                <div class="rounded-xl p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);">
+                                <div class="rounded-xl p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);"
+                                     data-tooltip="Breakdown of LLM models used across all sessions, showing which providers and models are most frequently selected. Helps identify usage patterns and optimize model selection.">
                                     <h3 class="text-white font-semibold mb-3 flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-teradata-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -1362,7 +1368,8 @@
                                 </div>
                                 
                                 <!-- Most Token-Intensive Sessions -->
-                                <div class="rounded-xl p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);">
+                                <div class="rounded-xl p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);"
+                                     data-tooltip="Sessions that consumed the most tokens overall. These are your most resource-intensive conversations — useful for identifying complex workflows or potential optimization opportunities.">
                                     <h3 class="text-white font-semibold mb-3 flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -1375,7 +1382,8 @@
                                 </div>
                                 
                                 <!-- Most Token-Intensive Questions -->
-                                <div class="rounded-xl p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);">
+                                <div class="rounded-xl p-4 border" style="background-color: var(--card-bg); border-color: var(--border-primary);"
+                                     data-tooltip="Individual questions that consumed the most tokens. Highlights the most expensive single queries, which may benefit from RAG champion strategies or prompt optimization.">
                                     <h3 class="text-white font-semibold mb-3 flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1718,7 +1726,7 @@
                     <div class="grid gap-6 md:grid-cols-4 mb-8">
                         <!-- Self-Healing Events Card -->
                         <div class="glass-panel rounded-xl p-6 border-l-4 border-green-500" 
-                             title="Champion strategies available for RAG retrieval. These are the most efficient, proven solutions that RAG can inject into new tasks to accelerate execution and prevent errors.">
+                             data-tooltip="Champion strategies available for RAG retrieval. These are the most efficient, proven solutions that RAG can inject into new tasks to accelerate execution and prevent errors.">
                             <div class="flex items-start justify-between mb-4">
                                 <div class="flex items-center gap-3">
                                     <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
@@ -1747,7 +1755,7 @@
 
                         <!-- RAG Activation Rate Card -->
                         <div class="glass-panel rounded-xl p-6 border-l-4 border-emerald-500"
-                             title="Percentage of agent tasks that received RAG assistance. Shows how often champion strategies were retrieved and injected into LLM prompts to guide execution.">
+                             data-tooltip="Percentage of agent tasks that received RAG assistance. Shows how often champion strategies were retrieved and injected into LLM prompts to guide execution.">
                             <div class="flex items-start justify-between mb-4">
                                 <div class="flex items-center gap-3">
                                     <div class="w-12 h-12 bg-emerald-500/20 rounded-lg flex items-center justify-center">
@@ -1780,7 +1788,7 @@
 
                         <!-- Cost Savings Card -->
                         <div class="glass-panel rounded-xl p-6 border-l-4 border-yellow-500"
-                             title="Plan Quality Savings: Champion strategies produce more efficient plans with fewer output tokens. Measured by comparing OUTPUT tokens (generated responses) in RAG-guided vs non-RAG turns. Better plans = less LLM generation = lower output costs.">
+                             data-tooltip="Plan Quality Savings: Champion strategies produce more efficient plans with fewer output tokens. Measured by comparing OUTPUT tokens (generated responses) in RAG-guided vs non-RAG turns. Better plans = less LLM generation = lower output costs.">
                             <div class="flex items-start justify-between mb-4">
                                 <div class="flex items-center gap-3">
                                     <div class="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
@@ -1804,7 +1812,7 @@
 
                         <!-- Performance Improvement Card -->
                         <div class="glass-panel rounded-xl p-6 border-l-4 border-blue-500"
-                             title="Speed improvement estimated from token efficiency. When RAG reduces tokens by X%, execution is typically X% faster due to fewer LLM calls and shorter responses. Based on measured efficiency gains from your actual RAG-guided sessions.">
+                             data-tooltip="Speed improvement estimated from token efficiency. When RAG reduces tokens by X%, execution is typically X% faster due to fewer LLM calls and shorter responses. Based on measured efficiency gains from your actual RAG-guided sessions.">
                             <div class="flex items-start justify-between mb-4">
                                 <div class="flex items-center gap-3">
                                     <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -8386,6 +8394,79 @@
             </form>
         </div>
     </div>
+
+    <!-- Custom Tooltip Handler — appends to <body> to escape overflow containers -->
+    <script>
+    (function() {
+        let tip = null;
+        let currentEl = null;
+
+        function show(el) {
+            const text = el.getAttribute('data-tooltip');
+            if (!text) return;
+
+            currentEl = el;
+            tip = document.createElement('div');
+            tip.className = 'custom-tooltip';
+            tip.textContent = text;
+            document.body.appendChild(tip);
+
+            // Measure
+            const elRect = el.getBoundingClientRect();
+            const tipRect = tip.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const gap = 10;
+
+            // Vertical: prefer below, fall back to above
+            let top;
+            if (elRect.bottom + gap + tipRect.height <= vh - 12) {
+                top = elRect.bottom + gap;
+                tip.classList.add('tooltip-below');
+            } else {
+                top = elRect.top - tipRect.height - gap;
+                tip.classList.add('tooltip-above');
+            }
+
+            // Horizontal: center on element, clamp to viewport
+            let left = elRect.left + elRect.width / 2 - tipRect.width / 2;
+            left = Math.max(12, Math.min(left, vw - tipRect.width - 12));
+
+            // Arrow points at element center
+            const arrowLeft = elRect.left + elRect.width / 2 - left;
+            tip.style.setProperty('--arrow-left', arrowLeft + 'px');
+
+            tip.style.top = top + 'px';
+            tip.style.left = left + 'px';
+
+            requestAnimationFrame(function() { tip.classList.add('visible'); });
+        }
+
+        function hide() {
+            if (tip) { tip.remove(); tip = null; }
+            currentEl = null;
+        }
+
+        document.addEventListener('mouseover', function(e) {
+            var el = e.target.closest('[data-tooltip]');
+            if (!el || el === currentEl) return;
+            hide();
+            show(el);
+        });
+
+        document.addEventListener('mouseout', function(e) {
+            var el = e.target.closest('[data-tooltip]');
+            if (!el) return;
+            // Only hide if we're actually leaving the tooltip-bearing element
+            var related = e.relatedTarget;
+            if (related && el.contains(related)) return;
+            hide();
+        });
+
+        // Hide on scroll to prevent stale positions
+        document.addEventListener('scroll', hide, true);
+    })();
+    </script>
 
 </body>
 </html>

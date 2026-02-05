@@ -20,7 +20,6 @@ app_logger = logging.getLogger("quart.app")
 # Initialize the prompt loader (this will verify the license on import)
 try:
     _loader = get_prompt_loader()
-    app_logger.info("PromptLoader initialized successfully with database backend")
 except Exception as e:
     app_logger.critical(f"Failed to initialize PromptLoader: {e}")
     raise

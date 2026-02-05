@@ -5770,13 +5770,42 @@ async def update_profile(profile_id: str):
         pack_db = AgentPackDB()
         if pack_db.is_pack_managed("profile", profile_id):
             protected_fields = {"tag", "profile_type", "knowledgeConfig"}
-            changed_protected = protected_fields & set(data.keys())
-            if changed_protected:
+
+            def _extract_collection_ids(kc):
+                """Extract sorted collection IDs from knowledgeConfig in any format."""
+                if not isinstance(kc, dict):
+                    return []
+                ids = []
+                for c in kc.get("collections", []):
+                    if isinstance(c, dict):
+                        cid = c.get("id")
+                        if cid is not None:
+                            ids.append(int(cid))
+                    elif isinstance(c, (int, float, str)):
+                        try:
+                            ids.append(int(c))
+                        except (ValueError, TypeError):
+                            pass
+                return sorted(ids)
+
+            def _field_changed(f):
+                new_val = data[f]
+                old_val = current_profile.get(f)
+                if f == "knowledgeConfig":
+                    # Semantic comparison: only protect collection assignment, not tuning params
+                    return _extract_collection_ids(new_val) != _extract_collection_ids(old_val)
+                return new_val != old_val
+
+            actually_changed = {
+                f for f in protected_fields & set(data.keys())
+                if _field_changed(f)
+            }
+            if actually_changed:
                 packs = pack_db.get_packs_for_resource("profile", profile_id)
                 pack_names = ", ".join(p["name"] for p in packs)
                 return jsonify({
                     "status": "error",
-                    "message": f"Cannot modify {', '.join(changed_protected)} on a profile "
+                    "message": f"Cannot modify {', '.join(actually_changed)} on a profile "
                                f"managed by: {pack_names}. Uninstall the pack(s) first."
                 }), 409
 

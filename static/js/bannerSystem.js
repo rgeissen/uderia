@@ -23,13 +23,11 @@
  * @param {string} type - 'success', 'error', 'warning', or 'info'
  * @param {number} duration - Display duration in ms (default: 5000)
  */
-export function showAppBanner(message, type = 'info', duration = 5000) {
-    const statusElement = document.getElementById('header-status-message');
-    if (!statusElement) {
-        console.warn('[AppBanner] Element not found. Message:', message);
-        return;
-    }
+// Reusable floating toast element (created once, reused)
+let _toastEl = null;
+let _toastTimeout = null;
 
+export function showAppBanner(message, type = 'info', duration = 5000) {
     // Theme-aware colors using Tailwind classes that work with all themes
     const colors = {
         success: 'app-banner-success',
@@ -38,23 +36,70 @@ export function showAppBanner(message, type = 'info', duration = 5000) {
         info: 'app-banner-info'
     };
 
-    // Clear any existing timeout
-    if (statusElement.hideTimeout) {
-        clearTimeout(statusElement.hideTimeout);
+    // Detect if any modal overlay is currently visible
+    // Matches: .tpl-modal-overlay (dynamic), *-modal-overlay (static), *-modal.fixed (e.g. profile-modal)
+    const modalOpen = document.querySelector(
+        '.tpl-modal-overlay, [id$="-modal-overlay"]:not(.hidden), [id$="-modal"].fixed:not(.hidden)'
+    );
+
+    if (modalOpen) {
+        // ── Floating toast mode (above modals) ──
+        _showToast(message, colors[type] || colors.info, duration);
+    } else {
+        // ── Inline navbar mode (original behavior) ──
+        _dismissToast();   // clean up any lingering toast
+        const statusElement = document.getElementById('header-status-message');
+        if (!statusElement) {
+            console.warn('[AppBanner] Element not found. Message:', message);
+            return;
+        }
+
+        if (statusElement.hideTimeout) {
+            clearTimeout(statusElement.hideTimeout);
+        }
+
+        statusElement.textContent = message;
+        statusElement.className = `text-sm px-3 py-1 rounded-md transition-all duration-300 ${colors[type] || colors.info}`;
+        statusElement.style.opacity = '1';
+
+        statusElement.hideTimeout = setTimeout(() => {
+            statusElement.style.opacity = '0';
+            setTimeout(() => { statusElement.textContent = ''; }, 300);
+        }, duration);
+    }
+}
+
+function _showToast(message, colorClass, duration) {
+    // Clear previous toast timeout
+    if (_toastTimeout) { clearTimeout(_toastTimeout); _toastTimeout = null; }
+
+    // Create or reuse toast element
+    if (!_toastEl) {
+        _toastEl = document.createElement('div');
+        document.body.appendChild(_toastEl);
     }
 
-    // Set the message and style
-    statusElement.textContent = message;
-    statusElement.className = `text-sm px-3 py-1 rounded-md transition-all duration-300 ${colors[type] || colors.info}`;
-    statusElement.style.opacity = '1';
+    _toastEl.textContent = message;
+    _toastEl.className = `app-banner-toast ${colorClass}`;
 
-    // Auto-hide after specified duration
-    statusElement.hideTimeout = setTimeout(() => {
-        statusElement.style.opacity = '0';
-        setTimeout(() => {
-            statusElement.textContent = '';
-        }, 300);
+    // Trigger enter animation
+    requestAnimationFrame(() => { _toastEl.classList.add('visible'); });
+
+    // Auto-hide
+    _toastTimeout = setTimeout(() => {
+        _dismissToast();
     }, duration);
+}
+
+function _dismissToast() {
+    if (_toastTimeout) { clearTimeout(_toastTimeout); _toastTimeout = null; }
+    if (_toastEl) {
+        _toastEl.classList.remove('visible');
+        // Remove from DOM after fade-out
+        setTimeout(() => {
+            if (_toastEl) { _toastEl.remove(); _toastEl = null; }
+        }, 350);
+    }
 }
 
 /**
