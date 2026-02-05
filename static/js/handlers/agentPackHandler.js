@@ -91,7 +91,7 @@ function renderAgentPacks() {
         if (isOwned) {
             actionButtons = `
                     <button onclick="window.agentPackHandler.handleExportAgentPack(${pack.installation_id})"
-                            class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">
+                            class="card-btn card-btn--sm card-btn--cyan">
                         Export
                     </button>
                     ${pack.marketplace_pack_id
@@ -100,20 +100,20 @@ function renderAgentPacks() {
                                Published (${pack.marketplace_visibility === 'targeted' ? 'Targeted' : 'Public'})
                            </span>
                            <button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
-                                   class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">
+                                   class="card-btn card-btn--sm card-btn--neutral">
                                Edit
                            </button>
                            <button onclick="window.agentPackHandler.handleUnpublishFromMyAssets('${pack.marketplace_pack_id}')"
-                                   class="px-3 py-1.5 text-xs rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-colors">
+                                   class="card-btn card-btn--sm card-btn--secondary">
                                Unpublish
                            </button>`
                         : `<button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
-                                  class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">
+                                  class="card-btn card-btn--sm card-btn--success">
                               Publish
                           </button>`
                     }
                     <button onclick="window.agentPackHandler.handleUninstallAgentPack(${pack.installation_id}, '${_esc(pack.name)}')"
-                            class="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                            class="card-btn card-btn--sm card-btn--danger">
                         Uninstall
                     </button>`;
         } else {
@@ -125,7 +125,7 @@ function renderAgentPacks() {
                     </span>
                     ${pack.marketplace_pack_id
                         ? `<button onclick="window.agentPackHandler.handleUnsubscribeAgentPack('${pack.marketplace_pack_id}', '${_esc(pack.name)}')"
-                                  class="px-3 py-1.5 text-xs rounded-lg transition-colors" style="background:#ea580c;color:#fff;">
+                                  class="card-btn card-btn--sm card-btn--warning">
                               Unsubscribe
                           </button>`
                         : ''
@@ -332,7 +332,7 @@ function _showMcpServerPicker() {
                 </select>
                 <div class="flex justify-end gap-3">
                     <button id="mcp-picker-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
-                    <button id="mcp-picker-confirm" class="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">Continue</button>
+                    <button id="mcp-picker-confirm" class="card-btn card-btn--info">Continue</button>
                 </div>
             </div>`;
 
@@ -397,7 +397,7 @@ function _showLlmConfigPicker() {
                 </select>
                 <div class="flex justify-end gap-3">
                     <button id="llm-picker-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
-                    <button id="llm-picker-confirm" class="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">Continue</button>
+                    <button id="llm-picker-confirm" class="card-btn card-btn--info">Continue</button>
                 </div>
             </div>`;
 
@@ -654,7 +654,7 @@ async function _showCreatePackModal(profiles) {
                 <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-white/5">
                     <button id="create-pack-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
                     <button id="create-pack-confirm" disabled
-                            class="px-4 py-2 text-sm rounded-lg bg-neutral-600 text-white hover:bg-neutral-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            class="card-btn card-btn--neutral disabled:opacity-40 disabled:cursor-not-allowed">
                         Create
                     </button>
                 </div>
@@ -1069,7 +1069,6 @@ function closePublishPackModal() {
     setTimeout(() => {
         modal.classList.add('hidden');
         if (form) form.reset();
-        _packExistingGrants = [];
     }, 300);
 }
 

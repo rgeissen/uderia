@@ -387,11 +387,9 @@ const AdminManager = {
         // Update tab buttons
         document.querySelectorAll('.admin-tab').forEach(tab => {
             if (tab.dataset.tab === tabName) {
-                tab.classList.add('active', 'border-[#F15F22]', 'text-white');
-                tab.classList.remove('text-gray-400', 'border-transparent');
+                tab.classList.add('active');
             } else {
-                tab.classList.remove('active', 'border-[#F15F22]', 'text-white');
-                tab.classList.add('text-gray-400', 'border-transparent');
+                tab.classList.remove('active');
             }
         });
 
@@ -448,11 +446,9 @@ const AdminManager = {
         // Update sub-tab buttons (filled rounded button style)
         document.querySelectorAll('.user-management-subtab').forEach(tab => {
             if (tab.dataset.subtab === subtabName) {
-                tab.classList.add('active', 'bg-[#F15F22]', 'text-white');
-                tab.classList.remove('bg-gray-700/50', 'text-gray-400', 'hover:bg-gray-700');
+                tab.classList.add('active');
             } else {
-                tab.classList.remove('active', 'bg-[#F15F22]', 'text-white');
-                tab.classList.add('bg-gray-700/50', 'text-gray-400', 'hover:bg-gray-700');
+                tab.classList.remove('active');
             }
         });
 
@@ -480,11 +476,9 @@ const AdminManager = {
         // Update vertical tab buttons
         document.querySelectorAll('.config-subtab').forEach(tab => {
             if (tab.dataset.configTab === tabName) {
-                tab.classList.add('bg-[#F15F22]/20', 'text-[#F15F22]', 'border', 'border-[#F15F22]/30');
-                tab.classList.remove('text-gray-400', 'hover:bg-gray-700/50', 'hover:text-white');
+                tab.classList.add('active');
             } else {
-                tab.classList.remove('bg-[#F15F22]/20', 'text-[#F15F22]', 'border', 'border-[#F15F22]/30');
-                tab.classList.add('text-gray-400', 'hover:bg-gray-700/50', 'hover:text-white');
+                tab.classList.remove('active');
             }
         });
 
@@ -908,13 +902,12 @@ const AdminManager = {
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${this.getProfileBadgeClass(profile.name)}">${profile.user_count || 0}</span>
                 </td>
                 <td class="px-6 py-4 text-center">
-                    <label class="inline-flex items-center cursor-pointer">
+                    <label class="ind-toggle ind-toggle--primary">
                         <input type="checkbox"
-                            class="profile-active-checkbox sr-only peer"
-                            style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
+                            class="profile-active-checkbox"
                             data-profile-id="${profile.id}"
                             ${profile.is_active ? 'checked' : ''}>
-                        <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                        <span class="ind-track"></span>
                     </label>
                 </td>
                 <td class="px-6 py-4 text-center">
@@ -2037,37 +2030,34 @@ const AdminManager = {
                         <span class="text-sm text-gray-400">${this.escapeHtml(pane.description || '')}</span>
                     </td>
                     <td class="px-6 py-4 text-center">
-                        <label class="inline-flex items-center cursor-pointer">
+                        <label class="ind-toggle">
                             <input type="checkbox"
-                                class="pane-visibility-checkbox sr-only peer"
-                                style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
+                                class="pane-visibility-checkbox"
                                 data-pane-id="${pane.pane_id}"
                                 data-tier="user"
                                 ${pane.visible_to_user ? 'checked' : ''}>
-                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                            <span class="ind-track"></span>
                         </label>
                     </td>
                     <td class="px-6 py-4 text-center">
-                        <label class="inline-flex items-center cursor-pointer">
+                        <label class="ind-toggle">
                             <input type="checkbox"
-                                class="pane-visibility-checkbox sr-only peer"
-                                style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
+                                class="pane-visibility-checkbox"
                                 data-pane-id="${pane.pane_id}"
                                 data-tier="developer"
                                 ${pane.visible_to_developer ? 'checked' : ''}>
-                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                            <span class="ind-track"></span>
                         </label>
                     </td>
                     <td class="px-6 py-4 text-center">
-                        <label class="inline-flex items-center cursor-pointer">
+                        <label class="ind-toggle">
                             <input type="checkbox"
-                                class="pane-visibility-checkbox sr-only peer"
-                                style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;"
+                                class="pane-visibility-checkbox"
                                 data-pane-id="${pane.pane_id}"
                                 data-tier="admin"
                                 ${pane.visible_to_admin ? 'checked' : ''}
                                 ${isAdminPane ? 'disabled' : ''}>
-                            <div class="relative w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22] ${isAdminPane ? 'opacity-50 cursor-not-allowed' : ''}"></div>
+                            <span class="ind-track"></span>
                         </label>
                     </td>
                 </tr>
@@ -4210,13 +4200,13 @@ const AdminManager = {
                     <td class="py-2 px-3">
                         ${isEditable 
                             ? `<div class="flex gap-1">
-                                <button onclick="adminManager.saveParameterOverride('${promptName}', '${param.parameter_name}')" 
-                                        class="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors">
+                                <button onclick="adminManager.saveParameterOverride('${promptName}', '${param.parameter_name}')"
+                                        class="card-btn card-btn--sm card-btn--info">
                                     Save
                                 </button>
-                                ${hasOverride 
-                                    ? `<button onclick="adminManager.deleteParameterOverride('${promptName}', '${param.parameter_name}')" 
-                                              class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 rounded text-white transition-colors">
+                                ${hasOverride
+                                    ? `<button onclick="adminManager.deleteParameterOverride('${promptName}', '${param.parameter_name}')"
+                                              class="card-btn card-btn--sm card-btn--danger">
                                         Delete
                                       </button>`
                                     : ''
@@ -4310,11 +4300,11 @@ const AdminManager = {
                     <td class="py-2 px-3 text-gray-300">${version.change_reason || 'Initial version'}</td>
                     <td class="py-2 px-3">
                         <div class="flex gap-2">
-                            <button class="px-3 py-1 text-xs ${isCurrentlyLoaded ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded transition-colors"
+                            <button class="card-btn card-btn--sm ${isCurrentlyLoaded ? 'card-btn--neutral cursor-not-allowed' : 'card-btn--info'}"
                                     data-action="load" data-version="${version.version}" ${isCurrentlyLoaded ? 'disabled' : ''}>
                                 ${isCurrentlyLoaded ? 'Loaded' : 'Load'}
                             </button>
-                            <button class="px-3 py-1 text-xs ${isActive ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white rounded transition-colors"
+                            <button class="card-btn card-btn--sm ${isActive ? 'card-btn--neutral cursor-not-allowed' : 'card-btn--success'}"
                                     data-action="activate" data-version="${version.version}" ${isActive ? 'disabled' : ''}>
                                 ${isActive ? 'Active' : 'Activate'}
                             </button>

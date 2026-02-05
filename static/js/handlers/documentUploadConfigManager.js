@@ -160,7 +160,7 @@ const DocumentUploadConfigManager = {
                     <td class="px-4 py-3 text-sm">${statusBadge}</td>
                     <td class="px-4 py-3 text-center">
                         <button onclick="DocumentUploadConfigManager.showConfigModal('${config.provider}')" 
-                                class="px-3 py-1 text-xs bg-[#F15F22] hover:bg-[#D9501A] rounded transition-colors text-white font-medium">
+                                class="card-btn card-btn--sm card-btn--primary">
                             Configure
                         </button>
                     </td>

@@ -269,7 +269,7 @@ const AccessTokenManager = {
                         <p class="text-xs font-mono text-gray-400">${this.escapeHtml(token.token_prefix)}...</p>
                     </div>
                     ${!isRevoked ? `
-                    <button id="revoke-token-${token.id}" class="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors">
+                    <button id="revoke-token-${token.id}" class="card-btn card-btn--sm card-btn--danger">
                         Revoke
                     </button>
                     ` : ''}

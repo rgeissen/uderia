@@ -932,20 +932,6 @@
     color: #a16207 !important; /* yellow-700 for better contrast */
 }
 
-/* Light theme - Admin tabs */
-[data-theme="light"] .admin-tab {
-    color: var(--text-secondary) !important;
-}
-
-[data-theme="light"] .admin-tab:hover {
-    color: var(--text-primary) !important;
-}
-
-[data-theme="light"] .admin-tab.active {
-    color: var(--teradata-orange) !important;
-    border-color: var(--teradata-orange) !important;
-}
-
 /* Light theme - Input and form elements */
 [data-theme="light"] input,
 [data-theme="light"] textarea,
@@ -1237,24 +1223,6 @@
     background-color: var(--button-bg-hover) !important;
 }
 
-/* Light theme - Tab buttons and toggles */
-[data-theme="light"] .user-management-subtab,
-[data-theme="light"] [class*="subtab"] {
-    background-color: var(--bg-secondary) !important;
-    color: var(--text-secondary) !important;
-}
-
-[data-theme="light"] .user-management-subtab:hover,
-[data-theme="light"] [class*="subtab"]:hover {
-    background-color: var(--hover-bg) !important;
-    color: var(--text-primary) !important;
-}
-
-[data-theme="light"] .user-management-subtab.active {
-    background-color: var(--teradata-orange) !important;
-    color: white !important;
-}
-
 /* Light theme - Icon buttons (round toggle buttons) */
 [data-theme="light"] button.rounded-full.bg-gray-800\/50 {
     background-color: var(--bg-elevated) !important;
@@ -1336,24 +1304,6 @@
 
 [data-theme="light"] #reconnect-and-load-btn:not(:disabled):hover {
     background-color: var(--button-bg-hover) !important;
-}
-
-/* Light theme - Repository tabs */
-[data-theme="light"] .repository-tab {
-    color: var(--text-secondary) !important;
-}
-
-[data-theme="light"] .repository-tab.text-\[\#F15F22\],
-[data-theme="light"] .repository-tab[class*="text-[#F15F22]"] {
-    color: var(--teradata-orange) !important;
-}
-
-[data-theme="light"] .repository-tab.text-gray-400 {
-    color: var(--text-muted) !important;
-}
-
-[data-theme="light"] .repository-tab:hover {
-    color: var(--text-primary) !important;
 }
 
 /* Light theme - Category tabs (resource tabs) */
@@ -2811,24 +2761,6 @@
 }
 
 /* ============================================================================
-   LIGHT THEME - APPLICATION CONFIGURATION SUBTAB NAV
-   ============================================================================ */
-
-/* Selected config subtab: dark orange text on light orange bg */
-[data-theme="light"] .config-subtab.text-\[\#F15F22\] {
-    color: var(--teradata-orange-light-mode) !important;
-}
-
-/* Unselected config subtab: hover should use dark text on light bg, not white */
-[data-theme="light"] .config-subtab.hover\:text-white:hover {
-    color: var(--text-primary) !important;
-}
-
-[data-theme="light"] .config-subtab.hover\:bg-gray-700\/50:hover {
-    background: var(--bg-tertiary) !important;
-}
-
-/* ============================================================================
    LIGHT THEME - ALL ADMIN TABLES (comprehensive)
    ============================================================================ */
 
@@ -4001,22 +3933,6 @@ button[aria-label]:active {
 /* ============================================================================
    LEGACY THEME - ADMIN PANEL COMPONENTS
    ============================================================================ */
-
-/* User management subtabs */
-[data-theme="legacy"] .user-management-subtab {
-    background-color: #404040 !important;
-    color: #CCCCCC !important;
-}
-
-[data-theme="legacy"] .user-management-subtab:hover {
-    background-color: #4a4a4a !important;
-    color: #F0F0F0 !important;
-}
-
-[data-theme="legacy"] .user-management-subtab.active {
-    background-color: #F15F22 !important;
-    color: white !important;
-}
 
 /* Status filter buttons */
 [data-theme="legacy"] .user-status-filter-btn {
@@ -5477,5 +5393,90 @@ button[aria-label]:active {
         #4a4a4a 50%,
         #404040 75%) !important;
     background-size: 200% 100%;
+}
+
+/* ── Industrial Card Buttons: Light Theme ── */
+/* Darken every variant so text meets WCAG AA contrast against white */
+[data-theme="light"] .card-btn--danger   { --btn-color: 185, 28, 28; }
+[data-theme="light"] .card-btn--warning  { --btn-color: 146, 64, 14; }
+[data-theme="light"] .card-btn--success  { --btn-color: 4, 120, 87; }
+[data-theme="light"] .card-btn--info     { --btn-color: 29, 78, 216; }
+[data-theme="light"] .card-btn--primary  { --btn-color: 194, 65, 12; }
+[data-theme="light"] .card-btn--cyan     { --btn-color: 14, 116, 144; }
+[data-theme="light"] .card-btn--amber    { --btn-color: 146, 64, 14; }
+[data-theme="light"] .card-btn--secondary{ --btn-color: 154, 52, 18; }
+[data-theme="light"] .card-btn--neutral  { --btn-color: 71, 85, 105; }
+
+[data-theme="light"] .card-btn {
+    background: rgba(var(--btn-color), 0.1);
+    border-color: rgba(var(--btn-color), 0.4);
+}
+[data-theme="light"] .card-btn:hover:not(:disabled) {
+    background: rgba(var(--btn-color), 0.18);
+    border-color: rgba(var(--btn-color), 0.55);
+}
+
+/* ── Industrial Toggle Switch: Light Theme ── */
+[data-theme="light"] .ind-toggle .ind-track {
+    --toggle-color: 100, 116, 139;
+    background: rgba(var(--toggle-color), 0.12);
+    border-color: rgba(var(--toggle-color), 0.35);
+}
+[data-theme="light"] .ind-toggle input:checked + .ind-track {
+    background: rgba(var(--toggle-active), 0.15);
+    border-color: rgba(var(--toggle-active), 0.45);
+}
+/* Darker active colors for WCAG contrast */
+[data-theme="light"] .ind-toggle .ind-track                    { --toggle-active: 4, 120, 87; }
+[data-theme="light"] .ind-toggle--primary .ind-track            { --toggle-active: 194, 65, 12; }
+[data-theme="light"] .ind-toggle--info    .ind-track            { --toggle-active: 29, 78, 216; }
+[data-theme="light"] .ind-toggle--warning .ind-track            { --toggle-active: 146, 64, 14; }
+[data-theme="light"] .ind-toggle--danger  .ind-track            { --toggle-active: 185, 28, 28; }
+[data-theme="light"] .ind-toggle--cyan    .ind-track            { --toggle-active: 14, 116, 144; }
+
+/* ── Industrial Tab: Light Theme ── */
+[data-theme="light"] .ind-tab {
+    color: var(--text-muted, #64748b);
+}
+[data-theme="light"] .ind-tab:hover {
+    color: var(--text-primary, #1e293b);
+}
+[data-theme="light"] .ind-tab--underline:hover {
+    border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .ind-tab--underline.active {
+    color: var(--text-primary, #1e293b);
+}
+[data-theme="light"] .ind-tab--pill:hover,
+[data-theme="light"] .ind-tab--sidebar:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .ind-tab--pill.active,
+[data-theme="light"] .ind-tab--sidebar.active {
+    background: rgba(var(--tab-color), 0.1);
+    border-color: rgba(var(--tab-color), 0.35);
+}
+[data-theme="light"] .ind-tab--primary  { --tab-color: 194, 65, 12; }
+[data-theme="light"] .ind-tab--success  { --tab-color: 4, 120, 87; }
+[data-theme="light"] .ind-tab--info     { --tab-color: 29, 78, 216; }
+[data-theme="light"] .ind-tab--purple   { --tab-color: 107, 33, 168; }
+[data-theme="light"] .ind-tab--cyan     { --tab-color: 14, 116, 144; }
+[data-theme="light"] .ind-tab--warning  { --tab-color: 146, 64, 14; }
+[data-theme="light"] .ind-tab--neutral  { --tab-color: 71, 85, 105; }
+
+/* ── Light theme: Template Edit Modal ── */
+[data-theme="light"] .tpl-modal-content {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .tpl-form-input {
+    border-color: var(--border-primary);
+}
+[data-theme="light"] .tpl-form-input:focus {
+    border-color: var(--teradata-orange-light-mode, #c2410c);
+    box-shadow: 0 0 0 2px rgba(194, 65, 12, 0.15);
+}
+[data-theme="light"] .tpl-info-code {
+    color: var(--teradata-orange-light-mode, #c2410c);
 }
 

@@ -144,15 +144,11 @@ function switchTab(tab) {
     
     if (browseTab && myCollectionsTab) {
         if (tab === 'browse') {
-            browseTab.classList.add('border-[#F15F22]', 'text-white');
-            browseTab.classList.remove('border-transparent', 'text-gray-400');
-            myCollectionsTab.classList.remove('border-[#F15F22]', 'text-white');
-            myCollectionsTab.classList.add('border-transparent', 'text-gray-400');
+            browseTab.classList.add('active');
+            myCollectionsTab.classList.remove('active');
         } else {
-            myCollectionsTab.classList.add('border-[#F15F22]', 'text-white');
-            myCollectionsTab.classList.remove('border-transparent', 'text-gray-400');
-            browseTab.classList.remove('border-[#F15F22]', 'text-white');
-            browseTab.classList.add('border-transparent', 'text-gray-400');
+            myCollectionsTab.classList.add('active');
+            browseTab.classList.remove('active');
         }
     }
     
@@ -191,11 +187,9 @@ function switchRepositoryType(type) {
     for (const [key, tab] of Object.entries(tabs)) {
         if (!tab) continue;
         if (key === type) {
-            tab.classList.add('bg-[#F15F22]', 'text-white');
-            tab.classList.remove('text-gray-400', 'hover:bg-white/10');
+            tab.classList.add('active');
         } else {
-            tab.classList.remove('bg-[#F15F22]', 'text-white');
-            tab.classList.add('text-gray-400', 'hover:bg-white/10');
+            tab.classList.remove('active');
         }
     }
     for (const [key, desc] of Object.entries(descs)) {
@@ -410,30 +404,30 @@ function createAgentPackMarketplaceCard(pack) {
         <!-- Actions -->
         <div class="mt-2 flex gap-2 flex-wrap">
             ${isPublisher ? `
-                <button class="agent-pack-unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
+                <button class="agent-pack-unpublish-btn card-btn card-btn--secondary"
                         data-pack-id="${pack.id}"
                         data-pack-name="${escapeHtml(pack.name)}">
                     Unpublish
                 </button>
             ` : `
                 ${pack.is_subscribed ? `
-                    <button class="agent-pack-unsubscribe-btn px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-500 text-sm text-white"
+                    <button class="agent-pack-unsubscribe-btn card-btn card-btn--warning"
                             data-pack-id="${pack.id}"
                             data-pack-name="${escapeHtml(pack.name)}">
                         Unsubscribe
                     </button>
                 ` : `
-                    <button class="agent-pack-subscribe-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white"
+                    <button class="agent-pack-subscribe-btn card-btn card-btn--primary"
                             data-pack-id="${pack.id}">
                         Subscribe
                     </button>
                 `}
-                <button class="agent-pack-fork-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white"
+                <button class="agent-pack-fork-btn card-btn card-btn--info"
                         data-pack-id="${pack.id}"
                         data-pack-name="${escapeHtml(pack.name)}">
                     Fork
                 </button>
-                <button class="agent-pack-rate-btn px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-sm text-white"
+                <button class="agent-pack-rate-btn card-btn card-btn--amber"
                         data-pack-id="${pack.id}"
                         data-pack-name="${escapeHtml(pack.name)}">
                     Rate
@@ -563,13 +557,13 @@ function createMyAgentPackCard(pack) {
                 <span class="px-3 py-1 text-xs rounded-md bg-white/5 text-gray-500">Read-only</span>
             ` : `
                 ${!pack.marketplace_pack_id ? `
-                    <button class="my-pack-publish-btn px-3 py-1 rounded-md bg-green-600 hover:bg-green-500 text-sm text-white"
+                    <button class="my-pack-publish-btn card-btn card-btn--success"
                             data-installation-id="${pack.installation_id}"
                             data-pack-name="${escapeHtml(pack.name)}">
                         Publish${pack.sharing_count > 0 ? ` (${pack.sharing_count} shared)` : ''}
                     </button>
                 ` : `
-                    <button class="my-pack-unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
+                    <button class="my-pack-unpublish-btn card-btn card-btn--secondary"
                             data-marketplace-id="${pack.marketplace_pack_id}"
                             data-pack-name="${escapeHtml(pack.name)}">
                         Unpublish
@@ -833,7 +827,7 @@ function openAgentPackForkModal(pack) {
 
             <div class="flex justify-end gap-3">
                 <button id="fork-agent-pack-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
-                <button id="fork-agent-pack-submit" class="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">Fork Agent Pack</button>
+                <button id="fork-agent-pack-submit" class="card-btn card-btn--info">Fork Agent Pack</button>
             </div>
         </div>
     `;
@@ -972,7 +966,7 @@ function openAgentPackRateModal(pack) {
                       class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4 focus:outline-none focus:border-blue-500 resize-none"></textarea>
             <div class="flex justify-end gap-3">
                 <button id="rate-agent-pack-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
-                <button id="rate-agent-pack-submit" class="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors" disabled>Submit Rating</button>
+                <button id="rate-agent-pack-submit" class="card-btn card-btn--amber" disabled>Submit Rating</button>
             </div>
         </div>
     `;
@@ -1256,19 +1250,19 @@ function createCollectionCard(collection) {
         <!-- Actions -->
         <div class="mt-2 flex gap-2 flex-wrap">
                 ${!isOwner && !isSubscribed ? `
-                    <button class="subscribe-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white"
+                    <button class="subscribe-btn card-btn card-btn--primary"
                             data-collection-id="${collection.id}">
                         Subscribe
                     </button>
                 ` : ''}
                 ${!isOwner && isSubscribed ? `
-                    <button class="unsubscribe-btn px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-500 text-sm text-white"
+                    <button class="unsubscribe-btn card-btn card-btn--warning"
                             data-subscription-id="${collection.subscription_id}">
                         Unsubscribe
                     </button>
                 ` : ''}
                 ${!isOwner ? `
-                    <button class="fork-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white"
+                    <button class="fork-btn card-btn card-btn--info"
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}"
                             data-collection-description="${escapeHtml(collection.description || '')}">
@@ -1276,14 +1270,14 @@ function createCollectionCard(collection) {
                     </button>
                 ` : ''}
                 ${!isOwner ? `
-                    <button class="rate-btn px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-sm text-white"
+                    <button class="rate-btn card-btn card-btn--amber"
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}">
                         Rate
                     </button>
                 ` : ''}
                 ${isOwner && collection.id !== 0 && !collection.is_marketplace_listed ? `
-                    <button class="publish-btn px-3 py-1 rounded-md bg-green-600 hover:bg-green-500 text-sm text-white"
+                    <button class="publish-btn card-btn card-btn--success"
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}"
                             data-collection-description="${escapeHtml(collection.description || '')}">
@@ -1295,13 +1289,13 @@ function createCollectionCard(collection) {
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         Published (${collection.visibility === 'targeted' ? 'Targeted' : 'Public'})
                     </span>
-                    <button class="publish-btn px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-sm text-gray-300"
+                    <button class="publish-btn card-btn card-btn--neutral"
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}"
                             data-collection-description="${escapeHtml(collection.description || '')}">
                         Edit
                     </button>
-                    <button class="unpublish-btn px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-sm text-white"
+                    <button class="unpublish-btn card-btn card-btn--secondary"
                             data-collection-id="${collection.id}"
                             data-collection-name="${escapeHtml(collection.name)}">
                         Unpublish

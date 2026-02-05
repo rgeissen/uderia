@@ -5258,36 +5258,36 @@ function createKnowledgeRepositoryCard(col) {
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = col.enabled
-        ? 'px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-500 text-sm text-white'
-        : 'px-3 py-1 rounded-md bg-green-600 hover:bg-green-500 text-sm text-white';
+        ? 'card-btn card-btn--warning'
+        : 'card-btn card-btn--success';
     toggleBtn.textContent = col.enabled ? 'Disable' : 'Enable';
     toggleBtn.addEventListener('click', () => {
         if (window.ragCollectionManagement) {
             window.ragCollectionManagement.toggleRagCollection(col.id, col.enabled);
         }
     });
-    
+
     // Inspect button
     const inspectBtn = document.createElement('button');
     inspectBtn.type = 'button';
-    inspectBtn.className = 'px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white';
+    inspectBtn.className = 'card-btn card-btn--primary';
     inspectBtn.textContent = 'Inspect';
     inspectBtn.addEventListener('click', () => {
         // Use the shared collection inspection view
         openCollectionInspection(col.id, col.name, 'knowledge', col);
     });
-    
+
     // Edit button
     const isManaged = col.is_subscribed && !col.is_owned;
     const managedBy = (col.agent_packs || []).map(p => p.name).join(', ') || 'external source';
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     if (isManaged) {
-        editBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+        editBtn.className = 'card-btn';
         editBtn.disabled = true;
         editBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to edit`;
     } else {
-        editBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+        editBtn.className = 'card-btn card-btn--info';
     }
     editBtn.textContent = 'Edit';
     if (!isManaged) {
@@ -5302,11 +5302,11 @@ function createKnowledgeRepositoryCard(col) {
     const uploadBtn = document.createElement('button');
     uploadBtn.type = 'button';
     if (isManaged) {
-        uploadBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+        uploadBtn.className = 'card-btn';
         uploadBtn.disabled = true;
         uploadBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to upload`;
     } else {
-        uploadBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+        uploadBtn.className = 'card-btn card-btn--info';
     }
     uploadBtn.innerHTML = '<span style="font-size: 14px;">+</span> Upload';
     if (!isManaged) {
@@ -5320,7 +5320,7 @@ function createKnowledgeRepositoryCard(col) {
     // Export button (Knowledge repositories only)
     const exportBtn = document.createElement('button');
     exportBtn.type = 'button';
-    exportBtn.className = 'px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1';
+    exportBtn.className = 'card-btn card-btn--cyan';
     exportBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
     </svg>Export`;
@@ -5335,7 +5335,7 @@ function createKnowledgeRepositoryCard(col) {
         // Subscribed collection - show Unsubscribe button
         const unsubscribeBtn = document.createElement('button');
         unsubscribeBtn.type = 'button';
-        unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+        unsubscribeBtn.className = 'card-btn card-btn--warning';
         unsubscribeBtn.textContent = 'Unsubscribe';
         unsubscribeBtn.addEventListener('click', async () => {
             if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
@@ -5349,7 +5349,7 @@ function createKnowledgeRepositoryCard(col) {
         // Owned collection - show Delete button
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
+        deleteBtn.className = 'card-btn card-btn--danger';
         deleteBtn.textContent = 'Delete';
         deleteBtn.addEventListener('click', () => {
             if (window.knowledgeRepositoryHandler) {
@@ -5498,35 +5498,35 @@ function createCollectionCard(col) {
             const toggleBtn = document.createElement('button');
             toggleBtn.type = 'button';
             toggleBtn.className = col.enabled
-                ? 'px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-500 text-sm text-white'
-                : 'px-3 py-1 rounded-md bg-green-600 hover:bg-green-500 text-sm text-white';
+                ? 'card-btn card-btn--warning'
+                : 'card-btn card-btn--success';
             toggleBtn.textContent = col.enabled ? 'Disable' : 'Enable';
             toggleBtn.addEventListener('click', () => {
                 if (window.ragCollectionManagement) {
                     window.ragCollectionManagement.toggleRagCollection(col.id, col.enabled);
                 }
             });
-            
+
             // Inspect button
             const inspectBtn = document.createElement('button');
             inspectBtn.type = 'button';
-            inspectBtn.className = 'px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white';
+            inspectBtn.className = 'card-btn card-btn--primary';
             inspectBtn.textContent = 'Inspect';
             inspectBtn.addEventListener('click', () => {
                 openCollectionInspection(col.id, col.name, col.repository_type);
             });
-            
+
             // Edit button
             const isPlannerManaged = col.is_subscribed && !col.is_owned;
             const plannerManagedBy = (col.agent_packs || []).map(p => p.name).join(', ') || 'external source';
             const editBtn = document.createElement('button');
             editBtn.type = 'button';
             if (isPlannerManaged) {
-                editBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+                editBtn.className = 'card-btn';
                 editBtn.disabled = true;
                 editBtn.title = `Managed by: ${plannerManagedBy} — uninstall the pack(s) to edit`;
             } else {
-                editBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+                editBtn.className = 'card-btn card-btn--info';
             }
             editBtn.textContent = 'Edit';
             if (!isPlannerManaged) {
@@ -5541,7 +5541,7 @@ function createCollectionCard(col) {
             if (col.is_owned) {
                 const exportBtn = document.createElement('button');
                 exportBtn.type = 'button';
-                exportBtn.className = 'px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1';
+                exportBtn.className = 'card-btn card-btn--cyan';
                 exportBtn.innerHTML = `
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
@@ -5563,7 +5563,7 @@ function createCollectionCard(col) {
                 // Subscribed collection - show Unsubscribe button
                 const unsubscribeBtn = document.createElement('button');
                 unsubscribeBtn.type = 'button';
-                unsubscribeBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+                unsubscribeBtn.className = 'card-btn card-btn--warning';
                 unsubscribeBtn.textContent = 'Unsubscribe';
                 unsubscribeBtn.addEventListener('click', async () => {
                     if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
@@ -5580,14 +5580,14 @@ function createCollectionCard(col) {
                 const deleteBtn = document.createElement('button');
                 deleteBtn.type = 'button';
                 if (isPackManaged) {
-                    deleteBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+                    deleteBtn.className = 'card-btn';
                     deleteBtn.disabled = true;
                     deleteBtn.title = `Managed by: ${packNames} — uninstall the pack(s) to remove`;
                 } else if (col.id === 0) {
-                    deleteBtn.className = 'px-3 py-1 rounded-md bg-gray-800 text-sm text-gray-600 cursor-not-allowed';
+                    deleteBtn.className = 'card-btn';
                     deleteBtn.disabled = true;
                 } else {
-                    deleteBtn.className = 'px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white';
+                    deleteBtn.className = 'card-btn card-btn--danger';
                 }
                 deleteBtn.textContent = 'Delete';
                 if (!isPackManaged && col.id !== 0) {

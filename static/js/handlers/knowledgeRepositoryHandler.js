@@ -1274,48 +1274,48 @@ function createKnowledgeRepositoryCard(repo) {
             </div>
             
             <div class="flex gap-2 flex-wrap">
-                <button class="toggle-knowledge-btn px-3 py-1 rounded-md ${repo.enabled ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-green-600 hover:bg-green-500'} text-sm text-white" data-repo-id="${repoId}" data-enabled="${repo.enabled}">
+                <button class="toggle-knowledge-btn card-btn ${repo.enabled ? 'card-btn--warning' : 'card-btn--success'}" data-repo-id="${repoId}" data-enabled="${repo.enabled}">
                     ${repo.enabled ? 'Disable' : 'Enable'}
                 </button>
-                <button class="view-knowledge-repo-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white" data-repo-id="${repoId}">
+                <button class="view-knowledge-repo-btn card-btn card-btn--primary" data-repo-id="${repoId}">
                     Inspect
                 </button>
                 ${isManaged
-                    ? `<button class="px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed" disabled
+                    ? `<button class="card-btn" disabled
                             title="Managed by: ${managedBy} — uninstall the pack(s) to edit">
                         Edit
                     </button>`
-                    : `<button class="edit-knowledge-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white" data-repo-id="${repoId}">
+                    : `<button class="edit-knowledge-btn card-btn card-btn--info" data-repo-id="${repoId}">
                         Edit
                     </button>`
                 }
                 ${isManaged
-                    ? `<button class="px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed flex items-center gap-1" disabled
+                    ? `<button class="card-btn" disabled
                             title="Managed by: ${managedBy} — uninstall the pack(s) to upload">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                         </svg>
                         Upload
                     </button>`
-                    : `<button class="upload-knowledge-docs-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
+                    : `<button class="upload-knowledge-docs-btn card-btn card-btn--info" data-repo-id="${repoId}" data-repo-name="${displayName}">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                         </svg>
                         Upload
                     </button>`
                 }
-                <button class="export-knowledge-repo-btn px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
+                <button class="export-knowledge-repo-btn card-btn card-btn--cyan" data-repo-id="${repoId}" data-repo-name="${displayName}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                     </svg>
                     Export
                 </button>
                 ${(repo.agent_packs?.length > 0)
-                    ? `<button class="px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed" disabled
+                    ? `<button class="card-btn" disabled
                             title="Managed by: ${(repo.agent_packs || []).map(p => p.name).join(', ')} — uninstall the pack(s) to remove">
                         Delete
                     </button>`
-                    : `<button class="delete-knowledge-repo-btn px-3 py-1 rounded-md bg-red-600 hover:bg-red-500 text-sm text-white" data-repo-id="${repoId}">
+                    : `<button class="delete-knowledge-repo-btn card-btn card-btn--danger" data-repo-id="${repoId}">
                         Delete
                     </button>`
                 }
@@ -1868,7 +1868,7 @@ async function showExportDirectoryDialog(collectionName) {
                     ${supportsFileSystemAccess ? `
                     <button
                         id="export-browse-btn"
-                        class="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white border border-gray-600 transition-colors flex items-center gap-2 whitespace-nowrap"
+                        class="card-btn card-btn--neutral flex items-center gap-2 whitespace-nowrap"
                         title="Browse for folder"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1889,13 +1889,13 @@ async function showExportDirectoryDialog(collectionName) {
             <div class="flex justify-end space-x-3">
                 <button
                     id="export-cancel-btn"
-                    class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                    class="card-btn card-btn--neutral"
                 >
                     Cancel
                 </button>
                 <button
                     id="export-confirm-btn"
-                    class="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                    class="card-btn card-btn--info"
                 >
                     Export
                 </button>
@@ -2026,7 +2026,7 @@ async function showImportModeDialog() {
             <div class="space-y-3 mb-6">
                 <button
                     id="import-from-file-btn"
-                    class="w-full px-4 py-3 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-left transition-colors flex items-center"
+                    class="w-full card-btn card-btn--info text-left flex items-center"
                 >
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
@@ -2039,7 +2039,7 @@ async function showImportModeDialog() {
 
                 <button
                     id="import-from-path-btn"
-                    class="w-full px-4 py-3 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-left transition-colors flex items-center"
+                    class="w-full card-btn card-btn--neutral text-left flex items-center"
                 >
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
@@ -2054,7 +2054,7 @@ async function showImportModeDialog() {
             <div class="flex justify-end">
                 <button
                     id="import-cancel-btn"
-                    class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                    class="card-btn card-btn--neutral"
                 >
                     Cancel
                 </button>
@@ -2252,13 +2252,13 @@ async function showImportPathDialog() {
             <div class="flex justify-end space-x-3">
                 <button
                     id="import-path-cancel-btn"
-                    class="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                    class="card-btn card-btn--neutral"
                 >
                     Cancel
                 </button>
                 <button
                     id="import-path-confirm-btn"
-                    class="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                    class="card-btn card-btn--info"
                 >
                     Import
                 </button>

@@ -186,12 +186,12 @@ export function createPackContainerCard(pack, resources, resourceType, childCard
             </span>
         </div>
         <div class="flex gap-2 flex-wrap mt-3">
-            <button class="pack-toggle-all-btn px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-500 text-sm text-white"
+            <button class="pack-toggle-all-btn card-btn card-btn--sm card-btn--warning"
                     data-pack-id="${pack.id}" data-resource-type="${resourceType}"
                     onclick="event.stopPropagation();" title="Toggle all active/inactive">
                 Toggle All
             </button>
-            <button class="pack-export-all-btn px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1"
+            <button class="pack-export-all-btn card-btn card-btn--sm card-btn--cyan"
                     data-pack-id="${pack.id}" data-resource-type="${resourceType}"
                     onclick="event.stopPropagation();" title="Export all repositories">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

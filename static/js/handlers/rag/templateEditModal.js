@@ -70,32 +70,29 @@ export class TemplateEditModal {
         }
 
         const modalHtml = `
-            <div class="modal fade show" id="template-edit-modal" tabindex="-1" role="dialog" style="display: block; background: rgba(0,0,0,0.5); position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050; overflow-y: auto;">
-                <div class="modal-dialog modal-lg" role="document" style="max-width: 800px; margin: 1.75rem auto; position: relative;">
-                    <div class="modal-content" style="background: #1a1d29; border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.5); color: #fff;">
-                        <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding: 1rem 1.5rem;">
-                            <h5 class="modal-title" style="color: #fff; font-size: 1.25rem; font-weight: 600;">
-                                <i class="fas fa-sliders-h"></i>
+            <div class="tpl-modal-overlay" id="template-edit-modal" tabindex="-1" role="dialog">
+                <div class="tpl-modal-dialog" role="document">
+                    <div class="tpl-modal-content">
+                        <div class="tpl-modal-header">
+                            <h5 class="tpl-modal-title">
                                 Edit Template: ${this.currentTemplate.template_name || this.currentTemplate.template_id}
                             </h5>
-                            <button type="button" class="close" data-dismiss="modal" style="color: #fff; opacity: 0.7; background: none; border: none; font-size: 1.5rem; line-height: 1; cursor: pointer;">
+                            <button type="button" class="close tpl-modal-close" data-dismiss="modal">
                                 <span>&times;</span>
                             </button>
                         </div>
-                        <div class="modal-body" style="padding: 1.5rem; max-height: 60vh; overflow-y: auto;">
+                        <div class="tpl-modal-body">
                             <!-- Tab Navigation -->
-                            <div style="border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 1rem;">
-                                <div style="display: flex; gap: 1rem;">
-                                    <button class="template-tab active" data-tab="basic-params" style="padding: 0.75rem 1rem; background: none; border: none; border-bottom: 2px solid #F15F22; color: #F15F22; cursor: pointer; font-weight: 500;">
-                                        Basic Parameters
-                                    </button>
-                                    <button class="template-tab" data-tab="advanced-params" style="padding: 0.75rem 1rem; background: none; border: none; border-bottom: 2px solid transparent; color: #9ca3af; cursor: pointer; font-weight: 500;">
-                                        Advanced
-                                    </button>
-                                    <button class="template-tab" data-tab="info-params" style="padding: 0.75rem 1rem; background: none; border: none; border-bottom: 2px solid transparent; color: #9ca3af; cursor: pointer; font-weight: 500;">
-                                        System Info
-                                    </button>
-                                </div>
+                            <div class="tpl-modal-tabs">
+                                <button class="template-tab ind-tab ind-tab--underline active" data-tab="basic-params">
+                                    Basic Parameters
+                                </button>
+                                <button class="template-tab ind-tab ind-tab--underline" data-tab="advanced-params">
+                                    Advanced
+                                </button>
+                                <button class="template-tab ind-tab ind-tab--underline" data-tab="info-params">
+                                    System Info
+                                </button>
                             </div>
 
                             <!-- Tab Content -->
@@ -111,14 +108,10 @@ export class TemplateEditModal {
                                 </div>
                             </div>
                         </div>
-                        <div class="modal-footer" style="border-top: 1px solid rgba(255,255,255,0.1); padding: 1rem 1.5rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
-                            <button type="button" class="btn btn-secondary" id="reset-defaults-btn" style="padding: 0.5rem 1rem; background: #6c757d; color: #fff; border: none; border-radius: 0.375rem; cursor: pointer; font-weight: 500;">
-                                <i class="fas fa-undo"></i> Reset to System Defaults
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="cancel-modal-btn" data-dismiss="modal" style="padding: 0.5rem 1rem; background: #6c757d; color: #fff; border: none; border-radius: 0.375rem; cursor: pointer; font-weight: 500;">Cancel</button>
-                            <button type="button" class="btn btn-primary" id="save-defaults-btn" style="padding: 0.5rem 1rem; background: #F15F22; color: #fff; border: none; border-radius: 0.375rem; cursor: pointer; font-weight: 500;">
-                                <i class="fas fa-save"></i> Save Defaults
-                            </button>
+                        <div class="tpl-modal-footer">
+                            <button type="button" class="card-btn card-btn--neutral" id="reset-defaults-btn">Reset to System Defaults</button>
+                            <button type="button" class="card-btn card-btn--neutral" id="cancel-modal-btn" data-dismiss="modal">Cancel</button>
+                            <button type="button" class="card-btn card-btn--primary" id="save-defaults-btn">Save Defaults</button>
                         </div>
                     </div>
                 </div>
@@ -143,7 +136,7 @@ export class TemplateEditModal {
         // Add visual debug indicator
         const basicContainer = document.getElementById('basic-parameters-container');
         if (basicContainer) {
-            basicContainer.innerHTML = '<p style="color: yellow; font-size: 1rem;">DEBUG: renderParameters() was called, rendering...</p>';
+            basicContainer.innerHTML = '<p class="tpl-form-help">Loading parameters...</p>';
         }
         
         if (this.templateType === 'knowledge_repository') {
@@ -164,74 +157,69 @@ export class TemplateEditModal {
         console.log('renderKnowledgeParameters called');
         const config = this.currentTemplate.repository_configuration || {};
         console.log('Config:', config);
-        
-        const formGroupStyle = 'margin-bottom: 1.5rem;';
-        const labelStyle = 'display: block; margin-bottom: 0.5rem; color: #e5e7eb; font-weight: 500; font-size: 0.875rem;';
-        const inputStyle = 'width: 100%; padding: 0.5rem 0.75rem; background: #2d3748; border: 1px solid rgba(255,255,255,0.1); border-radius: 0.375rem; color: #fff; font-size: 0.875rem;';
-        const smallStyle = 'display: block; margin-top: 0.25rem; color: #9ca3af; font-size: 0.75rem;';
-        
+
         // Basic parameters
         const basicContainer = document.getElementById('basic-parameters-container');
         console.log('Basic container:', basicContainer);
-        
+
         if (!config.chunking_strategy && !config.embedding_model) {
-            basicContainer.innerHTML = `<p style="${smallStyle}; color: red; font-size: 1rem;">DEBUG: No editable parameters found for this template.</p>`;
+            basicContainer.innerHTML = `<p class="tpl-form-help">No editable parameters found for this template.</p>`;
             console.error('No parameters found in repository_configuration');
             console.log('Full template:', this.currentTemplate);
             return;
         }
-        
+
         console.log('Rendering parameters - chunking_strategy exists:', !!config.chunking_strategy);
         console.log('Rendering parameters - embedding_model exists:', !!config.embedding_model);
-        
+
         basicContainer.innerHTML = `
             ${config.chunking_strategy ? `
-            <div style="${formGroupStyle}">
-                <label for="chunking_strategy" style="${labelStyle}">Chunking Strategy</label>
-                <select id="chunking_strategy" data-param="chunking_strategy" style="${inputStyle}">
+            <div class="tpl-form-group">
+                <label for="chunking_strategy" class="tpl-form-label">Chunking Strategy</label>
+                <select id="chunking_strategy" data-param="chunking_strategy" class="tpl-form-input">
                     ${this.renderOptions('chunking_strategy', config.chunking_strategy)}
                 </select>
-                <small style="${smallStyle}">${config.chunking_strategy.description || ''}</small>
+                <small class="tpl-form-help">${config.chunking_strategy.description || ''}</small>
             </div>
             ` : ''}
 
             ${config.embedding_model ? `
-            <div style="${formGroupStyle}">
-                <label for="embedding_model" style="${labelStyle}">Embedding Model</label>
-                <select id="embedding_model" data-param="embedding_model" style="${inputStyle}">
+            <div class="tpl-form-group">
+                <label for="embedding_model" class="tpl-form-label">Embedding Model</label>
+                <select id="embedding_model" data-param="embedding_model" class="tpl-form-input">
                     ${this.renderOptions('embedding_model', config.embedding_model)}
                 </select>
-                <small style="${smallStyle}">${config.embedding_model.description || ''}</small>
+                <small class="tpl-form-help">${config.embedding_model.description || ''}</small>
             </div>
             ` : ''}
 
             ${config.chunk_size ? `
-            <div id="chunk_size_group" style="display: none; ${formGroupStyle}">
-                <label for="chunk_size" style="${labelStyle}">Chunk Size (characters)</label>
-                <input type="number" id="chunk_size" data-param="chunk_size" style="${inputStyle}"
+            <div id="chunk_size_group" class="tpl-form-group" style="display: none;">
+                <label for="chunk_size" class="tpl-form-label">Chunk Size (characters)</label>
+                <input type="number" id="chunk_size" data-param="chunk_size" class="tpl-form-input"
                        min="${config.chunk_size.min || 100}" max="${config.chunk_size.max || 5000}"
                        value="${this.getDefaultValue('chunk_size', config.chunk_size.default || 1000)}">
-                <small style="${smallStyle}">${config.chunk_size.description || ''}</small>
+                <small class="tpl-form-help">${config.chunk_size.description || ''}</small>
             </div>
             ` : ''}
 
             ${config.chunk_overlap ? `
-            <div id="chunk_overlap_group" style="display: none; ${formGroupStyle}">
-                <label for="chunk_overlap" style="${labelStyle}">Chunk Overlap (characters)</label>
-                <input type="number" id="chunk_overlap" data-param="chunk_overlap" style="${inputStyle}"
+            <div id="chunk_overlap_group" class="tpl-form-group" style="display: none;">
+                <label for="chunk_overlap" class="tpl-form-label">Chunk Overlap (characters)</label>
+                <input type="number" id="chunk_overlap" data-param="chunk_overlap" class="tpl-form-input"
                        min="${config.chunk_overlap.min || 0}" max="${config.chunk_overlap.max || 500}"
                        value="${this.getDefaultValue('chunk_overlap', config.chunk_overlap.default || 200)}">
-                <small style="${smallStyle}">${config.chunk_overlap.description || ''}</small>
+                <small class="tpl-form-help">${config.chunk_overlap.description || ''}</small>
             </div>
             ` : ''}
         `;
-        
+
         console.log('Basic container HTML set, innerHTML length:', basicContainer.innerHTML.length);
 
         // Advanced parameters (empty for now)
         const advancedContainer = document.getElementById('advanced-parameters-container');
         advancedContainer.innerHTML = `
-            <p style="${smallStyle}">No advanced parameters available for this template type.</p>
+            <p class="tpl-form-help">No advanced parameters available for this template type.</p>
         `;
 
         // System info
@@ -248,61 +236,56 @@ export class TemplateEditModal {
         console.log('renderPlannerParameters called');
         const config = this.currentTemplate.input_variables || {};
         console.log('Input variables config:', config);
-        
+
         // Basic parameters
         const basicContainer = document.getElementById('basic-parameters-container');
         console.log('Basic container:', basicContainer);
-        
-        const formGroupStyle = 'margin-bottom: 1.5rem;';
-        const labelStyle = 'display: block; margin-bottom: 0.5rem; color: #e5e7eb; font-weight: 500; font-size: 0.875rem;';
-        const inputStyle = 'width: 100%; padding: 0.5rem 0.75rem; background: #2d3748; border: 1px solid rgba(255,255,255,0.1); border-radius: 0.375rem; color: #fff; font-size: 0.875rem;';
-        const smallStyle = 'display: block; margin-top: 0.25rem; color: #9ca3af; font-size: 0.75rem;';
-        
+
         let hasParams = false;
         let paramsHtml = '';
-        
+
         console.log('Checking for mcp_tool_name:', !!config.mcp_tool_name);
         console.log('Checking for mcp_context_prompt:', !!config.mcp_context_prompt);
         console.log('Checking for target_database:', !!config.target_database);
-        
+
         if (config.mcp_tool_name) {
             hasParams = true;
             paramsHtml += `
-            <div style="${formGroupStyle}">
-                <label for="mcp_tool_name" style="${labelStyle}">MCP Tool Name</label>
-                <input type="text" id="mcp_tool_name" data-param="mcp_tool_name" style="${inputStyle}"
+            <div class="tpl-form-group">
+                <label for="mcp_tool_name" class="tpl-form-label">MCP Tool Name</label>
+                <input type="text" id="mcp_tool_name" data-param="mcp_tool_name" class="tpl-form-input"
                        value="${this.getDefaultValue('mcp_tool_name', config.mcp_tool_name.default || '')}"
                        placeholder="${config.mcp_tool_name.placeholder || ''}">
-                <small style="${smallStyle}">${config.mcp_tool_name.description || ''}</small>
+                <small class="tpl-form-help">${config.mcp_tool_name.description || ''}</small>
             </div>`;
         }
-        
+
         if (config.mcp_context_prompt) {
             hasParams = true;
             paramsHtml += `
-            <div style="${formGroupStyle}">
-                <label for="mcp_context_prompt" style="${labelStyle}">MCP Context Prompt</label>
-                <input type="text" id="mcp_context_prompt" data-param="mcp_context_prompt" style="${inputStyle}"
+            <div class="tpl-form-group">
+                <label for="mcp_context_prompt" class="tpl-form-label">MCP Context Prompt</label>
+                <input type="text" id="mcp_context_prompt" data-param="mcp_context_prompt" class="tpl-form-input"
                        value="${this.getDefaultValue('mcp_context_prompt', config.mcp_context_prompt.default || '')}"
                        placeholder="${config.mcp_context_prompt.placeholder || ''}">
-                <small style="${smallStyle}">${config.mcp_context_prompt.description || ''}</small>
+                <small class="tpl-form-help">${config.mcp_context_prompt.description || ''}</small>
             </div>`;
         }
-        
+
         if (config.target_database) {
             hasParams = true;
             paramsHtml += `
-            <div style="${formGroupStyle}">
-                <label for="target_database" style="${labelStyle}">Target Database</label>
-                <input type="text" id="target_database" data-param="target_database" style="${inputStyle}"
+            <div class="tpl-form-group">
+                <label for="target_database" class="tpl-form-label">Target Database</label>
+                <input type="text" id="target_database" data-param="target_database" class="tpl-form-input"
                        value="${this.getDefaultValue('target_database', config.target_database.default || 'Teradata')}"
                        placeholder="${config.target_database.placeholder || 'Teradata'}">
-                <small style="${smallStyle}">${config.target_database.description || ''}</small>
+                <small class="tpl-form-help">${config.target_database.description || ''}</small>
             </div>`;
         }
-        
-        basicContainer.innerHTML = hasParams ? paramsHtml : `<p style="${smallStyle}">No editable basic parameters found for this template.</p>`;
-        
+
+        basicContainer.innerHTML = hasParams ? paramsHtml : `<p class="tpl-form-help">No editable basic parameters found for this template.</p>`;
+
         console.log('Basic container HTML set, innerHTML length:', basicContainer.innerHTML.length);
         console.log('Has params:', hasParams);
 
@@ -310,35 +293,32 @@ export class TemplateEditModal {
         const advancedContainer = document.getElementById('advanced-parameters-container');
         const outputConfig = this.currentTemplate.output_configuration || {};
         console.log('Output configuration:', outputConfig);
-        
-        const checkboxStyle = 'margin-right: 0.5rem;';
-        const checkboxLabelStyle = 'color: #e5e7eb; font-weight: 500; font-size: 0.875rem;';
-        
+
         advancedContainer.innerHTML = `
             ${outputConfig.is_most_efficient ? `
-            <div style="${formGroupStyle}">
-                <label style="${checkboxLabelStyle}">
-                    <input type="checkbox" id="is_most_efficient" data-param="is_most_efficient" style="${checkboxStyle}"
+            <div class="tpl-form-group">
+                <label class="tpl-form-checkbox-label">
+                    <input type="checkbox" id="is_most_efficient" data-param="is_most_efficient"
                            ${this.getDefaultValue('is_most_efficient', outputConfig.is_most_efficient.value) ? 'checked' : ''}>
                     Mark as Champion (Most Efficient)
                 </label>
-                <small style="${smallStyle}">${outputConfig.is_most_efficient.description || ''}</small>
+                <small class="tpl-form-help">${outputConfig.is_most_efficient.description || ''}</small>
             </div>
             ` : ''}
 
             ${outputConfig.estimated_tokens ? `
-            <div style="${formGroupStyle}">
-                <label for="input_tokens" style="${labelStyle}">Estimated Input Tokens</label>
-                <input type="number" id="input_tokens" data-param="input_tokens" style="${inputStyle}"
+            <div class="tpl-form-group">
+                <label for="input_tokens" class="tpl-form-label">Estimated Input Tokens</label>
+                <input type="number" id="input_tokens" data-param="input_tokens" class="tpl-form-input"
                        value="${this.getDefaultValue('input_tokens', outputConfig.estimated_tokens.input_tokens.value || 150)}">
-                <small style="${smallStyle}">${outputConfig.estimated_tokens.input_tokens.description || ''}</small>
+                <small class="tpl-form-help">${outputConfig.estimated_tokens.input_tokens.description || ''}</small>
             </div>
 
-            <div style="${formGroupStyle}">
-                <label for="output_tokens" style="${labelStyle}">Estimated Output Tokens</label>
-                <input type="number" id="output_tokens" data-param="output_tokens" style="${inputStyle}"
+            <div class="tpl-form-group">
+                <label for="output_tokens" class="tpl-form-label">Estimated Output Tokens</label>
+                <input type="number" id="output_tokens" data-param="output_tokens" class="tpl-form-input"
                        value="${this.getDefaultValue('output_tokens', outputConfig.estimated_tokens.output_tokens.value || 180)}">
-                <small style="${smallStyle}">${outputConfig.estimated_tokens.output_tokens.description || ''}</small>
+                <small class="tpl-form-help">${outputConfig.estimated_tokens.output_tokens.description || ''}</small>
             </div>
             ` : ''}
         `;
@@ -353,51 +333,45 @@ export class TemplateEditModal {
     renderSystemInfo() {
         const infoContainer = document.getElementById('info-parameters-container');
         const template = this.currentTemplate;
-        
-        const alertStyle = 'padding: 1rem; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 0.375rem; margin-bottom: 1rem;';
-        const tableStyle = 'width: 100%; border-collapse: collapse;';
-        const tdStyle = 'padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); color: #e5e7eb;';
-        const codeStyle = 'background: #2d3748; padding: 0.125rem 0.375rem; border-radius: 0.25rem; color: #F15F22; font-family: monospace; font-size: 0.875rem;';
-        const badgeStyle = 'display: inline-block; padding: 0.25rem 0.5rem; background: #3b82f6; color: white; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;';
-        
+
         infoContainer.innerHTML = `
-            <div style="${alertStyle}">
-                <strong style="color: #60a5fa;">System Parameters (Read-Only)</strong>
-                <p style="margin: 0.5rem 0 0 0; color: #9ca3af; font-size: 0.875rem;">These parameters are managed by the system and cannot be edited.</p>
+            <div class="tpl-info-alert">
+                <strong>System Parameters (Read-Only)</strong>
+                <p>These parameters are managed by the system and cannot be edited.</p>
             </div>
 
-            <table style="${tableStyle}">
+            <table class="tpl-info-table">
                 <tbody>
                     <tr>
-                        <td style="${tdStyle}"><strong>Template ID:</strong></td>
-                        <td style="${tdStyle}"><code style="${codeStyle}">${template.template_id}</code></td>
+                        <td><strong>Template ID:</strong></td>
+                        <td><code class="tpl-info-code">${template.template_id}</code></td>
                     </tr>
                     <tr>
-                        <td style="${tdStyle}"><strong>Template Type:</strong></td>
-                        <td style="${tdStyle}"><code style="${codeStyle}">${this.templateType}</code></td>
+                        <td><strong>Template Type:</strong></td>
+                        <td><code class="tpl-info-code">${this.templateType}</code></td>
                     </tr>
                     <tr>
-                        <td style="${tdStyle}"><strong>Version:</strong></td>
-                        <td style="${tdStyle}">${template.template_version || 'N/A'}</td>
+                        <td><strong>Version:</strong></td>
+                        <td>${template.template_version || 'N/A'}</td>
                     </tr>
                     <tr>
-                        <td style="${tdStyle}"><strong>Description:</strong></td>
-                        <td style="${tdStyle}">${template.description || 'N/A'}</td>
+                        <td><strong>Description:</strong></td>
+                        <td>${template.description || 'N/A'}</td>
                     </tr>
                     ${template.repository_configuration ? `
                     <tr>
-                        <td style="${tdStyle}"><strong>Max File Size:</strong></td>
-                        <td style="${tdStyle}">${template.document_configuration?.max_file_size_mb || 50} MB</td>
+                        <td><strong>Max File Size:</strong></td>
+                        <td>${template.document_configuration?.max_file_size_mb || 50} MB</td>
                     </tr>
                     <tr>
-                        <td style="${tdStyle}"><strong>Supported Types:</strong></td>
-                        <td style="${tdStyle}">${(template.document_configuration?.supported_types || []).join(', ')}</td>
+                        <td><strong>Supported Types:</strong></td>
+                        <td>${(template.document_configuration?.supported_types || []).join(', ')}</td>
                     </tr>
                     ` : ''}
                     ${template.strategy_template ? `
                     <tr>
-                        <td style="${tdStyle}"><strong>Phase Count:</strong></td>
-                        <td style="${tdStyle}">${template.strategy_template.phase_count}</td>
+                        <td><strong>Phase Count:</strong></td>
+                        <td>${template.strategy_template.phase_count}</td>
                     </tr>
                     ` : ''}
                 </tbody>
@@ -524,12 +498,8 @@ export class TemplateEditModal {
                 // Update tab buttons
                 tabs.forEach(t => {
                     t.classList.remove('active');
-                    t.style.borderBottomColor = 'transparent';
-                    t.style.color = '#9ca3af';
                 });
                 tab.classList.add('active');
-                tab.style.borderBottomColor = '#F15F22';
-                tab.style.color = '#F15F22';
                 
                 // Update tab panes
                 const panes = this.modal.querySelectorAll('.tab-pane');
@@ -610,7 +580,7 @@ export class TemplateEditModal {
             if (showMsg) showMsg('error', 'Failed to save template defaults');
         } finally {
             saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Defaults';
+            saveBtn.textContent = 'Save Defaults';
         }
     }
 

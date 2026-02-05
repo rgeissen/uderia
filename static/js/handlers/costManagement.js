@@ -479,13 +479,13 @@ class CostManagementHandler {
                 <td class="px-4 py-3 text-gray-400 text-xs">${lastUpdated}</td>
                 <td class="px-4 py-3">
                     <div class="flex gap-2">
-                        <button onclick="window.costManager.updateCost('${cost.id}')" 
-                            class="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-xs">
+                        <button onclick="window.costManager.updateCost('${cost.id}')"
+                            class="card-btn card-btn--sm card-btn--info">
                             Save
                         </button>
                         ${!cost.is_fallback ? `
-                            <button onclick="window.costManager.deleteCost('${cost.id}')" 
-                                class="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-xs">
+                            <button onclick="window.costManager.deleteCost('${cost.id}')"
+                                class="card-btn card-btn--sm card-btn--danger">
                                 Delete
                             </button>
                         ` : ''}

@@ -3938,12 +3938,9 @@ function initializeRepositoryTabs() {
     // Tab click handler
     const switchTab = (activeTab, activeContent, inactiveTab, inactiveContent) => {
         // Update tab styling
-        activeTab.classList.remove('border-transparent', 'text-gray-400');
-        activeTab.classList.add('border-[#F15F22]', 'text-[#F15F22]');
-        
-        inactiveTab.classList.remove('border-[#F15F22]', 'text-[#F15F22]');
-        inactiveTab.classList.add('border-transparent', 'text-gray-400');
-        
+        activeTab.classList.add('active');
+        inactiveTab.classList.remove('active');
+
         // Update content visibility
         activeContent.classList.remove('hidden');
         inactiveContent.classList.add('hidden');
@@ -4135,19 +4132,15 @@ async function switchIntelligenceTab(view) {
     const systemTab = document.getElementById('intel-tab-system-performance');
 
     if (view === 'my') {
-        myTab.classList.remove('text-gray-400', 'border-transparent');
-        myTab.classList.add('text-[#F15F22]', 'border-[#F15F22]');
+        myTab.classList.add('active');
         if (systemTab) {
-            systemTab.classList.remove('text-[#F15F22]', 'border-[#F15F22]');
-            systemTab.classList.add('text-gray-400', 'border-transparent');
+            systemTab.classList.remove('active');
         }
     } else {
         if (systemTab) {
-            systemTab.classList.remove('text-gray-400', 'border-transparent');
-            systemTab.classList.add('text-[#F15F22]', 'border-[#F15F22]');
+            systemTab.classList.add('active');
         }
-        myTab.classList.remove('text-[#F15F22]', 'border-[#F15F22]');
-        myTab.classList.add('text-gray-400', 'border-transparent');
+        myTab.classList.remove('active');
     }
 
     // Update scope indicator

@@ -281,12 +281,12 @@ function updateUIIndicators(isDirty) {
     const saveButtonText = document.getElementById('reconnect-button-text');
     if (saveButton && saveButtonText) {
         if (isDirty) {
-            // Industrial design: gradient background with shadow and ring
-            saveButton.className = 'flex-1 px-6 py-3 rounded-md bg-gradient-to-r from-[#F15F22] to-[#D9501A] transition-all duration-300 font-medium flex items-center justify-center text-white shadow-lg shadow-orange-500/50 ring-2 ring-orange-400/30 hover:shadow-xl hover:shadow-orange-500/70 hover:ring-orange-400/50 hover:scale-[1.02] transform';
+            // Dirty: same industrial outline style, dirty state signaled by Discard button appearing
+            saveButton.className = 'card-btn card-btn--lg card-btn--primary flex-1 flex items-center justify-center';
             saveButtonText.textContent = 'Save & Connect';
         } else {
-            // Clean state: subtle gray with refined hover
-            saveButton.className = 'flex-1 px-6 py-3 rounded-md bg-gray-700 hover:bg-gray-600 transition-all duration-300 font-medium flex items-center justify-center text-white shadow-md hover:shadow-lg';
+            // Clean: primary outline, no extra emphasis
+            saveButton.className = 'card-btn card-btn--lg card-btn--primary flex-1 flex items-center justify-center';
             saveButtonText.textContent = 'Save & Connect';
         }
     }
@@ -308,8 +308,7 @@ function showDiscardButton() {
             discardBtn = document.createElement('button');
             discardBtn.id = 'discard-config-changes-btn';
             discardBtn.type = 'button';
-            // Styled to complement but not compete with primary action
-            discardBtn.className = 'px-6 py-3 bg-slate-700 text-white rounded-md hover:bg-slate-600 transition-all duration-300 font-medium shadow-md hover:shadow-lg ring-1 ring-slate-500/30 hover:ring-slate-400/50 hover:scale-[1.02] transform';
+            discardBtn.className = 'card-btn card-btn--lg card-btn--neutral';
             discardBtn.textContent = 'Discard Changes';
             
             discardBtn.addEventListener('click', handleDiscardChanges);

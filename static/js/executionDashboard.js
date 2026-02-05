@@ -721,7 +721,7 @@ class ExecutionDashboard {
                         ` : ''}
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0 ml-2">
-                        <button class="activate-session-btn p-1.5 rounded hover:bg-teradata-orange/20 text-gray-400 hover:text-teradata-orange transition-colors" 
+                        <button class="activate-session-btn card-btn card-btn--sm card-btn--primary"
                                 data-session-id="${session.id}" 
                                 title="Activate in Conversation View">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

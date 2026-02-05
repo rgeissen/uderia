@@ -1058,16 +1058,16 @@ export function renderMCPServers() {
                         ` : ''}
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
-                        <button type="button" data-action="test-mcp" data-server-id="${server.id}" 
-                            class="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white">
+                        <button type="button" data-action="test-mcp" data-server-id="${server.id}"
+                            class="card-btn card-btn--info">
                             Test
                         </button>
-                        <button type="button" data-action="edit-mcp" data-server-id="${server.id}" 
-                            class="px-3 py-1.5 text-sm font-medium bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white">
+                        <button type="button" data-action="edit-mcp" data-server-id="${server.id}"
+                            class="card-btn card-btn--neutral">
                             Edit
                         </button>
-                        <button type="button" data-action="delete-mcp" data-server-id="${server.id}" 
-                            class="px-3 py-1.5 text-sm font-medium bg-gray-700 hover:bg-red-600 rounded-lg transition-colors text-red-400 hover:text-white">
+                        <button type="button" data-action="delete-mcp" data-server-id="${server.id}"
+                            class="card-btn card-btn--danger">
                             Delete
                         </button>
                     </div>
@@ -1215,16 +1215,16 @@ export function renderLLMProviders() {
                     <div id="llm-test-results-${config.id}" class="text-sm min-h-[20px]"></div>
                     
                     <div class="flex items-center gap-2 pt-2 border-t border-white/10">
-                        <button type="button" data-action="test-llm" data-config-id="${config.id}" 
-                            class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white">
+                        <button type="button" data-action="test-llm" data-config-id="${config.id}"
+                            class="card-btn card-btn--info">
                             Test
                         </button>
-                        <button type="button" data-action="edit-llm" data-config-id="${config.id}" 
-                            class="flex-1 px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white">
+                        <button type="button" data-action="edit-llm" data-config-id="${config.id}"
+                            class="flex-1 card-btn card-btn--neutral">
                             Edit
                         </button>
-                        <button type="button" data-action="delete-llm" data-config-id="${config.id}" 
-                            class="flex-1 px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-red-600 rounded-lg transition-colors text-red-400 hover:text-white">
+                        <button type="button" data-action="delete-llm" data-config-id="${config.id}"
+                            class="flex-1 card-btn card-btn--danger">
                             Delete
                         </button>
                     </div>
@@ -1409,10 +1409,10 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
                         </div>
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button id="llm-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
+                        <button id="llm-modal-cancel" class="flex-1 card-btn card-btn--neutral">
                             Cancel
                         </button>
-                        <button id="llm-modal-save" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
+                        <button id="llm-modal-save" class="flex-1 card-btn card-btn--primary">
                             ${isEdit ? 'Update' : 'Add'}
                         </button>
                     </div>
@@ -1921,10 +1921,10 @@ export function showMCPServerModal(serverId = null) {
                             class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none">
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button id="mcp-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
+                        <button id="mcp-modal-cancel" class="flex-1 card-btn card-btn--neutral">
                             Cancel
                         </button>
-                        <button id="mcp-modal-save" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
+                        <button id="mcp-modal-save" class="flex-1 card-btn card-btn--primary">
                             ${isEdit ? 'Update' : 'Add'}
                         </button>
                     </div>
@@ -2026,10 +2026,10 @@ Claude Desktop format:
                         <div class="bg-red-500/20 border border-red-500/50 rounded-md p-3 text-sm text-red-400"></div>
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button id="import-mcp-modal-cancel" class="flex-1 px-4 py-2 bg-neutral-600 hover:bg-neutral-700 rounded-md transition-colors text-white">
+                        <button id="import-mcp-modal-cancel" class="flex-1 card-btn card-btn--neutral">
                             Cancel
                         </button>
-                        <button id="import-mcp-modal-import" class="flex-1 px-4 py-2 bg-[#F15F22] hover:bg-[#D9501A] rounded-md transition-colors text-white font-medium">
+                        <button id="import-mcp-modal-import" class="flex-1 card-btn card-btn--primary">
                             Import Server
                         </button>
                     </div>
@@ -2656,11 +2656,9 @@ function initializeConfigTabs() {
             
             // Update tab buttons
             tabs.forEach(t => {
-                t.classList.remove('active', 'border-[#F15F22]', 'text-white');
-                t.classList.add('text-gray-400', 'border-transparent');
+                t.classList.remove('active');
             });
-            tab.classList.add('active', 'border-[#F15F22]', 'text-white');
-            tab.classList.remove('text-gray-400', 'border-transparent');
+            tab.classList.add('active');
             
             // Update tab content
             tabContents.forEach(content => {
@@ -2864,9 +2862,9 @@ function renderProfileCard(profile) {
                             if (!testStatus?.tested || !testStatus?.passed) return 'Click to test and activate';
                             return 'Activate for Consumption';
                         })()}">
-                           <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" data-action="toggle-active-consumption" data-profile-id="${profile.id}" ${isActiveForConsumption ? 'checked' : ''} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                                <div class="w-11 h-6 bg-gray-800/50 border border-gray-500 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teradata-orange peer-disabled:opacity-50 peer-disabled:cursor-not-allowed"></div>
+                           <label class="ind-toggle ind-toggle--primary">
+                                <input type="checkbox" data-action="toggle-active-consumption" data-profile-id="${profile.id}" ${isActiveForConsumption ? 'checked' : ''}>
+                                <span class="ind-track"></span>
                             </label>
                         </div>
                     </div>
@@ -3025,7 +3023,7 @@ function renderProfileCard(profile) {
                 <div class="flex items-center gap-2">
                     <!-- Test Button (always visible for all profile types) -->
                     <button type="button" data-action="test-profile" data-profile-id="${profile.id}"
-                        class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white flex items-center gap-2"
+                        class="card-btn card-btn--lg card-btn--info flex items-center gap-2"
                         title="Test profile configuration">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -3037,7 +3035,7 @@ function renderProfileCard(profile) {
                     ${profile.profile_type === 'tool_enabled' ? `
                     <div class="relative inline-block">
                         <button type="button" data-action="toggle-classification-menu" data-profile-id="${profile.id}"
-                            class="px-4 py-2 text-sm font-medium bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors text-white flex items-center gap-2"
+                            class="card-btn card-btn--lg card-btn--secondary flex items-center gap-2"
                             title="Classification options">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
@@ -3107,7 +3105,7 @@ function renderProfileCard(profile) {
                     <!-- Overflow Menu (Copy/Edit/Delete - consistent across all profile types) -->
                     <div class="relative inline-block">
                         <button type="button" data-action="toggle-profile-menu" data-profile-id="${profile.id}"
-                            class="px-3 py-2 text-sm font-medium bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white"
+                            class="card-btn card-btn--lg card-btn--neutral"
                             title="More options">
                             <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
@@ -3306,16 +3304,12 @@ function setupProfileTypeTabs() {
         tab.addEventListener('click', () => {
             const targetTab = tab.dataset.tab;
 
-            // Update tab styles with color-matched borders
+            // Update tab styles
             tabs.forEach(t => {
                 if (t === tab) {
-                    t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
-                    t.classList.add('text-white', 'active');
-                    t.style.borderColor = profileColors[t.dataset.tab] || '#F15F22';
+                    t.classList.add('active');
                 } else {
-                    t.classList.remove('text-white', 'active');
-                    t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
-                    t.style.borderColor = '';
+                    t.classList.remove('active');
                 }
             });
 
@@ -5501,9 +5495,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all">
                     <span class="text-sm text-gray-200">${escapeHtml(collection?.name || `Collection ${collId}`)}</span>
                     <div class="flex items-center gap-3">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" data-collection-id="${collId}" data-reranking="true" ${isRerankingEnabled ? 'checked' : ''} class="sr-only peer" style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                            <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                        <label class="ind-toggle ind-toggle--sm">
+                            <input type="checkbox" data-collection-id="${collId}" data-reranking="true" ${isRerankingEnabled ? 'checked' : ''}>
+                            <span class="ind-track"></span>
                         </label>
                         <span class="text-xs font-medium text-gray-400">Rerank</span>
                     </div>
@@ -5560,14 +5554,12 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const autocompleteToggleHTML = isPlanner ? `
             <!-- Autocomplete Toggle -->
             <div class="flex items-center justify-center" style="width: 50px;">
-                <label class="relative inline-flex items-center cursor-pointer">
+                <label class="ind-toggle">
                     <input type="checkbox"
                            data-collection-id="${coll.id}"
                            data-collection-type="autocomplete"
-                           ${isAutocompleteEnabled ? 'checked' : ''}
-                           class="sr-only peer"
-                           style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                    <div class="relative w-11 h-6 bg-gray-700 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#F15F22]"></div>
+                           ${isAutocompleteEnabled ? 'checked' : ''}>
+                    <span class="ind-track"></span>
                 </label>
             </div>
         ` : '';
@@ -5588,15 +5580,13 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 <div class="flex items-center gap-8 flex-shrink-0">
                     <!-- Query Toggle -->
                     <div class="flex items-center justify-center planner-query-toggle" style="width: 50px;" ${isDefaultCollection ? 'title="Default collection cannot be disabled - it stores new discoveries"' : ''}>
-                        <label class="relative inline-flex items-center ${isDefaultCollection ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}">
+                        <label class="ind-toggle ${isDefaultCollection ? 'ind-toggle--info' : ''}">
                             <input type="checkbox"
                                    data-collection-id="${coll.id}"
                                    data-collection-type="query"
                                    ${isQueryEnabled ? 'checked' : ''}
-                                   ${isDefaultCollection ? 'disabled' : ''}
-                                   class="sr-only peer"
-                                   style="position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border-width: 0 !important;">
-                            <div class="relative w-11 h-6 ${isDefaultCollection ? 'bg-gray-600' : 'bg-gray-700'} rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#F15F22]/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${isDefaultCollection ? 'peer-checked:bg-blue-500' : 'peer-checked:bg-[#F15F22]'}"></div>
+                                   ${isDefaultCollection ? 'disabled' : ''}>
+                            <span class="ind-track"></span>
                         </label>
                     </div>
                     ${autocompleteToggleHTML}
