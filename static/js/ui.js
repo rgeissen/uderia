@@ -6313,15 +6313,28 @@ async function selectCaseRow(caseId) {
     try {
         // Get authentication token
         const token = localStorage.getItem('tda_auth_token');
+        let caseData = {};
+        let turnSummary = null;
+
+        // Try file-based endpoint first (provides full case data + session turn summary)
         const res = await fetch(`/rag/cases/${encodeURIComponent(caseId)}`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
         const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        const caseData = data.case || {};
-        const turnSummary = data.session_turn_summary || null;
+        if (!data.error && res.ok) {
+            caseData = data.case || {};
+            turnSummary = data.session_turn_summary || null;
+        } else {
+            // Fallback: use full_case_data from the already-loaded collection rows (e.g. imported collections)
+            const row = (state.currentCollectionRows || []).find(r => r.id === caseId);
+            if (row && row.full_case_data) {
+                caseData = row.full_case_data;
+            } else {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+        }
         if (DOM.ragSelectedCaseMetadata) {
             const meta = caseData.metadata || {};
             

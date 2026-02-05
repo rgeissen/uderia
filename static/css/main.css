@@ -222,60 +222,64 @@ body {
    USER AVATAR - INDUSTRIAL DESIGN
    ============================================================================ */
 
-/* Premium User Avatar Container */
-.user-avatar-container {
-    position: relative;
-    display: inline-flex;
+/* ── Industrial User Trigger (avatar + username) ─────────────────────────── */
+
+.ind-user-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    transition: background 0.15s ease;
+}
+.ind-user-trigger:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Industrial Avatar ───────────────────────────────────────────────────── */
+
+.ind-avatar {
+    --avatar-color: 96, 165, 250;          /* blue-400 */
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    border-radius: 50%;
+    display: flex;
     align-items: center;
     justify-content: center;
+    background: rgba(var(--avatar-color), 0.18);
+    border: 2px solid rgba(var(--avatar-color), 0.4);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.ind-user-trigger:hover .ind-avatar {
+    background: rgba(var(--avatar-color), 0.28);
+    border-color: rgba(var(--avatar-color), 0.7);
 }
 
-/* Enhanced User Avatar in Header */
-#user-menu-button .w-10 {
-    position: relative;
-    overflow: visible;
-    cursor: pointer;
-}
-
-#user-menu-button .w-10::before {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, 
-                                rgba(30, 64, 175, 0.4) 0%, 
-                                transparent 70%);
-    opacity: 0;
-    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-#user-menu-button:hover .w-10::before {
-    opacity: 1;
-}
-
-/* Avatar letter styling */
 #user-avatar-initial {
     font-family: var(--font-display, 'Space Grotesk', sans-serif);
-    font-weight: 700;
+    font-size: 0.8125rem;
+    font-weight: 600;
     letter-spacing: -0.02em;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4),
-                 0 1px 2px rgba(0, 0, 0, 0.3);
+    color: rgb(var(--avatar-color));
+    line-height: 1;
 }
 
-/* User Display Name Typography */
-.user-display-name {
+/* ── Industrial Username ─────────────────────────────────────────────────── */
+
+.ind-username {
     font-family: var(--font-primary, 'Inter', sans-serif);
-    color: #e2e8f0;
-    letter-spacing: -0.015em;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-#user-menu-button:hover .user-display-name {
-    color: #ffffff;
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.3),
-                 0 1px 2px rgba(0, 0, 0, 0.4);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-muted, #9ca3af);
     letter-spacing: -0.01em;
+    transition: color 0.15s ease;
+}
+.ind-user-trigger:hover .ind-username {
+    color: var(--text-primary, #e2e8f0);
 }
 
 /* User avatar - refined orange theme */
@@ -4817,27 +4821,9 @@ button.bg-gray-700.px-2:hover {
 
 /* knowledgeStepPulse animation removed */
 
-/*
- * Modal buttons - Force white text in light theme
- * CRITICAL: This must override themes.css:962-966 which sets color: var(--text-primary) for button.bg-gray-600
- *
- * Specificity breakdown:
- * - themes.css:962: [data-theme="light"] button.bg-gray-600 = (0,2,1) with !important
- * - themes.css:1045: [data-theme="light"] #profile-modal-cancel = (1,1,0) with !important
- * - THIS RULE: [data-theme="light"] button#profile-modal-cancel = (1,1,1) with !important
- *
- * (1,1,1) > (1,1,0) > (0,2,1) - This rule has MAXIMUM specificity and loads in main.css (AFTER themes.css)
- */
-[data-theme="light"] button#profile-modal-cancel,
-[data-theme="light"] button#profile-modal-save,
-[data-theme="light"] button#llm-modal-cancel,
-[data-theme="light"] button#llm-modal-save,
-[data-theme="light"] button#mcp-modal-cancel,
-[data-theme="light"] button#mcp-modal-save {
-    color: white !important;
-}
+/* Modal buttons now use card-btn system — color handled via --btn-color variable */
 
-/* Additional enforcement for orange/colored action buttons in light theme */
+/* Enforcement for solid-background orange buttons in light theme (non card-btn) */
 /* Use exact class selector for bg-[#F15F22] to avoid matching bg-[#F15F22]/20 (light tint) */
 [data-theme="light"] button.bg-\[\#F15F22\],
 [data-theme="light"] button[class*="bg-teradata-orange"] {

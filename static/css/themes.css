@@ -717,22 +717,24 @@
     text-shadow: none !important;
 }
 
-/* Light theme - User avatar area */
-[data-theme="light"] #user-menu-button .text-white {
-    color: var(--text-primary) !important;
+/* Light theme - Industrial avatar */
+[data-theme="light"] .ind-avatar {
+    --avatar-color: 29, 78, 216;
+    background: rgba(var(--avatar-color), 0.12);
+    border-color: rgba(var(--avatar-color), 0.35);
 }
-
-/* Light theme - User display name next to avatar */
-[data-theme="light"] .user-display-name,
-[data-theme="light"] #user-display-name {
-    color: var(--text-primary) !important;
+[data-theme="light"] .ind-user-trigger:hover .ind-avatar {
+    background: rgba(var(--avatar-color), 0.2);
+    border-color: rgba(var(--avatar-color), 0.55);
 }
-
-/* Light theme - Avatar ring and background */
-[data-theme="light"] #user-menu-button .w-10 {
-    ring-color: var(--border-primary) !important;
-    --tw-ring-offset-color: white !important;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+[data-theme="light"] .ind-user-trigger:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .ind-username {
+    color: var(--text-secondary);
+}
+[data-theme="light"] .ind-user-trigger:hover .ind-username {
+    color: var(--text-primary);
 }
 
 /* Light theme - Status bar remove shimmer/glow effects */
@@ -781,9 +783,9 @@
     box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2) !important;
 }
 
-/* Light theme - Avatar initial text should be white (on blue background) */
+/* Light theme - Avatar initial uses avatar color variable */
 [data-theme="light"] #user-avatar-initial {
-    color: white !important;
+    color: rgb(var(--avatar-color));
 }
 
 /* Light theme - User dropdown menu */
@@ -1040,11 +1042,7 @@
     stroke: white !important;
 }
 
-/* Light theme - Profile modal buttons must have white text */
-[data-theme="light"] #profile-modal-cancel,
-[data-theme="light"] #profile-modal-save {
-    color: white !important;
-}
+/* Light theme - Profile modal buttons: card-btn system handles color via --btn-color */
 
 /* Green buttons */
 [data-theme="light"] .bg-green-500,
@@ -3603,6 +3601,147 @@ button[aria-label]:active {
 [data-theme="legacy"] .sticky.top-0.bg-gray-800,
 [data-theme="legacy"] .admin-tab-content thead.sticky {
     background: #404040 !important;
+}
+
+/* Selected case row highlight — stronger on dark legacy background (#333) */
+[data-theme="legacy"] #rag-collection-table-body tr.bg-orange-500\/30 {
+    background: rgba(241, 95, 34, 0.45) !important;
+}
+[data-theme="legacy"] #rag-collection-table-body tr.ring-orange-400\/50 {
+    --tw-ring-color: rgba(241, 95, 34, 0.7) !important;
+}
+
+/* =============== Legacy Theme — Selected Case Details =============== */
+
+/* Main container */
+[data-theme="legacy"] #rag-selected-case-details {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-details h2,
+[data-theme="legacy"] #rag-selected-case-details h3 {
+    color: var(--text-primary) !important;
+}
+
+/* Metadata section */
+[data-theme="legacy"] #rag-selected-case-metadata {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-metadata code {
+    color: var(--text-primary) !important;
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-metadata .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-metadata .text-gray-200,
+[data-theme="legacy"] #rag-selected-case-metadata .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* Feedback buttons container (bg-gray-900/50) */
+[data-theme="legacy"] #rag-selected-case-metadata [class*="bg-gray-9"] {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Feedback button hover & active state */
+[data-theme="legacy"] #rag-selected-case-metadata .case-feedback-btn:hover {
+    background: var(--active-bg) !important;
+}
+
+/* Feedback button divider */
+[data-theme="legacy"] #rag-selected-case-metadata .w-px[class*="bg-white"] {
+    background: var(--border-primary) !important;
+}
+
+/* Phase cards (Successful Strategy) — bg-gray-800/40 border border-white/10 */
+[data-theme="legacy"] #rag-selected-case-plan .rounded-md,
+[data-theme="legacy"] #rag-selected-case-plan .grid > div,
+[data-theme="legacy"] #rag-selected-case-plan div[class*="bg-gray"] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan .text-sm {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan code {
+    color: var(--teradata-orange) !important;
+    background: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Execution Trace cards — bg-gray-900/40 border border-gray-700/40 */
+[data-theme="legacy"] #rag-selected-case-trace .space-y-1 > div,
+[data-theme="legacy"] #rag-selected-case-trace .rounded,
+[data-theme="legacy"] #rag-selected-case-trace div[class*="bg-gray"],
+[data-theme="legacy"] #rag-selected-case-trace .text-xs.p-2 {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .font-mono {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+/* Execution Trace repeat badge — orange instead of blue for legacy warm palette */
+[data-theme="legacy"] #rag-selected-case-trace [class*="bg-blue"] {
+    background: rgba(241, 95, 34, 0.25) !important;
+    color: #F15F22 !important;
+}
+
+/* Global override for all Tailwind gray backgrounds in case details panels */
+[data-theme="legacy"] #rag-selected-case-details [class*="bg-gray-8"],
+[data-theme="legacy"] #rag-selected-case-details [class*="bg-gray-9"],
+[data-theme="legacy"] #rag-selected-case-details [class*="rounded-md"] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Trace card divs */
+[data-theme="legacy"] #rag-selected-case-trace > div > div.space-y-1 > div {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Separator line */
+[data-theme="legacy"] #rag-selected-case-separator {
+    border-color: var(--border-primary) !important;
+}
+
+/* Loading text */
+[data-theme="legacy"] #rag-collection-loading {
+    color: var(--text-muted) !important;
+}
+
+/* Footer text */
+[data-theme="legacy"] #rag-collection-footer {
+    color: var(--text-muted) !important;
 }
 
 /* Specific table IDs for comprehensive coverage */

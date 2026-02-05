@@ -145,15 +145,11 @@
             </div>
             <!-- User Menu (Authentication) -->
             <div id="user-menu-container" class="menu-item relative hidden">
-                <button id="user-menu-button" class="flex items-center gap-x-3 p-2 text-gray-300 hover:text-white transition-colors rounded-md hover:bg-white/10" title="User Menu">
-                    <div class="user-avatar-container relative">
-                        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#1E40AF] to-[#1E3A8A] flex items-center justify-center text-white font-bold text-base shadow-lg ring-2 ring-white/20 ring-offset-2 ring-offset-black/20 transition-all duration-300 hover:scale-105 hover:ring-white/40 hover:shadow-xl hover:shadow-blue-900/30">
-                            <span id="user-avatar-initial" class="relative z-10">?</span>
-                            <!-- Inner highlight for depth -->
-                            <div class="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none"></div>
-                        </div>
+                <button id="user-menu-button" class="ind-user-trigger" title="User Menu">
+                    <div class="ind-avatar" id="user-avatar">
+                        <span id="user-avatar-initial">?</span>
                     </div>
-                    <span id="user-display-name" class="user-display-name text-sm font-semibold hidden md:block tracking-tight">Guest</span>
+                    <span id="user-display-name" class="ind-username hidden md:block">Guest</span>
                 </button>
                 <div id="user-dropdown-menu" class="dropdown-menu mt-2 w-56 rounded-md shadow-lg p-1" style="background-color: var(--modal-bg); border: 1px solid var(--border-primary); backdrop-filter: blur(16px);">
                     <div class="px-3 py-2 mb-1" style="border-bottom: 1px solid var(--border-primary);">
@@ -7409,8 +7405,12 @@
                 loginButtonContainer.classList.add('hidden');
                 
                 // Update user info
-                const initial = user.display_name ? user.display_name.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase();
-                document.getElementById('user-avatar-initial').textContent = initial;
+                const avatarName = (user.display_name || user.username).trim();
+                const avatarParts = avatarName.split(/\s+/);
+                const initials = avatarParts.length > 1
+                    ? (avatarParts[0].charAt(0) + avatarParts[avatarParts.length - 1].charAt(0)).toUpperCase()
+                    : avatarName.slice(0, 2).toUpperCase();
+                document.getElementById('user-avatar-initial').textContent = initials;
                 document.getElementById('user-display-name').textContent = user.display_name || user.username;
                 document.getElementById('user-menu-name').textContent = user.display_name || user.username;
                 document.getElementById('user-menu-email').textContent = user.email;

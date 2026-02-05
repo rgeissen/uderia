@@ -1411,46 +1411,66 @@ async def get_rag_case_details(case_id: str):
         # Determine project root (4 levels up from this file)
         project_root = Path(__file__).resolve().parents[3]
         cases_dir = project_root / 'rag' / 'tda_rag_cases'
-        if not cases_dir.exists():
-            return jsonify({"error": "Cases directory not found."}), 500
 
         file_stem = case_id if case_id.startswith('case_') else f'case_{case_id}'
-        
-        # Search in flat structure first (legacy), then in collection subdirectories
-        case_path = cases_dir / f"{file_stem}.json"
-        if not case_path.exists():
-            # Search all collection_* subdirectories
-            found = False
-            for collection_dir in cases_dir.glob("collection_*"):
-                if collection_dir.is_dir():
-                    potential_path = collection_dir / f"{file_stem}.json"
-                    if potential_path.exists():
-                        case_path = potential_path
-                        found = True
-                        break
-            
-            if not found:
-                return jsonify({"error": f"Case '{file_stem}' not found."}), 404
+        case_data = None
+        loaded_from = None
 
-        with open(case_path, 'r', encoding='utf-8') as f:
-            case_data = json.load(f)
+        # --- Strategy 1: Load from disk (case JSON file) ---
+        if cases_dir.exists():
+            case_path = cases_dir / f"{file_stem}.json"
+            if not case_path.exists():
+                # Search collection_* subdirectories
+                for collection_dir in cases_dir.glob("collection_*"):
+                    if collection_dir.is_dir():
+                        potential_path = collection_dir / f"{file_stem}.json"
+                        if potential_path.exists():
+                            case_path = potential_path
+                            break
+            if case_path.exists():
+                with open(case_path, 'r', encoding='utf-8') as f:
+                    case_data = json.load(f)
+                loaded_from = 'file'
+
+        # --- Strategy 2: Fallback to ChromaDB (imported collections) ---
+        chromadb_collection_id = None
+        if case_data is None:
+            retriever = APP_STATE.get('rag_retriever_instance')
+            if retriever:
+                for cid, collection in retriever.collections.items():
+                    try:
+                        result = collection.get(ids=[case_id], include=["metadatas"])
+                        if result and result.get("ids") and len(result["ids"]) > 0:
+                            meta = result["metadatas"][0]
+                            full_case_str = meta.get("full_case_data", "{}")
+                            case_data = json.loads(full_case_str) if full_case_str else {}
+                            chromadb_collection_id = cid
+                            loaded_from = 'chromadb'
+                            app_logger.info(f"Loaded case '{case_id}' from ChromaDB collection {cid}")
+                            break
+                    except Exception:
+                        continue
+
+        if case_data is None:
+            return jsonify({"error": f"Case '{file_stem}' not found."}), 404
 
         metadata = case_data.get('metadata', {})
         session_id = metadata.get('session_id')
         turn_id = metadata.get('turn_id')
         task_id = metadata.get('task_id')
-        
-        # --- MODIFICATION START: Validate user access to case's collection ---
+
+        # Validate user access to case's collection
+        # Use the actual ChromaDB collection ID if loaded from ChromaDB (imported collections
+        # may have stale collection_id in metadata from the source system)
         from trusted_data_agent.agent.rag_access_context import RAGAccessContext
-        collection_id = metadata.get('collection_id', 0)
+        collection_id = chromadb_collection_id if chromadb_collection_id is not None else metadata.get('collection_id', 0)
         retriever = APP_STATE.get('rag_retriever_instance')
-        
+
         if retriever:
             rag_context = RAGAccessContext(user_id=user_uuid, retriever=retriever)
             if not rag_context.validate_collection_access(collection_id, write=False):
                 app_logger.warning(f"User {user_uuid} attempted to access case {case_id} from collection {collection_id} without read access")
                 return jsonify({"error": "You do not have access to this case."}), 403
-        # --- MODIFICATION END ---
 
         session_turn_summary = None
         join_method = None
