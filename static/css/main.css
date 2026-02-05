@@ -5171,6 +5171,22 @@ button.bg-gray-700.px-2:hover {
     border-color: var(--border-primary);
 }
 
+/* Two-column section grid for tablets */
+.profile-two-col {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    .profile-two-col {
+        grid-template-columns: 1fr 1fr;
+    }
+    .profile-two-col > .profile-section {
+        margin: 0;
+    }
+}
+
 /* Responsive: Smaller screens */
 @media (max-width: 640px) {
     .profile-kv-grid {

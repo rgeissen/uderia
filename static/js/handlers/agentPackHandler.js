@@ -186,6 +186,18 @@ async function handleInstallAgentPack() {
 
     // Reset and trigger file picker
     fileInput.value = '';
+
+    // iOS/iPadOS doesn't recognise custom extensions like .agentpack
+    // (no UTI mapping), so the file picker greys them out.  Remove the
+    // accept filter on touch devices; JSZip validation catches bad files.
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+        fileInput.removeAttribute('accept');
+    } else {
+        fileInput.setAttribute('accept', '.agentpack,.zip');
+    }
+
     fileInput.onchange = async () => {
         const file = fileInput.files[0];
         if (!file) return;

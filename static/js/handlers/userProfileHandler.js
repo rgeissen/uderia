@@ -122,10 +122,14 @@ class UserProfileManager {
         body.innerHTML = [
             this._renderIdentityHeader(),
             this._renderPersonalInfo(),
-            this._renderAccountDetails(),
-            this._renderSecurity(),
-            this._renderConnectedAccounts(),
-            this._renderUsageStatistics(),
+            `<div class="profile-two-col">
+                ${this._renderAccountDetails()}
+                ${this._renderSecurity()}
+            </div>`,
+            `<div class="profile-two-col">
+                ${this._renderConnectedAccounts()}
+                ${this._renderUsageStatistics()}
+            </div>`,
             this._renderMarketplace(),
         ].join('');
 
