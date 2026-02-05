@@ -2692,9 +2692,10 @@ function attachPackTriStateToggleHandlers(parentElement) {
             // Gather profile IDs from child cards inside the pack children area
             const childArea = containerCard.querySelector('.pack-children-container');
             if (!childArea) return;
-            const childProfileIds = Array.from(
-                childArea.querySelectorAll('[data-profile-id]')
-            ).map(el => el.dataset.profileId).filter(Boolean);
+            const childProfileIds = [...new Set(
+                Array.from(childArea.querySelectorAll('.pack-children-stack--profile > [data-profile-id]'))
+                    .map(el => el.dataset.profileId).filter(Boolean)
+            )];
 
             if (childProfileIds.length === 0) return;
 
@@ -2813,6 +2814,16 @@ export function renderProfiles() {
         container.innerHTML = html;
         attachPackContainerHandlers(container);
         attachPackTriStateToggleHandlers(container);
+
+        // Hide "Reclassify All" for non-tool_enabled profile tabs
+        const profileType = profiles[0]?.profile_type || 'tool_enabled';
+        if (profileType !== 'tool_enabled') {
+            container.querySelectorAll('.pack-reclassify-all-btn').forEach(btn => {
+                btn.previousElementSibling?.classList.contains('pack-edit-dropdown-divider')
+                    && btn.previousElementSibling.remove();
+                btn.remove();
+            });
+        }
     }
 
     // Render all 4 profile class sections

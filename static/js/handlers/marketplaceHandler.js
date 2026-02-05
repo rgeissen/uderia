@@ -6,6 +6,7 @@
 // Import utility functions
 import { showNotification } from './rag/utils.js';
 import { escapeHtml } from '../ui.js';
+import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './agentPackGrouping.js';
 
 // Marketplace state
 let currentPage = 1;
@@ -1139,10 +1140,36 @@ async function loadMarketplaceCollections() {
             updatePaginationUI(data);
         }
         
-        // Render collections
-        collections.forEach(collection => {
-            container.appendChild(createCollectionCard(collection));
-        });
+        // Render collections (group by agent pack for My Assets)
+        if (currentTab === 'my-collections' && currentRepositoryType !== 'agent-packs') {
+            const { packGroups, ungrouped } = groupByAgentPack(collections);
+
+            for (const [, group] of packGroups) {
+                if (group.resources.length === 1) {
+                    container.appendChild(createCollectionCard(group.resources[0]));
+                } else {
+                    const containerEl = createPackContainerCardDOM(
+                        group.pack, group.resources, currentRepositoryType
+                    );
+                    const childGrid = containerEl.querySelector('.pack-children-grid');
+                    group.resources.forEach(col =>
+                        childGrid.appendChild(createCollectionCard(col))
+                    );
+                    containerEl.querySelector('.pack-toggle-all-btn')?.remove();
+                    container.appendChild(containerEl);
+                }
+            }
+            ungrouped.forEach(col => container.appendChild(createCollectionCard(col)));
+
+            attachPackContainerHandlers(container);
+            if (currentRepositoryType === 'knowledge') {
+                updatePackContainerDocCounts(container);
+            }
+        } else {
+            collections.forEach(collection => {
+                container.appendChild(createCollectionCard(collection));
+            });
+        }
         
     } catch (error) {
         console.error('Failed to load marketplace collections:', error);

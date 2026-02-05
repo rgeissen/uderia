@@ -5176,6 +5176,25 @@ button.bg-gray-700.px-2:hover {
     border-color: rgba(6, 182, 212, 0.3);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
+[data-theme="light"] .pack-edit-all-btn {
+    color: #0e7490;
+    background: rgba(14, 116, 144, 0.12);
+    border-color: rgba(14, 116, 144, 0.35);
+}
+[data-theme="light"] .pack-edit-all-btn:hover {
+    background: rgba(14, 116, 144, 0.2);
+    border-color: rgba(14, 116, 144, 0.5);
+}
+[data-theme="light"] .pack-edit-dropdown-item {
+    color: #374151;
+}
+[data-theme="light"] .pack-edit-dropdown-item:hover {
+    background: rgba(14, 116, 144, 0.08);
+    color: #0e7490;
+}
+[data-theme="light"] .pack-edit-dropdown-divider {
+    background: rgba(0, 0, 0, 0.08);
+}
 
 /* ── Profile-variant container card ──────────────────────────────────────── */
 
@@ -5221,13 +5240,19 @@ button.bg-gray-700.px-2:hover {
     background: rgba(241, 95, 34, 0.1);
 }
 
+.pack-edit-dropdown-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0.25rem 0;
+}
+
 .pack-children-stack--profile {
     border-left-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Light theme: profile-variant */
 [data-theme="light"] .agent-pack-container-card.pack-container-profile {
-    background: var(--card-bg);
+    background: var(--hover-bg);
     border-color: rgba(0, 0, 0, 0.1);
 }
 [data-theme="light"] .agent-pack-container-card.pack-container-profile:hover {
@@ -5237,10 +5262,33 @@ button.bg-gray-700.px-2:hover {
     background: rgba(0, 0, 0, 0.05);
     color: #6b7280;
 }
+[data-theme="light"] .pack-edit-all-btn--profile {
+    color: #4b5563;
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] .pack-edit-all-btn--profile:hover {
+    background: rgba(241, 95, 34, 0.1);
+    border-color: rgba(241, 95, 34, 0.3);
+    color: #c2410c;
+}
 [data-theme="light"] .pack-edit-dropdown--profile {
     background: #fff;
     border-color: rgba(0, 0, 0, 0.1);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] .pack-edit-dropdown--profile .pack-edit-dropdown-item {
+    color: #374151;
+}
+[data-theme="light"] .pack-edit-dropdown--profile .pack-edit-dropdown-item:hover {
+    background: rgba(241, 95, 34, 0.08);
+    color: #c2410c;
+}
+[data-theme="light"] .pack-edit-dropdown-divider {
+    background: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .pack-children-stack--profile {
+    border-left-color: rgba(0, 0, 0, 0.1);
 }
 
 /* ── Tri-state toggle for pack container ─────────────────────────────────── */
@@ -5376,6 +5424,17 @@ button.bg-gray-700.px-2:hover {
     font-size: 0.8125rem;
 }
 
+/* 3-column variant for sections with badges/actions in the 3rd column */
+.profile-kv-grid-3col {
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: 0.5rem 1rem;
+    align-items: center;
+}
+.profile-kv-grid-3col .profile-kv-action {
+    justify-self: end;
+}
+
 /* Action Buttons */
 .profile-action-btn {
     font-size: 0.75rem;
@@ -5499,6 +5558,9 @@ button.bg-gray-700.px-2:hover {
     .profile-kv-key {
         font-weight: 600;
         font-size: 0.75rem;
+    }
+    .profile-kv-grid-3col {
+        grid-template-columns: 1fr;
     }
 }
 

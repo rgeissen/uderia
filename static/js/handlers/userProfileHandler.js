@@ -208,22 +208,26 @@ class UserProfileManager {
     _renderAccountDetails() {
         const u = this.userData;
         const verifiedBadge = u.email_verified
-            ? '<span class="ml-2 text-xs font-medium px-1.5 py-0.5 rounded" style="background: rgba(16,185,129,0.15); color: #10b981;">Verified</span>'
-            : '<span class="ml-2 text-xs font-medium px-1.5 py-0.5 rounded" style="background: rgba(239,68,68,0.15); color: #ef4444;">Unverified</span>';
+            ? '<span class="text-xs font-medium px-1.5 py-0.5 rounded" style="background: rgba(16,185,129,0.15); color: #10b981;">Verified</span>'
+            : '<span class="text-xs font-medium px-1.5 py-0.5 rounded" style="background: rgba(239,68,68,0.15); color: #ef4444;">Unverified</span>';
         const lastLogin = u.last_login_at ? this._formatDateTime(u.last_login_at) : 'Never';
 
         return `
         <div class="profile-section">
             <h4 class="profile-section-title mb-4">Account Details</h4>
-            <div class="profile-kv-grid">
+            <div class="profile-kv-grid-3col">
                 <div class="profile-kv-key">Email</div>
-                <div class="profile-kv-value">${this._esc(u.email)}${verifiedBadge}</div>
+                <div class="profile-kv-value">${this._esc(u.email)}</div>
+                <div class="profile-kv-action">${verifiedBadge}</div>
                 <div class="profile-kv-key">Username</div>
                 <div class="profile-kv-value">@${this._esc(u.username)}</div>
+                <div></div>
                 <div class="profile-kv-key">Profile Tier</div>
                 <div class="profile-kv-value">${this._renderTierBadge(u.profile_tier)}</div>
+                <div></div>
                 <div class="profile-kv-key">Last Login</div>
                 <div class="profile-kv-value">${lastLogin}</div>
+                <div></div>
             </div>
         </div>`;
     }
@@ -240,14 +244,13 @@ class UserProfileManager {
         return `
         <div class="profile-section">
             <h4 class="profile-section-title mb-4">Security</h4>
-            <div class="profile-kv-grid">
+            <div class="profile-kv-grid-3col">
                 <div class="profile-kv-key">Password</div>
-                <div class="profile-kv-value flex items-center gap-2">
-                    <span style="letter-spacing: 2px;">••••••••</span>
-                    <button id="profile-change-pw-btn" class="profile-action-btn text-xs">Change Password</button>
-                </div>
+                <div class="profile-kv-value" style="letter-spacing: 2px;">••••••••</div>
+                <div class="profile-kv-action"><button id="profile-change-pw-btn" class="profile-action-btn text-xs">Change Password</button></div>
                 <div class="profile-kv-key">Access Tokens</div>
                 <div class="profile-kv-value">${activeTokens} active</div>
+                <div></div>
             </div>
         </div>`;
     }

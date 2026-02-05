@@ -6,6 +6,8 @@
  * planner repositories, and profile class sections.
  */
 
+import { testProfile, updateProfile } from '../api.js';
+
 // ─── SVG constants ───────────────────────────────────────────────────────────
 
 const CUBE_SVG = `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -270,6 +272,28 @@ function createProfilePackContainerCard(pack, resources, childCardsHtml) {
                                 onclick="event.stopPropagation();">
                             Toggle All Active/Inactive
                         </button>
+                        <button class="pack-edit-dropdown-item pack-test-all-btn"
+                                data-pack-id="${pack.id}"
+                                onclick="event.stopPropagation();">
+                            Test All in Pack
+                        </button>
+                        <button class="pack-edit-dropdown-item pack-harmonize-llm-btn"
+                                data-pack-id="${pack.id}"
+                                onclick="event.stopPropagation();">
+                            Harmonize LLM
+                        </button>
+                        <div class="pack-edit-dropdown-divider"></div>
+                        <button class="pack-edit-dropdown-item pack-reclassify-all-btn"
+                                data-pack-id="${pack.id}"
+                                onclick="event.stopPropagation();">
+                            Reclassify All
+                        </button>
+                        <div class="pack-edit-dropdown-divider"></div>
+                        <button class="pack-edit-dropdown-item pack-export-pack-btn"
+                                data-pack-id="${pack.id}"
+                                onclick="event.stopPropagation();">
+                            Export Pack
+                        </button>
                     </div>
                 </div>
                 <span class="text-gray-400 transition-transform">
@@ -359,6 +383,38 @@ export function attachPackContainerHandlers(parentElement) {
                     e.stopPropagation();
                     dropdown?.classList.add('hidden');
                     await handleToggleAll(card, toggleAllBtn.dataset.resourceType);
+                });
+            }
+            const testAllBtn = card.querySelector('.pack-test-all-btn');
+            if (testAllBtn) {
+                testAllBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    dropdown?.classList.add('hidden');
+                    await handleTestAllInPack(card);
+                });
+            }
+            const harmonizeBtn = card.querySelector('.pack-harmonize-llm-btn');
+            if (harmonizeBtn) {
+                harmonizeBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    dropdown?.classList.add('hidden');
+                    await handleHarmonizeLLM(card);
+                });
+            }
+            const reclassifyBtn = card.querySelector('.pack-reclassify-all-btn');
+            if (reclassifyBtn) {
+                reclassifyBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    dropdown?.classList.add('hidden');
+                    await handleReclassifyAllInPack(card);
+                });
+            }
+            const exportBtn = card.querySelector('.pack-export-pack-btn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    dropdown?.classList.add('hidden');
+                    await handleExportPack(card);
                 });
             }
         } else {
@@ -487,6 +543,294 @@ async function handleExportAll(containerCard, resourceType) {
         exported > 0 ? 'success' : 'error',
         3000
     );
+}
+
+// ─── Test All in Pack ────────────────────────────────────────────────────────
+
+async function handleTestAllInPack(containerCard) {
+    const childArea = containerCard.querySelector('.pack-children-container');
+    if (!childArea) return;
+
+    const profileEls = childArea.querySelectorAll('.pack-children-stack--profile > [data-profile-id]');
+    const profileIds = [...new Set(Array.from(profileEls).map(el => el.dataset.profileId).filter(Boolean))];
+    if (!profileIds.length) return;
+
+    window.showAppBanner?.(`Testing ${profileIds.length} profiles...`, 'info');
+
+    const cs = window.configState;
+    let activeIds = cs ? [...cs.activeForConsumptionProfileIds] : [];
+
+    for (const profileId of profileIds) {
+        const resultsContainer = document.getElementById(`test-results-${profileId}`);
+        if (resultsContainer) {
+            resultsContainer.innerHTML = '<span class="text-yellow-400">Testing...</span>';
+        }
+
+        try {
+            const result = await testProfile(profileId);
+            const allSuccessful = Object.values(result.results)
+                .every(r => r.status === 'success' || r.status === 'info');
+
+            if (resultsContainer) {
+                let html = '';
+                for (const [, value] of Object.entries(result.results)) {
+                    const cls = value.status === 'success' ? 'text-green-400'
+                        : value.status === 'info' ? 'text-blue-400'
+                        : value.status === 'warning' ? 'text-yellow-400'
+                        : 'text-red-400';
+                    html += `<p class="${cls}">${value.message}</p>`;
+                }
+                resultsContainer.innerHTML = html;
+            }
+
+            if (allSuccessful) {
+                if (!activeIds.includes(profileId)) activeIds.push(profileId);
+            } else {
+                activeIds = activeIds.filter(id => id !== profileId);
+            }
+
+            const checkbox = document.querySelector(
+                `input[data-action="toggle-active-consumption"][data-profile-id="${profileId}"]`
+            );
+            if (checkbox) checkbox.checked = allSuccessful;
+
+        } catch (error) {
+            if (resultsContainer) {
+                resultsContainer.innerHTML = `<span class="text-red-400">${error.message}</span>`;
+            }
+            activeIds = activeIds.filter(id => id !== profileId);
+            const checkbox = document.querySelector(
+                `input[data-action="toggle-active-consumption"][data-profile-id="${profileId}"]`
+            );
+            if (checkbox) checkbox.checked = false;
+        }
+    }
+
+    if (cs) {
+        await cs.setActiveForConsumptionProfiles(activeIds);
+    }
+
+    // Update tri-state toggle
+    const enabledCount = profileIds.filter(id => activeIds.includes(id)).length;
+    const cb = containerCard.querySelector('.pack-tristate-checkbox');
+    if (cb) {
+        if (enabledCount === profileIds.length) {
+            cb.checked = true;
+            cb.indeterminate = false;
+            containerCard.dataset.tristate = 'all';
+        } else if (enabledCount === 0) {
+            cb.checked = false;
+            cb.indeterminate = false;
+            containerCard.dataset.tristate = 'none';
+        } else {
+            cb.checked = false;
+            cb.indeterminate = true;
+            containerCard.dataset.tristate = 'mixed';
+        }
+    }
+
+    const passed = profileIds.filter(id => activeIds.includes(id)).length;
+    window.showAppBanner?.(
+        `Tested ${profileIds.length} profiles: ${passed} passed, ${profileIds.length - passed} failed`,
+        passed === profileIds.length ? 'success' : 'warning',
+        4000
+    );
+}
+
+// ─── Reclassify All in Pack ──────────────────────────────────────────────────
+
+async function handleReclassifyAllInPack(containerCard) {
+    const childArea = containerCard.querySelector('.pack-children-container');
+    if (!childArea) return;
+
+    const profileEls = childArea.querySelectorAll('.pack-children-stack--profile > [data-profile-id]');
+    const profileIds = [...new Set(Array.from(profileEls).map(el => el.dataset.profileId).filter(Boolean))];
+    if (!profileIds.length) return;
+
+    const token = localStorage.getItem('tda_auth_token');
+    if (!token) return;
+
+    window.showAppBanner?.(`Reclassifying ${profileIds.length} profiles...`, 'info');
+
+    let succeeded = 0;
+    for (const profileId of profileIds) {
+        const resultsContainer = document.getElementById(`test-results-${profileId}`);
+        if (resultsContainer) {
+            resultsContainer.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <svg class="animate-spin h-4 w-4 text-orange-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-orange-400">Reclassifying...</span>
+                </div>`;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/profiles/${profileId}/reclassify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            const result = await response.json();
+
+            if (response.ok && result.status === 'success') {
+                succeeded++;
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = '<p class="text-green-400">Reclassification completed</p>';
+                }
+            } else {
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = `<p class="text-red-400">Reclassification failed</p>`;
+                }
+            }
+        } catch (error) {
+            console.error(`[PackGrouping] Reclassify failed for ${profileId}:`, error);
+            if (resultsContainer) {
+                resultsContainer.innerHTML = '<p class="text-red-400">Reclassification failed</p>';
+            }
+        }
+    }
+
+    // Reload profiles to update flags
+    const cs = window.configState;
+    if (cs) {
+        await cs.loadProfiles();
+        // Trigger re-render via the exported function on window
+        if (typeof window.renderProfiles === 'function') {
+            window.renderProfiles();
+        }
+    }
+
+    window.showAppBanner?.(
+        `Reclassified ${succeeded}/${profileIds.length} profiles`,
+        succeeded === profileIds.length ? 'success' : 'warning',
+        4000
+    );
+}
+
+// ─── Export Pack ─────────────────────────────────────────────────────────────
+
+async function handleExportPack(containerCard) {
+    const packId = containerCard.dataset.packId;
+    if (!packId) return;
+
+    if (window.agentPackHandler?.handleExportAgentPack) {
+        await window.agentPackHandler.handleExportAgentPack(Number(packId));
+    } else {
+        window.showAppBanner?.('Export not available', 'error', 3000);
+    }
+}
+
+// ─── Harmonize LLM Provider ──────────────────────────────────────────────────
+
+async function handleHarmonizeLLM(containerCard) {
+    const cs = window.configState;
+    if (!cs) return;
+
+    const configs = cs.llmConfigurations || [];
+    if (!configs.length) {
+        window.showAppBanner?.('No LLM configurations available', 'error', 3000);
+        return;
+    }
+
+    const childArea = containerCard.querySelector('.pack-children-container');
+    if (!childArea) return;
+    const profileIds = [...new Set(
+        Array.from(childArea.querySelectorAll('.pack-children-stack--profile > [data-profile-id]'))
+            .map(el => el.dataset.profileId).filter(Boolean)
+    )];
+    if (!profileIds.length) return;
+
+    // Build options HTML from available LLM configs
+    const optionsHtml = configs.map(c =>
+        `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`
+    ).join('');
+
+    // Create lightweight picker modal using existing tpl-modal classes
+    const overlay = document.createElement('div');
+    overlay.className = 'tpl-modal-overlay';
+    overlay.style.opacity = '0';
+    overlay.innerHTML = `
+        <div class="tpl-modal-dialog" style="max-width: 28rem;">
+            <div class="tpl-modal-content">
+                <div class="tpl-modal-header">
+                    <h3 class="tpl-modal-title">Harmonize LLM Provider</h3>
+                    <button class="tpl-modal-close" data-action="cancel">&times;</button>
+                </div>
+                <div class="tpl-modal-body" style="padding: 1.25rem;">
+                    <p class="text-sm mb-4" style="color: var(--text-muted);">
+                        Apply one LLM configuration to all <strong>${profileIds.length}</strong> profiles in this pack.
+                    </p>
+                    <div class="tpl-form-group">
+                        <label class="tpl-form-label">LLM Configuration</label>
+                        <select class="tpl-form-input" id="harmonize-llm-select">
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                </div>
+                <div class="tpl-modal-footer">
+                    <button class="card-btn card-btn--lg card-btn--neutral" data-action="cancel">Cancel</button>
+                    <button class="card-btn card-btn--lg card-btn--warning" data-action="apply">Apply to All</button>
+                </div>
+            </div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+    // Animate in
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+
+    const close = () => {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 200);
+    };
+
+    return new Promise(resolve => {
+        // Cancel
+        overlay.querySelectorAll('[data-action="cancel"]').forEach(btn =>
+            btn.addEventListener('click', () => { close(); resolve(); })
+        );
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { close(); resolve(); }
+        });
+
+        // Apply
+        overlay.querySelector('[data-action="apply"]').addEventListener('click', async () => {
+            const selectedId = overlay.querySelector('#harmonize-llm-select').value;
+            const selectedName = configs.find(c => c.id === selectedId)?.name || selectedId;
+            close();
+
+            window.showAppBanner?.(`Applying "${selectedName}" to ${profileIds.length} profiles...`, 'info');
+
+            let updated = 0;
+            for (const profileId of profileIds) {
+                try {
+                    await updateProfile(profileId, { llmConfigurationId: selectedId });
+                    updated++;
+                } catch (err) {
+                    console.error(`[PackGrouping] Harmonize failed for ${profileId}:`, err);
+                }
+            }
+
+            // Reload and re-render
+            await cs.loadProfiles();
+            if (typeof window.renderProfiles === 'function') {
+                window.renderProfiles();
+            }
+
+            window.showAppBanner?.(
+                updated === profileIds.length
+                    ? `All ${updated} profiles updated to "${selectedName}"`
+                    : `Updated ${updated}/${profileIds.length} profiles`,
+                updated === profileIds.length ? 'success' : 'warning',
+                4000
+            );
+
+            resolve();
+        });
+    });
 }
 
 // ─── Async document count aggregation for knowledge containers ──────────────
