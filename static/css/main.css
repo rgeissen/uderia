@@ -5011,6 +5011,315 @@ button.bg-gray-700.px-2:hover {
     opacity: 1;
 }
 
+/* ── Agent Pack Container Cards ───────────────────────────────────────────── */
+
+.agent-pack-container-card {
+    position: relative;
+    background: var(--card-bg, rgba(255,255,255,0.03));
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.agent-pack-container-card:hover {
+    border-color: rgba(6, 182, 212, 0.4);
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.08);
+}
+.agent-pack-container-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.pack-container-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.pack-container-icon {
+    padding: 0.625rem;
+    background: rgba(6, 182, 212, 0.12);
+    border-radius: 0.5rem;
+    flex-shrink: 0;
+    color: #22d3ee;
+}
+
+.pack-container-count {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: rgba(6, 182, 212, 0.15);
+    color: #22d3ee;
+    border-radius: 9999px;
+    white-space: nowrap;
+}
+
+/* Chevron rotation */
+.agent-pack-container-card .pack-expand-chevron {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.agent-pack-container-card[data-expanded="true"] .pack-expand-chevron {
+    transform: rotate(180deg);
+}
+
+/* Expandable children container */
+.pack-children-container {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    margin-top: 0;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.25s ease,
+                margin-top 0.25s ease;
+}
+
+/* Children grid layout (for repositories) */
+.pack-children-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+/* Children stack layout (for profiles) */
+.pack-children-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-left: 1rem;
+    border-left: 2px solid rgba(6, 182, 212, 0.2);
+}
+
+/* Expanded state — span full grid width in grid parents */
+.agent-pack-container-card.pack-container-expanded {
+    grid-column: 1 / -1;
+}
+
+/* Edit All button */
+.pack-edit-all-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #22d3ee;
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+    white-space: nowrap;
+}
+.pack-edit-all-btn:hover {
+    background: rgba(6, 182, 212, 0.2);
+    border-color: rgba(6, 182, 212, 0.4);
+}
+
+/* Aggregate metadata row */
+.pack-aggregate-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 0.375rem;
+}
+.pack-aggregate-row .pack-aggregate-item {
+    white-space: nowrap;
+}
+.pack-aggregate-row .separator {
+    color: #4b5563;
+}
+
+/* Edit All dropdown */
+.pack-container-edit-slot {
+    position: relative;
+}
+.pack-edit-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.25rem;
+    min-width: 12rem;
+    background: var(--card-bg, #1f2937);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: 0.5rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 20;
+    overflow: hidden;
+}
+.pack-edit-dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-primary, #e5e7eb);
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.pack-edit-dropdown-item:hover {
+    background: rgba(6, 182, 212, 0.1);
+}
+
+/* Light theme overrides */
+[data-theme="light"] .agent-pack-container-card {
+    border-color: rgba(6, 182, 212, 0.25);
+    background: var(--card-bg);
+}
+[data-theme="light"] .agent-pack-container-card:hover {
+    border-color: rgba(6, 182, 212, 0.5);
+}
+[data-theme="light"] .pack-edit-dropdown {
+    background: #fff;
+    border-color: rgba(6, 182, 212, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Profile-variant container card ──────────────────────────────────────── */
+
+.agent-pack-container-card.pack-container-profile {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+.agent-pack-container-card.pack-container-profile:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: none;
+}
+.agent-pack-container-card.pack-container-profile::before {
+    display: none;
+}
+
+.pack-profile-count {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    color: #9ca3af;
+    border-radius: 9999px;
+    white-space: nowrap;
+}
+
+.pack-edit-all-btn--profile {
+    color: #d1d5db;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+.pack-edit-all-btn--profile:hover {
+    background: rgba(241, 95, 34, 0.15);
+    border-color: rgba(241, 95, 34, 0.3);
+    color: #F15F22;
+}
+
+.pack-edit-dropdown--profile {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+.pack-edit-dropdown--profile .pack-edit-dropdown-item:hover {
+    background: rgba(241, 95, 34, 0.1);
+}
+
+.pack-children-stack--profile {
+    border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Light theme: profile-variant */
+[data-theme="light"] .agent-pack-container-card.pack-container-profile {
+    background: var(--card-bg);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .agent-pack-container-card.pack-container-profile:hover {
+    border-color: rgba(0, 0, 0, 0.2);
+}
+[data-theme="light"] .pack-profile-count {
+    background: rgba(0, 0, 0, 0.05);
+    color: #6b7280;
+}
+[data-theme="light"] .pack-edit-dropdown--profile {
+    background: #fff;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Tri-state toggle for pack container ─────────────────────────────────── */
+
+.pack-tristate-track {
+    position: relative;
+    width: 2.75rem;
+    height: 1.5rem;
+    background: rgba(31, 41, 55, 0.5);
+    border: 1px solid #6b7280;
+    border-radius: 9999px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.pack-tristate-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: white;
+    border: 1px solid #4b5563;
+    border-radius: 9999px;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+/* ON state — orange, thumb right */
+.pack-tristate-checkbox:checked ~ .pack-tristate-track {
+    background-color: var(--teradata-orange, #F15F22);
+    border-color: var(--teradata-orange, #F15F22);
+}
+.pack-tristate-checkbox:checked ~ .pack-tristate-track .pack-tristate-thumb {
+    transform: translateX(1.25rem);
+    border-color: white;
+}
+
+/* INDETERMINATE state — amber, thumb centered with dash */
+.pack-tristate-checkbox:indeterminate ~ .pack-tristate-track {
+    background-color: #d97706;
+    border-color: #d97706;
+}
+.pack-tristate-checkbox:indeterminate ~ .pack-tristate-track .pack-tristate-thumb {
+    transform: translateX(0.625rem);
+    border-color: white;
+}
+.pack-tristate-checkbox:indeterminate ~ .pack-tristate-track .pack-tristate-thumb::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 0.5rem;
+    height: 2px;
+    background: #d97706;
+    border-radius: 1px;
+}
+
+/* Focus ring */
+.pack-tristate-checkbox:focus ~ .pack-tristate-track {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.5);
+}
+
+/* Light theme: tri-state toggle */
+[data-theme="light"] .pack-tristate-track {
+    background: #e5e7eb;
+    border-color: #9ca3af;
+}
+[data-theme="light"] .pack-tristate-thumb {
+    background: white;
+    border-color: #d1d5db;
+}
+
 /* =========================================================================
    USER PROFILE MODAL — Industrial, Theme-Aware
    ========================================================================= */

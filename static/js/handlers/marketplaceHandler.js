@@ -249,7 +249,7 @@ async function loadMarketplaceAgentPacks() {
             const response = await fetch('/api/v1/agent-packs', { headers });
             if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             const data = await response.json();
-            packs = data.packs || [];
+            packs = (data.packs || []).filter(p => p.is_owned !== false);
         } else {
             // Load marketplace agent packs (browse)
             const params = new URLSearchParams({

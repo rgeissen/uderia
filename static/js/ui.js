@@ -12,6 +12,7 @@ import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/s
 import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
 import { checkServerStatus, loadAllSessions } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
+import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './handlers/agentPackGrouping.js';
 
 
 // NOTE: This module no longer imports from eventHandlers.js, breaking a circular dependency.
@@ -5068,7 +5069,7 @@ export async function loadRagCollections() {
         sortCollections(plannerCollections);
         sortCollections(knowledgeCollections);
         
-        // Render Planner repositories
+        // Render Planner repositories (grouped by agent pack)
         DOM.ragMaintenanceCollectionsContainer.innerHTML = '';
         if (!plannerCollections.length) {
             const emptyMsg = document.createElement('div');
@@ -5076,13 +5077,22 @@ export async function loadRagCollections() {
             emptyMsg.textContent = 'No planner repositories found.';
             DOM.ragMaintenanceCollectionsContainer.appendChild(emptyMsg);
         } else {
-            plannerCollections.forEach(col => {
-                const card = createCollectionCard(col);
-                DOM.ragMaintenanceCollectionsContainer.appendChild(card);
-            });
+            const { packGroups: plannerPacks, ungrouped: plannerUngrouped } = groupByAgentPack(plannerCollections);
+            for (const [, group] of plannerPacks) {
+                if (group.resources.length === 1) {
+                    DOM.ragMaintenanceCollectionsContainer.appendChild(createCollectionCard(group.resources[0]));
+                } else {
+                    const containerEl = createPackContainerCardDOM(group.pack, group.resources, 'planner');
+                    const childGrid = containerEl.querySelector('.pack-children-grid');
+                    group.resources.forEach(col => childGrid.appendChild(createCollectionCard(col)));
+                    DOM.ragMaintenanceCollectionsContainer.appendChild(containerEl);
+                }
+            }
+            plannerUngrouped.forEach(col => DOM.ragMaintenanceCollectionsContainer.appendChild(createCollectionCard(col)));
+            attachPackContainerHandlers(DOM.ragMaintenanceCollectionsContainer);
         }
         
-        // Render Knowledge repositories
+        // Render Knowledge repositories (grouped by agent pack)
         if (DOM.knowledgeRepositoriesContainer) {
             DOM.knowledgeRepositoriesContainer.innerHTML = '';
             if (!knowledgeCollections.length) {
@@ -5091,10 +5101,20 @@ export async function loadRagCollections() {
                 emptyMsg.textContent = 'No knowledge repositories found.';
                 DOM.knowledgeRepositoriesContainer.appendChild(emptyMsg);
             } else {
-                knowledgeCollections.forEach(col => {
-                    const card = createKnowledgeRepositoryCard(col);
-                    DOM.knowledgeRepositoriesContainer.appendChild(card);
-                });
+                const { packGroups: knowledgePacks, ungrouped: knowledgeUngrouped } = groupByAgentPack(knowledgeCollections);
+                for (const [, group] of knowledgePacks) {
+                    if (group.resources.length === 1) {
+                        DOM.knowledgeRepositoriesContainer.appendChild(createKnowledgeRepositoryCard(group.resources[0]));
+                    } else {
+                        const containerEl = createPackContainerCardDOM(group.pack, group.resources, 'knowledge');
+                        const childGrid = containerEl.querySelector('.pack-children-grid');
+                        group.resources.forEach(col => childGrid.appendChild(createKnowledgeRepositoryCard(col)));
+                        DOM.knowledgeRepositoriesContainer.appendChild(containerEl);
+                    }
+                }
+                knowledgeUngrouped.forEach(col => DOM.knowledgeRepositoriesContainer.appendChild(createKnowledgeRepositoryCard(col)));
+                attachPackContainerHandlers(DOM.knowledgeRepositoriesContainer);
+                updatePackContainerDocCounts(DOM.knowledgeRepositoriesContainer);
             }
         }
     } catch (err) {
@@ -5113,7 +5133,8 @@ window.loadRagCollections = loadRagCollections;
 function createKnowledgeRepositoryCard(col) {
     const card = document.createElement('div');
     card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
-    
+    card.dataset.repoId = col.id;
+
     // Header with title and status badge
     const header = document.createElement('div');
     header.className = 'flex items-start justify-between gap-2';
@@ -5257,26 +5278,44 @@ function createKnowledgeRepositoryCard(col) {
     });
     
     // Edit button
+    const isManaged = col.is_subscribed && !col.is_owned;
+    const managedBy = (col.agent_packs || []).map(p => p.name).join(', ') || 'external source';
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
-    editBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+    if (isManaged) {
+        editBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+        editBtn.disabled = true;
+        editBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to edit`;
+    } else {
+        editBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+    }
     editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => {
-        if (window.ragCollectionManagement) {
-            window.ragCollectionManagement.openEditCollectionModal(col);
-        }
-    });
-    
+    if (!isManaged) {
+        editBtn.addEventListener('click', () => {
+            if (window.ragCollectionManagement) {
+                window.ragCollectionManagement.openEditCollectionModal(col);
+            }
+        });
+    }
+
     // Upload button (Knowledge repositories only)
     const uploadBtn = document.createElement('button');
     uploadBtn.type = 'button';
-    uploadBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+    if (isManaged) {
+        uploadBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+        uploadBtn.disabled = true;
+        uploadBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to upload`;
+    } else {
+        uploadBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+    }
     uploadBtn.innerHTML = '<span style="font-size: 14px;">+</span> Upload';
-    uploadBtn.addEventListener('click', () => {
-        if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.openUploadDocumentsModal) {
-            window.knowledgeRepositoryHandler.openUploadDocumentsModal(col.id, col.name, col);
-        }
-    });
+    if (!isManaged) {
+        uploadBtn.addEventListener('click', () => {
+            if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.openUploadDocumentsModal) {
+                window.knowledgeRepositoryHandler.openUploadDocumentsModal(col.id, col.name, col);
+            }
+        });
+    }
 
     // Export button (Knowledge repositories only)
     const exportBtn = document.createElement('button');
@@ -5338,6 +5377,7 @@ function createKnowledgeRepositoryCard(col) {
 function createCollectionCard(col) {
     const card = document.createElement('div');
     card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
+    card.dataset.repoId = col.id;
             
             // Header with title and status badge
             const header = document.createElement('div');
@@ -5477,15 +5517,25 @@ function createCollectionCard(col) {
             });
             
             // Edit button
+            const isPlannerManaged = col.is_subscribed && !col.is_owned;
+            const plannerManagedBy = (col.agent_packs || []).map(p => p.name).join(', ') || 'external source';
             const editBtn = document.createElement('button');
             editBtn.type = 'button';
-            editBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+            if (isPlannerManaged) {
+                editBtn.className = 'px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed';
+                editBtn.disabled = true;
+                editBtn.title = `Managed by: ${plannerManagedBy} — uninstall the pack(s) to edit`;
+            } else {
+                editBtn.className = 'px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white';
+            }
             editBtn.textContent = 'Edit';
-            editBtn.addEventListener('click', () => {
-                if (window.ragCollectionManagement) {
-                    window.ragCollectionManagement.openEditCollectionModal(col);
-                }
-            });
+            if (!isPlannerManaged) {
+                editBtn.addEventListener('click', () => {
+                    if (window.ragCollectionManagement) {
+                        window.ragCollectionManagement.openEditCollectionModal(col);
+                    }
+                });
+            }
             
             // Export button (only for owned collections)
             if (col.is_owned) {

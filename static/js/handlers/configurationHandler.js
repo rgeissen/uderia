@@ -13,6 +13,7 @@ import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import { showAppBanner } from '../bannerSystem.js';
 import { markSaving } from '../configDirtyState.js';
 import { loadAgentPacks } from './agentPackHandler.js';
+import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers } from './agentPackGrouping.js';
 
 // ============================================================================
 // SESSION PAGINATION STATE
@@ -2680,6 +2681,87 @@ function initializeConfigTabs() {
     });
 }
 
+// ── Tri-state toggle handler for profile pack containers ─────────────────────
+
+function attachPackTriStateToggleHandlers(parentElement) {
+    parentElement.querySelectorAll('.pack-tristate-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', async (e) => {
+            e.stopPropagation();
+            const packId = e.target.dataset.packId;
+            const containerCard = e.target.closest('.agent-pack-container-card');
+            if (!containerCard) return;
+
+            // Gather profile IDs from child cards inside the pack children area
+            const childArea = containerCard.querySelector('.pack-children-container');
+            if (!childArea) return;
+            const childProfileIds = Array.from(
+                childArea.querySelectorAll('[data-profile-id]')
+            ).map(el => el.dataset.profileId).filter(Boolean);
+
+            if (childProfileIds.length === 0) return;
+
+            const enableAll = e.target.checked;
+
+            // Guard: cannot disable all if pack contains the default profile
+            if (!enableAll && childProfileIds.includes(configState.defaultProfileId)) {
+                e.target.checked = true;
+                showNotification('error',
+                    'Cannot deactivate all — this pack contains the default profile. ' +
+                    'Set a different profile as default first.');
+                return;
+            }
+
+            let activeIds = [...configState.activeForConsumptionProfileIds];
+
+            if (enableAll) {
+                for (const pid of childProfileIds) {
+                    if (!activeIds.includes(pid)) {
+                        activeIds.push(pid);
+                    }
+                }
+            } else {
+                activeIds = activeIds.filter(id => !childProfileIds.includes(id));
+            }
+
+            try {
+                // Save expanded state before re-render
+                const expandedPacks = new Set();
+                document.querySelectorAll('.agent-pack-container-card[data-expanded="true"]').forEach(card => {
+                    expandedPacks.add(card.dataset.packId);
+                });
+
+                await configState.setActiveForConsumptionProfiles(activeIds);
+                await configState.loadProfiles();
+                renderProfiles();
+                renderLLMProviders();
+                renderMCPServers();
+
+                // Restore expanded state after re-render
+                expandedPacks.forEach(pid => {
+                    const card = document.querySelector(`.agent-pack-container-card[data-pack-id="${pid}"]`);
+                    if (card) {
+                        const children = card.querySelector('.pack-children-container');
+                        if (children) {
+                            children.style.maxHeight = children.scrollHeight + 'px';
+                            children.style.opacity = '1';
+                            children.style.marginTop = '1rem';
+                            card.dataset.expanded = 'true';
+                            card.classList.add('pack-container-expanded');
+                        }
+                    }
+                });
+
+                showNotification('success',
+                    `All pack profiles ${enableAll ? 'enabled' : 'disabled'}`);
+            } catch (err) {
+                console.error('[PackGrouping] Profile toggle all failed:', err);
+                showNotification('error', 'Failed to toggle profiles');
+                renderProfiles();
+            }
+        });
+    });
+}
+
 // ============================================================================
 // UI RENDERING - PROFILES
 // ============================================================================
@@ -2712,56 +2794,40 @@ export function renderProfiles() {
     const genieProfiles = configState.profiles.filter(p => p.profile_type === 'genie');
     const toolProfiles = configState.profiles.filter(p => !p.profile_type || p.profile_type === 'tool_enabled');
 
-    // Render conversation profiles
-    if (conversationProfiles.length === 0) {
-        conversationContainer.innerHTML = `
-            <div class="text-center text-gray-400 py-8">
-                <p>No conversation profiles configured.</p>
-            </div>
-        `;
-    } else {
-        conversationContainer.innerHTML = conversationProfiles.map(profile => renderProfileCard(profile)).join('');
+    // Helper: render profiles into a container, grouping by agent pack
+    function renderProfilesIntoContainer(profiles, container, emptyMsg) {
+        if (!container) return;
+        if (profiles.length === 0) {
+            container.innerHTML = `<div class="text-center text-gray-400 py-8"><p>${emptyMsg}</p></div>`;
+            return;
+        }
+        const { packGroups, ungrouped } = groupByAgentPack(profiles);
+        let html = '';
+        for (const [, group] of packGroups) {
+            if (group.resources.length === 1) {
+                html += renderProfileCard(group.resources[0]);
+            } else {
+                const childHtml = group.resources.map(p => renderProfileCard(p)).join('');
+                html += createPackContainerCard(group.pack, group.resources, 'profile', childHtml);
+            }
+        }
+        html += ungrouped.map(p => renderProfileCard(p)).join('');
+        container.innerHTML = html;
+        attachPackContainerHandlers(container);
+        attachPackTriStateToggleHandlers(container);
     }
 
-    // Render RAG focused profiles
+    // Render all 4 profile class sections
+    renderProfilesIntoContainer(conversationProfiles, conversationContainer, 'No conversation profiles configured.');
+
     const ragContainer = document.getElementById('rag-profiles-container');
-    if (ragContainer) {
-        if (ragFocusedProfiles.length === 0) {
-            ragContainer.innerHTML = `
-                <div class="text-center text-gray-400 py-8">
-                    <p>No RAG focused profiles configured.</p>
-                </div>
-            `;
-        } else {
-            ragContainer.innerHTML = ragFocusedProfiles.map(profile => renderProfileCard(profile)).join('');
-        }
-    }
+    renderProfilesIntoContainer(ragFocusedProfiles, ragContainer, 'No RAG focused profiles configured.');
 
-    // Render Genie profiles
     const genieContainer = document.getElementById('genie-profiles-container');
-    if (genieContainer) {
-        if (genieProfiles.length === 0) {
-            genieContainer.innerHTML = `
-                <div class="text-center text-gray-400 py-8">
-                    <p>No Genie profiles configured.</p>
-                    <p class="text-xs mt-2">Genie profiles coordinate multiple other profiles to answer complex questions.</p>
-                </div>
-            `;
-        } else {
-            genieContainer.innerHTML = genieProfiles.map(profile => renderProfileCard(profile)).join('');
-        }
-    }
+    renderProfilesIntoContainer(genieProfiles, genieContainer,
+        'No Genie profiles configured.</p><p class="text-xs mt-2">Genie profiles coordinate multiple other profiles to answer complex questions.');
 
-    // Render tool-enabled profiles
-    if (toolProfiles.length === 0) {
-        toolContainer.innerHTML = `
-            <div class="text-center text-gray-400 py-8">
-                <p>No tool-enabled profiles configured.</p>
-            </div>
-        `;
-    } else {
-        toolContainer.innerHTML = toolProfiles.map(profile => renderProfileCard(profile)).join('');
-    }
+    renderProfilesIntoContainer(toolProfiles, toolContainer, 'No tool-enabled profiles configured.');
 
     // Setup tab switching
     setupProfileTypeTabs();
@@ -3056,6 +3122,16 @@ function renderProfileCard(profile) {
                                     </svg>
                                     <span class="flex-1">Copy Profile</span>
                                 </button>
+                                ${(profile.is_subscribed && !profile.is_owned) ? `
+                                <button type="button" disabled
+                                    class="w-full text-left px-4 py-2.5 text-sm text-gray-600 cursor-not-allowed flex items-center gap-3"
+                                    title="Managed by: ${escapeHtml((profile.agent_packs || []).map(p => p.name).join(', ') || 'external source')} — uninstall the pack(s) to edit">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                    </svg>
+                                    <span class="flex-1">Edit Profile</span>
+                                </button>
+                                ` : `
                                 <button type="button" data-action="edit-profile" data-profile-id="${profile.id}"
                                     class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-3">
                                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3063,6 +3139,7 @@ function renderProfileCard(profile) {
                                     </svg>
                                     <span class="flex-1">Edit Profile</span>
                                 </button>
+                                `}
                                 <div class="border-t border-gray-700 my-1"></div>
                                 ${(profile.agent_packs?.length > 0) ? `
                                 <button type="button" disabled

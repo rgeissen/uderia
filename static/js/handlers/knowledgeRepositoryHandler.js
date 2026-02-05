@@ -6,6 +6,7 @@
 import { state } from '../state.js';
 import { populateMcpServerDropdown } from './rag/utils.js';
 import { openCollectionInspection, loadRagCollections } from '../ui.js';
+import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers, updatePackContainerDocCounts } from './agentPackGrouping.js';
 
 /**
  * Initialize Knowledge repository handlers
@@ -815,8 +816,31 @@ export async function loadKnowledgeRepositories() {
             return;
         }
         
-        container.innerHTML = knowledgeRepos.map(repo => createKnowledgeRepositoryCard(repo)).join('');
-        
+        // Group resources by agent pack for container card display
+        const { packGroups, ungrouped } = groupByAgentPack(knowledgeRepos);
+        let html = '';
+
+        // Pack groups: container card if >1 resource, normal card if 1
+        for (const [, group] of packGroups) {
+            if (group.resources.length === 1) {
+                html += createKnowledgeRepositoryCard(group.resources[0]);
+            } else {
+                const childHtml = group.resources.map(r => createKnowledgeRepositoryCard(r)).join('');
+                html += createPackContainerCard(group.pack, group.resources, 'knowledge', childHtml);
+            }
+        }
+
+        // Ungrouped resources (user-created, no pack)
+        html += ungrouped.map(repo => createKnowledgeRepositoryCard(repo)).join('');
+
+        container.innerHTML = html;
+
+        // Attach expand/collapse handlers for container cards
+        attachPackContainerHandlers(container);
+
+        // Aggregate async document counts into container card summaries
+        updatePackContainerDocCounts(container);
+
         // Attach event listeners to View and Delete buttons
         // Pass the full repository data so we don't need to fetch it again
         attachKnowledgeRepositoryCardHandlers(container, knowledgeRepos);
@@ -830,6 +854,9 @@ export async function loadKnowledgeRepositories() {
         `;
     }
 }
+
+// Expose globally for bulk-toggle re-render in agentPackGrouping.js
+window.loadKnowledgeRepositories = loadKnowledgeRepositories;
 
 /**
  * Attach event listeners to Knowledge repository card buttons
@@ -1186,6 +1213,8 @@ function createKnowledgeRepositoryCard(repo) {
     
     const statusClass = repo.enabled ? 'bg-green-500' : 'bg-gray-500';
     const chunkCount = repo.count || repo.example_count || 0;
+    const isManaged = repo.is_subscribed && !repo.is_owned;
+    const managedBy = (repo.agent_packs || []).map(p => p.name).join(', ') || 'external source';
     
     // Fetch actual document count (will be updated asynchronously)
     setTimeout(() => fetchKnowledgeDocumentCountForCard(repoId), 100);
@@ -1251,15 +1280,30 @@ function createKnowledgeRepositoryCard(repo) {
                 <button class="view-knowledge-repo-btn px-3 py-1 rounded-md bg-[#F15F22] hover:bg-[#D9501A] text-sm text-white" data-repo-id="${repoId}">
                     Inspect
                 </button>
-                <button class="edit-knowledge-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white" data-repo-id="${repoId}">
-                    Edit
-                </button>
-                <button class="upload-knowledge-docs-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                    Upload
-                </button>
+                ${isManaged
+                    ? `<button class="px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed" disabled
+                            title="Managed by: ${managedBy} — uninstall the pack(s) to edit">
+                        Edit
+                    </button>`
+                    : `<button class="edit-knowledge-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white" data-repo-id="${repoId}">
+                        Edit
+                    </button>`
+                }
+                ${isManaged
+                    ? `<button class="px-3 py-1 rounded-md bg-white/5 text-sm text-gray-600 cursor-not-allowed flex items-center gap-1" disabled
+                            title="Managed by: ${managedBy} — uninstall the pack(s) to upload">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Upload
+                    </button>`
+                    : `<button class="upload-knowledge-docs-btn px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Upload
+                    </button>`
+                }
                 <button class="export-knowledge-repo-btn px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-sm text-white flex items-center gap-1" data-repo-id="${repoId}" data-repo-name="${displayName}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
