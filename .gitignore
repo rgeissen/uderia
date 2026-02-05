@@ -93,6 +93,10 @@ test/inference_profile_test.py
 # Gemini
 .gemini/
 
-# Agent packs - corpus data and import artifacts (not distributed)
+# Claude Code local settings (contains session-specific tokens)
+.claude/settings.local.json
+
+# Agent packs - corpus data, import artifacts, and pipeline config (not distributed)
 agent_packs/*/corpus/
 agent_packs/*/import_output/
+agent_packs/*/pipeline_config.json

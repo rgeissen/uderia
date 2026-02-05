@@ -382,6 +382,38 @@ class AgentPackManager:
                                 except Exception as e:
                                     app_logger.warning(f"  Failed to delete collection {coll_id}: {e}")
 
+                    # Delete orphaned pack installation records whose profiles
+                    # were all just replaced (prevents name dedup creating "(2)", "(3)")
+                    old_pack_ids = set()
+                    for pid in replaced_profile_ids:
+                        for pack_info in pack_db.get_packs_for_resource("profile", str(pid)):
+                            old_pack_ids.add(pack_info["id"])
+                    for old_id in old_pack_ids:
+                        remaining_resources = pack_db.get_resources_for_pack(old_id)
+                        profile_resources = [
+                            r for r in remaining_resources
+                            if r["resource_type"] == "profile"
+                        ]
+                        # Only delete if all profiles in this pack were replaced
+                        all_replaced = all(
+                            r["resource_id"] in [str(p) for p in replaced_profile_ids]
+                            for r in profile_resources
+                        )
+                        if all_replaced:
+                            pack_db.remove_pack_resources(old_id)
+                            conn_tmp = sqlite3.connect(self.db_path)
+                            try:
+                                conn_tmp.execute(
+                                    "DELETE FROM agent_pack_installations WHERE id = ?",
+                                    (old_id,),
+                                )
+                                conn_tmp.commit()
+                                app_logger.info(
+                                    f"  Deleted old pack installation id={old_id}"
+                                )
+                            finally:
+                                conn_tmp.close()
+
                     # Refresh existing_tags after deletions
                     existing_profiles = config_manager.get_profiles(user_uuid)
                     existing_tags = {p.get("tag") for p in existing_profiles if p.get("tag")}

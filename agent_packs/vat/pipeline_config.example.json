@@ -1,0 +1,13 @@
+{
+    "corpcontent_dir": "/Users/rainer.geissendoerfer/my_code/CorpContent",
+    "corpus_tools_dir": "/Users/rainer.geissendoerfer/my_private_code/TheVirtualAccountTeam/corpus_tools",
+    "corpus_output_dir": "/Users/rainer.geissendoerfer/my_private_code/TheVirtualAccountTeam/Corpus",
+    "categories": ["Agentic", "CSA", "CTF", "DS", "Delivery", "Product", "Sales", "Systems", "UseCases"],
+    "vat_project_dir": "/Users/rainer.geissendoerfer/my_private_code/TheVirtualAccountTeam",
+    "corpus_python": "/path/to/TheVirtualAccountTeam/venv/bin/python",
+    "deploy_ssh_host": "",
+    "deploy_ssh_path": "",
+    "deploy_docker_container": "",
+    "uderia_base_url": "http://localhost:5050",
+    "poll_interval_seconds": 3600
+}
