@@ -62,6 +62,113 @@ function hideLoadMoreSessionsButton() {
     if (existingBtn) existingBtn.remove();
 }
 
+/**
+ * Refreshes the session list by fetching fresh data and re-rendering the DOM.
+ * Applies visibility filters (utility sessions, archived sessions).
+ * Call after operations that modify sessions (archive, delete, create).
+ *
+ * @param {boolean} resetPagination - If true, resets to first page (default: true)
+ * @returns {Promise<void>}
+ */
+export async function refreshSessionsList(resetPagination = true) {
+    try {
+        // Reset pagination if requested
+        if (resetPagination) {
+            sessionPaginationState = {
+                loadedOffset: 0,
+                totalCount: 0,
+                hasMore: false,
+                isLoading: false
+            };
+        }
+
+        // Fetch first page
+        const result = await API.loadSessions(SESSION_PAGE_SIZE, 0);
+        const sessions = result.sessions || [];
+
+        // Update pagination state
+        sessionPaginationState.totalCount = result.total_count;
+        sessionPaginationState.hasMore = result.has_more;
+
+        // Sort hierarchically (preserves Genie parent/child structure)
+        const sortedSessions = sortSessionsHierarchically(sessions);
+
+        // Clear DOM
+        DOM.sessionList.innerHTML = '';
+        hideLoadMoreSessionsButton();
+
+        // Build parent-to-children map for last-child detection
+        const parentToChildIds = new Map();
+        sortedSessions.forEach(session => {
+            const genie = session.genie_metadata || {};
+            if (genie.is_genie_slave && genie.parent_session_id) {
+                if (!parentToChildIds.has(genie.parent_session_id)) {
+                    parentToChildIds.set(genie.parent_session_id, []);
+                }
+                parentToChildIds.get(genie.parent_session_id).push(session.id);
+            }
+        });
+
+        // Render each session
+        sortedSessions.forEach(session => {
+            const isActive = session.id === state.currentSessionId;
+
+            // Check if last child (for tree connector styling)
+            const genie = session.genie_metadata || {};
+            let isLastChild = false;
+            if (genie.is_genie_slave && genie.parent_session_id) {
+                const childIds = parentToChildIds.get(genie.parent_session_id) || [];
+                isLastChild = session.id === childIds[childIds.length - 1];
+            }
+
+            const item = UI.addSessionToList(session, isActive, isLastChild);
+            DOM.sessionList.appendChild(item);
+        });
+
+        // Show "Load More" button if needed
+        if (result.has_more) {
+            const remaining = result.total_count - sessions.length;
+            showLoadMoreSessionsButton(remaining);
+        }
+
+        // Apply visibility filters
+        if (window.updateUtilitySessionsFilter) {
+            window.updateUtilitySessionsFilter();
+        }
+        if (window.updateArchivedSessionsFilter) {
+            window.updateArchivedSessionsFilter();
+        }
+
+        // Update Genie badges
+        if (typeof updateGenieMasterBadges === 'function') {
+            updateGenieMasterBadges();
+        }
+
+        console.log('[refreshSessionsList] Refreshed:', sessions.length, 'sessions loaded');
+
+        // Check if current session was archived and no active sessions remain
+        const activeSessions = sessions.filter(s => !s.archived && !s.is_archived);
+        const currentSessionStillActive = activeSessions.some(s => s.id === state.currentSessionId);
+
+        if (!currentSessionStillActive && activeSessions.length === 0) {
+            // Current session was archived and no active sessions remain
+            // Automatically create a new session
+            console.log('[refreshSessionsList] No active sessions remain, creating new session');
+            const { handleStartNewSession } = await import('./sessionManagement.js');
+            await handleStartNewSession();
+        } else if (!currentSessionStillActive && activeSessions.length > 0) {
+            // Current session was archived but other active sessions exist
+            // Switch to the most recent active session
+            console.log('[refreshSessionsList] Current session archived, switching to most recent active session');
+            const { handleLoadSession } = await import('./sessionManagement.js');
+            await handleLoadSession(activeSessions[0].id);
+        }
+    } catch (error) {
+        console.error('[refreshSessionsList] Failed:', error);
+        throw error;
+    }
+}
+
 async function handleLoadMoreSessions() {
     if (sessionPaginationState.isLoading) return;
 

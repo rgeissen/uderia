@@ -986,11 +986,11 @@ function attachKnowledgeRepositoryCardHandlers(container, repositories) {
                 return;
             }
             
-            console.log('[Knowledge] Delete button clicked for:', repo.collection_name);
-            
+            console.log('[Knowledge] Delete button clicked for:', repo.name);
+
             // Use the centralized delete function
             if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.deleteKnowledgeRepository) {
-                await window.knowledgeRepositoryHandler.deleteKnowledgeRepository(parseInt(repoId), repo.collection_name);
+                await window.knowledgeRepositoryHandler.deleteKnowledgeRepository(parseInt(repoId), repo.name);
                 // Reload after deletion
                 await loadKnowledgeRepositories();
             } else {
@@ -2322,4 +2322,159 @@ async function reloadCollections() {
 
     // Reload planner repositories using the correct function
     await loadRagCollections();
+}
+
+/**
+ * Delete a Knowledge Repository
+ */
+export async function deleteKnowledgeRepository(collectionId, collectionName) {
+    // Use custom confirmation modal
+    if (!window.showConfirmation) {
+        console.error('Confirmation system not available');
+        return;
+    }
+
+    // Helper function for HTML escaping
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        const el = document.createElement('span');
+        el.textContent = str;
+        return el.innerHTML;
+    };
+
+    // Function to perform the actual deletion
+    const doDelete = async () => {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                // Show success message with archive information
+                const archivedCount = data.sessions_archived || 0;
+                let message = `Knowledge Repository "${collectionName}" deleted successfully`;
+
+                if (archivedCount > 0) {
+                    message += `\n\n${archivedCount} session(s) using this repository have been archived.`;
+                    message += `\n\nArchived sessions can be viewed in the Sessions panel by enabling "Show Archived".`;
+
+                    // Refresh sessions list after archiving
+                    try {
+                        // Auto-disable toggle (user deleted artifact = cleanup intent)
+                        const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+                        if (toggle && toggle.checked) {
+                            toggle.checked = false;
+                            localStorage.setItem('sidebarShowArchivedSessions', 'false');
+                            console.log('[Knowledge Delete] Auto-disabled "Show Archived" toggle');
+                        }
+
+                        // Full refresh: fetch + re-render + apply filters
+                        const { refreshSessionsList } = await import('./configManagement.js');
+                        await refreshSessionsList();
+
+                        console.log('[Knowledge Delete] Session list refreshed after archiving', archivedCount, 'sessions');
+                    } catch (error) {
+                        console.error('[Knowledge Delete] Failed to refresh sessions:', error);
+                        // Non-fatal: repository deleted successfully, just UI refresh failed
+                    }
+                }
+
+                if (window.showAppBanner) {
+                    window.showAppBanner(message, 'success');
+                } else {
+                    showNotification('success', message);
+                }
+
+                // Reload knowledge repositories list
+                if (typeof loadKnowledgeRepositories === 'function') {
+                    await loadKnowledgeRepositories();
+                }
+            } else {
+                const errorMsg = `Failed to delete repository: ${data.message || data.error || 'Unknown error'}`;
+                if (window.showAppBanner) {
+                    window.showAppBanner(errorMsg, 'error');
+                } else {
+                    showNotification('error', errorMsg);
+                }
+            }
+        } catch (error) {
+            console.error('Error deleting knowledge repository:', error);
+            const errorMsg = 'Failed to delete repository. Check console for details.';
+            if (window.showAppBanner) {
+                window.showAppBanner(errorMsg, 'error');
+            } else {
+                showNotification('error', errorMsg);
+            }
+        }
+    };
+
+    // Check for relationships before showing confirmation
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const checkRes = await fetch(`/api/v1/artifacts/collection/${collectionId}/relationships`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const checkData = await checkRes.json();
+
+        let message = `Are you sure you want to delete the knowledge repository <strong>${escapeHtml(collectionName)}</strong>?<br><br>This will remove all documents and chunks associated with this repository.`;
+
+        // Check for blockers (e.g., agent pack management)
+        const deletionInfo = checkData.deletion_info || {};
+        const blockers = deletionInfo.blockers || [];
+        const warnings = deletionInfo.warnings || [];
+        const sessions = checkData.relationships?.sessions || {};
+        const activeCount = sessions.active_count || 0;
+
+        // Show blockers (prevent deletion)
+        if (blockers.length > 0) {
+            const blockerMessages = blockers
+                .map(b => `• ${escapeHtml(b.message || 'Unknown blocker')}`)
+                .join('<br>');
+            message += `<br><br><span style="color: #ef4444; font-weight: 600;">🚫 Cannot Delete:</span><br><span style="font-size: 0.9em;">${blockerMessages}</span>`;
+
+            window.showConfirmation('Cannot Delete Repository', message, null);
+            return;
+        }
+
+        // Show warnings (sessions will be archived, profiles affected, etc.)
+        if (warnings.length > 0) {
+            const warningMessages = warnings
+                .map(w => `• ${escapeHtml(w)}`)
+                .join('<br>');
+            message += `<br><br><span style="color: #f59e0b; font-weight: 600;">⚠️ Warning:</span><br><span style="font-size: 0.9em;">${warningMessages}</span>`;
+        }
+
+        // Show sample session names if active sessions exist
+        if (activeCount > 0 && sessions.items && sessions.items.length > 0) {
+            const sessionNames = sessions.items
+                .filter(s => !s.archived)  // Only show active sessions
+                .map(s => `• ${escapeHtml(s.session_name)}`)
+                .join('<br>');
+            if (sessionNames) {
+                message += `<br><br><span style="font-size: 0.9em;">Affected active sessions:<br>${sessionNames}</span>`;
+
+                if (activeCount > sessions.items.filter(s => !s.archived).length) {
+                    message += `<br><span style="font-size: 0.9em; color: #9ca3af;">...and ${activeCount - sessions.items.filter(s => !s.archived).length} more</span>`;
+                }
+            }
+        }
+
+        window.showConfirmation('Delete Knowledge Repository', message, doDelete);
+    } catch (err) {
+        // Fallback to basic confirmation if check fails
+        console.error('Failed to check relationships:', err);
+        window.showConfirmation(
+            'Delete Knowledge Repository',
+            `Are you sure you want to delete the knowledge repository <strong>${escapeHtml(collectionName)}</strong>?<br><br>This will remove all documents and chunks associated with this repository.`,
+            doDelete
+        );
+    }
 }

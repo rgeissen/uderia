@@ -106,11 +106,84 @@ manager.update_template_config("sql_query_v1", {
 
 ### Creating New Templates
 
+#### Built-In Templates (System Templates)
+
 1. Create a new JSON file in `templates/` directory
 2. Follow the structure of `sql_query_v1.json`
 3. Add entry to `template_registry.json`
 4. Set status to `"active"` to enable
 5. Restart application to load new template
+
+#### User Templates (Custom Templates)
+
+User-created templates can be placed in the **user template directory** for automatic discovery without modifying the system installation.
+
+**Directory Location:** `~/.tda/templates/`
+
+**Directory Structure:**
+```
+~/.tda/templates/
+├── my-custom-template/
+│   ├── manifest.json
+│   ├── my_template_v1.json
+│   └── README.md
+└── another-template/
+    ├── manifest.json
+    ├── template.json
+    └── README.md
+```
+
+**Template Discovery Process:**
+1. **Built-in templates** loaded from `rag_templates/templates/` (system installation)
+2. **User templates** loaded from `~/.tda/templates/` (user home directory)
+3. User templates with the same `template_id` **override** built-in templates
+4. Templates registered automatically on application startup
+5. Use `POST /api/v1/rag/templates/reload` to hot-reload without restart
+
+**Benefits:**
+- ✅ **Separation of Concerns**: Keep custom templates separate from system templates
+- ✅ **Persistence**: Templates survive application updates and reinstallations
+- ✅ **Portability**: Share templates between users by copying directory
+- ✅ **No System Modification**: Create templates without editing system files
+- ✅ **Override System Templates**: Customize built-in templates for your environment
+
+**Example: Creating a User Template**
+
+1. Create directory:
+```bash
+mkdir -p ~/.tda/templates/product-inventory
+cd ~/.tda/templates/product-inventory
+```
+
+2. Create manifest.json (minimal):
+```json
+{
+  "name": "product-inventory-custom",
+  "template_id": "product_inventory_v1",
+  "template_type": "sql_query",
+  "version": "1.0.0",
+  "description": "Custom product inventory queries",
+  "population_modes": {
+    "manual": {"supported": true},
+    "auto_generate": {"supported": true}
+  }
+}
+```
+
+3. Create template JSON file following the planner template schema
+
+4. Reload templates:
+```bash
+curl -X POST http://localhost:5050/api/v1/rag/templates/reload \
+  -H "Authorization: Bearer $JWT"
+```
+
+5. Verify template loaded:
+- Navigate to Setup → RAG Collections
+- Check if "Product Inventory Custom" appears in template dropdown
+
+**User Template Registry:**
+User templates are automatically registered when discovered. No need to manually edit `template_registry.json`.
 
 ## Runtime Configuration
 

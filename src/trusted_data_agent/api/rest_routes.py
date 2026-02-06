@@ -33,6 +33,7 @@ from trusted_data_agent.agent import execution_service
 from trusted_data_agent.core import configuration_service
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from trusted_data_agent.auth.admin import require_admin
+from trusted_data_agent.auth.middleware import require_auth
 
 from trusted_data_agent.agent.executor import PlanExecutor
 from langchain_mcp_adapters.prompts import load_mcp_prompt
@@ -2810,6 +2811,194 @@ async def update_rag_collection(collection_id: int):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/artifacts/<artifact_type>/<artifact_id>/relationships", methods=["GET"])
+async def unified_artifact_relationships(artifact_type: str, artifact_id: str):
+    """
+    Get all relationships for any artifact type.
+
+    Unified endpoint that replaces individual check-sessions endpoints.
+
+    Query parameters:
+        - include_archived (bool): Include archived sessions (default: false)
+        - limit (int): Max sessions to return (default: 5)
+        - full (bool): Include extended metadata (default: false)
+
+    Supported artifact types:
+        - collection: RAG/knowledge repositories
+        - profile: Execution profiles
+        - agent-pack: Agent pack installations
+        - mcp-server: MCP server configurations
+        - llm-config: LLM provider configurations
+
+    Response:
+        {
+            "status": "success",
+            "artifact": {...},
+            "relationships": {
+                "sessions": {...},
+                "profiles": {...},
+                "agent_packs": {...}
+            },
+            "deletion_info": {...}
+        }
+    """
+    try:
+        from trusted_data_agent.core.relationship_analyzer import RelationshipAnalyzer
+
+        # Get current user
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Parse query parameters
+        include_archived = request.args.get('include_archived', 'false').lower() == 'true'
+        limit = int(request.args.get('limit', 5))
+        full = request.args.get('full', 'false').lower() == 'true'
+
+        # Validate artifact type
+        valid_types = ["collection", "profile", "agent-pack", "mcp-server", "llm-config"]
+        if artifact_type not in valid_types:
+            return jsonify({
+                "status": "error",
+                "message": f"Unsupported artifact type: {artifact_type}. "
+                           f"Valid types: {', '.join(valid_types)}"
+            }), 400
+
+        # Get artifact metadata (name, etc.)
+        artifact_info = await _get_artifact_info(artifact_type, artifact_id, user_uuid)
+        if not artifact_info:
+            return jsonify({
+                "status": "error",
+                "message": f"{artifact_type.capitalize()} not found"
+            }), 404
+
+        # Analyze relationships
+        analyzer = RelationshipAnalyzer()
+        result = await analyzer.analyze_artifact_relationships(
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            user_uuid=user_uuid,
+            include_archived=include_archived,
+            limit=limit,
+            full=full
+        )
+
+        return jsonify({
+            "status": "success",
+            "artifact": artifact_info,
+            **result
+        }), 200
+
+    except ValueError as e:
+        app_logger.error(f"Invalid artifact type: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        app_logger.error(f"Error analyzing artifact relationships: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+async def _get_artifact_info(
+    artifact_type: str,
+    artifact_id: str,
+    user_uuid: str
+) -> dict:
+    """Get artifact metadata for response."""
+    import sqlite3
+
+    if artifact_type == "collection":
+        # Get collection info from database (not APP_STATE, which may be stale)
+        from trusted_data_agent.core.collection_db import get_collection_db
+        collection_db = get_collection_db()
+        accessible_collections = collection_db.get_all_collections(user_id=user_uuid)
+
+        # Handle both int and str IDs
+        artifact_id_int = int(artifact_id)
+        artifact_id_str = str(artifact_id)
+        collection = next((c for c in accessible_collections if c["id"] == artifact_id_int or str(c["id"]) == artifact_id_str), None)
+        if not collection:
+            return None
+
+        return {
+            "type": "collection",
+            "id": artifact_id,
+            "name": collection.get("name", "Unknown Collection"),
+            "repository_type": collection.get("repository_type", "planner")
+        }
+
+    elif artifact_type == "profile":
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        profiles = config_manager.get_profiles(user_uuid)
+        # Handle both int and str IDs
+        profile = next((p for p in profiles if str(p.get("id")) == str(artifact_id)), None)
+        if not profile:
+            return None
+
+        return {
+            "type": "profile",
+            "id": artifact_id,
+            "name": profile.get("name", "Unknown Profile"),
+            "tag": profile.get("tag", ""),
+            "profile_type": profile.get("profile_type", "tool_enabled")
+        }
+
+    elif artifact_type == "agent-pack":
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        pack_db = AgentPackDB()
+
+        conn = sqlite3.connect(pack_db.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name FROM agent_pack_installations WHERE id = ?",
+            (int(artifact_id),)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        return {
+            "type": "agent-pack",
+            "id": artifact_id,
+            "name": row[1]
+        }
+
+    elif artifact_type == "mcp-server":
+        # Get MCP server info from config manager (stored in user_preferences)
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        mcp_servers = config_manager.get_mcp_servers(user_uuid)
+        server = next((s for s in mcp_servers if s.get("id") == artifact_id), None)
+
+        if not server:
+            return None
+
+        return {
+            "type": "mcp-server",
+            "id": artifact_id,
+            "name": server.get("name", "Unknown Server")
+        }
+
+    elif artifact_type == "llm-config":
+        # Get LLM config info from config manager (stored in user_preferences)
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        llm_configs = config_manager.get_llm_configurations(user_uuid)
+        config = next((c for c in llm_configs if str(c.get("id")) == str(artifact_id)), None)
+
+        if not config:
+            return None
+
+        return {
+            "type": "llm-config",
+            "id": artifact_id,
+            "name": config.get("name", config.get("configuration_name", "Unknown Config"))
+        }
+
+    return None
+
+
 @rest_api_bp.route("/v1/rag/collections/<int:collection_id>/check-sessions", methods=["GET"])
 async def check_collection_active_sessions(collection_id: int):
     """Check for active (non-archived) sessions that reference this collection in their workflow."""
@@ -2820,6 +3009,7 @@ async def check_collection_active_sessions(collection_id: int):
 
         from pathlib import Path
         import json
+        from trusted_data_agent.core.config_manager import get_config_manager
 
         sessions_dir = Path("tda_sessions") / user_uuid
         if not sessions_dir.exists():
@@ -2859,9 +3049,76 @@ async def check_collection_active_sessions(collection_id: int):
                         })
                         break
 
+                # Check if session's profile (current or historical) has this collection configured
+                session_profile_id = session_data.get("profile_id")
+                profile_tags_used = session_data.get("profile_tags_used", [])
+
+                # Collect all profile IDs to check (current + historical)
+                profile_ids_to_check = set()
+                if session_profile_id:
+                    profile_ids_to_check.add(session_profile_id)
+
+                # Also check profiles that were used historically
+                if profile_tags_used:
+                    try:
+                        config_manager = get_config_manager()
+                        profiles = config_manager.get_profiles(user_uuid)
+
+                        # Map tags to profile IDs
+                        for tag in profile_tags_used:
+                            for p in profiles:
+                                if p.get("tag") == tag:
+                                    profile_ids_to_check.add(p.get("id"))
+                                    break
+                    except Exception as tag_lookup_error:
+                        app_logger.warning(f"Error mapping profile tags for session {session_file}: {tag_lookup_error}")
+
+                # Now check if any of these profiles have the collection configured
+                if profile_ids_to_check:
+                    try:
+                        if 'config_manager' not in locals():
+                            config_manager = get_config_manager()
+                        if 'profiles' not in locals():
+                            profiles = config_manager.get_profiles(user_uuid)
+
+                        for pid in profile_ids_to_check:
+                            profile = next((p for p in profiles if p.get("id") == pid), None)
+                            if profile:
+                                knowledge_config = profile.get("knowledgeConfig", {})
+                                if knowledge_config.get("enabled"):
+                                    profile_collections = knowledge_config.get("collections", [])
+
+                                    # Check if collection_id matches any of the profile's collections
+                                    for coll_info in profile_collections:
+                                        coll_id = coll_info.get("id")
+                                        if coll_id == collection_id or str(coll_id) == collection_str:
+                                            active_sessions.append({
+                                                "session_id": session_data.get("id"),
+                                                "session_name": session_data.get("name", "Unnamed Session")
+                                            })
+                                            break  # Found match, add session and move to next session file
+
+                                    # If we found a match, break out of profile loop too
+                                    if any(s.get("session_id") == session_data.get("id") for s in active_sessions):
+                                        break
+                    except Exception as profile_check_error:
+                        app_logger.warning(f"Error checking profile collections for session {session_file}: {profile_check_error}")
+                        # Continue to next session - don't fail entire check due to profile lookup issue
+
             except Exception as e:
                 app_logger.warning(f"Error checking session {session_file}: {e}")
                 continue
+
+        # Deduplicate sessions (in case a session matched multiple criteria)
+        seen_session_ids = set()
+        unique_sessions = []
+        for sess in active_sessions:
+            sess_id = sess.get("session_id")
+            if sess_id not in seen_session_ids:
+                seen_session_ids.add(sess_id)
+                unique_sessions.append(sess)
+
+        active_sessions = unique_sessions
 
         return jsonify({
             "status": "success",
@@ -2932,6 +3189,84 @@ async def delete_rag_collection(collection_id: int):
     except Exception as e:
         app_logger.error(f"Error deleting RAG collection: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/sessions/<session_id>/archive", methods=["PUT"])
+@require_auth
+async def archive_session_manual(current_user: dict, session_id: str):
+    """
+    Manually archive a session.
+
+    Request body:
+        {
+            "archived_reason": "Optional reason for archiving"
+        }
+
+    Returns:
+        {
+            "status": "success",
+            "message": "Session archived successfully",
+            "session_id": str
+        }
+    """
+    try:
+        user_uuid = current_user.id
+
+        # Validate session exists and belongs to user
+        from trusted_data_agent.core.session_manager import SESSIONS_DIR
+        from pathlib import Path
+        import aiofiles
+        import json
+
+        session_file = Path(SESSIONS_DIR) / user_uuid / f"{session_id}.json"
+
+        if not session_file.exists():
+            return jsonify({
+                "status": "error",
+                "message": "Session not found"
+            }), 404
+
+        # Load session
+        async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            session_data = json.loads(content)
+
+        # Check if already archived
+        if session_data.get("archived") or session_data.get("is_archived"):
+            return jsonify({
+                "status": "error",
+                "message": "Session is already archived"
+            }), 400
+
+        # Get optional reason from request body
+        request_data = await request.get_json() or {}
+        archived_reason = request_data.get("archived_reason", "Manually archived")
+
+        # Archive session
+        session_data["archived"] = True
+        session_data["is_archived"] = True
+        session_data["archived_reason"] = archived_reason
+        session_data["archived_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Save session
+        async with aiofiles.open(session_file, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(session_data, indent=2))
+
+        app_logger.info(f"Manually archived session {session_id} for user {user_uuid}: {archived_reason}")
+
+        return jsonify({
+            "status": "success",
+            "message": "Session archived successfully",
+            "session_id": session_id,
+            "archived_reason": archived_reason
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error archiving session {session_id}: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @rest_api_bp.route("/v1/rag/collections/<int:collection_id>/toggle", methods=["POST"])
@@ -4215,28 +4550,44 @@ async def delete_mcp_server(server_id: str):
     try:
         user_uuid = _get_user_uuid_from_request()
         from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.core.session_manager import archive_sessions_by_mcp_server
+
         config_manager = get_config_manager()
-        
+
+        # Archive affected sessions before deletion
+        archive_result = await archive_sessions_by_mcp_server(server_id, user_uuid)
+        archived_count = archive_result.get("archived_count", 0)
+
+        if archived_count > 0:
+            app_logger.info(f"Archived {archived_count} sessions for MCP server {server_id}")
+
         # Try to remove the server (will fail if collections are assigned)
         success, error_message = config_manager.remove_mcp_server(server_id, user_uuid)
-        
+
         if not success:
             return jsonify({
-                "status": "error", 
+                "status": "error",
                 "message": error_message or "Failed to delete MCP server"
             }), 400
-        
+
         # Check if this was the active server and clear it
         active_server_id = config_manager.get_active_mcp_server_id(user_uuid)
         if active_server_id == server_id:
             config_manager.set_active_mcp_server_id(None, user_uuid)
-        
+
         app_logger.info(f"Deleted MCP server: {server_id}")
+
+        # Include archived session count in response
+        message = "MCP server deleted successfully"
+        if archived_count > 0:
+            message += f" ({archived_count} session{'s' if archived_count != 1 else ''} archived)"
+
         return jsonify({
             "status": "success",
-            "message": "MCP server deleted successfully"
+            "message": message,
+            "archived_sessions": archived_count
         }), 200
-            
+
     except Exception as e:
         app_logger.error(f"Error deleting MCP server: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -4915,22 +5266,38 @@ async def delete_llm_configuration(config_id: str):
     try:
         user_uuid = _get_user_uuid_from_request()
         from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.core.session_manager import archive_sessions_by_llm_config
+
         config_manager = get_config_manager()
-        
+
+        # Archive affected sessions before deletion
+        archive_result = await archive_sessions_by_llm_config(config_id, user_uuid)
+        archived_count = archive_result.get("archived_count", 0)
+
+        if archived_count > 0:
+            app_logger.info(f"Archived {archived_count} sessions for LLM config {config_id}")
+
         success, error_message = config_manager.remove_llm_configuration(config_id, user_uuid)
-        
+
         if success:
             app_logger.info(f"Deleted LLM configuration: {config_id}")
+
+            # Include archived session count in response
+            message = "LLM configuration deleted successfully"
+            if archived_count > 0:
+                message += f" ({archived_count} session{'s' if archived_count != 1 else ''} archived)"
+
             return jsonify({
                 "status": "success",
-                "message": "LLM configuration deleted successfully"
+                "message": message,
+                "archived_sessions": archived_count
             }), 200
         else:
             return jsonify({
                 "status": "error",
                 "message": error_message or "Failed to delete LLM configuration"
             }), 400 if error_message and "assigned" in error_message else 404
-            
+
     except Exception as e:
         app_logger.error(f"Error deleting LLM configuration: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -6024,7 +6391,33 @@ async def update_profile(profile_id: str):
 
 @rest_api_bp.route("/v1/profiles/<profile_id>/check-sessions", methods=["GET"])
 async def check_profile_active_sessions(profile_id: str):
-    """Check for active (non-archived) sessions using this profile."""
+    """
+    DEPRECATED: Check for active (non-archived) sessions using this profile.
+
+    **Deprecation Notice:**
+    This endpoint is deprecated and will be removed in a future version.
+    Use the unified relationships endpoint instead:
+
+        GET /api/v1/artifacts/profile/{profile_id}/relationships
+
+    The unified endpoint provides:
+    - Comprehensive relationship detection (direct, historical, genie child)
+    - Deletion safety analysis (blockers, warnings, cascade effects)
+    - Consistent response format across all artifact types
+    - Better performance (single database query vs file scanning)
+
+    Migration path:
+    - Replace: checkData.active_session_count → checkData.relationships.sessions.active_count
+    - Replace: checkData.active_sessions → checkData.relationships.sessions.items (filter by !is_archived)
+    - Add: Check checkData.deletion_info.blockers for deletion blockers
+    - Add: Check checkData.deletion_info.warnings for additional warnings
+
+    **Removal Target:** Q2 2026
+    """
+    app_logger.warning(
+        f"DEPRECATED endpoint called: GET /v1/profiles/{profile_id}/check-sessions. "
+        "Use GET /api/v1/artifacts/profile/{profile_id}/relationships instead."
+    )
     try:
         user_uuid = _get_user_uuid_from_request()
         from pathlib import Path

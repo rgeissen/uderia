@@ -1,6 +1,29 @@
 /**
- * Scroll Debugging Utility
- * Run this to diagnose scroll issues in the status window
+ * ⚠️ DEBUG-ONLY MODULE ⚠️
+ *
+ * Scroll Debugging Utility for Status Window
+ *
+ * PURPOSE: Diagnose scroll behavior issues in the Live Status window
+ *
+ * WHEN TO USE:
+ * - Status window content not scrolling as expected
+ * - Debugging auto-scroll to bottom behavior
+ * - Investigating CSS overflow issues
+ * - Testing scroll restoration after session switch
+ *
+ * HOW TO USE:
+ * 1. Open browser DevTools console
+ * 2. Import debug function: import { debugStatusWindowScroll } from './scrollDebug.js'
+ * 3. Run: debugStatusWindowScroll()
+ * 4. Review console output for element dimensions, overflow state, CSS properties
+ *
+ * WARNING: This module is NOT used in production code. It is imported on-demand
+ * in the browser console for debugging purposes only. Do not import in main.js
+ * or other production modules.
+ *
+ * @module scrollDebug
+ * @category Debug Utilities
+ * @deprecated Consider moving to static/js/debug/ directory in future refactoring
  */
 
 export function debugStatusWindowScroll() {

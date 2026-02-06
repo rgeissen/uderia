@@ -293,7 +293,7 @@ async def get_session(user_uuid: str, session_id: str) -> dict | None:
 
     return session_data
 
-async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0) -> dict:
+async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0, include_archived: bool = False) -> dict:
     """
     Get all sessions for a user with optional pagination.
 
@@ -301,6 +301,7 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0) -
         user_uuid: The user's UUID
         limit: Maximum number of sessions to return (None = all sessions)
         offset: Number of sessions to skip (for pagination)
+        include_archived: Whether to include archived sessions (default: False)
 
     Returns:
         dict with keys:
@@ -439,6 +440,16 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0) -
 
     app_logger.debug(f"[After Template Filter] {len(session_summaries)} sessions remain")
 
+    # Filter archived sessions unless explicitly requested
+    if not include_archived:
+        session_summaries = [
+            session for session in session_summaries
+            if not session.get("archived", False)
+        ]
+        app_logger.debug(f"[After Archived Filter] {len(session_summaries)} active sessions remain")
+    else:
+        app_logger.debug(f"[Include Archived] Keeping all {len(session_summaries)} sessions (including archived)")
+
     # Sort sessions with genie child sessions appearing directly after their parent
     # Build a lookup map for quick access
     session_by_id = {s.get("id"): s for s in session_summaries}
@@ -567,6 +578,7 @@ async def delete_session(user_uuid: str, session_id: str) -> bool:
 
             # Mark as archived
             session_data["archived"] = True
+            session_data["is_archived"] = True
             session_data["archived_at"] = datetime.now(timezone.utc).isoformat()
 
             # Save back to file
@@ -595,8 +607,9 @@ async def archive_sessions_by_profile(
     """
     Archive all sessions for a user that reference the given profile_id.
 
-    This is called when a profile is deleted to prevent orphaned references.
-    Leverages the existing delete_session() archive functionality.
+    Uses the unified relationships REST endpoint to detect affected sessions,
+    ensuring consistency with frontend warnings. This creates a single
+    source of truth for session detection logic.
 
     Args:
         profile_id: The ID of the profile being deleted
@@ -612,109 +625,101 @@ async def archive_sessions_by_profile(
     archived_sessions = []
     genie_children = []
 
-    # Get user's session directory
-    user_session_dir = Path(SESSIONS_DIR) / user_uuid
-    if not user_session_dir.exists():
-        app_logger.info(f"No sessions directory found for user {user_uuid}")
-        return {"archived_count": 0, "session_ids": [], "genie_children_archived": 0}
+    try:
+        # Call relationship analyzer directly (no HTTP call needed)
+        from trusted_data_agent.core.relationship_analyzer import RelationshipAnalyzer
 
-    app_logger.info(f"Checking sessions for profile_id='{profile_id}' in user {user_uuid}")
+        app_logger.info(f"Analyzing relationships for profile {profile_id}")
 
-    # Iterate through all session files to find ones using the deleted profile
-    sessions_to_archive = []
-    for session_file in user_session_dir.glob("*.json"):
-        session_id = session_file.stem
+        analyzer = RelationshipAnalyzer()
+        result = await analyzer.analyze_artifact_relationships(
+            artifact_type="profile",
+            artifact_id=profile_id,
+            user_uuid=user_uuid,
+            include_archived=False,  # Only get active sessions
+            limit=1000,  # High limit to get all sessions
+            full=False
+        )
 
-        try:
-            # Load session data
-            async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                session_data = json.loads(content)
+        sessions_data = result.get("relationships", {}).get("sessions", {})
+        affected_sessions = sessions_data.get("items", [])
 
-            # Skip already archived sessions
-            if session_data.get("archived"):
+        # Filter to only active sessions (not already archived)
+        active_sessions = [s for s in affected_sessions if not s.get("archived")]
+
+        app_logger.info(
+            f"Unified endpoint found {len(active_sessions)} active sessions for profile {profile_id}"
+        )
+
+        # Archive each affected session
+        for session_info in active_sessions:
+            session_id = session_info.get("session_id")
+
+            # Check if this is a Genie child session
+            is_genie_child = session_info.get("is_genie_child", False)
+            if is_genie_child:
+                genie_children.append(session_id)
+
+            try:
+                # Use existing delete_session() archive function
+                success = await delete_session(user_uuid, session_id)
+
+                if success:
+                    # Update archived reason
+                    session_path = _find_session_path(user_uuid, session_id)
+                    if session_path:
+                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                            updated_data = json.loads(await f.read())
+                        updated_data["archived_reason"] = f"Profile '{profile_id}' was deleted"
+                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+
+                    archived_sessions.append(session_id)
+                    app_logger.info(
+                        f"Archived session {session_id} (profile {profile_id} deleted)"
+                    )
+
+            except Exception as e:
+                app_logger.error(f"Failed to archive session {session_id}: {e}", exc_info=True)
                 continue
 
-            # Check if this session uses the deleted profile
-            should_archive = False
-
-            # Check primary profile
-            if session_data.get("profile_id") == profile_id:
-                should_archive = True
-                app_logger.debug(f"Session {session_id} uses profile_id={profile_id}")
-
-            # Check profile_tags_used history
-            if profile_id in session_data.get("profile_tags_used", []):
-                should_archive = True
-                app_logger.debug(f"Session {session_id} has profile_id={profile_id} in tags_used")
-
-            # Check Genie child profile
-            genie_meta = session_data.get("genie_metadata", {})
-            if genie_meta.get("slave_profile_id") == profile_id:
-                should_archive = True
-                genie_children.append(session_id)
-                app_logger.debug(f"Session {session_id} is Genie child with slave_profile_id={profile_id}")
-
-            if should_archive:
-                sessions_to_archive.append((session_id, session_data))
-
-        except (OSError, json.JSONDecodeError) as e:
-            app_logger.error(f"Error processing session {session_id}: {e}", exc_info=True)
-            continue
-
-    # Archive sessions using existing delete_session() function, but add custom reason
-    for session_id, session_data in sessions_to_archive:
-        # Use existing archive function
-        success = await delete_session(user_uuid, session_id)
-        if success:
-            # Update the archived reason (override the default)
+        # Update genie_session_links table for archived children
+        if genie_children:
             try:
-                session_path = _find_session_path(user_uuid, session_id)
-                if session_path:
-                    async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
-                        updated_data = json.loads(await f.read())
-                    updated_data["archived_reason"] = f"Profile '{profile_id}' was deleted"
-                    async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-                        await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+                conn = get_auth_db_connection()
+                cursor = conn.cursor()
+
+                # Check if archived column exists (for backward compatibility)
+                cursor.execute("PRAGMA table_info(genie_session_links)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                if "archived" in columns:
+                    placeholders = ",".join("?" * len(genie_children))
+                    cursor.execute(
+                        f"UPDATE genie_session_links SET archived = 1 WHERE slave_session_id IN ({placeholders})",
+                        genie_children
+                    )
+                    conn.commit()
+                    app_logger.info(f"Updated genie_session_links archived flag for {len(genie_children)} children")
+
+                conn.close()
             except Exception as e:
-                app_logger.warning(f"Could not update archived_reason for {session_id}: {e}")
+                app_logger.error(f"Error updating genie_session_links: {e}", exc_info=True)
 
-            archived_sessions.append(session_id)
-            app_logger.info(f"Archived session {session_id} (profile {profile_id} deleted)")
+        app_logger.info(
+            f"Archive by profile complete: {len(archived_sessions)} sessions archived "
+            f"({len(genie_children)} Genie children)"
+        )
 
-    # Update genie_session_links table for archived children
-    if genie_children:
-        try:
-            conn = get_auth_db_connection()
-            cursor = conn.cursor()
+        return {
+            "archived_count": len(archived_sessions),
+            "session_ids": archived_sessions,
+            "genie_children_archived": len(genie_children)
+        }
 
-            # Check if archived column exists (for backward compatibility)
-            cursor.execute("PRAGMA table_info(genie_session_links)")
-            columns = [row[1] for row in cursor.fetchall()]
-
-            if "archived" in columns:
-                placeholders = ",".join("?" * len(genie_children))
-                cursor.execute(
-                    f"UPDATE genie_session_links SET archived = 1 WHERE slave_session_id IN ({placeholders})",
-                    genie_children
-                )
-                conn.commit()
-                app_logger.info(f"Updated genie_session_links archived flag for {len(genie_children)} children")
-
-            conn.close()
-        except Exception as e:
-            app_logger.error(f"Error updating genie_session_links: {e}", exc_info=True)
-
-    app_logger.info(
-        f"Archive by profile complete: {len(archived_sessions)} sessions archived "
-        f"({len(genie_children)} Genie children)"
-    )
-
-    return {
-        "archived_count": len(archived_sessions),
-        "session_ids": archived_sessions,
-        "genie_children_archived": len(genie_children)
-    }
+    except Exception as e:
+        app_logger.error(f"Error in archive_sessions_by_profile: {e}", exc_info=True)
+        return {"archived_count": 0, "session_ids": [], "genie_children_archived": 0}
 
 
 async def archive_sessions_by_collection(
@@ -722,10 +727,11 @@ async def archive_sessions_by_collection(
     user_uuid: str
 ) -> dict:
     """
-    Archive all sessions for a user that reference the given collection_id in their workflow history.
+    Archive all sessions for a user that use the given collection_id.
 
-    This is called when a RAG collection is deleted to prevent orphaned references.
-    Leverages the existing delete_session() archive functionality.
+    Uses the unified relationships REST endpoint to detect affected sessions,
+    ensuring consistency with frontend warnings. This creates a single
+    source of truth for session detection logic.
 
     Args:
         collection_id: The ID of the collection being deleted
@@ -739,84 +745,265 @@ async def archive_sessions_by_collection(
     """
     archived_sessions = []
 
-    # Get user's session directory
-    user_session_dir = Path(SESSIONS_DIR) / user_uuid
-    if not user_session_dir.exists():
-        app_logger.info(f"No sessions directory found for user {user_uuid}")
-        return {"archived_count": 0, "session_ids": []}
+    try:
+        # Call unified relationships endpoint to get list of affected sessions
+        from quart import current_app
+        from trusted_data_agent.auth.middleware import create_internal_jwt
+        import httpx
 
-    app_logger.info(f"Checking sessions for collection_id='{collection_id}' in user {user_uuid}")
+        # Create internal JWT for service-to-service call
+        internal_token = create_internal_jwt(user_uuid)
 
-    # Iterate through all session files to find ones using the deleted collection
-    sessions_to_archive = []
-    for session_file in user_session_dir.glob("*.json"):
-        session_id = session_file.stem
+        # Call relationship analyzer directly (no HTTP call needed)
+        from trusted_data_agent.core.relationship_analyzer import RelationshipAnalyzer
 
-        try:
-            # Load session data
-            async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                session_data = json.loads(content)
+        app_logger.info(f"[ARCHIVE] Analyzing relationships for collection {collection_id}")
+        app_logger.info(f"[ARCHIVE] User: {user_uuid}, Collection: {collection_id}")
 
-            # Skip already archived sessions
-            if session_data.get("archived"):
+        analyzer = RelationshipAnalyzer()
+        result = await analyzer.analyze_artifact_relationships(
+            artifact_type="collection",
+            artifact_id=collection_id,
+            user_uuid=user_uuid,
+            include_archived=False,  # Only get active sessions
+            limit=1000,  # High limit to get all sessions
+            full=False
+        )
+
+        sessions_data = result.get("relationships", {}).get("sessions", {})
+        affected_sessions = sessions_data.get("items", [])
+
+        # Filter to only active sessions (not already archived)
+        active_sessions = [s for s in affected_sessions if not s.get("archived")]
+
+        app_logger.info(f"[ARCHIVE] Relationship analyzer returned {len(affected_sessions)} total sessions")
+        app_logger.info(f"[ARCHIVE] Filtered to {len(active_sessions)} active sessions to archive")
+        for session in active_sessions:
+            app_logger.info(f"[ARCHIVE]   - Session {session.get('session_id')} ({session.get('session_name', 'Unnamed')})")
+
+        # Archive each affected session
+        for session_info in active_sessions:
+            session_id = session_info.get("session_id")
+
+            try:
+                # Use existing delete_session() archive function
+                app_logger.info(f"[ARCHIVE] Archiving session {session_id}...")
+                success = await delete_session(user_uuid, session_id)
+                app_logger.info(f"[ARCHIVE] delete_session() returned: {success}")
+                if not success:
+                    app_logger.error(f"[ARCHIVE] FAILED to archive session {session_id}")
+
+                if success:
+                    # Update archived reason
+                    session_path = _find_session_path(user_uuid, session_id)
+                    if session_path:
+                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                            updated_data = json.loads(await f.read())
+                        updated_data["archived_reason"] = f"Collection '{collection_id}' was deleted"
+                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+
+                    archived_sessions.append(session_id)
+                    app_logger.info(
+                        f"Archived session {session_id} (collection {collection_id} deleted)"
+                    )
+
+            except Exception as e:
+                app_logger.error(f"Failed to archive session {session_id}: {e}", exc_info=True)
                 continue
 
-            # Check workflow history for collection references
-            should_archive = False
-            workflow = session_data.get("last_turn_data", {}).get("workflow_history", [])
+        app_logger.info(
+            f"Archive by collection complete: {len(archived_sessions)} sessions archived"
+        )
 
-            for turn in workflow:
-                # Check planner RAG collection
-                if turn.get("rag_source_collection_id") == collection_id:
-                    should_archive = True
-                    app_logger.debug(f"Session {session_id} uses RAG collection {collection_id}")
-                    break
+        return {
+            "archived_count": len(archived_sessions),
+            "session_ids": archived_sessions
+        }
 
-                # Check knowledge repository references
-                knowledge_sources = turn.get("knowledge_sources", [])
-                for source in knowledge_sources:
-                    if source.get("collection_id") == collection_id:
-                        should_archive = True
-                        app_logger.debug(f"Session {session_id} uses knowledge collection {collection_id}")
-                        break
+    except Exception as e:
+        app_logger.error(f"Error in archive_sessions_by_collection: {e}", exc_info=True)
+        return {"archived_count": 0, "session_ids": []}
 
-                if should_archive:
-                    break
 
-            if should_archive:
-                sessions_to_archive.append(session_id)
+async def archive_sessions_by_mcp_server(
+    mcp_server_id: str,
+    user_uuid: str
+) -> dict:
+    """
+    Archive all sessions for a user that use the given MCP server.
 
-        except (OSError, json.JSONDecodeError) as e:
-            app_logger.error(f"Error processing session {session_id}: {e}", exc_info=True)
-            continue
+    Uses the unified relationships REST endpoint to detect affected sessions,
+    ensuring consistency with frontend warnings. This creates a single
+    source of truth for session detection logic.
 
-    # Archive sessions using existing delete_session() function, but add custom reason
-    for session_id in sessions_to_archive:
-        # Use existing archive function
-        success = await delete_session(user_uuid, session_id)
-        if success:
-            # Update the archived reason (override the default)
+    Args:
+        mcp_server_id: The ID of the MCP server being deleted
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        dict: {
+            "archived_count": int,
+            "session_ids": [list of archived session IDs]
+        }
+    """
+    archived_sessions = []
+
+    try:
+        # Call relationship analyzer directly (no HTTP call needed)
+        from trusted_data_agent.core.relationship_analyzer import RelationshipAnalyzer
+
+        app_logger.info(f"Analyzing relationships for MCP server {mcp_server_id}")
+
+        analyzer = RelationshipAnalyzer()
+        result = await analyzer.analyze_artifact_relationships(
+            artifact_type="mcp-server",
+            artifact_id=mcp_server_id,
+            user_uuid=user_uuid,
+            include_archived=False,  # Only get active sessions
+            limit=1000,  # High limit to get all sessions
+            full=False
+        )
+
+        sessions_data = result.get("relationships", {}).get("sessions", {})
+        affected_sessions = sessions_data.get("items", [])
+
+        # Filter to only active sessions (not already archived)
+        active_sessions = [s for s in affected_sessions if not s.get("archived")]
+
+        app_logger.info(
+            f"Unified endpoint found {len(active_sessions)} active sessions for MCP server {mcp_server_id}"
+        )
+
+        # Archive each affected session
+        for session_info in active_sessions:
+            session_id = session_info.get("session_id")
+
             try:
-                session_path = _find_session_path(user_uuid, session_id)
-                if session_path:
-                    async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
-                        updated_data = json.loads(await f.read())
-                    updated_data["archived_reason"] = f"Collection '{collection_id}' was deleted"
-                    async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-                        await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+                # Use existing delete_session() archive function
+                success = await delete_session(user_uuid, session_id)
+
+                if success:
+                    # Update archived reason
+                    session_path = _find_session_path(user_uuid, session_id)
+                    if session_path:
+                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                            updated_data = json.loads(await f.read())
+                        updated_data["archived_reason"] = f"MCP server '{mcp_server_id}' was deleted"
+                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+
+                    archived_sessions.append(session_id)
+                    app_logger.info(
+                        f"Archived session {session_id} (MCP server {mcp_server_id} deleted)"
+                    )
+
             except Exception as e:
-                app_logger.warning(f"Could not update archived_reason for {session_id}: {e}")
+                app_logger.error(f"Failed to archive session {session_id}: {e}", exc_info=True)
+                continue
 
-            archived_sessions.append(session_id)
-            app_logger.info(f"Archived session {session_id} (collection {collection_id} deleted)")
+        app_logger.info(
+            f"Archive by MCP server complete: {len(archived_sessions)} sessions archived"
+        )
 
-    app_logger.info(f"Archive by collection complete: {len(archived_sessions)} sessions archived")
+        return {
+            "archived_count": len(archived_sessions),
+            "session_ids": archived_sessions
+        }
 
-    return {
-        "archived_count": len(archived_sessions),
-        "session_ids": archived_sessions
-    }
+    except Exception as e:
+        app_logger.error(f"Error in archive_sessions_by_mcp_server: {e}", exc_info=True)
+        return {"archived_count": 0, "session_ids": []}
+
+
+async def archive_sessions_by_llm_config(
+    llm_config_id: str,
+    user_uuid: str
+) -> dict:
+    """
+    Archive all sessions for a user that use the given LLM configuration.
+
+    Uses the unified relationships REST endpoint to detect affected sessions,
+    ensuring consistency with frontend warnings. This creates a single
+    source of truth for session detection logic.
+
+    Args:
+        llm_config_id: The ID of the LLM config being deleted
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        dict: {
+            "archived_count": int,
+            "session_ids": [list of archived session IDs]
+        }
+    """
+    archived_sessions = []
+
+    try:
+        # Call relationship analyzer directly (no HTTP call needed)
+        from trusted_data_agent.core.relationship_analyzer import RelationshipAnalyzer
+
+        app_logger.info(f"Analyzing relationships for LLM config {llm_config_id}")
+
+        analyzer = RelationshipAnalyzer()
+        result = await analyzer.analyze_artifact_relationships(
+            artifact_type="llm-config",
+            artifact_id=llm_config_id,
+            user_uuid=user_uuid,
+            include_archived=False,  # Only get active sessions
+            limit=1000,  # High limit to get all sessions
+            full=False
+        )
+
+        sessions_data = result.get("relationships", {}).get("sessions", {})
+        affected_sessions = sessions_data.get("items", [])
+
+        # Filter to only active sessions (not already archived)
+        active_sessions = [s for s in affected_sessions if not s.get("archived")]
+
+        app_logger.info(
+            f"Unified endpoint found {len(active_sessions)} active sessions for LLM config {llm_config_id}"
+        )
+
+        # Archive each affected session
+        for session_info in active_sessions:
+            session_id = session_info.get("session_id")
+
+            try:
+                # Use existing delete_session() archive function
+                success = await delete_session(user_uuid, session_id)
+
+                if success:
+                    # Update archived reason
+                    session_path = _find_session_path(user_uuid, session_id)
+                    if session_path:
+                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                            updated_data = json.loads(await f.read())
+                        updated_data["archived_reason"] = f"LLM config '{llm_config_id}' was deleted"
+                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+
+                    archived_sessions.append(session_id)
+                    app_logger.info(
+                        f"Archived session {session_id} (LLM config {llm_config_id} deleted)"
+                    )
+
+            except Exception as e:
+                app_logger.error(f"Failed to archive session {session_id}: {e}", exc_info=True)
+                continue
+
+        app_logger.info(
+            f"Archive by LLM config complete: {len(archived_sessions)} sessions archived"
+        )
+
+        return {
+            "archived_count": len(archived_sessions),
+            "session_ids": archived_sessions
+        }
+
+    except Exception as e:
+        app_logger.error(f"Error in archive_sessions_by_llm_config: {e}", exc_info=True)
+        return {"archived_count": 0, "session_ids": []}
 
 
 def _cleanup_session_uploads(user_uuid: str, session_id: str):

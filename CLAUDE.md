@@ -864,6 +864,12 @@ else:
 
 ### RAG Template System
 
+> **Related Documentation:**
+> - `rag_templates/TYPE_TAXONOMY.md` - **Comprehensive type system documentation** covering template_type, repository_type, and category classification
+> - `rag_templates/PLUGIN_MANIFEST_SCHEMA.md` - Complete manifest.json schema and field specifications
+> - `rag_templates/schemas/README.md` - JSON schema validation details for template files
+> - `docs/RAG_Templates/README.md` - User guide for creating and using RAG templates
+
 #### Template Structure
 
 **Location:** `rag_templates/templates/`
@@ -1221,6 +1227,195 @@ Schema files in `schema/`:
 - **Turn Summaries**: Sends only workflow summaries (stateless)
 
 Activation: Hold `Alt` for single query, `Shift+Alt` to lock mode
+
+### Unified Artifact Relationships System
+
+The platform provides a unified endpoint for analyzing relationships between artifacts (collections, profiles, MCP servers, LLM configurations, agent packs) and sessions. This system creates a **single source of truth** for relationship detection used by both frontend warnings and backend session archiving.
+
+**Key Features:**
+
+1. **Single Source of Truth**: All relationship detection logic centralized in one endpoint
+2. **Comprehensive Detection**: Finds direct, historical, and profile-based relationships
+3. **Deletion Safety Analysis**: Provides blockers, warnings, and cascade effect predictions
+4. **Active vs Archived Tracking**: Separately tracks active and archived sessions
+5. **Extensible Design**: Easy to add new artifact types via detector pattern
+
+**Architecture:**
+
+```
+Frontend Warning → Unified Endpoint → Relationship Analyzer → Artifact Detectors
+Backend Archive  ↗                    ↘ Deletion Safety        ↘
+                                       Analysis                Collection | Profile | MCP | LLM | AgentPack
+```
+
+**Supported Artifact Types:**
+
+| Type | Description | Example Use Case |
+|------|-------------|------------------|
+| `collection` | RAG/knowledge repositories | "Which sessions use this knowledge base?" |
+| `profile` | Execution profiles | "Which sessions use the @FOCUS profile?" |
+| `agent-pack` | Installed agent packs | "What resources does this pack manage?" |
+| `mcp-server` | MCP server configurations | "Which profiles connect to this server?" |
+| `llm-config` | LLM provider configurations | "Which sessions use GPT-4?" |
+
+**Detection Methods:**
+
+**Collection Relationships:**
+1. Direct: `session.rag_collection_id` (rag_focused profiles)
+2. Workflow: `session.workflow_history[].collection_id` (historical queries)
+3. Profile: `session.profile.knowledgeConfig.collections[]` (profile configuration)
+
+**Profile Relationships:**
+1. Current: `session.profile_id` (active profile)
+2. Historical: `session.profile_tags_used[]` (past profiles)
+3. Genie Child: `session.genie_metadata.slave_profile_id` (child sessions)
+
+**MCP/LLM Relationships:**
+- Indirect via profile: Session → Profile → MCP Server / LLM Config
+
+**Usage Example:**
+
+```bash
+# Get relationships for a collection
+JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}' | jq -r '.token')
+
+curl -X GET "http://localhost:5050/api/v1/artifacts/collection/12/relationships" \
+  -H "Authorization: Bearer $JWT" | jq '.deletion_info'
+
+# Output:
+# {
+#   "can_delete": true,
+#   "warnings": ["2 active sessions will be archived"],
+#   "cascade_effects": {
+#     "active_sessions_archived": 2,
+#     "profiles_affected": 1
+#   }
+# }
+```
+
+**Implementation Files:**
+
+**Core Modules:**
+- `src/trusted_data_agent/core/artifact_detectors.py` - Detector implementations (~850 lines)
+- `src/trusted_data_agent/core/relationship_analyzer.py` - Analysis orchestration (~150 lines)
+
+**API Endpoint:**
+- `src/trusted_data_agent/api/rest_routes.py` - Unified endpoint at `/api/v1/artifacts/<type>/<id>/relationships`
+
+**Archive Integration:**
+- `src/trusted_data_agent/core/session_manager.py` - Archive functions call unified endpoint via HTTP
+
+**Frontend Integration:**
+- `static/js/handlers/ragCollectionManagement.js` - Collection deletion warnings
+- `static/js/handlers/knowledgeRepositoryHandler.js` - Repository deletion warnings
+
+**Session Archiving Flow:**
+
+When an artifact is deleted, the system automatically archives affected sessions:
+
+```
+User Deletes Collection
+       ↓
+DELETE /api/v1/rag/collections/{id}
+       ↓
+archive_sessions_by_collection()
+       ↓
+GET /api/v1/artifacts/collection/{id}/relationships (internal HTTP call)
+       ↓
+Returns affected sessions
+       ↓
+Archive each session
+       ↓
+Set archived_reason metadata
+       ↓
+Complete deletion
+```
+
+**Archived Session Metadata:**
+```json
+{
+  "id": "session_id",
+  "archived": true,
+  "archived_reason": "Collection '12' was deleted",
+  "archived_at": "2026-02-06T17:30:00Z"
+}
+```
+
+**Archive Triggers:**
+- Profile deletion → Archives sessions using that profile
+- Collection deletion → Archives sessions using that collection (direct, workflow, or profile-based)
+- MCP server deletion → Archives sessions using profiles connected to that server
+- LLM config deletion → Archives sessions using profiles with that configuration
+- Agent pack uninstall → Archives sessions using pack-managed resources
+
+**Benefits Over Previous Architecture:**
+
+**Before Unification:**
+- 3 separate check-sessions endpoints with duplicate logic (~300 lines of duplicated code)
+- Archive functions had different detection logic than frontend warnings
+- Missed profile-based relationships
+- No support for MCP server or LLM config deletions
+
+**After Unification:**
+- 1 unified endpoint used everywhere
+- Frontend warnings and backend archiving use identical logic
+- All relationship types detected correctly
+- All artifact types support session archiving
+- ~300 lines of code eliminated
+- Single source of truth
+- Easier to maintain and extend
+
+**Adding New Artifact Types:**
+
+To add support for a new artifact type:
+
+1. **Create Detector Class** in `artifact_detectors.py`:
+```python
+class MyArtifactDetector(BaseDetector):
+    async def find_sessions(self, artifact_id, user_uuid, include_archived):
+        # Detection logic
+        return {"active": [...], "archived": [...]}
+
+    async def find_profiles(self, artifact_id, user_uuid):
+        # Profile relationships
+        return [...]
+
+    async def find_agent_packs(self, artifact_id, user_uuid):
+        # Agent pack relationships
+        return [...]
+```
+
+2. **Register Detector** in `DETECTORS` registry:
+```python
+DETECTORS = {
+    # ... existing detectors ...
+    "my-artifact": MyArtifactDetector,
+}
+```
+
+3. **Add Archive Function** in `session_manager.py`:
+```python
+async def archive_sessions_by_my_artifact(artifact_id, user_uuid):
+    # Call unified endpoint via HTTP
+    # Archive returned sessions
+```
+
+4. **Update Deletion Endpoint** to call archive function before deletion
+
+**Testing:**
+
+Test the unified endpoint with REST API:
+```bash
+# Test collection relationships
+python3 test_unified_relationships.py
+
+# Extensive validation test
+python3 test_extensive_unified_relationships.py
+```
+
+Files: `src/trusted_data_agent/core/artifact_detectors.py`, `relationship_analyzer.py`, `session_manager.py`, `rest_routes.py`
 
 ### Cost Management
 

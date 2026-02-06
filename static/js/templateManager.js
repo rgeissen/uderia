@@ -349,12 +349,93 @@ class TemplateManager {
      */
     getGenericTemplateFieldValues() {
         const configText = document.getElementById('rag-collection-template-config')?.value || '{}';
-        
+
         try {
             return JSON.parse(configText);
         } catch (error) {
             console.error('Failed to parse template configuration:', error);
             return {};
+        }
+    }
+
+    /**
+     * Hot-reload all template plugins without restarting the application
+     * Useful for development and testing new templates
+     * @returns {Promise<object>} Reload result with status and count
+     */
+    async reloadTemplates() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch('/api/v1/rag/templates/reload', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Clear template cache
+                this.templateCache.clear();
+
+                // Reload template list
+                await this.loadTemplates();
+
+                return {
+                    success: true,
+                    count: data.count,
+                    templates: data.templates,
+                    message: data.message
+                };
+            } else {
+                throw new Error(data.message || 'Failed to reload templates');
+            }
+        } catch (error) {
+            console.error('Error reloading templates:', error);
+            return {
+                success: false,
+                message: error.message
+            };
+        }
+    }
+
+    /**
+     * Validate a template plugin package before installation
+     * @param {string} pluginPath - Path to the template plugin directory
+     * @returns {Promise<object>} Validation result with errors and warnings
+     */
+    async validateTemplate(pluginPath) {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch('/api/v1/rag/templates/validate', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    plugin_path: pluginPath
+                })
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                return {
+                    success: true,
+                    isValid: data.is_valid,
+                    errors: data.errors || [],
+                    warnings: data.warnings || []
+                };
+            } else {
+                throw new Error(data.message || 'Failed to validate template');
+            }
+        } catch (error) {
+            console.error('Error validating template:', error);
+            return {
+                success: false,
+                message: error.message
+            };
         }
     }
 }

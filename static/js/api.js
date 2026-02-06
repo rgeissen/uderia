@@ -251,7 +251,8 @@ export async function loadSession(sessionId) {
  * @returns {Promise<{sessions: Array, total_count: number, has_more: boolean}>}
  */
 export async function loadSessions(limit = 50, offset = 0) {
-    const url = `/sessions?limit=${limit}&offset=${offset}`;
+    // Always include archived sessions - UI controls visibility with "Show Archived" toggle
+    const url = `/sessions?limit=${limit}&offset=${offset}&include_archived=true`;
     const res = await fetch(url, { headers: _getHeaders(false) });
     const data = await res.json();
     if (!res.ok) {
@@ -259,17 +260,6 @@ export async function loadSessions(limit = 50, offset = 0) {
     }
     // Returns {sessions: [...], total_count: N, has_more: bool}
     return data;
-}
-
-/**
- * Load all sessions (backwards compatible, no pagination).
- * @deprecated Use loadSessions() with pagination for better performance
- * @returns {Promise<Array>} Array of sessions
- */
-export async function loadAllSessions() {
-    // Use limit=0 to get all sessions for backwards compatibility
-    const result = await loadSessions(0, 0);
-    return result.sessions || [];
 }
 
 export async function renameSession(sessionId, newName) {

@@ -198,7 +198,7 @@ def get_user_id_from_auth() -> Optional[str]:
 def get_request_context() -> dict:
     """
     Extract request context for audit logging.
-    
+
     Returns:
         Dictionary with ip_address and user_agent
     """
@@ -206,3 +206,43 @@ def get_request_context() -> dict:
         'ip_address': request.headers.get('X-Forwarded-For', request.remote_addr),
         'user_agent': request.headers.get('User-Agent', 'Unknown')
     }
+
+
+def create_internal_jwt(user_uuid: str) -> str:
+    """
+    Create a JWT token for internal service-to-service calls.
+
+    Used when archive functions need to call check-sessions endpoints.
+    Token is short-lived (5 minutes) for security.
+
+    Args:
+        user_uuid: The user UUID to encode in the token
+
+    Returns:
+        JWT token string
+
+    Raises:
+        ValueError: If JWT secret not found
+    """
+    import jwt
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+
+    # Load JWT secret
+    jwt_secret_path = Path("tda_keys/jwt_secret.key")
+    if not jwt_secret_path.exists():
+        raise ValueError("JWT secret not found")
+
+    with open(jwt_secret_path, "r") as f:
+        secret = f.read().strip()
+
+    # Create token payload
+    payload = {
+        "sub": user_uuid,
+        "user_id": user_uuid,  # For compatibility with existing auth checks
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),  # Short-lived
+        "internal": True  # Mark as internal service call
+    }
+
+    return jwt.encode(payload, secret, algorithm="HS256")

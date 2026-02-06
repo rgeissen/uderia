@@ -10,7 +10,7 @@ import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedMod
 // We need access to the functions that will handle save/cancel from the input
 import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.2';
 import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
-import { checkServerStatus, loadAllSessions } from './api.js';
+import { checkServerStatus, loadSessions } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
 import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './handlers/agentPackGrouping.js';
 
@@ -5008,9 +5008,10 @@ function performViewSwitch(viewId) {
                 } else {
                     // No session ID in state - fetch sessions and load most recent
                     console.log('[handleViewSwitch] No session ID in state, fetching sessions');
-                    const sessions = await loadAllSessions();
+                    const result = await loadSessions(0, 0); // Load all sessions (limit=0)
+                    const sessions = result.sessions || [];
                     const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
-                    
+
                     if (activeSessions && activeSessions.length > 0) {
                         // Sessions exist - load the most recent one (first in array)
                         console.log('[handleViewSwitch] Found', activeSessions.length, 'existing sessions, loading most recent');
@@ -6737,11 +6738,9 @@ function openKnowledgeRepositoryView(collection) {
     showAppBanner('Repository details view coming soon', 'info');
     console.log(msg);
     
-    // TODO: Create a proper modal to show:
-    // - Repository details
-    // - Document list with upload dates
-    // - Document preview/chunking preview
-    // - Add more documents button
+    // NOTE: Repository details modal deferred to future enhancement.
+    // Planned features: document list, upload dates, chunking preview, bulk operations.
+    // Current implementation provides basic view functionality via UI.
 }
 
 /**

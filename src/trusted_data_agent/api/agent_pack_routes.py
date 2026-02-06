@@ -339,7 +339,37 @@ async def get_agent_pack_details(current_user, installation_id: int):
 @agent_pack_bp.route("/v1/agent-packs/<int:installation_id>/check-sessions", methods=["GET"])
 @require_auth
 async def check_pack_active_sessions(current_user, installation_id: int):
-    """Check for active (non-archived) sessions using this pack's profiles or collections."""
+    """
+    DEPRECATED: Check for active (non-archived) sessions using this pack's profiles or collections.
+
+    **Deprecation Notice:**
+    This endpoint is deprecated and will be removed in a future version.
+    Use the unified relationships endpoint instead:
+
+        GET /api/v1/artifacts/agent-pack/{installation_id}/relationships
+
+    The unified endpoint provides:
+    - Comprehensive relationship detection across all pack-managed resources
+    - Deletion safety analysis (blockers, warnings, cascade effects)
+    - Consistent response format across all artifact types
+    - Better performance (single source of truth vs multiple file scans)
+
+    Migration path:
+    - Replace: checkData.active_session_count → checkData.relationships.sessions.active_count
+    - Replace: checkData.active_sessions → checkData.relationships.sessions.items (filter by !is_archived)
+    - Add: Check checkData.deletion_info.blockers for deletion blockers
+    - Add: Check checkData.deletion_info.warnings for comprehensive warnings
+    - Add: Access checkData.relationships.profiles for affected profiles
+    - Add: Access checkData.relationships.agent_packs for pack metadata
+
+    **Removal Target:** Q2 2026
+    """
+    import logging
+    app_logger = logging.getLogger("quart.app")
+    app_logger.warning(
+        f"DEPRECATED endpoint called: GET /v1/agent-packs/{installation_id}/check-sessions. "
+        "Use GET /api/v1/artifacts/agent-pack/{installation_id}/relationships instead."
+    )
     user_uuid = current_user.id
 
     try:

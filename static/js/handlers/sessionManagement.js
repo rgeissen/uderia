@@ -795,7 +795,8 @@ export async function handleDeleteSessionClick(deleteButton) {
                 // Check if the currently active session was deleted (parent or child)
                 if (state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId)) {
                     try {
-                        const remainingSessions = await API.loadAllSessions();
+                        const result = await API.loadSessions(0, 0); // Load all sessions (limit=0)
+                        const remainingSessions = result.sessions || [];
                         // Filter out archived sessions
                         const activeSessions = remainingSessions ? remainingSessions.filter(s => !s.archived) : [];
 
