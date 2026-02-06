@@ -905,7 +905,13 @@ async function handleUninstallAgentPack(installationId, packName) {
             if (!res.ok || data.status === 'error') {
                 throw new Error(data.message || `Uninstall failed (${res.status})`);
             }
-            _notify('success', `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed)`);
+
+            // Show sessions archived notification if any
+            const successMsg = data.sessions_archived > 0
+                ? `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed, ${data.sessions_archived} sessions archived)`
+                : `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed)`;
+
+            _notify('success', successMsg);
             await loadAgentPacks();
             // Refresh profiles and knowledge repositories so removed resources disappear immediately
             await configState.loadProfiles();
@@ -916,15 +922,53 @@ async function handleUninstallAgentPack(installationId, packName) {
         }
     };
 
-    if (window.showConfirmation) {
-        window.showConfirmation(
-            'Uninstall Agent Pack',
-            `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`,
-            doUninstall
-        );
-    } else {
-        if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
-            await doUninstall();
+    // Check for active sessions before showing confirmation
+    try {
+        const checkRes = await fetch(`/api/v1/agent-packs/${installationId}/check-sessions`, {
+            headers: _headers(false),
+        });
+        const checkData = await checkRes.json();
+
+        let message = `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`;
+
+        // Add dynamic warning if active sessions exist
+        if (checkData.active_session_count > 0) {
+            const sessionWord = checkData.active_session_count === 1 ? 'session' : 'sessions';
+            message += `<br><br><span style="color: #f59e0b; font-weight: 600;">⚠️ Warning: ${checkData.active_session_count} active ${sessionWord} will be archived.</span>`;
+
+            // Show sample session names
+            if (checkData.active_sessions && checkData.active_sessions.length > 0) {
+                const sessionNames = checkData.active_sessions
+                    .map(s => `• ${_esc(s.session_name)}`)
+                    .join('<br>');
+                message += `<br><br><span style="font-size: 0.9em;">Affected sessions:<br>${sessionNames}</span>`;
+
+                if (checkData.active_session_count > checkData.active_sessions.length) {
+                    message += `<br><span style="font-size: 0.9em; color: #9ca3af;">...and ${checkData.active_session_count - checkData.active_sessions.length} more</span>`;
+                }
+            }
+        }
+
+        if (window.showConfirmation) {
+            window.showConfirmation('Uninstall Agent Pack', message, doUninstall);
+        } else {
+            if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
+                await doUninstall();
+            }
+        }
+    } catch (err) {
+        // Fallback to basic confirmation if check fails
+        console.error('Failed to check active sessions:', err);
+        if (window.showConfirmation) {
+            window.showConfirmation(
+                'Uninstall Agent Pack',
+                `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`,
+                doUninstall
+            );
+        } else {
+            if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
+                await doUninstall();
+            }
         }
     }
 }

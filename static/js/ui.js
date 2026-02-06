@@ -4503,7 +4503,7 @@ export function updateConfigButtonState() {
 
 export function showConfirmation(title, body, onConfirm) {
     DOM.confirmModalTitle.textContent = title;
-    DOM.confirmModalBody.textContent = body;
+    DOM.confirmModalBody.innerHTML = body;
 
     DOM.confirmModalOverlay.classList.remove('hidden', 'opacity-0');
     DOM.confirmModalContent.classList.remove('scale-95', 'opacity-0');
@@ -6070,11 +6070,11 @@ function updateTableHeaderForKnowledge() {
     if (!tr) return;
 
     tr.innerHTML = `
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id">Chunk ID <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="content">Content Preview <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="document_id">Source Document <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="chunk_index">Chunk Index <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="token_count">Tokens <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="max-width: 150px;">Chunk ID <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="content" style="max-width: 400px;">Content Preview <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="document_id" style="max-width: 200px;">Source Document <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="chunk_index">Chunk Index <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-right text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="token_count">Tokens <span class="text-xs text-gray-500">↕</span></th>
     `;
 
     // Re-wire sort listeners after replacing innerHTML
@@ -6095,9 +6095,9 @@ function updateTableHeaderForPlanner() {
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="width: 200px;">ID <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_query" style="width: 300px;">User Query <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="strategy_type">Strategy <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="is_most_efficient">Efficient <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_feedback_score">Feedback <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="output_tokens">Output Tokens <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="is_most_efficient">Efficient <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_feedback_score">Feedback <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-right text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="output_tokens">Output Tokens <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="timestamp">Timestamp <span class="text-xs text-gray-500">↕</span></th>
     `;
 

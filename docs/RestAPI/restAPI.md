@@ -21,6 +21,7 @@
    - [Session Analytics](#311-session-analytics)
    - [System Prompts Management](#312-system-prompts-management)
    - [Document Upload](#313-document-upload)
+   - [Agent Pack Management](#314-agent-pack-management)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -839,7 +840,48 @@ Update a RAG collection's metadata (name, description, MCP server association).
     * **Code**: `400 Bad Request` (if attempting to remove `mcp_server_id`)
     * **Code**: `404 Not Found` (if collection doesn't exist)
 
-#### 3.6.4. Delete RAG Collection
+#### 3.6.4. Check Active Sessions for Collection
+
+Check for active (non-archived) sessions that reference a specific collection in their workflow history. Use this endpoint **before deletion** to warn users about sessions that will be archived.
+
+* **Endpoint**: `GET /api/v1/rag/collections/{collection_id}/check-sessions`
+* **Authentication**: Required (JWT or access token)
+* **Method**: `GET`
+* **URL Parameters**:
+    * `collection_id` (integer, required): The collection ID
+* **Success Response**:
+    * **Code**: `200 OK`
+    * **Body**:
+    ```json
+    {
+      "status": "success",
+      "active_session_count": 3,
+      "active_sessions": [
+        {
+          "session_id": "df8ebb81-5f32-4d4a-be5a-47a036bec54f",
+          "session_name": "Sales Analysis Q1"
+        },
+        {
+          "session_id": "a2b1c3d4-e5f6-7890-1234-567890abcdef",
+          "session_name": "Product Query"
+        }
+      ]
+    }
+    ```
+    * **Response Fields**:
+        * `active_session_count` (integer) - Total number of active sessions using this collection
+        * `active_sessions` (array) - List of up to 5 active sessions (for display purposes)
+            * `session_id` (string) - Session UUID
+            * `session_name` (string) - User-friendly session name
+* **Use Case**:
+    * Call this endpoint before showing a delete confirmation dialog
+    * Display a dynamic warning like: "⚠️ Warning: 3 active sessions will be archived"
+    * Show sample session names to help users understand impact
+* **Error Response**:
+    * **Code**: `401 Unauthorized` - Authentication required
+    * **Code**: `500 Internal Server Error`
+
+#### 3.6.5. Delete RAG Collection
 
 Delete a RAG collection and its vector store. All sessions that reference this collection in their workflow history are automatically archived.
 
@@ -874,7 +916,7 @@ Delete a RAG collection and its vector store. All sessions that reference this c
     * **Code**: `400 Bad Request` - Cannot delete default collection or agent pack-managed collections
     * **Code**: `404 Not Found` - Collection not found
 
-#### 3.6.5. Toggle RAG Collection
+#### 3.6.6. Toggle RAG Collection
 
 Enable or disable a RAG collection.
 
@@ -1549,7 +1591,60 @@ Update an existing profile configuration.
 
 ---
 
-#### 3.10.5. Delete Profile
+#### 3.10.5. Check Active Sessions for Profile
+
+Check for active (non-archived) sessions that use a specific profile. Use this endpoint **before deletion** to warn users about sessions that will be archived.
+
+**Endpoint:** `GET /api/v1/profiles/{profile_id}/check-sessions`
+**Authentication:** Required (JWT or access token)
+**Method:** `GET`
+**Path Parameters:**
+- `profile_id` (string, required) - Profile identifier
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "active_session_count": 5,
+  "active_sessions": [
+    {
+      "session_id": "df8ebb81-5f32-4d4a-be5a-47a036bec54f",
+      "session_name": "Database Analysis"
+    },
+    {
+      "session_id": "a2b1c3d4-e5f6-7890-1234-567890abcdef",
+      "session_name": "Customer Insights"
+    }
+  ]
+}
+```
+
+**Response Fields:**
+- `active_session_count` (integer) - Total number of active sessions using this profile
+- `active_sessions` (array) - List of up to 5 active sessions (for display purposes)
+    - `session_id` (string) - Session UUID
+    - `session_name` (string) - User-friendly session name
+
+**Use Case:**
+- Call this endpoint before showing a delete confirmation dialog
+- Display a dynamic warning like: "⚠️ Warning: 5 active sessions will be archived"
+- Show sample session names to help users understand impact
+- Both regular sessions and Genie child sessions are included in the count
+
+**Error Responses:**
+- `401 Unauthorized` - Authentication required
+- `500 Internal Server Error`
+
+**Example:**
+```bash
+# Check active sessions before deleting profile
+curl -X GET http://localhost:5050/api/v1/profiles/profile-123/check-sessions \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+#### 3.10.6. Delete Profile
 
 Delete a profile configuration. Cannot delete the default profile.
 
@@ -1591,7 +1686,7 @@ Delete a profile configuration. Cannot delete the default profile.
 
 ---
 
-#### 3.10.6. Get Default Profile
+#### 3.10.7. Get Default Profile
 
 Retrieve the current default profile information for the authenticated user. This is useful for checking which profile will be used for new sessions or verifying before deletion operations.
 
@@ -2497,6 +2592,135 @@ TASK_ID=$(echo "$TASK_RESPONSE" | jq -r '.task_id')
 sleep 10
 curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
   -H "Authorization: Bearer $TOKEN" | jq '.result'
+```
+
+---
+
+### 3.14. Agent Pack Management
+
+Agent packs are pre-configured bundles of profiles and collections that can be installed, shared, and managed as a unit. When deleting agent packs, all associated profiles and collections are removed, and active sessions using those resources are automatically archived.
+
+#### 3.14.1. Check Active Sessions for Agent Pack
+
+Check for active (non-archived) sessions that use any profiles or collections from a specific agent pack. Use this endpoint **before uninstalling** to warn users about sessions that will be archived.
+
+**Endpoint:** `GET /api/v1/agent-packs/{installation_id}/check-sessions`
+**Authentication:** Required (JWT or access token)
+**Method:** `GET`
+**Path Parameters:**
+- `installation_id` (integer, required) - Agent pack installation ID
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "active_session_count": 8,
+  "active_sessions": [
+    {
+      "session_id": "df8ebb81-5f32-4d4a-be5a-47a036bec54f",
+      "session_name": "Teradata Sales Analysis",
+      "reason": "uses profile"
+    },
+    {
+      "session_id": "a2b1c3d4-e5f6-7890-1234-567890abcdef",
+      "session_name": "Product Database Query",
+      "reason": "uses profile"
+    }
+  ],
+  "profile_ids": [
+    "profile-858e8b4c-940b-4689-8182-05a712242286",
+    "profile-52f3d13d-edfb-4f74-8d07-e71a0d1356e7"
+  ],
+  "collection_ids": [
+    "13",
+    "14",
+    "15"
+  ]
+}
+```
+
+**Response Fields:**
+- `active_session_count` (integer) - Total number of active sessions affected
+- `active_sessions` (array) - List of up to 5 active sessions (for display purposes)
+    - `session_id` (string) - Session UUID
+    - `session_name` (string) - User-friendly session name
+    - `reason` (string) - Why this session is affected ("uses profile" or "uses collection")
+- `profile_ids` (array) - List of profile IDs in this pack
+- `collection_ids` (array) - List of collection IDs in this pack
+
+**Use Case:**
+- Call this endpoint before showing an uninstall confirmation dialog
+- Display a dynamic warning like: "⚠️ Warning: 8 active sessions will be archived"
+- Show sample session names to help users understand the impact
+- List which profiles and collections will be removed
+
+**Error Responses:**
+- `401 Unauthorized` - Authentication required
+- `404 Not Found` - Agent pack not found
+- `500 Internal Server Error`
+
+**Example:**
+```bash
+# Check active sessions before uninstalling agent pack
+curl -X GET http://localhost:5050/api/v1/agent-packs/2/check-sessions \
+  -H "Authorization: Bearer $TOKEN"
+
+# Example: Dynamic confirmation message in UI
+# If active_session_count > 0:
+#   "⚠️ Warning: 8 active sessions will be archived."
+#   "Affected sessions:"
+#   "• Teradata Sales Analysis"
+#   "• Product Database Query"
+#   "...and 6 more"
+```
+
+#### 3.14.2. Uninstall Agent Pack
+
+Uninstall an agent pack, removing all associated profiles and collections. All sessions using these resources are automatically archived.
+
+**Endpoint:** `DELETE /api/v1/agent-packs/{installation_id}`
+**Authentication:** Required (JWT or access token)
+**Method:** `DELETE`
+**Path Parameters:**
+- `installation_id` (integer, required) - Agent pack installation ID
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "profiles_deleted": 10,
+  "collections_deleted": 9,
+  "profiles_kept": 0,
+  "collections_kept": 0,
+  "sessions_archived": 8
+}
+```
+
+**Response Fields:**
+- `profiles_deleted` (integer) - Number of profiles removed
+- `collections_deleted` (integer) - Number of collections removed
+- `profiles_kept` (integer) - Profiles retained (shared with other packs)
+- `collections_kept` (integer) - Collections retained (shared with other packs)
+- `sessions_archived` (integer) - Number of sessions automatically archived
+
+**Behavior:**
+- All profiles and collections owned by this pack are deleted
+- Resources shared with other installed packs are kept
+- All sessions using deleted resources are automatically archived
+- Archived sessions include reason and timestamp
+- Cannot uninstall if a deleted profile is set as default (change default first)
+
+**Error Responses:**
+- `404 Not Found` - Agent pack not found
+- `403 Forbidden` - Not the pack owner
+- `400 Bad Request` - Cannot delete default profile
+- `500 Internal Server Error`
+
+**Example:**
+```bash
+# Uninstall agent pack
+curl -X DELETE http://localhost:5050/api/v1/agent-packs/2 \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

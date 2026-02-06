@@ -87,8 +87,8 @@ async function handleLoadMoreSessions() {
         sessionPaginationState.hasMore = result.has_more;
         sessionPaginationState.totalCount = result.total_count;
 
-        const activeSessions = newSessions.filter(s => !s.archived);
-        const sortedSessions = sortSessionsHierarchically(activeSessions);
+        // Sort ALL sessions (including archived) for rendering - visibility controlled by toggle
+        const sortedSessions = sortSessionsHierarchically(newSessions);
 
         // Build parent-to-child map for last-child detection
         const parentToChildIds = new Map();
@@ -120,6 +120,7 @@ async function handleLoadMoreSessions() {
         });
 
         if (window.updateUtilitySessionsFilter) window.updateUtilitySessionsFilter();
+        if (window.updateArchivedSessionsFilter) window.updateArchivedSessionsFilter();
         updateGenieMasterBadges();
 
         // Sync wrapper states to hide tree connectors for collapsed children
@@ -289,17 +290,36 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         // Filter out archived sessions from the conversation view selector
         const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
 
+        // Check if all sessions are archived (or none exist)
+        if (activeSessions.length === 0) {
+            console.log('[Session Load] No active sessions available. Creating new session.');
+
+            // Clear stored session ID if it points to an archived session
+            if (currentSessionId) {
+                localStorage.removeItem('currentSessionId');
+                state.currentSessionId = null;
+            }
+
+            // Create a fresh session instead of loading archived one
+            await handleStartNewSession();
+            return;  // Exit early - new session is now loaded
+        }
+
         // Sort sessions hierarchically so slave sessions appear under their parents
-        const sortedSessions = sortSessionsHierarchically(activeSessions);
+        // Use ALL sessions (including archived) for rendering - visibility controlled by toggle
+        const allSessionsSorted = sortSessionsHierarchically(sessions || []);
+
+        // Keep sorted active sessions for session selection logic (which session to load)
+        const sortedActiveSessions = sortSessionsHierarchically(activeSessions);
 
         DOM.sessionList.innerHTML = '';
         hideLoadMoreSessionsButton();
 
-        if (sortedSessions && Array.isArray(sortedSessions) && sortedSessions.length > 0) {
+        if (allSessionsSorted && Array.isArray(allSessionsSorted) && allSessionsSorted.length > 0) {
             // Build a map of parent_id -> list of child session ids (in sorted order)
             // This allows us to detect which child is the last child of its parent
             const parentToChildIds = new Map();
-            sortedSessions.forEach((session) => {
+            allSessionsSorted.forEach((session) => {
                 const genieMetadata = session.genie_metadata || {};
                 const parentId = genieMetadata.parent_session_id;
                 if (genieMetadata.is_genie_slave && parentId) {
@@ -310,7 +330,7 @@ export async function finalizeConfiguration(config, switchToConversationView = t
                 }
             });
 
-            sortedSessions.forEach((session) => {
+            allSessionsSorted.forEach((session) => {
                 const isActive = session.id === currentSessionId;
 
                 // Check if this session is the last child of its parent
@@ -341,6 +361,11 @@ export async function finalizeConfiguration(config, switchToConversationView = t
                 window.updateUtilitySessionsFilter();
             }
 
+            // Update archived sessions filter visibility
+            if (window.updateArchivedSessionsFilter) {
+                window.updateArchivedSessionsFilter();
+            }
+
             // Update genie master badges (adds collapse toggles to sessions with slaves)
             updateGenieMasterBadges();
 
@@ -353,21 +378,21 @@ export async function finalizeConfiguration(config, switchToConversationView = t
             // 2. The session may be beyond the paginated list - that's OK, try loading anyway
             // 3. If that fails (session deleted), fall back to the first session
             if (currentSessionId) {
-                const isInLoadedList = sortedSessions.some(s => s.id === currentSessionId);
+                const isInLoadedList = sortedActiveSessions.some(s => s.id === currentSessionId);
                 console.log('[Session Load] Attempting to load stored session:', currentSessionId,
                     isInLoadedList ? '(found in loaded list)' : '(not in first page, loading directly)');
 
                 try {
                     await handleLoadSession(currentSessionId);
                 } catch (loadError) {
-                    console.warn('[Session Load] Failed to load stored session, falling back to first session:', loadError.message);
+                    console.warn('[Session Load] Failed to load stored session, falling back to first active session:', loadError.message);
                     localStorage.removeItem('currentSessionId');
-                    await handleLoadSession(sortedSessions[0].id);
+                    await handleLoadSession(sortedActiveSessions[0].id);
                 }
             } else {
-                // No stored session ID, load the most recent session
-                console.log('[Session Load] No stored session ID, loading most recent:', sortedSessions[0].id);
-                await handleLoadSession(sortedSessions[0].id);
+                // No stored session ID, load the most recent active session
+                console.log('[Session Load] No stored session ID, loading most recent active session:', sortedActiveSessions[0].id);
+                await handleLoadSession(sortedActiveSessions[0].id);
             }
         } else if (currentSessionId) {
             // No sessions loaded in first page, but we have a stored session ID

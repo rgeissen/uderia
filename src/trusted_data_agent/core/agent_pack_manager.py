@@ -945,6 +945,7 @@ class AgentPackManager:
         collections_deleted = 0
         profiles_kept = 0
         collections_kept = 0
+        total_sessions_archived = 0
 
         # Separate profiles and collections; process profiles first
         profile_resources = [r for r in resources if r["resource_type"] == "profile"]
@@ -959,6 +960,16 @@ class AgentPackManager:
 
             if not still_referenced and res.get("is_owned", 1):
                 try:
+                    # Archive sessions that use this profile before deleting it
+                    from trusted_data_agent.core.session_manager import archive_sessions_by_profile
+                    archive_result = await archive_sessions_by_profile(res["resource_id"], user_uuid)
+                    if archive_result["archived_count"] > 0:
+                        total_sessions_archived += archive_result["archived_count"]
+                        app_logger.info(
+                            f"  Archived {archive_result['archived_count']} sessions for profile "
+                            f"@{res['resource_tag']} (including {archive_result['genie_children_archived']} Genie children)"
+                        )
+
                     success = config_manager.remove_profile(res["resource_id"], user_uuid)
                     if success:
                         profiles_deleted += 1
@@ -979,6 +990,16 @@ class AgentPackManager:
             if not still_referenced and res.get("is_owned", 1):
                 try:
                     collection_id = int(res["resource_id"])
+
+                    # Archive sessions that use this collection before deleting it
+                    from trusted_data_agent.core.session_manager import archive_sessions_by_collection
+                    archive_result = await archive_sessions_by_collection(str(collection_id), user_uuid)
+                    if archive_result["archived_count"] > 0:
+                        total_sessions_archived += archive_result["archived_count"]
+                        app_logger.info(
+                            f"  Archived {archive_result['archived_count']} sessions for collection id={collection_id}"
+                        )
+
                     if retriever:
                         success = retriever.remove_collection(collection_id, user_id=user_uuid)
                         if success:
@@ -1005,13 +1026,15 @@ class AgentPackManager:
 
         app_logger.info(f"Uninstalled agent pack '{pack_name}' (id={installation_id}): "
                        f"{profiles_deleted} profiles deleted, {profiles_kept} kept, "
-                       f"{collections_deleted} collections deleted, {collections_kept} kept")
+                       f"{collections_deleted} collections deleted, {collections_kept} kept, "
+                       f"{total_sessions_archived} sessions archived")
 
         return {
             "profiles_deleted": profiles_deleted,
             "collections_deleted": collections_deleted,
             "profiles_kept": profiles_kept,
             "collections_kept": collections_kept,
+            "sessions_archived": total_sessions_archived,
         }
 
     # ── List ───────────────────────────────────────────────────────────────────

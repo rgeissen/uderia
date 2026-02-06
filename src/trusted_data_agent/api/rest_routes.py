@@ -2810,6 +2810,70 @@ async def update_rag_collection(collection_id: int):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>/check-sessions", methods=["GET"])
+async def check_collection_active_sessions(collection_id: int):
+    """Check for active (non-archived) sessions that reference this collection in their workflow."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        from pathlib import Path
+        import json
+
+        sessions_dir = Path("tda_sessions") / user_uuid
+        if not sessions_dir.exists():
+            return jsonify({
+                "status": "success",
+                "active_session_count": 0
+            }), 200
+
+        active_sessions = []
+        collection_str = str(collection_id)
+
+        for session_file in sessions_dir.glob("*.json"):
+            try:
+                with open(session_file, 'r') as f:
+                    session_data = json.load(f)
+
+                # Skip archived sessions (treat null as not archived)
+                if session_data.get("is_archived") is True:
+                    continue
+
+                # Check session's direct collection reference (for rag_focused profiles)
+                rag_collection_id = session_data.get("rag_collection_id")
+                if rag_collection_id and (str(rag_collection_id) == collection_str or rag_collection_id == collection_id):
+                    active_sessions.append({
+                        "session_id": session_data.get("id"),
+                        "session_name": session_data.get("name", "Unnamed Session")
+                    })
+                    continue
+
+                # Check workflow history for collection references (for tool_enabled profiles)
+                workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+                for turn in workflow_history:
+                    if turn.get("collection_id") == collection_str or turn.get("collection_id") == collection_id:
+                        active_sessions.append({
+                            "session_id": session_data.get("id"),
+                            "session_name": session_data.get("name", "Unnamed Session")
+                        })
+                        break
+
+            except Exception as e:
+                app_logger.warning(f"Error checking session {session_file}: {e}")
+                continue
+
+        return jsonify({
+            "status": "success",
+            "active_session_count": len(active_sessions),
+            "active_sessions": active_sessions[:5]  # Limit to 5 for display
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error checking active sessions for collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/rag/collections/<int:collection_id>", methods=["DELETE"])
 async def delete_rag_collection(collection_id: int):
     """Delete a RAG collection."""
@@ -5957,6 +6021,57 @@ async def update_profile(profile_id: str):
     except Exception as e:
         app_logger.error(f"Error updating profile: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@rest_api_bp.route("/v1/profiles/<profile_id>/check-sessions", methods=["GET"])
+async def check_profile_active_sessions(profile_id: str):
+    """Check for active (non-archived) sessions using this profile."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from pathlib import Path
+        import json
+
+        sessions_dir = Path("tda_sessions") / user_uuid
+        if not sessions_dir.exists():
+            return jsonify({
+                "status": "success",
+                "active_session_count": 0
+            }), 200
+
+        active_sessions = []
+        for session_file in sessions_dir.glob("*.json"):
+            try:
+                with open(session_file, 'r') as f:
+                    session_data = json.load(f)
+
+                # Skip archived sessions (treat null as not archived)
+                if session_data.get("is_archived") is True:
+                    continue
+
+                # Check if session uses this profile (current or historical)
+                session_profile_id = session_data.get("profile_id")
+                profile_tags_used = session_data.get("profile_tags_used", [])
+
+                # Check current profile or historical usage
+                if session_profile_id == profile_id or profile_id in profile_tags_used:
+                    active_sessions.append({
+                        "session_id": session_data.get("id"),
+                        "session_name": session_data.get("name", "Unnamed Session")
+                    })
+
+            except Exception as e:
+                app_logger.warning(f"Error checking session {session_file}: {e}")
+                continue
+
+        return jsonify({
+            "status": "success",
+            "active_session_count": len(active_sessions),
+            "active_sessions": active_sessions[:5]  # Limit to 5 for display
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error checking active sessions for profile: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @rest_api_bp.route("/v1/profiles/<profile_id>", methods=["DELETE"])
 async def delete_profile(profile_id: str):

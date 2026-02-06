@@ -885,14 +885,17 @@ export function initializeArchivedSessionsFilter() {
     const updateSessionVisibility = () => {
         const sessions = document.querySelectorAll('.session-item');
 
+        // Read current toggle state (not captured variable)
+        const currentShowArchived = toggle.checked;
+
         sessions.forEach(item => {
             const isArchived = item.dataset.archived === 'true';
             if (isArchived) {
                 // Hide archived sessions unless toggle is enabled
-                item.style.display = showArchived ? '' : 'none';
+                item.style.display = currentShowArchived ? '' : 'none';
 
                 // Add visual styling for archived sessions when shown
-                if (showArchived) {
+                if (currentShowArchived) {
                     item.classList.add('archived-session');
                 } else {
                     item.classList.remove('archived-session');
