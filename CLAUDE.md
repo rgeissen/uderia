@@ -1199,7 +1199,14 @@ Schema files in `schema/`:
 - `01_core_tables.sql` - Prompts, users, profiles
 - `02_parameters.sql` - Prompt parameters & overrides
 - `03_profile_integration.sql` - Profile-prompt mappings
+- `04_indexes.sql` - Database indexes for performance
+- `05_views.sql` - Database views
 - `06_prompt_mappings.sql` - Provider-specific prompt routing
+- `07_genie_profiles.sql` - Genie coordinator profiles
+- `08_genie_global_settings.sql` - Genie system settings
+- `09_agent_packs.sql` - Agent pack installations
+- `10_marketplace_agent_packs.sql` - Marketplace agent packs
+- `11_marketplace_sharing.sql` - Sharing and permissions
 
 ### Prompt Management System
 
@@ -1417,6 +1424,17 @@ python3 test_extensive_unified_relationships.py
 
 Files: `src/trusted_data_agent/core/artifact_detectors.py`, `relationship_analyzer.py`, `session_manager.py`, `rest_routes.py`
 
+---
+
+#### Deprecated: Legacy check-sessions Endpoints (Feb 2026, removal Q2 2026)
+
+**Old:** `GET /v1/profiles/<id>/check-sessions`, `GET /v1/agent-packs/<id>/check-sessions`
+**New:** `GET /v1/artifacts/<type>/<id>/relationships` (unified endpoint)
+**Migrated:** `configurationHandler.js`, `agentPackHandler.js`
+**Rule:** Always use unified endpoint for new deletion warnings
+
+---
+
 ### Cost Management
 
 **Real-time cost tracking**:
@@ -1434,6 +1452,33 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 3. **License validation**: `tda_keys/license.key` verified on startup
 4. **Rate limiting**: Configurable per-user quotas (disabled by default)
 5. **OAuth**: Google/GitHub integration with email verification
+
+### Agent Packs System
+
+**Purpose:** Portable bundles containing profiles, collections, and MCP servers for quick deployment.
+
+**Key Features:**
+- Export/import complete agent configurations as `.agentpack` files
+- Publish to marketplace for sharing
+- Install from marketplace with one click
+- Automatic dependency resolution (profiles, collections, MCP servers)
+- Version management and update notifications
+
+**Files:**
+- `src/trusted_data_agent/core/agent_pack_manager.py` - Pack creation and installation
+- `src/trusted_data_agent/core/agent_pack_db.py` - Database operations
+- `src/trusted_data_agent/api/agent_pack_routes.py` - REST endpoints
+- `static/js/handlers/agentPackHandler.js` - UI integration
+- Schema: `09_agent_packs.sql`, `10_marketplace_agent_packs.sql`, `11_marketplace_sharing.sql`
+
+**REST Endpoints:**
+- `POST /v1/agent-packs/create` - Create pack from resources
+- `POST /v1/agent-packs/import` - Install pack from file
+- `POST /v1/agent-packs/export` - Export pack to file
+- `POST /v1/marketplace/agent-packs/<id>/publish` - Publish to marketplace
+- `GET /v1/marketplace/agent-packs` - Browse marketplace
+
+**See:** `docs/RestAPI/restAPI.md` section 3.14 for full API documentation
 
 ## Common Development Tasks
 
@@ -1458,11 +1503,29 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 ### Creating RAG Template Plugins
 
 1. Create directory in `rag_templates/templates/<your-template>/`
-2. Add `manifest.json` with schema definition
-3. Implement `template.py` with required methods
-4. Register in `rag_templates/registry.json`
+2. Add `manifest.json` with template metadata
+3. Add template definition JSON (e.g., `my_template_v1.json`)
+4. Templates auto-discovered on reload (no manual registration needed)
 
 See: `rag_templates/README.md`, `rag_templates/PLUGIN_MANIFEST_SCHEMA.md`
+User templates: `~/.tda/templates/` (overrides system)
+
+### Managing Templates (Admin UI)
+
+**Location:** Administration → Templates tab (Feb 2026)
+
+**Features:**
+- **Hot-Reload:** `POST /v1/rag/templates/reload` - Reload templates without restart
+- **Validate:** `POST /v1/rag/templates/validate` - Validate plugin before install
+
+**Template Locations:**
+- User: `~/.tda/templates/` (overrides system)
+- System: `rag_templates/templates/`
+
+**Files:** `templateManager.js`, `adminManager.js`, `index.html`, `rest_routes.py`
+**Docs:** `docs/RAG_Templates/TROUBLESHOOTING.md`, `rag_templates/PLUGIN_MANIFEST_SCHEMA.md`
+
+---
 
 ### Working with Multi-User Features
 
@@ -1641,9 +1704,13 @@ npx tailwindcss build
 
 ## Recent Major Changes
 
-- **Feb 2026**: Text to Speech - for all profile classes
+- **Feb 2026**: Agent Packs system - install/export/publish agent packs with marketplace
+- **Feb 2026**: Template Management UI - hot-reload and validation in admin panel
+- **Feb 2026**: Unified Relationships API Migration - deprecated legacy check-sessions endpoints
+- **Feb 2026**: Event harmonization - standardized event structure across system
 - **Jan 2026**: OAuth (Google/GitHub), email verification
 - **Dec 2025**: Prompt encryption to database, enhanced bootstrapping
 - **Dec 2025**: Consumption profile enforcement, financial governance
 - **Nov 2025**: Multi-user auth, profile system, RAG constructors
 - **Nov 2025**: Knowledge repositories, marketplace integration
+- **Sep 2025**: Text to Speech integration (ongoing enhancements)
