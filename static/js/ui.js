@@ -3945,11 +3945,19 @@ export function addSessionToList(session, isActive = false, isLastChild = false)
     sessionItem.id = `session-${session.id}`;
     sessionItem.dataset.sessionId = session.id;
     sessionItem.dataset.isTemporary = session.is_temporary ? 'true' : 'false';
+    sessionItem.dataset.archived = session.archived ? 'true' : 'false';
     sessionItem.className = 'session-item w-full text-left p-3 rounded-lg hover:bg-white/10 transition-colors cursor-pointer';
     
     // Add purple left border for utility sessions
     if (session.is_temporary) {
         sessionItem.style.borderLeft = '3px solid rgba(139, 92, 246, 0.6)';
+        sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
+    }
+
+    // Add gray styling for archived sessions
+    if (session.archived) {
+        sessionItem.style.opacity = '0.5';
+        sessionItem.style.borderLeft = '3px solid rgba(156, 163, 175, 0.4)';
         sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
     }
 

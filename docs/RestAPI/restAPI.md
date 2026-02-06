@@ -841,7 +841,7 @@ Update a RAG collection's metadata (name, description, MCP server association).
 
 #### 3.6.4. Delete RAG Collection
 
-Delete a RAG collection and its vector store.
+Delete a RAG collection and its vector store. All sessions that reference this collection in their workflow history are automatically archived.
 
 * **Endpoint**: `DELETE /api/v1/rag/collections/{collection_id}`
 * **Authentication**: Required (JWT or access token)
@@ -850,8 +850,29 @@ Delete a RAG collection and its vector store.
     * `collection_id` (integer, required): The collection ID
 * **Success Response**:
     * **Code**: `200 OK`
+    * **Body**:
+    ```json
+    {
+      "status": "success",
+      "message": "Collection deleted successfully",
+      "sessions_archived": 3,
+      "archived_session_ids": [
+        "df8ebb81-5f32-4d4a-be5a-47a036bec54f",
+        "a2b1c3d4-e5f6-7890-1234-567890abcdef",
+        "b3c2d1e0-f5a6-7891-2345-678901bcdefg"
+      ]
+    }
+    ```
+    * **Response Fields**:
+        * `sessions_archived` (integer) - Number of sessions automatically archived
+        * `archived_session_ids` (array) - List of archived session IDs
+    * **Behavior**:
+        * All sessions that used this collection for RAG retrieval are archived
+        * Archived sessions are marked with `archived: true`, timestamp, and reason
+        * Sessions remain accessible but hidden by default (can be shown via "Show Archived" toggle)
 * **Error Response**:
-    * **Code**: `404 Not Found`
+    * **Code**: `400 Bad Request` - Cannot delete default collection or agent pack-managed collections
+    * **Code**: `404 Not Found` - Collection not found
 
 #### 3.6.5. Toggle RAG Collection
 
@@ -1314,6 +1335,7 @@ The Profile Management API provides endpoints for creating, managing, and config
 - **Active for Consumption**: Profiles enabled for multi-profile coordination
 - **Classification**: Automatic or manual categorization of MCP tools/prompts/resources
 - **Genie Coordination**: Advanced multi-profile orchestration using LangChain agents
+- **Session Archiving**: When profiles are deleted, all associated sessions are automatically archived with full traceability
 
 #### Profile Types
 
@@ -1540,18 +1562,71 @@ Delete a profile configuration. Cannot delete the default profile.
 ```json
 {
   "status": "success",
-  "message": "Profile deleted successfully"
+  "message": "Profile deleted successfully",
+  "sessions_archived": 5,
+  "archived_session_ids": [
+    "df8ebb81-5f32-4d4a-be5a-47a036bec54f",
+    "a2b1c3d4-e5f6-7890-1234-567890abcdef",
+    "..."
+  ],
+  "genie_children_archived": 2
 }
 ```
 
+**Response Fields:**
+- `sessions_archived` (integer) - Number of sessions automatically archived
+- `archived_session_ids` (array) - List of archived session IDs
+- `genie_children_archived` (integer) - Number of Genie child sessions archived
+
+**Behavior:**
+- All sessions using this profile are automatically archived (marked as `archived: true` with reason and timestamp)
+- Archived sessions remain accessible but are hidden by default in the UI
+- Users can view archived sessions by enabling "Show Archived" toggle in Sessions panel
+- Genie child sessions linked to this profile are also archived and tracked in `genie_session_links` table
+
 **Error Responses:**
-- `400 Bad Request` - Cannot delete default profile
+- `400 Bad Request` - Cannot delete default profile while other profiles exist (safeguard)
 - `404 Not Found` - Profile not found
 - `401 Unauthorized` - Authentication required
 
 ---
 
-#### 3.10.6. Set Default Profile
+#### 3.10.6. Get Default Profile
+
+Retrieve the current default profile information for the authenticated user. This is useful for checking which profile will be used for new sessions or verifying before deletion operations.
+
+**Endpoint:** `GET /api/v1/profiles/default`
+**Authentication:** Required (JWT or access token)
+**Parameters:** None
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "profile": {
+    "id": "profile-550e8400-e29b",
+    "name": "Teradata SQL Agent",
+    "tag": "TDAT",
+    "profile_type": "tool_enabled",
+    "llmConfigurationId": "llm-config-123",
+    "mcpServerId": "mcp-server-456",
+    "description": "Teradata database query and analysis"
+  }
+}
+```
+
+**Use Cases:**
+- Check which profile is currently set as default before attempting deletion
+- Verify default profile configuration in automation scripts
+- Display current default profile in UI/dashboards
+
+**Error Responses:**
+- `404 Not Found` - No default profile configured
+- `401 Unauthorized` - Authentication required
+
+---
+
+#### 3.10.7. Set Default Profile
 
 Mark a profile as the default profile for the user account. New sessions will automatically use this profile.
 
@@ -1571,7 +1646,7 @@ Mark a profile as the default profile for the user account. New sessions will au
 
 ---
 
-#### 3.10.7. Activate Profile
+#### 3.10.8. Activate Profile
 
 Activate a profile, switching the runtime context to use its configuration. This loads the profile's LLM settings, MCP servers, and classification results. Requires all profile tests to pass.
 
@@ -1600,7 +1675,7 @@ Activate a profile, switching the runtime context to use its configuration. This
 
 ---
 
-#### 3.10.8. Test Profile
+#### 3.10.9. Test Profile
 
 Test a profile's configuration (LLM connectivity, MCP connectivity).
 

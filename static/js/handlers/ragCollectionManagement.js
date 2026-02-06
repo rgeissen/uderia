@@ -759,10 +759,19 @@ async function deleteRagCollection(collectionId, collectionName) {
                 });
                 
                 const data = await response.json();
-                
+
                 if (response.ok) {
-                    showNotification('success', `Collection "${collectionName}" deleted successfully`);
-                    
+                    // Show success message with archive information
+                    const archivedCount = data.sessions_archived || 0;
+                    let message = `Collection "${collectionName}" deleted successfully`;
+
+                    if (archivedCount > 0) {
+                        message += `\n\n${archivedCount} session(s) using this collection have been archived.`;
+                        message += `\n\nArchived sessions can be viewed in the Sessions panel by enabling "Show Archived".`;
+                    }
+
+                    showNotification('success', message);
+
                     // Refresh collections list
                     await loadRagCollections();
                 } else {

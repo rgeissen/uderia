@@ -544,12 +544,13 @@ class ConfigurationState {
     }
 
     async removeProfile(profileId) {
-        await API.deleteProfile(profileId);
+        const result = await API.deleteProfile(profileId);
         this.profiles = this.profiles.filter(p => p.id !== profileId);
         if (this.defaultProfileId === profileId) {
             this.defaultProfileId = null;
         }
         this.activeForConsumptionProfileIds = this.activeForConsumptionProfileIds.filter(id => id !== profileId);
+        return result;
     }
 
     async setDefaultProfile(profileId) {
@@ -3943,11 +3944,24 @@ function attachProfileEventListeners() {
             }
             
             showDeleteConfirmation(`Are you sure you want to delete profile "${profileName}"?`, async () => {
-                await configState.removeProfile(profileId);
+                const result = await configState.removeProfile(profileId);
                 renderProfiles();
                 renderLLMProviders(); // Re-render to update default/active badges
                 renderMCPServers(); // Re-render to update default/active badges
-                showNotification('success', 'Profile deleted successfully');
+
+                // Show success message with archive information
+                const archivedCount = result.sessions_archived || 0;
+                let message = 'Profile deleted successfully';
+
+                if (archivedCount > 0) {
+                    message += `\n\n${archivedCount} session(s) using this profile have been archived.`;
+                    if (result.genie_children_archived > 0) {
+                        message += `\n(${result.genie_children_archived} Genie child sessions included)`;
+                    }
+                    message += `\n\nArchived sessions can be viewed in the Sessions panel by enabling "Show Archived".`;
+                }
+
+                showNotification('success', message);
             });
         });
     });

@@ -923,6 +923,20 @@ class AgentPackManager:
         # Get all resources BEFORE removing junction rows
         resources = pack_db.get_resources_for_pack(installation_id)
 
+        # Check if any profile being deleted is the default profile
+        profile_resources = [r for r in resources if r["resource_type"] == "profile"]
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
+        for res in profile_resources:
+            if res["resource_id"] == default_profile_id:
+                # Check if still referenced by another pack
+                if not pack_db.is_pack_managed(res["resource_type"], res["resource_id"]):
+                    raise ValueError(
+                        f"Cannot uninstall agent pack: profile '@{res['resource_tag']}' is set as "
+                        f"the default profile. Please change the default profile first, then "
+                        f"try uninstalling again."
+                    )
+
         # Step 1: Remove junction rows for THIS pack
         pack_db.remove_pack_resources(installation_id)
 

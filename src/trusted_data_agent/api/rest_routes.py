@@ -2843,13 +2843,25 @@ async def delete_rag_collection(collection_id: int):
         if default_collection_id and collection_id == default_collection_id:
             return jsonify({"status": "error", "message": "Cannot delete your default collection"}), 400
         # --- MARKETPLACE PHASE 2 END ---
-        
+
+        # Archive sessions using this collection BEFORE deletion
+        from trusted_data_agent.core import session_manager
+        archive_result = await session_manager.archive_sessions_by_collection(str(collection_id), user_uuid)
+        app_logger.info(
+            f"Archived {archive_result['archived_count']} sessions for collection {collection_id}"
+        )
+
         # Pass user_id for additional validation in remove_collection
         success = retriever.remove_collection(collection_id, user_id=user_uuid)
-        
+
         if success:
             app_logger.info(f"Deleted RAG collection: {collection_id}")
-            return jsonify({"status": "success", "message": "Collection deleted successfully"}), 200
+            return jsonify({
+                "status": "success",
+                "message": "Collection deleted successfully",
+                "sessions_archived": archive_result["archived_count"],
+                "archived_session_ids": archive_result["session_ids"]
+            }), 200
         else:
             return jsonify({"status": "error", "message": "Failed to delete collection or collection not found"}), 404
             
@@ -5966,6 +5978,25 @@ async def delete_profile(profile_id: str):
                            f"Uninstall the pack(s) to remove it."
             }), 409
 
+        # Default profile constraint: block deletion if it's the default and not the last profile
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+        all_profiles = config_manager.get_profiles(user_uuid)
+
+        if profile_id == default_profile_id and len(all_profiles) > 1:
+            return jsonify({
+                "status": "error",
+                "message": "Cannot delete the default profile while other profiles exist. "
+                           "Please change the default profile first."
+            }), 400
+
+        # Archive sessions using this profile BEFORE deletion
+        from trusted_data_agent.core import session_manager
+        archive_result = await session_manager.archive_sessions_by_profile(profile_id, user_uuid)
+        app_logger.info(
+            f"Archived {archive_result['archived_count']} sessions for profile {profile_id} "
+            f"({archive_result['genie_children_archived']} Genie children)"
+        )
+
         success = config_manager.remove_profile(profile_id, user_uuid)
         
         if not success:
@@ -5982,14 +6013,60 @@ async def delete_profile(profile_id: str):
             app_logger.info(f"Removed deleted profile {profile_id} from active profiles list")
         
         app_logger.info(f"Deleted profile: {profile_id}")
-        
+
         return jsonify({
             "status": "success",
-            "message": "Profile deleted successfully"
+            "message": "Profile deleted successfully",
+            "sessions_archived": archive_result["archived_count"],
+            "archived_session_ids": archive_result["session_ids"],
+            "genie_children_archived": archive_result["genie_children_archived"]
         }), 200
             
     except Exception as e:
         app_logger.error(f"Error deleting profile: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@rest_api_bp.route("/v1/profiles/default", methods=["GET"])
+async def get_default_profile():
+    """Get the current default profile information."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
+        if not default_profile_id:
+            return jsonify({
+                "status": "success",
+                "default_profile": None,
+                "message": "No default profile set"
+            }), 200
+
+        # Get full profile details
+        profiles = config_manager.get_profiles(user_uuid)
+        default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+
+        if not default_profile:
+            return jsonify({
+                "status": "error",
+                "message": "Default profile ID set but profile not found"
+            }), 404
+
+        return jsonify({
+            "status": "success",
+            "default_profile": {
+                "id": default_profile.get("id"),
+                "name": default_profile.get("name"),
+                "tag": default_profile.get("tag"),
+                "classification": default_profile.get("classification"),
+                "llmConfigurationId": default_profile.get("llmConfigurationId"),
+                "mcpServerId": default_profile.get("mcpServerId")
+            }
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting default profile: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @rest_api_bp.route("/v1/profiles/<profile_id>/set_default", methods=["POST"])

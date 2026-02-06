@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS genie_session_links (
     status TEXT DEFAULT 'active',          -- active, completed, failed
     execution_order INTEGER DEFAULT 0,     -- Order in which child was invoked
     nesting_level INTEGER DEFAULT 0,       -- Depth in nested Genie hierarchy (0=direct child, 1=grandchild, etc.)
+    archived BOOLEAN DEFAULT 0,            -- Archived flag (set when child session profile is deleted)
 
     -- Ensure unique parent-child relationship
     UNIQUE(parent_session_id, slave_session_id)

@@ -588,6 +588,237 @@ async def delete_session(user_uuid: str, session_id: str) -> bool:
         return False # Indicate failure due to error
 
 
+async def archive_sessions_by_profile(
+    profile_id: str,
+    user_uuid: str
+) -> dict:
+    """
+    Archive all sessions for a user that reference the given profile_id.
+
+    This is called when a profile is deleted to prevent orphaned references.
+    Leverages the existing delete_session() archive functionality.
+
+    Args:
+        profile_id: The ID of the profile being deleted
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        dict: {
+            "archived_count": int,
+            "session_ids": [list of archived session IDs],
+            "genie_children_archived": int
+        }
+    """
+    archived_sessions = []
+    genie_children = []
+
+    # Get user's session directory
+    user_session_dir = Path(SESSIONS_DIR) / user_uuid
+    if not user_session_dir.exists():
+        app_logger.info(f"No sessions directory found for user {user_uuid}")
+        return {"archived_count": 0, "session_ids": [], "genie_children_archived": 0}
+
+    app_logger.info(f"Checking sessions for profile_id='{profile_id}' in user {user_uuid}")
+
+    # Iterate through all session files to find ones using the deleted profile
+    sessions_to_archive = []
+    for session_file in user_session_dir.glob("*.json"):
+        session_id = session_file.stem
+
+        try:
+            # Load session data
+            async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                session_data = json.loads(content)
+
+            # Skip already archived sessions
+            if session_data.get("archived"):
+                continue
+
+            # Check if this session uses the deleted profile
+            should_archive = False
+
+            # Check primary profile
+            if session_data.get("profile_id") == profile_id:
+                should_archive = True
+                app_logger.debug(f"Session {session_id} uses profile_id={profile_id}")
+
+            # Check profile_tags_used history
+            if profile_id in session_data.get("profile_tags_used", []):
+                should_archive = True
+                app_logger.debug(f"Session {session_id} has profile_id={profile_id} in tags_used")
+
+            # Check Genie child profile
+            genie_meta = session_data.get("genie_metadata", {})
+            if genie_meta.get("slave_profile_id") == profile_id:
+                should_archive = True
+                genie_children.append(session_id)
+                app_logger.debug(f"Session {session_id} is Genie child with slave_profile_id={profile_id}")
+
+            if should_archive:
+                sessions_to_archive.append((session_id, session_data))
+
+        except (OSError, json.JSONDecodeError) as e:
+            app_logger.error(f"Error processing session {session_id}: {e}", exc_info=True)
+            continue
+
+    # Archive sessions using existing delete_session() function, but add custom reason
+    for session_id, session_data in sessions_to_archive:
+        # Use existing archive function
+        success = await delete_session(user_uuid, session_id)
+        if success:
+            # Update the archived reason (override the default)
+            try:
+                session_path = _find_session_path(user_uuid, session_id)
+                if session_path:
+                    async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                        updated_data = json.loads(await f.read())
+                    updated_data["archived_reason"] = f"Profile '{profile_id}' was deleted"
+                    async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                        await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+            except Exception as e:
+                app_logger.warning(f"Could not update archived_reason for {session_id}: {e}")
+
+            archived_sessions.append(session_id)
+            app_logger.info(f"Archived session {session_id} (profile {profile_id} deleted)")
+
+    # Update genie_session_links table for archived children
+    if genie_children:
+        try:
+            conn = get_auth_db_connection()
+            cursor = conn.cursor()
+
+            # Check if archived column exists (for backward compatibility)
+            cursor.execute("PRAGMA table_info(genie_session_links)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "archived" in columns:
+                placeholders = ",".join("?" * len(genie_children))
+                cursor.execute(
+                    f"UPDATE genie_session_links SET archived = 1 WHERE slave_session_id IN ({placeholders})",
+                    genie_children
+                )
+                conn.commit()
+                app_logger.info(f"Updated genie_session_links archived flag for {len(genie_children)} children")
+
+            conn.close()
+        except Exception as e:
+            app_logger.error(f"Error updating genie_session_links: {e}", exc_info=True)
+
+    app_logger.info(
+        f"Archive by profile complete: {len(archived_sessions)} sessions archived "
+        f"({len(genie_children)} Genie children)"
+    )
+
+    return {
+        "archived_count": len(archived_sessions),
+        "session_ids": archived_sessions,
+        "genie_children_archived": len(genie_children)
+    }
+
+
+async def archive_sessions_by_collection(
+    collection_id: str,
+    user_uuid: str
+) -> dict:
+    """
+    Archive all sessions for a user that reference the given collection_id in their workflow history.
+
+    This is called when a RAG collection is deleted to prevent orphaned references.
+    Leverages the existing delete_session() archive functionality.
+
+    Args:
+        collection_id: The ID of the collection being deleted
+        user_uuid: The user who owns the sessions
+
+    Returns:
+        dict: {
+            "archived_count": int,
+            "session_ids": [list of archived session IDs]
+        }
+    """
+    archived_sessions = []
+
+    # Get user's session directory
+    user_session_dir = Path(SESSIONS_DIR) / user_uuid
+    if not user_session_dir.exists():
+        app_logger.info(f"No sessions directory found for user {user_uuid}")
+        return {"archived_count": 0, "session_ids": []}
+
+    app_logger.info(f"Checking sessions for collection_id='{collection_id}' in user {user_uuid}")
+
+    # Iterate through all session files to find ones using the deleted collection
+    sessions_to_archive = []
+    for session_file in user_session_dir.glob("*.json"):
+        session_id = session_file.stem
+
+        try:
+            # Load session data
+            async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                session_data = json.loads(content)
+
+            # Skip already archived sessions
+            if session_data.get("archived"):
+                continue
+
+            # Check workflow history for collection references
+            should_archive = False
+            workflow = session_data.get("last_turn_data", {}).get("workflow_history", [])
+
+            for turn in workflow:
+                # Check planner RAG collection
+                if turn.get("rag_source_collection_id") == collection_id:
+                    should_archive = True
+                    app_logger.debug(f"Session {session_id} uses RAG collection {collection_id}")
+                    break
+
+                # Check knowledge repository references
+                knowledge_sources = turn.get("knowledge_sources", [])
+                for source in knowledge_sources:
+                    if source.get("collection_id") == collection_id:
+                        should_archive = True
+                        app_logger.debug(f"Session {session_id} uses knowledge collection {collection_id}")
+                        break
+
+                if should_archive:
+                    break
+
+            if should_archive:
+                sessions_to_archive.append(session_id)
+
+        except (OSError, json.JSONDecodeError) as e:
+            app_logger.error(f"Error processing session {session_id}: {e}", exc_info=True)
+            continue
+
+    # Archive sessions using existing delete_session() function, but add custom reason
+    for session_id in sessions_to_archive:
+        # Use existing archive function
+        success = await delete_session(user_uuid, session_id)
+        if success:
+            # Update the archived reason (override the default)
+            try:
+                session_path = _find_session_path(user_uuid, session_id)
+                if session_path:
+                    async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
+                        updated_data = json.loads(await f.read())
+                    updated_data["archived_reason"] = f"Collection '{collection_id}' was deleted"
+                    async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
+                        await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
+            except Exception as e:
+                app_logger.warning(f"Could not update archived_reason for {session_id}: {e}")
+
+            archived_sessions.append(session_id)
+            app_logger.info(f"Archived session {session_id} (collection {collection_id} deleted)")
+
+    app_logger.info(f"Archive by collection complete: {len(archived_sessions)} sessions archived")
+
+    return {
+        "archived_count": len(archived_sessions),
+        "session_ids": archived_sessions
+    }
+
+
 def _cleanup_session_uploads(user_uuid: str, session_id: str):
     """Remove the uploads directory for a session when it is deleted/archived."""
     import shutil
