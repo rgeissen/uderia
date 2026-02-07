@@ -168,11 +168,11 @@ def create_app():
     app.secret_key = secret_key
     # --- End Secret Key ---
 
-    # --- MODIFICATION START: Increase Quart's RESPONSE_TIMEOUT ---
+    # --- MODIFICATION START: Increase Quart timeouts ---
     # This prevents Quart from closing long SSE streams prematurely (default is 60s)
     app.config['RESPONSE_TIMEOUT'] = 1800 # Set to 30 minutes (adjust as needed, or use None for unlimited)
-    # You might also want to set REQUEST_TIMEOUT if needed, though less relevant here
     app.config['REQUEST_TIMEOUT'] = None
+    app.config['BODY_TIMEOUT'] = None     # CRITICAL: Disables timeout for reading request body (file uploads)
     app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB (agent packs can be large)
     # --- MODIFICATION END ---
 
@@ -325,8 +325,9 @@ async def main(args): # MODIFIED: Accept args
     config.accesslog = None
     config.errorlog = None
     # Longer Hypercorn timeouts to avoid premature disconnects on long-running SSE streams
-    config.worker_timeout = 600
-    config.read_timeout = 600
+    # and to support large file uploads (agent packs up to 500MB)
+    config.worker_timeout = 1800  # 30 minutes (matches RESPONSE_TIMEOUT)
+    config.read_timeout = 1800    # 30 minutes (for slow uploads over network)
     await hypercorn.asyncio.serve(app, config)
 
 if __name__ == "__main__":

@@ -350,8 +350,15 @@ class ConfigurationState {
         this.activeLLM = null;
         this.profiles = [];
         this.activeProfileId = null;
-        this.masterClassificationProfileId = null; // DEPRECATED: Legacy single master (for backwards compatibility)
-        this.masterClassificationProfileIds = {}; // NEW: Per-server masters {mcpServerId: profileId}
+        // DEPRECATED: masterClassificationProfileId (single master for all servers)
+        // Maintained for backwards compatibility until migration to per-server masters is complete.
+        // Migration path: Use masterClassificationProfileIds[mcpServerId] instead.
+        // Removal target: Q2 2026 (after verifying no external integrations depend on this field)
+        this.masterClassificationProfileId = null;
+
+        // NEW: Per-server master classification profiles (preferred approach)
+        // Each MCP server can have its own primary classification profile
+        this.masterClassificationProfileIds = {}; // {mcpServerId: profileId}
         this.initialized = false;
         this.profileTestStatus = {}; // Track test status: profileId -> { tested: boolean, passed: boolean, timestamp: number }
     }
@@ -544,12 +551,13 @@ class ConfigurationState {
     }
 
     async removeProfile(profileId) {
-        await API.deleteProfile(profileId);
+        const result = await API.deleteProfile(profileId);
         this.profiles = this.profiles.filter(p => p.id !== profileId);
         if (this.defaultProfileId === profileId) {
             this.defaultProfileId = null;
         }
         this.activeForConsumptionProfileIds = this.activeForConsumptionProfileIds.filter(id => id !== profileId);
+        return result;
     }
 
     async setDefaultProfile(profileId) {
@@ -1132,12 +1140,70 @@ function attachMCPEventListeners() {
             }
 
             showDeleteConfirmation(confirmMessage, async () => {
-                const result = await configState.removeMCPServer(serverId);
-                if (result.success) {
-                    renderMCPServers();
-                    showNotification('success', 'MCP server and associated collections deleted successfully');
-                } else {
-                    showNotification('error', result.error);
+                try {
+                    const token = localStorage.getItem('tda_auth_token');
+                    const response = await fetch(`/api/v1/mcp/servers/${serverId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const archivedCount = data.archived_sessions || 0;
+
+                        let message = 'MCP server deleted successfully';
+                        if (collectionCount > 0) {
+                            message += ` (${collectionCount} collection${collectionCount !== 1 ? 's' : ''} removed)`;
+                        }
+                        if (archivedCount > 0) {
+                            message += `\n\n${archivedCount} session(s) using this server have been archived.`;
+                            message += `\n\nArchived sessions can be viewed in the Sessions panel by enabling "Show Archived".`;
+                        }
+
+                        // Update local state
+                        configState.mcpServers = configState.mcpServers.filter(s => s.id !== serverId);
+                        if (configState.activeMCP === serverId) {
+                            configState.activeMCP = null;
+                        }
+
+                        // Dispatch event to mark config as dirty
+                        document.dispatchEvent(new CustomEvent('profile-modified', {
+                            detail: { source: 'mcp-server-remove' }
+                        }));
+
+                        renderMCPServers();
+                        showNotification('success', message);
+
+                        // Refresh sessions list if sessions were archived
+                        if (archivedCount > 0) {
+                            try {
+                                // Auto-disable toggle (user deleted artifact = cleanup intent)
+                                const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+                                if (toggle && toggle.checked) {
+                                    toggle.checked = false;
+                                    localStorage.setItem('sidebarShowArchivedSessions', 'false');
+                                    console.log('[MCP Delete] Auto-disabled "Show Archived" toggle');
+                                }
+
+                                // Full refresh: fetch + re-render + apply filters
+                                const { refreshSessionsList } = await import('./configManagement.js');
+                                await refreshSessionsList();
+
+                                console.log('[MCP Delete] Session list refreshed after archiving', archivedCount, 'sessions');
+                            } catch (error) {
+                                console.error('[MCP Delete] Failed to refresh sessions:', error);
+                                // Non-fatal: MCP server deleted successfully, just UI refresh failed
+                            }
+                        }
+                    } else {
+                        const errorData = await response.json();
+                        showNotification('error', errorData.message || 'Failed to delete MCP server');
+                    }
+                } catch (error) {
+                    console.error('Failed to delete MCP server:', error);
+                    showNotification('error', error.message || 'Failed to delete MCP server');
                 }
             });
         });
@@ -1297,16 +1363,71 @@ function attachLLMEventListeners() {
         btn.addEventListener('click', async (e) => {
             const configId = e.target.dataset.configId;
             const config = configState.llmConfigurations.find(c => c.id === configId);
-            
+
             if (config) {
                 showDeleteConfirmation(`Are you sure you want to delete "${config.name}"?`, async () => {
-                    const result = await configState.removeLLMConfiguration(configId);
-                    if (result.success) {
-                        showNotification('success', 'LLM configuration deleted successfully');
-                        renderLLMProviders();
-                        updateReconnectButton();
-                    } else {
-                        showNotification('error', result.error);
+                    try {
+                        const token = localStorage.getItem('tda_auth_token');
+                        const response = await fetch(`/api/v1/llm/configurations/${configId}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            const archivedCount = data.archived_sessions || 0;
+
+                            let message = 'LLM configuration deleted successfully';
+                            if (archivedCount > 0) {
+                                message += `\n\n${archivedCount} session(s) using this configuration have been archived.`;
+                                message += `\n\nArchived sessions can be viewed in the Sessions panel by enabling "Show Archived".`;
+                            }
+
+                            // Update local state
+                            configState.llmConfigurations = configState.llmConfigurations.filter(c => c.id !== configId);
+                            if (configState.activeLLM === configId) {
+                                configState.activeLLM = null;
+                            }
+
+                            // Dispatch event to mark config as dirty
+                            document.dispatchEvent(new CustomEvent('profile-modified', {
+                                detail: { source: 'llm-config-remove' }
+                            }));
+
+                            renderLLMProviders();
+                            updateReconnectButton();
+                            showNotification('success', message);
+
+                            // Refresh sessions list if sessions were archived
+                            if (archivedCount > 0) {
+                                try {
+                                    // Auto-disable toggle (user deleted artifact = cleanup intent)
+                                    const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+                                    if (toggle && toggle.checked) {
+                                        toggle.checked = false;
+                                        localStorage.setItem('sidebarShowArchivedSessions', 'false');
+                                        console.log('[LLM Delete] Auto-disabled "Show Archived" toggle');
+                                    }
+
+                                    // Full refresh: fetch + re-render + apply filters
+                                    const { refreshSessionsList } = await import('./configManagement.js');
+                                    await refreshSessionsList();
+
+                                    console.log('[LLM Delete] Session list refreshed after archiving', archivedCount, 'sessions');
+                                } catch (error) {
+                                    console.error('[LLM Delete] Failed to refresh sessions:', error);
+                                    // Non-fatal: LLM config deleted successfully, just UI refresh failed
+                                }
+                            }
+                        } else {
+                            const errorData = await response.json();
+                            showNotification('error', errorData.message || 'Failed to delete LLM configuration');
+                        }
+                    } catch (error) {
+                        console.error('Failed to delete LLM configuration:', error);
+                        showNotification('error', error.message || 'Failed to delete LLM configuration');
                     }
                 });
             }
@@ -3932,23 +4053,147 @@ function attachProfileEventListeners() {
             const profileId = e.currentTarget.dataset.profileId;
             const profile = configState.profiles.find(p => p.id === profileId);
             const profileName = profile ? profile.name : 'this profile';
-            
+
             // Only allow deleting the default profile if it's the last profile
             const isDefault = profileId === configState.defaultProfileId;
             const isLastProfile = configState.profiles.length === 1;
-            
+
             if (isDefault && !isLastProfile) {
                 showNotification('error', 'Cannot delete the default profile while other profiles exist. Please change the default profile first.');
                 return;
             }
-            
-            showDeleteConfirmation(`Are you sure you want to delete profile "${profileName}"?`, async () => {
-                await configState.removeProfile(profileId);
+
+            // Function to perform the actual deletion
+            const doDelete = async () => {
+                const result = await configState.removeProfile(profileId);
                 renderProfiles();
                 renderLLMProviders(); // Re-render to update default/active badges
                 renderMCPServers(); // Re-render to update default/active badges
-                showNotification('success', 'Profile deleted successfully');
-            });
+
+                // Show success message with archive information
+                const archivedCount = result.sessions_archived || 0;
+                let message = 'Profile deleted successfully';
+
+                if (archivedCount > 0) {
+                    message += `\n\n${archivedCount} session(s) using this profile have been archived.`;
+                    if (result.genie_children_archived > 0) {
+                        message += `\n(${result.genie_children_archived} Genie child sessions included)`;
+                    }
+                    message += `\n\nArchived sessions can be viewed in the Sessions panel by enabling "Show Archived".`;
+                }
+
+                showNotification('success', message);
+
+                // Refresh sessions list if sessions were archived
+                if (archivedCount > 0) {
+                    try {
+                        // Auto-disable toggle (user deleted artifact = cleanup intent)
+                        const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+                        if (toggle && toggle.checked) {
+                            toggle.checked = false;
+                            localStorage.setItem('sidebarShowArchivedSessions', 'false');
+                            console.log('[Config Delete] Auto-disabled "Show Archived" toggle');
+                        }
+
+                        // Full refresh: fetch + re-render + apply filters
+                        const { refreshSessionsList } = await import('./configManagement.js');
+                        await refreshSessionsList();
+
+                        console.log('[Config Delete] Session list refreshed after archiving', archivedCount, 'sessions');
+                    } catch (error) {
+                        console.error('[Config Delete] Failed to refresh sessions:', error);
+                        // Non-fatal: profile/MCP/LLM deleted successfully, just UI refresh failed
+                    }
+                }
+            };
+
+            // Check for active sessions before showing confirmation
+            try {
+                const token = localStorage.getItem('tda_auth_token');
+                // MIGRATED: Use unified relationships endpoint instead of old check-sessions
+                const checkRes = await fetch(`/api/v1/artifacts/profile/${profileId}/relationships`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const checkData = await checkRes.json();
+
+                let message = `Are you sure you want to delete profile <strong>${escapeHtml(profileName)}</strong>?`;
+
+                // Extract data from unified endpoint response structure
+                const deletionInfo = checkData.deletion_info || {};
+                const blockers = deletionInfo.blockers || [];
+                const warnings = deletionInfo.warnings || [];
+                const sessions = checkData.relationships?.sessions || {};
+                const activeCount = sessions.active_count || 0;
+
+                // Show blockers (prevent deletion)
+                if (blockers.length > 0) {
+                    const blockerMessages = blockers
+                        .map(b => `• ${escapeHtml(b.message || b)}`)
+                        .join('<br>');
+                    message += `<br><br><span style="color: #ef4444; font-weight: 600;">🚫 Cannot Delete:</span><br><span style="font-size: 0.9em;">${blockerMessages}</span>`;
+
+                    window.showConfirmation('Cannot Delete Profile', message, null);
+                    return;
+                }
+
+                // Add dynamic warning if active sessions exist
+                if (activeCount > 0) {
+                    const sessionWord = activeCount === 1 ? 'session' : 'sessions';
+                    message += `<br><br><span style="color: #f59e0b; font-weight: 600;">⚠️ Warning: ${activeCount} active ${sessionWord} will be archived.</span>`;
+
+                    // Show sample session names
+                    if (sessions.items && sessions.items.length > 0) {
+                        const activeSessions = sessions.items.filter(s => !s.is_archived);
+                        if (activeSessions.length > 0) {
+                            const sessionNames = activeSessions
+                                .map(s => `• ${escapeHtml(s.session_name)}`)
+                                .join('<br>');
+                            message += `<br><br><span style="font-size: 0.9em;">Affected sessions:<br>${sessionNames}</span>`;
+
+                            if (activeCount > activeSessions.length) {
+                                message += `<br><span style="font-size: 0.9em; color: #9ca3af;">...and ${activeCount - activeSessions.length} more</span>`;
+                            }
+                        }
+                    }
+                }
+
+                // Show additional warnings from deletion analysis
+                if (warnings.length > 0) {
+                    const warningMessages = warnings
+                        .filter(w => !w.toLowerCase().includes('session'))  // Skip session warnings (already shown above)
+                        .map(w => `• ${escapeHtml(w)}`)
+                        .join('<br>');
+                    if (warningMessages) {
+                        message += `<br><br><span style="color: #f59e0b; font-weight: 600;">⚠️ Additional Warnings:</span><br><span style="font-size: 0.9em;">${warningMessages}</span>`;
+                    }
+                }
+
+                // Use window.showConfirmation for HTML support
+                if (window.showConfirmation) {
+                    window.showConfirmation('Delete Profile', message, doDelete);
+                } else {
+                    // Fallback to simple confirmation
+                    if (confirm(`Delete profile "${profileName}"?`)) {
+                        await doDelete();
+                    }
+                }
+            } catch (err) {
+                // Fallback to basic confirmation if check fails
+                console.error('Failed to check active sessions:', err);
+                if (window.showConfirmation) {
+                    window.showConfirmation(
+                        'Delete Profile',
+                        `Are you sure you want to delete profile <strong>${escapeHtml(profileName)}</strong>?`,
+                        doDelete
+                    );
+                } else {
+                    if (confirm(`Delete profile "${profileName}"?`)) {
+                        await doDelete();
+                    }
+                }
+            }
         });
     });
     

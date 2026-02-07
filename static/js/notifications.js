@@ -373,6 +373,10 @@ export function subscribeToNotifications() {
                 if (window.updateUtilitySessionsFilter) {
                     window.updateUtilitySessionsFilter();
                 }
+                // Update archived sessions filter visibility
+                if (window.updateArchivedSessionsFilter) {
+                    window.updateArchivedSessionsFilter();
+                }
                 break;
             }
             case 'session_name_update': {

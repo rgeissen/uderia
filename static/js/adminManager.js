@@ -378,6 +378,17 @@ const AdminManager = {
         if (globalOverrideCheckbox) {
             globalOverrideCheckbox.addEventListener('change', (e) => this.toggleRateLimitSettings(e.target.checked));
         }
+
+        // Template Management handlers
+        const reloadTemplatesBtn = document.getElementById('reload-templates-btn');
+        if (reloadTemplatesBtn) {
+            reloadTemplatesBtn.addEventListener('click', () => this.handleReloadTemplates());
+        }
+
+        const validateTemplateBtn = document.getElementById('validate-template-btn');
+        if (validateTemplateBtn) {
+            validateTemplateBtn.addEventListener('click', () => this.handleValidateTemplate());
+        }
     },
 
     /**
@@ -5661,6 +5672,197 @@ const AdminManager = {
             console.error('[AdminManager] Error saving knowledge global settings:', error);
             window.showAppBanner(`Failed to save knowledge settings: ${error.message}`, 'error', 5000);
         }
+    },
+
+    /**
+     * Handle reload templates button click
+     */
+    async handleReloadTemplates() {
+        const statusElement = document.getElementById('reload-templates-status');
+        const button = document.getElementById('reload-templates-btn');
+
+        try {
+            // Disable button and show loading state
+            button.disabled = true;
+            button.innerHTML = `
+                <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Reloading...
+            `;
+            statusElement.textContent = 'Reloading templates...';
+            statusElement.className = 'text-sm text-gray-400';
+
+            // Call the template manager reload function
+            const result = await window.templateManager.reloadTemplates();
+
+            if (result.success) {
+                statusElement.textContent = `✓ Successfully reloaded ${result.count} template(s)`;
+                statusElement.className = 'text-sm text-green-400';
+                window.showAppBanner(`Successfully reloaded ${result.count} template(s)`, 'success', 5000);
+                console.log('[AdminManager] Templates reloaded:', result.templates);
+            } else {
+                throw new Error(result.message || 'Failed to reload templates');
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error reloading templates:', error);
+            statusElement.textContent = `✗ Error: ${error.message}`;
+            statusElement.className = 'text-sm text-red-400';
+            window.showAppBanner(`Failed to reload templates: ${error.message}`, 'error', 5000);
+        } finally {
+            // Re-enable button and restore original text
+            button.disabled = false;
+            button.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reload Templates
+            `;
+        }
+    },
+
+    /**
+     * Handle validate template button click
+     */
+    async handleValidateTemplate() {
+        const pathInput = document.getElementById('template-plugin-path');
+        const button = document.getElementById('validate-template-btn');
+        const resultsContainer = document.getElementById('validation-results');
+        const resultsContent = document.getElementById('validation-results-content');
+
+        const pluginPath = pathInput.value.trim();
+
+        if (!pluginPath) {
+            window.showAppBanner('Please enter a template plugin path', 'error', 5000);
+            pathInput.focus();
+            return;
+        }
+
+        try {
+            // Disable button and show loading state
+            button.disabled = true;
+            button.innerHTML = `
+                <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Validating...
+            `;
+
+            // Call the template manager validate function
+            const result = await window.templateManager.validateTemplate(pluginPath);
+
+            // Show results container
+            resultsContainer.classList.remove('hidden');
+
+            if (result.success) {
+                const isValid = result.isValid;
+                const errors = result.errors || [];
+                const warnings = result.warnings || [];
+
+                // Build results HTML
+                let html = '';
+
+                // Validation status
+                if (isValid && errors.length === 0) {
+                    html += `
+                        <div class="flex items-center gap-2 text-green-400 mb-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            </svg>
+                            <span class="font-semibold">Valid Template Plugin</span>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="flex items-center gap-2 text-red-400 mb-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                            <span class="font-semibold">Validation Failed</span>
+                        </div>
+                    `;
+                }
+
+                // Errors
+                if (errors.length > 0) {
+                    html += `
+                        <div class="mt-3">
+                            <h6 class="text-sm font-semibold text-red-300 mb-2">Errors (${errors.length}):</h6>
+                            <ul class="list-disc list-inside space-y-1 text-sm text-red-200">
+                                ${errors.map(err => `<li>${this.escapeHtml(err)}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                // Warnings
+                if (warnings.length > 0) {
+                    html += `
+                        <div class="mt-3">
+                            <h6 class="text-sm font-semibold text-yellow-300 mb-2">Warnings (${warnings.length}):</h6>
+                            <ul class="list-disc list-inside space-y-1 text-sm text-yellow-200">
+                                ${warnings.map(warn => `<li>${this.escapeHtml(warn)}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                resultsContent.innerHTML = html;
+
+                // Set border color based on validation result
+                const resultsDiv = resultsContainer.querySelector('.p-4');
+                if (isValid && errors.length === 0) {
+                    resultsDiv.className = 'p-4 rounded-lg border border-green-500/30 bg-green-500/10';
+                } else {
+                    resultsDiv.className = 'p-4 rounded-lg border border-red-500/30 bg-red-500/10';
+                }
+
+                window.showAppBanner(
+                    isValid && errors.length === 0
+                        ? 'Template validation passed'
+                        : 'Template validation failed - see results below',
+                    isValid && errors.length === 0 ? 'success' : 'error',
+                    5000
+                );
+            } else {
+                throw new Error(result.message || 'Validation request failed');
+            }
+        } catch (error) {
+            console.error('[AdminManager] Error validating template:', error);
+            resultsContainer.classList.remove('hidden');
+            resultsContent.innerHTML = `
+                <div class="flex items-center gap-2 text-red-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                    </svg>
+                    <span class="font-semibold">Error: ${this.escapeHtml(error.message)}</span>
+                </div>
+            `;
+            resultsContainer.querySelector('.p-4').className = 'p-4 rounded-lg border border-red-500/30 bg-red-500/10';
+            window.showAppBanner(`Validation error: ${error.message}`, 'error', 5000);
+        } finally {
+            // Re-enable button and restore original text
+            button.disabled = false;
+            button.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Validate Plugin
+            `;
+        }
+    },
+
+    /**
+     * Escape HTML to prevent XSS
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 };
 

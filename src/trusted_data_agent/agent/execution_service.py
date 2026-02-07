@@ -139,22 +139,40 @@ async def run_agent_execution(
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
 
-        # Check profile override first, then session's profile, then default
-        profile_id_to_use = profile_override_id or session_data.get("profile_id")
+        # Get current default profile
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
+        # Profile resolution logic:
+        # 1. If profile_override_id is set (explicit @TAG), use it
+        # 2. Otherwise, ALWAYS use the current default profile (ignore stale session profile_id)
+        profile_id_to_use = profile_override_id or default_profile_id
+
         if profile_id_to_use:
             profiles = config_manager.get_profiles(user_uuid)
             active_profile = next((p for p in profiles if p.get("id") == profile_id_to_use), None)
             if active_profile:
                 active_profile_type = active_profile.get("profile_type", "tool_enabled")
+                app_logger.debug(
+                    f"Resolved profile: {active_profile.get('tag')} (type: {active_profile_type}, "
+                    f"override: {bool(profile_override_id)}, default: {profile_id_to_use == default_profile_id})"
+                )
 
         if not active_profile:
-            # Fall back to default profile
-            default_profile_id = config_manager.get_default_profile_id(user_uuid)
-            if default_profile_id:
-                profiles = config_manager.get_profiles(user_uuid)
-                active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
-                if active_profile:
-                    active_profile_type = active_profile.get("profile_type", "tool_enabled")
+            # Fallback to tool_enabled if no profile found
+            active_profile_type = "tool_enabled"
+            app_logger.warning(f"No active profile found, defaulting to tool_enabled")
+
+        # Update session to reflect the profile being used (unless it's an override)
+        if not profile_override_id and active_profile:
+            session_profile_id = session_data.get("profile_id")
+            if session_profile_id != active_profile.get("id"):
+                app_logger.info(
+                    f"Updating session profile from {session_profile_id} to {active_profile.get('id')} "
+                    f"(default changed to @{active_profile.get('tag')})"
+                )
+                session_data["profile_id"] = active_profile.get("id")
+                session_data["profile_tag"] = active_profile.get("tag")
+                await session_manager._save_session(user_uuid, session_id, session_data)
 
         # Route Genie profiles to Genie coordinator
         if active_profile_type == "genie" and active_profile:

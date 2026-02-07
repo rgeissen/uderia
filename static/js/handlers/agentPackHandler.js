@@ -905,7 +905,36 @@ async function handleUninstallAgentPack(installationId, packName) {
             if (!res.ok || data.status === 'error') {
                 throw new Error(data.message || `Uninstall failed (${res.status})`);
             }
-            _notify('success', `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed)`);
+
+            // Show sessions archived notification if any
+            const successMsg = data.sessions_archived > 0
+                ? `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed, ${data.sessions_archived} sessions archived)`
+                : `Agent pack uninstalled (${data.profiles_deleted} profiles, ${data.collections_deleted} collections removed)`;
+
+            _notify('success', successMsg);
+
+            // Refresh sessions list if sessions were archived
+            if (data.sessions_archived && data.sessions_archived > 0) {
+                try {
+                    // Auto-disable toggle (user uninstalled pack = cleanup intent)
+                    const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+                    if (toggle && toggle.checked) {
+                        toggle.checked = false;
+                        localStorage.setItem('sidebarShowArchivedSessions', 'false');
+                        console.log('[Agent Pack Uninstall] Auto-disabled "Show Archived" toggle');
+                    }
+
+                    // Full refresh: fetch + re-render + apply filters
+                    const { refreshSessionsList } = await import('./configManagement.js');
+                    await refreshSessionsList();
+
+                    console.log('[Agent Pack Uninstall] Session list refreshed after archiving', data.sessions_archived, 'sessions');
+                } catch (error) {
+                    console.error('[Agent Pack Uninstall] Failed to refresh sessions:', error);
+                    // Non-fatal: pack uninstalled successfully, just UI refresh failed
+                }
+            }
+
             await loadAgentPacks();
             // Refresh profiles and knowledge repositories so removed resources disappear immediately
             await configState.loadProfiles();
@@ -916,15 +945,90 @@ async function handleUninstallAgentPack(installationId, packName) {
         }
     };
 
-    if (window.showConfirmation) {
-        window.showConfirmation(
-            'Uninstall Agent Pack',
-            `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`,
-            doUninstall
-        );
-    } else {
-        if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
-            await doUninstall();
+    // Check for active sessions before showing confirmation
+    try {
+        // MIGRATED: Use unified relationships endpoint instead of old check-sessions
+        const checkRes = await fetch(`/api/v1/artifacts/agent-pack/${installationId}/relationships`, {
+            headers: _headers(false),
+        });
+        const checkData = await checkRes.json();
+
+        let message = `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`;
+
+        // Extract data from unified endpoint response structure
+        const deletionInfo = checkData.deletion_info || {};
+        const blockers = deletionInfo.blockers || [];
+        const warnings = deletionInfo.warnings || [];
+        const sessions = checkData.relationships?.sessions || {};
+        const activeCount = sessions.active_count || 0;
+
+        // Show blockers (prevent deletion)
+        if (blockers.length > 0) {
+            const blockerMessages = blockers
+                .map(b => `• ${_esc(b.message || b)}`)
+                .join('<br>');
+            message += `<br><br><span style="color: #ef4444; font-weight: 600;">🚫 Cannot Uninstall:</span><br><span style="font-size: 0.9em;">${blockerMessages}</span>`;
+
+            if (window.showConfirmation) {
+                window.showConfirmation('Cannot Uninstall Agent Pack', message, null);
+            } else {
+                alert(message.replace(/<[^>]*>/g, ''));  // Strip HTML for fallback alert
+            }
+            return;
+        }
+
+        // Add dynamic warning if active sessions exist
+        if (activeCount > 0) {
+            const sessionWord = activeCount === 1 ? 'session' : 'sessions';
+            message += `<br><br><span style="color: #f59e0b; font-weight: 600;">⚠️ Warning: ${activeCount} active ${sessionWord} will be archived.</span>`;
+
+            // Show sample session names
+            if (sessions.items && sessions.items.length > 0) {
+                const activeSessions = sessions.items.filter(s => !s.is_archived);
+                if (activeSessions.length > 0) {
+                    const sessionNames = activeSessions
+                        .map(s => `• ${_esc(s.session_name)}`)
+                        .join('<br>');
+                    message += `<br><br><span style="font-size: 0.9em;">Affected sessions:<br>${sessionNames}</span>`;
+
+                    if (activeCount > activeSessions.length) {
+                        message += `<br><span style="font-size: 0.9em; color: #9ca3af;">...and ${activeCount - activeSessions.length} more</span>`;
+                    }
+                }
+            }
+        }
+
+        // Show additional warnings from deletion analysis
+        if (warnings.length > 0) {
+            const warningMessages = warnings
+                .filter(w => !w.toLowerCase().includes('session'))  // Skip session warnings (already shown above)
+                .map(w => `• ${_esc(w)}`)
+                .join('<br>');
+            if (warningMessages) {
+                message += `<br><br><span style="color: #f59e0b; font-weight: 600;">⚠️ Additional Warnings:</span><br><span style="font-size: 0.9em;">${warningMessages}</span>`;
+            }
+        }
+
+        if (window.showConfirmation) {
+            window.showConfirmation('Uninstall Agent Pack', message, doUninstall);
+        } else {
+            if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
+                await doUninstall();
+            }
+        }
+    } catch (err) {
+        // Fallback to basic confirmation if check fails
+        console.error('Failed to check active sessions:', err);
+        if (window.showConfirmation) {
+            window.showConfirmation(
+                'Uninstall Agent Pack',
+                `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`,
+                doUninstall
+            );
+        } else {
+            if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
+                await doUninstall();
+            }
         }
     }
 }

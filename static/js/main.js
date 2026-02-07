@@ -1245,8 +1245,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     wireRepositoryTabs();
     
     // Initialize utility sessions filter for sidebar
-    const { initializeUtilitySessionsFilter } = await import('./handlers/sessionManagement.js?v=3.2');
+    const { initializeUtilitySessionsFilter, initializeArchivedSessionsFilter } = await import('./handlers/sessionManagement.js?v=3.2');
     initializeUtilitySessionsFilter();
+    initializeArchivedSessionsFilter();
     
     // Initialize Execution Dashboard
     if (window.ExecutionDashboard) {

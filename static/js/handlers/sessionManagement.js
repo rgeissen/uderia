@@ -795,7 +795,8 @@ export async function handleDeleteSessionClick(deleteButton) {
                 // Check if the currently active session was deleted (parent or child)
                 if (state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId)) {
                     try {
-                        const remainingSessions = await API.loadAllSessions();
+                        const result = await API.loadSessions(0, 0); // Load all sessions (limit=0)
+                        const remainingSessions = result.sessions || [];
                         // Filter out archived sessions
                         const activeSessions = remainingSessions ? remainingSessions.filter(s => !s.archived) : [];
 
@@ -827,19 +828,19 @@ export async function handleDeleteSessionClick(deleteButton) {
 export function initializeUtilitySessionsFilter() {
     const toggle = document.getElementById('sidebar-show-utility-sessions-toggle');
     const container = document.getElementById('sidebar-show-utility-sessions-container');
-    
+
     if (!toggle || !container) return;
-    
+
     // Load saved preference
     const savedPref = localStorage.getItem('sidebarShowUtilitySessions');
     let showUtility = savedPref !== null ? savedPref === 'true' : true; // Default to showing
     toggle.checked = showUtility;
-    
+
     // Function to update session visibility
     const updateSessionVisibility = () => {
         const sessions = document.querySelectorAll('.session-item');
         let hasUtilitySessions = false;
-        
+
         sessions.forEach(item => {
             const isTemporary = item.dataset.isTemporary === 'true';
             if (isTemporary) {
@@ -847,22 +848,74 @@ export function initializeUtilitySessionsFilter() {
                 item.style.display = showUtility ? '' : 'none';
             }
         });
-        
+
         // Show/hide the toggle container based on whether utility sessions exist
         container.classList.toggle('hidden', !hasUtilitySessions);
     };
-    
+
     // Apply initial state
     updateSessionVisibility();
-    
+
     // Handle toggle changes
     toggle.addEventListener('change', (e) => {
         showUtility = e.target.checked;
         localStorage.setItem('sidebarShowUtilitySessions', showUtility);
         updateSessionVisibility();
     });
-    
+
     // Re-check visibility whenever sessions are added/removed
     // This will be called after sessions are loaded
     window.updateUtilitySessionsFilter = updateSessionVisibility;
+}
+
+/**
+ * Initialize archived sessions filter for the sidebar
+ */
+export function initializeArchivedSessionsFilter() {
+    const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+    const container = document.getElementById('sidebar-show-archived-sessions-container');
+
+    if (!toggle || !container) return;
+
+    // Load saved preference (default to NOT showing archived)
+    const savedPref = localStorage.getItem('sidebarShowArchivedSessions');
+    let showArchived = savedPref !== null ? savedPref === 'true' : false;
+    toggle.checked = showArchived;
+
+    // Function to update session visibility
+    const updateSessionVisibility = () => {
+        const sessions = document.querySelectorAll('.session-item');
+
+        // Read current toggle state (not captured variable)
+        const currentShowArchived = toggle.checked;
+
+        sessions.forEach(item => {
+            const isArchived = item.dataset.archived === 'true';
+            if (isArchived) {
+                // Hide archived sessions unless toggle is enabled
+                item.style.display = currentShowArchived ? '' : 'none';
+
+                // Add visual styling for archived sessions when shown
+                if (currentShowArchived) {
+                    item.classList.add('archived-session');
+                } else {
+                    item.classList.remove('archived-session');
+                }
+            }
+        });
+    };
+
+    // Apply initial state
+    updateSessionVisibility();
+
+    // Handle toggle changes
+    toggle.addEventListener('change', (e) => {
+        showArchived = e.target.checked;
+        localStorage.setItem('sidebarShowArchivedSessions', showArchived);
+        updateSessionVisibility();
+    });
+
+    // Re-check visibility whenever sessions are added/removed
+    // This will be called after sessions are loaded
+    window.updateArchivedSessionsFilter = updateSessionVisibility;
 }

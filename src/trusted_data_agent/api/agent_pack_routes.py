@@ -334,6 +334,131 @@ async def get_agent_pack_details(current_user, installation_id: int):
         return jsonify({"status": "error", "message": f"Failed to get details: {e}"}), 500
 
 
+# ── Check Active Sessions Before Deletion ────────────────────────────────────
+
+@agent_pack_bp.route("/v1/agent-packs/<int:installation_id>/check-sessions", methods=["GET"])
+@require_auth
+async def check_pack_active_sessions(current_user, installation_id: int):
+    """
+    DEPRECATED: Check for active (non-archived) sessions using this pack's profiles or collections.
+
+    **Deprecation Notice:**
+    This endpoint is deprecated and will be removed in a future version.
+    Use the unified relationships endpoint instead:
+
+        GET /api/v1/artifacts/agent-pack/{installation_id}/relationships
+
+    The unified endpoint provides:
+    - Comprehensive relationship detection across all pack-managed resources
+    - Deletion safety analysis (blockers, warnings, cascade effects)
+    - Consistent response format across all artifact types
+    - Better performance (single source of truth vs multiple file scans)
+
+    Migration path:
+    - Replace: checkData.active_session_count → checkData.relationships.sessions.active_count
+    - Replace: checkData.active_sessions → checkData.relationships.sessions.items (filter by !is_archived)
+    - Add: Check checkData.deletion_info.blockers for deletion blockers
+    - Add: Check checkData.deletion_info.warnings for comprehensive warnings
+    - Add: Access checkData.relationships.profiles for affected profiles
+    - Add: Access checkData.relationships.agent_packs for pack metadata
+
+    **Removal Target:** Q2 2026
+    """
+    import logging
+    app_logger = logging.getLogger("quart.app")
+    app_logger.warning(
+        f"DEPRECATED endpoint called: GET /v1/agent-packs/{installation_id}/check-sessions. "
+        "Use GET /api/v1/artifacts/agent-pack/{installation_id}/relationships instead."
+    )
+    user_uuid = current_user.id
+
+    try:
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        from pathlib import Path
+        import json
+
+        pack_db = AgentPackDB(DB_PATH)
+
+        # Get pack resources (profiles and collections)
+        resources = pack_db.get_resources_for_pack(installation_id)
+        profile_ids = [r["resource_id"] for r in resources if r["resource_type"] == "profile"]
+        collection_ids = [r["resource_id"] for r in resources if r["resource_type"] == "collection"]
+
+        # Check active sessions
+        sessions_dir = Path("tda_sessions") / user_uuid
+        if not sessions_dir.exists():
+            return jsonify({
+                "status": "success",
+                "active_session_count": 0,
+                "profile_ids": profile_ids,
+                "collection_ids": collection_ids
+            }), 200
+
+        active_sessions = []
+        for session_file in sessions_dir.glob("*.json"):
+            try:
+                with open(session_file, 'r') as f:
+                    session_data = json.load(f)
+
+                # Skip archived sessions (treat null as not archived)
+                if session_data.get("is_archived") is True:
+                    continue
+
+                # Check if session uses any of the pack's profiles (current or historical)
+                session_profile_id = session_data.get("profile_id")
+                profile_tags_used = session_data.get("profile_tags_used", [])
+
+                # Check current profile
+                if session_profile_id in profile_ids:
+                    active_sessions.append({
+                        "session_id": session_data.get("id"),
+                        "session_name": session_data.get("name", "Unnamed Session"),
+                        "reason": f"uses profile"
+                    })
+                    continue
+
+                # Check historical profile usage (profile_tags_used stores profile_ids)
+                if any(profile_id in profile_ids for profile_id in profile_tags_used):
+                    active_sessions.append({
+                        "session_id": session_data.get("id"),
+                        "session_name": session_data.get("name", "Unnamed Session"),
+                        "reason": f"used profile in history"
+                    })
+                    continue
+
+                # Check if session uses any of the pack's collections
+                # Collections are referenced in rag_collection_id or profile's collection_id
+                rag_collection_id = session_data.get("rag_collection_id")
+                if rag_collection_id:
+                    # Convert to int for comparison (collection_ids are strings from resource table)
+                    try:
+                        if str(rag_collection_id) in [str(cid) for cid in collection_ids]:
+                            active_sessions.append({
+                                "session_id": session_data.get("id"),
+                                "session_name": session_data.get("name", "Unnamed Session"),
+                                "reason": f"uses collection"
+                            })
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+            except Exception as e:
+                app_logger.warning(f"Error checking session {session_file}: {e}")
+                continue
+
+        return jsonify({
+            "status": "success",
+            "active_session_count": len(active_sessions),
+            "active_sessions": active_sessions[:5],  # Limit to 5 for display
+            "profile_ids": profile_ids,
+            "collection_ids": collection_ids
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error checking active sessions: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 
 @agent_pack_bp.route("/v1/agent-packs/<int:installation_id>", methods=["DELETE"])

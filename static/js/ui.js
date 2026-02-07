@@ -10,7 +10,7 @@ import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedMod
 // We need access to the functions that will handle save/cancel from the input
 import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.2';
 import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
-import { checkServerStatus, loadAllSessions } from './api.js';
+import { checkServerStatus, loadSessions } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
 import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './handlers/agentPackGrouping.js';
 
@@ -3945,11 +3945,19 @@ export function addSessionToList(session, isActive = false, isLastChild = false)
     sessionItem.id = `session-${session.id}`;
     sessionItem.dataset.sessionId = session.id;
     sessionItem.dataset.isTemporary = session.is_temporary ? 'true' : 'false';
+    sessionItem.dataset.archived = session.archived ? 'true' : 'false';
     sessionItem.className = 'session-item w-full text-left p-3 rounded-lg hover:bg-white/10 transition-colors cursor-pointer';
     
     // Add purple left border for utility sessions
     if (session.is_temporary) {
         sessionItem.style.borderLeft = '3px solid rgba(139, 92, 246, 0.6)';
+        sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
+    }
+
+    // Add gray styling for archived sessions
+    if (session.archived) {
+        sessionItem.style.opacity = '0.5';
+        sessionItem.style.borderLeft = '3px solid rgba(156, 163, 175, 0.4)';
         sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
     }
 
@@ -4495,7 +4503,7 @@ export function updateConfigButtonState() {
 
 export function showConfirmation(title, body, onConfirm) {
     DOM.confirmModalTitle.textContent = title;
-    DOM.confirmModalBody.textContent = body;
+    DOM.confirmModalBody.innerHTML = body;
 
     DOM.confirmModalOverlay.classList.remove('hidden', 'opacity-0');
     DOM.confirmModalContent.classList.remove('scale-95', 'opacity-0');
@@ -5000,9 +5008,10 @@ function performViewSwitch(viewId) {
                 } else {
                     // No session ID in state - fetch sessions and load most recent
                     console.log('[handleViewSwitch] No session ID in state, fetching sessions');
-                    const sessions = await loadAllSessions();
+                    const result = await loadSessions(0, 0); // Load all sessions (limit=0)
+                    const sessions = result.sessions || [];
                     const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
-                    
+
                     if (activeSessions && activeSessions.length > 0) {
                         // Sessions exist - load the most recent one (first in array)
                         console.log('[handleViewSwitch] Found', activeSessions.length, 'existing sessions, loading most recent');
@@ -6062,11 +6071,11 @@ function updateTableHeaderForKnowledge() {
     if (!tr) return;
 
     tr.innerHTML = `
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id">Chunk ID <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="content">Content Preview <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="document_id">Source Document <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="chunk_index">Chunk Index <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="token_count">Tokens <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="max-width: 150px;">Chunk ID <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="content" style="max-width: 400px;">Content Preview <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="document_id" style="max-width: 200px;">Source Document <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="chunk_index">Chunk Index <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-right text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="token_count">Tokens <span class="text-xs text-gray-500">↕</span></th>
     `;
 
     // Re-wire sort listeners after replacing innerHTML
@@ -6087,9 +6096,9 @@ function updateTableHeaderForPlanner() {
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="width: 200px;">ID <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_query" style="width: 300px;">User Query <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="strategy_type">Strategy <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="is_most_efficient">Efficient <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_feedback_score">Feedback <span class="text-xs text-gray-500">↕</span></th>
-        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="output_tokens">Output Tokens <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="is_most_efficient">Efficient <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_feedback_score">Feedback <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-right text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="output_tokens">Output Tokens <span class="text-xs text-gray-500">↕</span></th>
         <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="timestamp">Timestamp <span class="text-xs text-gray-500">↕</span></th>
     `;
 
@@ -6729,11 +6738,9 @@ function openKnowledgeRepositoryView(collection) {
     showAppBanner('Repository details view coming soon', 'info');
     console.log(msg);
     
-    // TODO: Create a proper modal to show:
-    // - Repository details
-    // - Document list with upload dates
-    // - Document preview/chunking preview
-    // - Add more documents button
+    // NOTE: Repository details modal deferred to future enhancement.
+    // Planned features: document list, upload dates, chunking preview, bulk operations.
+    // Current implementation provides basic view functionality via UI.
 }
 
 /**

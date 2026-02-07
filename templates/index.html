@@ -399,6 +399,21 @@
                                 </div>
                             </label>
                         </div>
+                        <!-- Show Archived Sessions Toggle -->
+                        <div id="sidebar-show-archived-sessions-container" class="px-4 py-2 border-b border-white/10">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <label class="ind-toggle ind-toggle--sm">
+                                    <input type="checkbox" id="sidebar-show-archived-sessions-toggle">
+                                    <span class="ind-track"></span>
+                                </label>
+                                <div class="flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                    </svg>
+                                    <span class="text-xs text-gray-300 group-hover:text-white transition-colors">Show Archived</span>
+                                </div>
+                            </label>
+                        </div>
                         <div id="session-list" class="flex-1 p-2 overflow-y-auto space-y-2">
                             <!-- Session items will be dynamically added here -->
                         </div>
@@ -2773,6 +2788,14 @@
                                 Prompts
                             </div>
                         </button>
+                        <button class="admin-tab ind-tab ind-tab--underline" data-tab="template-management-tab">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+                                </svg>
+                                Templates
+                            </div>
+                        </button>
                     </div>
 
                     <!-- Tab Content Container -->
@@ -4833,6 +4856,103 @@
                                             </div>
                                         </div>
 
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab 6.5: Template Management -->
+                        <div id="template-management-tab" class="admin-tab-content hidden">
+                            <div class="space-y-6">
+                                <div class="glass-panel rounded-xl p-6">
+                                    <div class="mb-6">
+                                        <h3 class="text-xl font-bold text-white">Template Management</h3>
+                                        <p class="text-sm text-gray-400 mt-1">Manage RAG template plugins and system templates</p>
+                                    </div>
+
+                                    <!-- Template Reload Section -->
+                                    <div class="mb-8">
+                                        <div class="flex items-start gap-4 p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                                            <div class="flex-shrink-0 p-3 rounded-lg bg-blue-500/10">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                </svg>
+                                            </div>
+                                            <div class="flex-1">
+                                                <h4 class="text-lg font-semibold text-white mb-2">Hot-Reload Templates</h4>
+                                                <p class="text-sm text-gray-400 mb-4">Reload all template plugins without restarting the application. Useful for development and testing new templates from ~/.tda/templates/ or system templates.</p>
+                                                <div class="flex items-center gap-3">
+                                                    <button type="button" id="reload-templates-btn" class="card-btn card-btn--primary flex items-center gap-2">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                        </svg>
+                                                        Reload Templates
+                                                    </button>
+                                                    <div id="reload-templates-status" class="text-sm text-gray-400"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Template Validation Section -->
+                                    <div class="mb-8">
+                                        <div class="flex items-start gap-4 p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                                            <div class="flex-shrink-0 p-3 rounded-lg bg-green-500/10">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                            </div>
+                                            <div class="flex-1">
+                                                <h4 class="text-lg font-semibold text-white mb-2">Validate Template Plugin</h4>
+                                                <p class="text-sm text-gray-400 mb-4">Validate a template plugin package before installation. Checks manifest.json schema, template structure, and required files.</p>
+
+                                                <!-- Plugin Path Input -->
+                                                <div class="mb-4">
+                                                    <label class="block text-sm font-medium text-gray-300 mb-2">Plugin Directory Path</label>
+                                                    <input
+                                                        type="text"
+                                                        id="template-plugin-path"
+                                                        placeholder="/path/to/plugin/directory or ~/.tda/templates/my-template"
+                                                        class="w-full px-4 py-2 rounded-lg text-white bg-gray-700 border border-gray-600 focus:outline-none focus:border-teradata-orange transition-colors font-mono text-sm"
+                                                    />
+                                                    <p class="text-xs text-gray-500 mt-1">Absolute path or path relative to user home directory (~)</p>
+                                                </div>
+
+                                                <div class="flex items-center gap-3">
+                                                    <button type="button" id="validate-template-btn" class="card-btn card-btn--success flex items-center gap-2">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                        </svg>
+                                                        Validate Plugin
+                                                    </button>
+                                                </div>
+
+                                                <!-- Validation Results -->
+                                                <div id="validation-results" class="mt-4 hidden">
+                                                    <div class="p-4 rounded-lg border">
+                                                        <h5 class="font-semibold mb-2">Validation Results</h5>
+                                                        <div id="validation-results-content"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Template Information -->
+                                    <div class="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                                        <div class="flex items-start gap-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                                            </svg>
+                                            <div class="flex-1">
+                                                <p class="text-sm font-medium text-blue-200 mb-1">Template Locations</p>
+                                                <ul class="text-xs text-blue-300/80 space-y-1">
+                                                    <li>• <strong>System Templates:</strong> <code class="bg-gray-900/50 px-1 py-0.5 rounded">rag_templates/templates/</code></li>
+                                                    <li>• <strong>User Templates:</strong> <code class="bg-gray-900/50 px-1 py-0.5 rounded">~/.tda/templates/</code> (overrides system templates)</li>
+                                                    <li>• <strong>Documentation:</strong> See <code class="bg-gray-900/50 px-1 py-0.5 rounded">docs/RAG_Templates/</code> for guides</li>
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

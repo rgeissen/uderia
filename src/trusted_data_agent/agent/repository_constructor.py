@@ -363,7 +363,7 @@ class StorageAdapter:
             metadata = chunk.metadata.copy()
             metadata['chunk_index'] = chunk.chunk_index
             # Calculate approximate token count (rough estimate: ~4 chars per token)
-            metadata['tokens'] = len(chunk.content) // 4
+            metadata['token_count'] = len(chunk.content) // 4
             metadatas.append(metadata)
             
             # Report progress during metadata preparation

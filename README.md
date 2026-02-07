@@ -5,12 +5,14 @@ The **Uderia Platform** delivers enterprise-grade AI orchestration with unmatche
 
 Experience a fundamental transformation in how you work with enterprise data:
 
+- **From Intent to Autonomy** - Your AI organization that senses, reasons, and delivers. Stop orchestrating. Start delegating. Specialized agents coordinate autonomously to gather data, reason across domains, and synthesize actionable intelligence.
+- **From Ideation to Operationalization** - Revolutionary IFOC Methodology adapts to your needs. Four execution modes (Ideate, Focus, Optimize, Coordinate) in one conversation with zero friction. Switch between creative ideation, document-verified answers, sovereign efficiency, and cross-team orchestration with a simple @TAG.
 - **From Days to Seconds** - Discover insights via conversation. Operationalize them via API. Your conversational discovery is your production-ready automation.
-- **From Guesswork to Clarity** - Full transparency eliminates the AI black box. See every strategic plan, tool execution, and self-correction in real-time.
+- **From Guesswork to Clarity** - Full transparency eliminates the AI black box. See every strategic plan, tool execution, and self-correction in real-time through the Live Status Window.
+- **From Uncertainty to Accountability** - Every action recorded. Every decision traceable. Enterprise-grade audit logging captures every interaction with full forensic context for compliance (GDPR, SOC2) and accountability at scale.
+- **From Data Exposure to Data Sovereignty** - Your data, your rules, your environment. Execute with cloud intelligence while maintaining local privacy through decoupled planning and execution with Champion Cases.
 - **From $$$ to ¢¢¢** - Revolutionary Fusion Optimizer with strategic planning, proactive optimization, and autonomous self-correction for cost-effective execution.
-- **From Data Exposure to Data Sovereignty** - Your data, your rules, your environment. Execute with cloud intelligence while maintaining local privacy.
-- **From Hidden Costs to Total Visibility** - Complete financial governance with real-time tracking, comprehensive analytics, and fine-grained cost control.
-- **From Isolated Expertise to Collective Intelligence** - Transform individual insights into organizational knowledge through the Intelligence Marketplace.
+- **From Hidden Costs to Total Visibility** - Complete financial governance with real-time tracking, comprehensive analytics, and fine-grained cost control. Track every token, understand every cost.
 
 Whether on-premises or in the cloud, you get **enterprise results** with **optimized speed** and **minimal token cost**, built on the six core principles detailed below.
 
@@ -28,7 +30,7 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 5. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
 6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
 7. [Installation and Setup Guide](#-installation-and-setup-guide)
-8. [Developer Mode: Unlocking Models](#developer-mode-unlocking-models)
+8. [Model Selection: Recommended vs All Models](#model-selection-recommended-vs-all-models)
 9. [Command Line Options](#command-line-options)
 10. [User Guide](#-user-guide)
    - [Getting Started](#getting-started)
@@ -97,15 +99,25 @@ Eliminate the friction between conversational exploration and production automat
   - Async polling pattern for reliable long-running executions
   - Complete example DAG (`tda_00_execute_questions.py`) included
 
-* **IFOC Workflow - Four Profile Classes**: The intelligent workflow that mirrors how experts work:
-  - **🟢 IDEATE (Conversation)**: Brainstorm, explore, and draft solutions without touching live systems
-  - **🔵 FOCUS (Knowledge)**: Verified intelligence with zero-hallucination guarantee—every answer grounded in your documents
-  - **🟠 OPTIMIZE (Efficiency)**: The powerhouse—Fusion Optimizer with full MCP Tools + Prompts support, strategic planning, and self-correction
-  - **🟣 COORDINATE (Multi-Profile)**: Multi-level autonomous orchestration where coordinators manage specialist teams
-  - Profile tags (e.g., `@CHAT`, `@POLICY`, `@OPTIMIZER`, `@EXECUTIVE`) for instant switching via single command
+* **IFOC Workflow - From Ideation to Operationalization**: Revolutionary methodology that adapts to your needs—four execution modes in one conversation with zero friction:
+  - **🟢 IDEATE (Conversation)**: Brainstorm, explore, and draft solutions without touching live systems—creative ideation without constraints
+  - **🔵 FOCUS (Knowledge)**: Verified intelligence with zero-hallucination guarantee—every answer grounded in your documents for document-verified answers
+  - **🟠 OPTIMIZE (Efficiency)**: The powerhouse—Fusion Optimizer with full MCP Tools + Prompts support, strategic planning, and self-correction for sovereign efficiency
+  - **🟣 COORDINATE (Multi-Profile)**: Multi-level autonomous orchestration where coordinators manage specialist teams for cross-team orchestration
+  - Switch between modes instantly with a simple `@TAG` (e.g., `@CHAT`, `@POLICY`, `@OPTIMIZER`, `@EXECUTIVE`)
   - Temporary overrides via `@TAG` syntax for single queries without changing defaults
   - Nested coordination support: Build 3-level AI hierarchies (Master → Coordinators → Specialists)
   - Complete safeguards: Circular dependency detection, depth limits, cost visibility at every level
+  - Stop force-fitting every problem into one AI—match your intent to the right intelligence phase
+
+* **Autonomous AI Organization (Genie Mode)**: From intent to autonomy—your AI organization that senses, reasons, and delivers:
+  - Multi-profile coordination where specialized agents work as a unified team
+  - Master coordinator intelligently routes queries to domain experts
+  - Automatic discovery and orchestration of specialist capabilities
+  - Cross-domain synthesis: agents gather data independently, then coordinate findings
+  - Real-time topology visualization showing agent activation and collaboration
+  - Stop orchestrating manually—start delegating to an AI organization that never sleeps
+  - Executive-level queries like "Improve Product Margin for Q4" automatically cascade to CFO, CMO, and Legal specialists
 
 * **MCP Server Import with Dual Format Support**: Seamless integration of community MCP servers:
   - Import from official MCP Registry format (io.example/server-name specifications)
@@ -182,12 +194,18 @@ Build trust through complete visibility into every decision, action, and data po
   - Error messages and stack traces for debugging
   - Task control (cancel, retry) for operational flexibility
 
-* **Audit Logging**: Complete activity trail for compliance:
-  - User authentication and authorization events
-  - Configuration changes with before/after snapshots
-  - API usage patterns and access history
+* **Enterprise Audit Logging - From Uncertainty to Accountability**: Every action recorded, every decision traceable:
+  - Complete forensic trail with user, IP, timestamp, and outcome for every interaction
+  - User authentication and authorization events (login attempts, OAuth flows, token generation)
+  - Configuration changes with before/after snapshots (LLM provider switches, profile updates)
+  - Prompt executions with full turn-level attribution and cost tracking
+  - API usage patterns and access history for security monitoring
   - Admin actions on user accounts and system settings
-  - Exportable logs for regulatory compliance
+  - Progressive security lockouts and suspicious activity detection
+  - 20+ specialized logging functions for comprehensive coverage
+  - Configurable retention policies for GDPR and data sovereignty compliance
+  - REST API access for integration with compliance tools (SOC2, audit reports)
+  - From audit trail to compliance report in one click
 
 * **Advanced Context Controls**: Surgical precision over agent memory:
   - Turn-level activation/deactivation with visual feedback
@@ -207,7 +225,23 @@ Build trust through complete visibility into every decision, action, and data po
 
 ### ⚡ Efficient: Intelligent Optimization Engine
 
-The Fusion Optimizer delivers enterprise-grade performance, cost efficiency, and reliability. See the dedicated section below (**[The Heart of the Application - The Engine & its Fusion Optimizer](#the-heart-of-the-application---the-engine-its-fusion-optimizer)**) for comprehensive details on:
+The Fusion Optimizer delivers enterprise-grade performance, cost efficiency, and reliability.
+
+**Real-World Cost Savings:**
+
+- **Typical enterprise query**: "Show me all products with low inventory and notify suppliers"
+  - Traditional LLM wrapper: 15,000 tokens (full schema + full history) = $0.45/query
+  - Fusion Optimizer: 6,000 tokens (plan hydration + tactical fast path) = $0.18/query
+  - **60% cost reduction** on repeated similar queries
+
+- **Monthly workload** (500 queries/day):
+  - Traditional: 500 × $0.45 × 30 = $6,750/month
+  - Fusion Optimizer: 500 × $0.18 × 30 = $2,700/month
+  - **Savings: $4,050/month ($48,600/year)**
+
+- **Self-correction efficiency**: When errors occur, targeted replanning (2K tokens) vs full restart (15K tokens)
+
+See the dedicated section below (**[The Heart of the Application - The Engine & its Fusion Optimizer](#the-heart-of-the-application---the-engine-its-fusion-optimizer)**) for comprehensive architectural details on:
 
 * Multi-layered strategic and tactical planning
 * Proactive optimization (Plan Hydration, Tactical Fast Path, Specialized Orchestrators)
@@ -234,7 +268,7 @@ The Fusion Optimizer delivers enterprise-grade performance, cost efficiency, and
 * **Knowledge Repositories**: Domain context injection for better planning:
   - PDF, TXT, DOCX, MD document support
   - Configurable chunking strategies (fixed-size, paragraph, sentence, semantic)
-  - Planning-time retrieval via `_retrieve_knowledge_for_planning()`
+  - Automatic retrieval during strategic planning for context-aware decisions
   - Semantic search for relevant background information
   - Marketplace integration for community knowledge sharing
 
@@ -295,6 +329,27 @@ Maintain complete control over your data exposure strategy with flexible deploym
   - Provider-aware routing: images sent natively to vision models, documents via base64 or text extraction as appropriate
   - Up to 5 files per message, 50 MB per file
   - Full REST API support for programmatic upload workflows
+
+* **Decoupled Planning with Champion Cases - The Sovereignty Breakthrough**: Uderia separates strategic intelligence from execution, enabling local models to perform like hyperscalers.
+
+  **How It Works:**
+  1. **Cloud Planning Phase**: Hyperscaler LLM creates strategic plan using full reasoning capability
+  2. **Champion Case Injection**: System retrieves proven execution patterns from organizational history
+  3. **Local Execution Phase**: Private on-prem model (Ollama) executes plan with champion guidance
+
+  **Result**: Your data never leaves your infrastructure, yet you get cloud-level strategic thinking.
+
+  **Example Workflow:**
+  - Query: "Analyze Q4 customer churn by segment"
+  - Cloud Planner: Creates 3-phase strategy (retrieve data, segment analysis, visualize)
+  - Champion Cases: Injects 5 proven churn analysis patterns from past successes
+  - Local Executor: Runs analysis on your private database using proven patterns
+  - Zero cloud exposure, maximum intelligence
+
+  **Business Impact:**
+  - Regulatory compliance: PHI, PII, financial data stays local
+  - Cost optimization: Expensive planning calls (8K tokens) happen once; cheap execution (2K tokens) reuses patterns
+  - Best of both worlds: Hyperscaler reasoning + on-prem sovereignty
 
 ---
 
@@ -361,47 +416,6 @@ Transparent, real-time cost tracking with fine-grained control over spending at 
 
 The Intelligence Marketplace transforms individual agent expertise into collective organizational knowledge.
 
-* **Template Marketplace for RAG Cases**: Crowdsourced knowledge repository:
-  - Create templates from your best RAG cases with "Create Template" button
-  - Browse and discover templates created by other users
-  - One-click deployment: "Deploy to My Repository" for instant activation
-  - Star rating system for quality curation
-  - Usage statistics and popularity tracking
-
-* **Template Metadata and Discovery**: Rich categorization:
-  - Structured metadata: name, description, creator, timestamps
-  - Tag-based categorization for easy browsing
-  - Target repository specification ("Planner Repository" vs. custom)
-  - Version tracking for template evolution
-  - Search and filtering by tags, creator, or rating
-
-* **Template Deployment Workflow**: Seamless integration:
-  - User selects target repository during deployment
-  - System validates compatibility with repository schema
-  - Deployed cases immediately available for RAG retrieval
-  - Duplicate detection to prevent redundant cases
-  - Deployment confirmation with success feedback
-
-* **Admin Marketplace Controls**: Governance for enterprise use:
-  - Admin review queue for template approval
-  - Quality gates before marketplace publication
-  - Template flagging for inappropriate content
-  - Usage analytics for template ROI measurement
-  - Bulk operations (approve, reject, delete)
-
-* **Community Knowledge Sharing**: Accelerate organizational learning:
-  - Share SQL query patterns across data teams
-  - Distribute API workflow best practices
-  - Propagate domain expertise from power users to beginners
-  - Build institutional memory that survives employee turnover
-  - Create center-of-excellence pattern libraries
-
-* **Marketplace Analytics**: Track collaborative value:
-  - Most deployed templates
-  - Top contributors by template count and ratings
-  - Deployment velocity and adoption rates
-  - Cost savings from marketplace-sourced knowledge
-  - Community engagement metrics
 
 #### Collaborative Intelligence Marketplace
 
@@ -471,42 +485,6 @@ The Intelligence Marketplace transforms individual agent expertise into collecti
 
 The marketplace transforms the Uderia Platform from a single-user tool into a **collaborative intelligence platform**. By enabling pattern sharing, community validation, and knowledge reuse, it reduces costs, improves quality, and accelerates time-to-value for all users. Whether you're publishing your expertise or subscribing to community wisdom, the marketplace creates a powerful ecosystem where collective intelligence amplifies individual capabilities.
 
-### Financial Governance and Cost Management
-
-* **Real-Time Cost Tracking**: Every LLM interaction is tracked with precise cost calculation based on actual token usage (input/output tokens) and model-specific pricing. View cumulative costs across all sessions with transparent, token-level granularity.
-
-* **Comprehensive Cost Analytics Dashboard**: Admin-accessible analytics provide deep insights into spending patterns:
-  - Total cost across all sessions
-  - Average cost per session and per turn
-  - Cost distribution by LLM provider (Google, Anthropic, OpenAI, AWS, Azure, Friendli, Ollama)
-  - Top 5 most expensive models with usage breakdowns
-  - 30-day cost trend visualization
-  - Most expensive sessions and queries with drill-down capabilities
-
-* **Intelligent Pricing Management**: Dynamic model cost database with multiple data sources:
-  - **Automatic Sync**: Integration with LiteLLM for up-to-date pricing from all major providers
-  - **Manual Overrides**: Administrators can add or edit pricing for custom models or enterprise agreements
-  - **Fallback Mechanism**: Configurable default costs for unknown or newly released models
-  - **Source Tracking**: Distinguish between LiteLLM-synced, manually entered, and system default pricing
-  - **Audit Trail**: Full timestamp tracking for all pricing changes with last updated dates
-
-* **Cost Configuration Tools**: Powerful administrative interface for cost management:
-  - Inline editing of model pricing with immediate effect
-  - Bulk pricing sync from LiteLLM with one-click updates
-  - Protected manual entries (preserved during automatic syncs)
-  - Configurable fallback pricing for cost predictability
-  - Search and filter capabilities for large model catalogs
-  - Visual badges distinguishing manual vs. automatic pricing
-
-* **Token Usage Visibility**: Transparent token consumption tracking displayed for every LLM interaction, enabling users to understand the cost implications of their queries and optimize their usage patterns.
-
-* **Learning System Efficiency Tracking**: Cost savings metrics from champion case reuse, showing cumulative cost saved through proven strategy retrieval and per-user cost savings attribution.
-
-* **Multi-Provider Cost Comparison**: Compare actual spending across different LLM providers with identical workloads, enabling data-driven decisions for cost optimization and provider selection strategies.
-
-The cost management system stores all pricing data locally in SQLite (`llm_model_costs` table) with encrypted credential storage, ensuring data sovereignty while providing enterprise-grade financial visibility. All cost-related REST API endpoints require admin authentication, ensuring secure access to financial data.
-
-[⬆️ Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -539,7 +517,7 @@ Every profile belongs to one of four classes, each designed for a specific phase
 
 #### 1. 🟢 IDEATE - Conversation Focused (LLM)
 
-**Color: Green `#4ade80`** | **Philosophy: Creative exploration without constraints**
+**Philosophy: Creative exploration without constraints**
 
 ```
 ┌─────────────────────────────────────────┐
@@ -584,7 +562,7 @@ Transform your LLM into a trusted thought partner. Explore possibilities, brains
 
 #### 2. 🔵 FOCUS - Knowledge Focused (RAG)
 
-**Color: Blue `#3b82f6`** | **Philosophy: Grounded answers from verified sources**
+**Philosophy: Grounded answers from verified sources**
 
 ```
 ┌─────────────────────────────────────────┐
@@ -636,7 +614,7 @@ Eliminate hallucinations entirely. The **Focus** phase grounds every answer in y
 
 #### 3. 🟠 OPTIMIZE - Efficiency Focused (Tool)
 
-**Color: Orange `#F15F22`** | **Philosophy: Strategic execution that learns and heals**
+**Philosophy: Strategic execution that learns and heals**
 
 ```
 ┌──────────────────────────────────────────┐
@@ -702,7 +680,7 @@ This is **where ideas become reality**. The **Optimize** phase is powered by the
 
 #### 4. 🟣 COORDINATE - Genie (Multi-Profile)
 
-**Color: Purple `#9333ea`** | **Philosophy: Autonomous orchestration at scale**
+**Philosophy: Autonomous orchestration at scale**
 
 **The Value:**
 **This is the breakthrough.** The **Coordinate** phase creates **autonomous AI organizations** where specialized agents collaborate intelligently. One question triggers a cascade of expert consultations, data retrievals, and synthesis—all happening automatically.
@@ -1106,49 +1084,6 @@ Execution Flow:
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
----
-
-### Two-Tier Repository Architecture
-
-The application supports two distinct types of repositories, each serving a different purpose in the AI agent ecosystem:
-
-#### Planner Repositories
-**Purpose:** Store execution strategies and planning patterns
-- Capture successful agent interactions as few-shot learning examples
-- Contain SQL query patterns, API workflows, and proven execution traces
-- Retrieved by the RAG system to guide future planning decisions
-- Built via **Planner Repository Constructors** - modular templates for domain-specific pattern generation
-- Automatically populated from agent execution history or manually via REST API
-- Enable the agent to learn from past successes and improve over time
-- **Available in Intelligence Marketplace** for community sharing and discovery
-
-#### Knowledge Repositories
-**Purpose:** Provide reference documentation and domain knowledge
-- Store general documents, technical manuals, and business context
-- Support for PDF, TXT, DOCX, MD, and other document formats
-- Configurable chunking strategies (fixed-size, paragraph, sentence, semantic)
-- Integrated with the planner via `_retrieve_knowledge_for_planning()` method
-- Retrieved during planning to inject domain context into strategic decision-making
-- Enable the agent to query relevant background information when making decisions
-- **Available in Intelligence Marketplace** for community sharing and discovery
-- **Feature Status:** ✅ Fully integrated (Phase 1 complete - Nov 2025)
-
-#### Intelligence Marketplace
-
-The **Intelligence Marketplace** enables users to share, discover, and leverage both repository types:
-
-- **Browse Collections:** Search and filter by repository type (Planner or Knowledge)
-- **Subscribe:** Reference-based subscriptions (no data duplication)
-- **Fork:** Create independent copies for customization
-- **Rate & Review:** Community-driven quality assurance (1-5 stars)
-- **Publish:** Share collections as public (discoverable) or unlisted (link-only)
-- **Visual Separation:** Dedicated tabs and badges distinguish Planner (📋 blue) from Knowledge (📄 purple)
-
-This separation ensures that execution patterns (how to accomplish tasks) remain distinct from domain knowledge (what the agent needs to know), while both can be leveraged through the unified RAG system and shared via the marketplace.
-
-[⬆️ Back to Table of Contents](#table-of-contents)
-
----
 
 ## 🎯 The Heart of the Application - The Engine & its Fusion Optimizer
 
@@ -1286,6 +1221,44 @@ The core value of this RAG implementation is its ability to automatically identi
 4.  **Augmenting Future Prompts:** When a similar query is received in the future, the system retrieves the champion case and injects it into the Planner's prompt as a "few-shot" example.
 
 This process guides the Planner to generate higher-quality, more efficient plans based on proven, successful strategies, reducing token consumption and improving response quality without manual intervention. The entire process runs asynchronously in the background to ensure no impact on user-facing performance.
+
+### Two-Tier Repository Architecture
+
+The application supports two distinct types of repositories, each serving a different purpose in the AI agent ecosystem:
+
+#### Planner Repositories
+**Purpose:** Store execution strategies and planning patterns
+- Capture successful agent interactions as few-shot learning examples
+- Contain SQL query patterns, API workflows, and proven execution traces
+- Retrieved by the RAG system to guide future planning decisions
+- Built via **Planner Repository Constructors** - modular templates for domain-specific pattern generation
+- Automatically populated from agent execution history or manually via REST API
+- Enable the agent to learn from past successes and improve over time
+- **Available in Intelligence Marketplace** for community sharing and discovery
+
+#### Knowledge Repositories
+**Purpose:** Provide reference documentation and domain knowledge
+- Store general documents, technical manuals, and business context
+- Support for PDF, TXT, DOCX, MD, and other document formats
+- Configurable chunking strategies (fixed-size, paragraph, sentence, semantic)
+- Seamlessly integrated with strategic planning for intelligent context injection
+- Retrieved during planning to inject domain context into strategic decision-making
+- Enable the agent to query relevant background information when making decisions
+- **Available in Intelligence Marketplace** for community sharing and discovery
+- **Feature Status:** ✅ Fully integrated (Phase 1 complete - Nov 2025)
+
+#### Intelligence Marketplace
+
+The **Intelligence Marketplace** enables users to share, discover, and leverage both repository types:
+
+- **Browse Collections:** Search and filter by repository type (Planner or Knowledge)
+- **Subscribe:** Reference-based subscriptions (no data duplication)
+- **Fork:** Create independent copies for customization
+- **Rate & Review:** Community-driven quality assurance (1-5 stars)
+- **Publish:** Share collections as public (discoverable) or unlisted (link-only)
+- **Visual Separation:** Dedicated tabs and badges distinguish Planner (📋 blue) from Knowledge (📄 purple)
+
+This separation ensures that execution patterns (how to accomplish tasks) remain distinct from domain knowledge (what the agent needs to know), while both can be leveraged through the unified RAG system and shared via the marketplace.
 
 ### Planner Repository Constructors: Modular Plugin System (New - Nov 2025)
 
@@ -2090,7 +2063,7 @@ MCP servers connect using three transport protocols, each designed for specific 
 
 #### 🟠 STDIO - Local Command Execution
 
-**Color: Orange `#F15F22`** | **Best for: Development, local databases, file systems**
+**Best for: Development, local databases, file systems**
 
 ```json
 {
@@ -2119,7 +2092,7 @@ MCP servers connect using three transport protocols, each designed for specific 
 
 #### 🔵 HTTP - Network REST API
 
-**Color: Blue `#3b82f6`** | **Best for: Cloud services, remote databases, microservices**
+**Best for: Cloud services, remote databases, microservices**
 
 ```json
 {
@@ -2146,7 +2119,7 @@ MCP servers connect using three transport protocols, each designed for specific 
 
 #### 🟢 SSE - Server-Sent Events
 
-**Color: Green `#4ade80`** | **Best for: Live data feeds, real-time updates**
+**Best for: Live data feeds, real-time updates**
 
 ```json
 {

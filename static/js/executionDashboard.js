@@ -591,28 +591,66 @@ class ExecutionDashboard {
     /**
      * Activate a session in the conversation view
      */
-    async activateSession(sessionId) {
+    async activateSession(sessionId, isArchived = false) {
         try {
             // Import the session handler dynamically
             const { handleLoadSession } = await import('./handlers/sessionManagement.js?v=3.2');
-            
+
             // Switch to conversation view
             const conversationViewBtn = document.getElementById('view-switch-conversation');
             if (conversationViewBtn) {
                 conversationViewBtn.click();
             }
-            
+
             // Wait a moment for view to switch
             await new Promise(resolve => setTimeout(resolve, 200));
-            
+
+            // Auto-enable "Show Archived" toggle if loading archived session
+            if (isArchived) {
+                console.log('[Session Gallery] Loading archived session - auto-enabling Show Archived toggle');
+                this.enableShowArchivedToggle();
+            }
+
             // Load the session
             await handleLoadSession(sessionId);
-            
+
         } catch (error) {
             console.error('Error activating session:', error);
             if (window.showAppBanner) {
                 window.showAppBanner('Failed to activate session. Please try again.', 'error');
             }
+        }
+    }
+
+    /**
+     * Programmatically enable the "Show Archived" toggle in the sidebar
+     */
+    enableShowArchivedToggle() {
+        const toggle = document.getElementById('sidebar-show-archived-sessions-toggle');
+
+        if (!toggle) {
+            console.warn('[Session Gallery] Show Archived toggle not found');
+            return;
+        }
+
+        // Check if already enabled
+        if (toggle.checked) {
+            console.log('[Session Gallery] Show Archived toggle already enabled');
+            return;
+        }
+
+        // Enable the toggle
+        toggle.checked = true;
+
+        // Update localStorage to persist the setting
+        localStorage.setItem('sidebarShowArchivedSessions', 'true');
+
+        // Trigger the visibility update function
+        if (typeof window.updateArchivedSessionsFilter === 'function') {
+            window.updateArchivedSessionsFilter();
+            console.log('[Session Gallery] Show Archived toggle enabled successfully');
+        } else {
+            console.warn('[Session Gallery] updateArchivedSessionsFilter function not available');
         }
     }
 
@@ -674,7 +712,7 @@ class ExecutionDashboard {
                 if (activateBtn) {
                     activateBtn.addEventListener('click', (e) => {
                         e.stopPropagation(); // Prevent card click
-                        this.activateSession(session.id);
+                        this.activateSession(session.id, session.archived);
                     });
                 }
             }

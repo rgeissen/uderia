@@ -1525,6 +1525,7 @@ async def get_sessions(current_user):
         all_users (bool): If true and user has VIEW_ALL_SESSIONS feature, returns sessions from all users
         limit (int): Maximum number of sessions to return (default: 50, use 0 for all)
         offset (int): Number of sessions to skip for pagination (default: 0)
+        include_archived (bool): If true, includes archived sessions in results (default: false)
     """
     user_uuid = current_user.id
 
@@ -1546,6 +1547,9 @@ async def get_sessions(current_user):
     # Check if requesting all users' sessions
     all_users = request.args.get('all_users', 'false').lower() == 'true'
 
+    # Check if including archived sessions
+    include_archived = request.args.get('include_archived', 'false').lower() == 'true'
+
     if all_users:
         # Check if user has VIEW_ALL_SESSIONS feature
         from trusted_data_agent.auth.service import get_user_features
@@ -1560,11 +1564,11 @@ async def get_sessions(current_user):
         original_filter = APP_CONFIG.SESSIONS_FILTER_BY_USER
         try:
             APP_CONFIG.SESSIONS_FILTER_BY_USER = False
-            result = await session_manager.get_all_sessions(user_uuid=user_uuid, limit=limit, offset=offset)
+            result = await session_manager.get_all_sessions(user_uuid=user_uuid, limit=limit, offset=offset, include_archived=include_archived)
         finally:
             APP_CONFIG.SESSIONS_FILTER_BY_USER = original_filter
     else:
-        result = await session_manager.get_all_sessions(user_uuid=user_uuid, limit=limit, offset=offset)
+        result = await session_manager.get_all_sessions(user_uuid=user_uuid, limit=limit, offset=offset, include_archived=include_archived)
 
     # Extract sessions from result (new format returns dict with sessions, total_count, has_more)
     sessions = result.get("sessions", [])
