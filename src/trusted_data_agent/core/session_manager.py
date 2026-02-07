@@ -561,8 +561,14 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0, i
         "has_more": has_more
     }
 
-async def delete_session(user_uuid: str, session_id: str) -> bool:
-    """Archives a session by marking it as archived instead of deleting the file."""
+async def delete_session(user_uuid: str, session_id: str, archived_reason: str = None) -> bool:
+    """Archives a session by marking it as archived instead of deleting the file.
+
+    Args:
+        user_uuid: The user's UUID
+        session_id: The session ID to archive
+        archived_reason: Optional reason for archiving (e.g., "User manually deleted session")
+    """
     session_path = _find_session_path(user_uuid, session_id)
     if not session_path:
         app_logger.error(f"Cannot archive session '{session_id}' for user '{user_uuid}': Session not found.")
@@ -580,6 +586,8 @@ async def delete_session(user_uuid: str, session_id: str) -> bool:
             session_data["archived"] = True
             session_data["is_archived"] = True
             session_data["archived_at"] = datetime.now(timezone.utc).isoformat()
+            if archived_reason:
+                session_data["archived_reason"] = archived_reason
 
             # Save back to file
             async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
@@ -661,19 +669,14 @@ async def archive_sessions_by_profile(
                 genie_children.append(session_id)
 
             try:
-                # Use existing delete_session() archive function
-                success = await delete_session(user_uuid, session_id)
+                # Use existing delete_session() archive function with reason
+                success = await delete_session(
+                    user_uuid,
+                    session_id,
+                    archived_reason=f"Profile '{profile_id}' was deleted"
+                )
 
                 if success:
-                    # Update archived reason
-                    session_path = _find_session_path(user_uuid, session_id)
-                    if session_path:
-                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
-                            updated_data = json.loads(await f.read())
-                        updated_data["archived_reason"] = f"Profile '{profile_id}' was deleted"
-                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
-
                     archived_sessions.append(session_id)
                     app_logger.info(
                         f"Archived session {session_id} (profile {profile_id} deleted)"
@@ -786,23 +789,18 @@ async def archive_sessions_by_collection(
             session_id = session_info.get("session_id")
 
             try:
-                # Use existing delete_session() archive function
+                # Use existing delete_session() archive function with reason
                 app_logger.info(f"[ARCHIVE] Archiving session {session_id}...")
-                success = await delete_session(user_uuid, session_id)
+                success = await delete_session(
+                    user_uuid,
+                    session_id,
+                    archived_reason=f"Collection '{collection_id}' was deleted"
+                )
                 app_logger.info(f"[ARCHIVE] delete_session() returned: {success}")
                 if not success:
                     app_logger.error(f"[ARCHIVE] FAILED to archive session {session_id}")
 
                 if success:
-                    # Update archived reason
-                    session_path = _find_session_path(user_uuid, session_id)
-                    if session_path:
-                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
-                            updated_data = json.loads(await f.read())
-                        updated_data["archived_reason"] = f"Collection '{collection_id}' was deleted"
-                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
-
                     archived_sessions.append(session_id)
                     app_logger.info(
                         f"Archived session {session_id} (collection {collection_id} deleted)"
@@ -880,19 +878,14 @@ async def archive_sessions_by_mcp_server(
             session_id = session_info.get("session_id")
 
             try:
-                # Use existing delete_session() archive function
-                success = await delete_session(user_uuid, session_id)
+                # Use existing delete_session() archive function with reason
+                success = await delete_session(
+                    user_uuid,
+                    session_id,
+                    archived_reason=f"MCP server '{mcp_server_id}' was deleted"
+                )
 
                 if success:
-                    # Update archived reason
-                    session_path = _find_session_path(user_uuid, session_id)
-                    if session_path:
-                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
-                            updated_data = json.loads(await f.read())
-                        updated_data["archived_reason"] = f"MCP server '{mcp_server_id}' was deleted"
-                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
-
                     archived_sessions.append(session_id)
                     app_logger.info(
                         f"Archived session {session_id} (MCP server {mcp_server_id} deleted)"
@@ -970,19 +963,14 @@ async def archive_sessions_by_llm_config(
             session_id = session_info.get("session_id")
 
             try:
-                # Use existing delete_session() archive function
-                success = await delete_session(user_uuid, session_id)
+                # Use existing delete_session() archive function with reason
+                success = await delete_session(
+                    user_uuid,
+                    session_id,
+                    archived_reason=f"LLM config '{llm_config_id}' was deleted"
+                )
 
                 if success:
-                    # Update archived reason
-                    session_path = _find_session_path(user_uuid, session_id)
-                    if session_path:
-                        async with aiofiles.open(session_path, 'r', encoding='utf-8') as f:
-                            updated_data = json.loads(await f.read())
-                        updated_data["archived_reason"] = f"LLM config '{llm_config_id}' was deleted"
-                        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-                            await f.write(json.dumps(updated_data, indent=2, ensure_ascii=False))
-
                     archived_sessions.append(session_id)
                     app_logger.info(
                         f"Archived session {session_id} (LLM config {llm_config_id} deleted)"
@@ -1855,7 +1843,12 @@ async def get_genie_parent_session(slave_session_id: str, user_uuid: str) -> dic
         return None
 
 
-async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str, _depth: int = 0) -> list:
+async def cleanup_genie_slave_sessions(
+    parent_session_id: str,
+    user_uuid: str,
+    _depth: int = 0,
+    archived_reason: str = None
+) -> list:
     """
     Clean up (archive) all child sessions when a Genie parent session is deleted.
     Recursively handles nested Genie sessions (children that are themselves parents).
@@ -1864,6 +1857,7 @@ async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str, _
         parent_session_id: The Genie coordinator session ID
         user_uuid: The user who owns the sessions
         _depth: Internal recursion depth guard (max 5)
+        archived_reason: Optional reason for archiving (passed to delete_session)
 
     Returns:
         List of all deleted (archived) child session IDs, including nested descendants
@@ -1886,10 +1880,12 @@ async def cleanup_genie_slave_sessions(parent_session_id: str, user_uuid: str, _
             slave_session_id = slave.get('slave_session_id')
             if slave_session_id:
                 # Recurse: if this child is also a Genie parent, clean up its children first
-                nested_deleted = await cleanup_genie_slave_sessions(slave_session_id, user_uuid, _depth=_depth + 1)
+                nested_deleted = await cleanup_genie_slave_sessions(
+                    slave_session_id, user_uuid, _depth=_depth + 1, archived_reason=archived_reason
+                )
                 all_deleted.extend(nested_deleted)
 
-                await delete_session(user_uuid, slave_session_id)
+                await delete_session(user_uuid, slave_session_id, archived_reason=archived_reason)
                 all_deleted.append(slave_session_id)
                 app_logger.info(f"Deleted genie child session: {slave_session_id}")
 

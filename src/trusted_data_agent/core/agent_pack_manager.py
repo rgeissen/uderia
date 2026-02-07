@@ -312,6 +312,9 @@ class AgentPackManager:
 
             tag_remap = {}
 
+            # Track if we need to restore default profile after replace
+            replaced_default_tag = None
+
             if conflicting_tags:
                 if conflict_strategy == "replace":
                     # Delete existing profiles with conflicting tags AND their
@@ -322,6 +325,9 @@ class AgentPackManager:
                     retriever = get_rag_retriever()
                     pack_db = AgentPackDB(self.db_path)
 
+                    # Check if any profile being replaced is the default
+                    default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
                     # Collect all collection IDs referenced by profiles being replaced
                     orphan_collection_ids = set()
                     replaced_profile_ids = []
@@ -331,6 +337,14 @@ class AgentPackManager:
                             continue
 
                         replaced_profile_ids.append(existing_prof["id"])
+
+                        # Track if this is the default profile (by tag, for later restoration)
+                        if existing_prof["id"] == default_profile_id:
+                            replaced_default_tag = existing_prof.get("tag")
+                            app_logger.info(
+                                f"  Default profile @{replaced_default_tag} will be replaced — "
+                                f"will restore default after new profile is created"
+                            )
 
                         # Planner collections (ragCollections: list of int IDs)
                         for cid in existing_prof.get("ragCollections", []):
@@ -535,6 +549,14 @@ class AgentPackManager:
                 tag_to_profile_id[prof["tag"]] = profile_data["id"]
                 created_profile_ids.append(profile_data["id"])
                 app_logger.info(f"  Created coordinator @{prof['tag']} (id={profile_data['id']})")
+
+            # Step 6b: Restore default profile if it was replaced
+            if replaced_default_tag and replaced_default_tag in tag_to_profile_id:
+                new_default_id = tag_to_profile_id[replaced_default_tag]
+                config_manager.set_default_profile_id(new_default_id, user_uuid)
+                app_logger.info(
+                    f"  Restored default profile: @{replaced_default_tag} (new id={new_default_id})"
+                )
 
             # Step 7: Reload retriever once
             retriever = get_rag_retriever()

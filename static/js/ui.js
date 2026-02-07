@@ -4508,8 +4508,18 @@ export function showConfirmation(title, body, onConfirm) {
     DOM.confirmModalOverlay.classList.remove('hidden', 'opacity-0');
     DOM.confirmModalContent.classList.remove('scale-95', 'opacity-0');
 
+    // If no confirm callback, this is an alert - hide Confirm button and change Cancel to "OK"
+    const isAlertMode = !onConfirm;
+    if (isAlertMode) {
+        DOM.confirmModalConfirm.classList.add('hidden');
+        DOM.confirmModalCancel.textContent = 'OK';
+    } else {
+        DOM.confirmModalConfirm.classList.remove('hidden');
+        DOM.confirmModalCancel.textContent = 'Cancel';
+    }
+
     const confirmHandler = () => {
-        onConfirm();
+        if (onConfirm) onConfirm();
         closeConfirmation();
     };
 
@@ -4523,6 +4533,9 @@ export function showConfirmation(title, body, onConfirm) {
         setTimeout(() => DOM.confirmModalOverlay.classList.add('hidden'), 300);
         DOM.confirmModalConfirm.removeEventListener('click', confirmHandler);
         DOM.confirmModalCancel.removeEventListener('click', cancelHandler);
+        // Reset button states for next use
+        DOM.confirmModalConfirm.classList.remove('hidden');
+        DOM.confirmModalCancel.textContent = 'Cancel';
     };
 
     DOM.confirmModalConfirm.addEventListener('click', confirmHandler, { once: true });

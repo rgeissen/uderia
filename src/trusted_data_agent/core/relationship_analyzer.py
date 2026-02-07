@@ -80,6 +80,7 @@ class RelationshipAnalyzer:
             # Add deletion safety analysis
             deletion_info = await self.analyze_deletion_safety(
                 artifact_type,
+                user_uuid,
                 relationships,
                 agent_packs
             )
@@ -96,11 +97,18 @@ class RelationshipAnalyzer:
     async def analyze_deletion_safety(
         self,
         artifact_type: str,
+        user_uuid: str,
         relationships: Dict[str, Any],
         agent_packs: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Analyze whether an artifact can be safely deleted.
+
+        Args:
+            artifact_type: Type of artifact being analyzed
+            user_uuid: User who owns the artifact (needed for default profile check)
+            relationships: Relationships dict from find_* methods
+            agent_packs: List of agent packs that manage this artifact
 
         Returns:
             Dict with deletion safety information
@@ -116,7 +124,7 @@ class RelationshipAnalyzer:
         blockers = []
         warnings = []
 
-        # Agent pack blocker
+        # Agent pack blocker (for collections, profiles, etc. managed by packs)
         if agent_packs:
             pack_names = ", ".join(p["pack_name"] for p in agent_packs)
             blockers.append({
@@ -124,6 +132,22 @@ class RelationshipAnalyzer:
                 "message": f"This {artifact_type} is managed by agent pack(s): {pack_names}. "
                            f"Uninstall the pack(s) to remove it."
             })
+
+        # For agent-packs: check if any managed profile is the default profile
+        if artifact_type == "agent-pack" and profiles:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
+            if default_profile_id:
+                for profile in profiles:
+                    if profile.get("profile_id") == default_profile_id:
+                        blockers.append({
+                            "type": "default_profile",
+                            "message": f"This pack contains the default profile '@{profile.get('profile_tag', 'unknown')}'. "
+                                       f"Please change the default profile first, then try uninstalling again."
+                        })
+                        break
 
         # Session archiving warning (only for ACTIVE sessions)
         if active_count > 0:

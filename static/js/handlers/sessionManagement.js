@@ -788,15 +788,25 @@ export async function handleDeleteSessionClick(deleteButton) {
             try {
                 const result = await deleteSession(sessionId);
                 const deletedChildren = result?.deleted_children || [];
+                const wasActiveSession = state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId);
 
-                // Remove child session elements, then the parent
-                UI.removeSessionAndDescendantsFromList(sessionId, deletedChildren);
+                // Refresh the session list to show archived state
+                // This replaces the old approach of just removing from DOM
+                try {
+                    const { refreshSessionsList } = await import('./configManagement.js');
+                    await refreshSessionsList();
+                    console.log('[Session Delete] Session list refreshed after archiving');
+                } catch (refreshError) {
+                    console.error('[Session Delete] Failed to refresh sessions list:', refreshError);
+                    // Fallback: remove from DOM if refresh fails
+                    UI.removeSessionAndDescendantsFromList(sessionId, deletedChildren);
+                }
 
                 // Check if the currently active session was deleted (parent or child)
-                if (state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId)) {
+                if (wasActiveSession) {
                     try {
-                        const result = await API.loadSessions(0, 0); // Load all sessions (limit=0)
-                        const remainingSessions = result.sessions || [];
+                        const sessionsResult = await API.loadSessions(0, 0); // Load all sessions (limit=0)
+                        const remainingSessions = sessionsResult.sessions || [];
                         // Filter out archived sessions
                         const activeSessions = remainingSessions ? remainingSessions.filter(s => !s.archived) : [];
 

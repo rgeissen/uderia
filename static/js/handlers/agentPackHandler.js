@@ -962,17 +962,18 @@ async function handleUninstallAgentPack(installationId, packName) {
         const sessions = checkData.relationships?.sessions || {};
         const activeCount = sessions.active_count || 0;
 
-        // Show blockers (prevent deletion)
+        // Show blockers (prevent deletion) - use separate message, not the "Are you sure?" one
         if (blockers.length > 0) {
             const blockerMessages = blockers
                 .map(b => `• ${_esc(b.message || b)}`)
                 .join('<br>');
-            message += `<br><br><span style="color: #ef4444; font-weight: 600;">🚫 Cannot Uninstall:</span><br><span style="font-size: 0.9em;">${blockerMessages}</span>`;
+            const blockerMessage = `<strong>${_esc(packName)}</strong> cannot be uninstalled:<br><br><span style="font-size: 0.95em;">${blockerMessages}</span>`;
 
+            // Use showConfirmation with null callback = alert mode (only OK button)
             if (window.showConfirmation) {
-                window.showConfirmation('Cannot Uninstall Agent Pack', message, null);
+                window.showConfirmation('Cannot Uninstall', blockerMessage, null);
             } else {
-                alert(message.replace(/<[^>]*>/g, ''));  // Strip HTML for fallback alert
+                alert(blockerMessage.replace(/<[^>]*>/g, ''));
             }
             return;
         }
