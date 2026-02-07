@@ -417,6 +417,12 @@ async function initializeRAGAutoCompletion() {
             const authToken = localStorage.getItem('tda_auth_token');
             if (!authToken) return;
 
+            // Store the profile ID for prompt invocations from resource panel
+            // This ensures prompts are executed with the correct profile even if
+            // window.activeProfileOverrideId is lost (e.g., page refresh)
+            state.currentResourcePanelProfileId = profileId;
+            console.log(`📦 [Resource Panel] Profile ID stored: ${profileId}`);
+
             let tools, prompts;
 
             if (profileId) {

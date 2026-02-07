@@ -404,12 +404,12 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0, i
             """, slave_session_ids)
 
             rows = cursor.fetchall()
-            conn.close()
 
             # Build lookup map
             metadata_map = {row['slave_session_id']: dict(row) for row in rows}
 
-            # Apply metadata to sessions
+            # Apply metadata to sessions, auto-repair orphaned slaves
+            repaired_count = 0
             for session in session_summaries:
                 session_id = session.get("id")
                 if session_id in metadata_map:
@@ -417,8 +417,35 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0, i
                     session["genie_metadata"]["nesting_level"] = genie_data.get("nesting_level", 0)
                     session["genie_metadata"]["slave_profile_tag"] = genie_data.get("slave_profile_tag")
                 elif session.get("genie_metadata", {}).get("is_genie_slave"):
-                    app_logger.warning(f"No parent link found for genie slave session {session_id}")
+                    # Auto-repair: insert missing link from session file data
+                    genie_meta = session.get("genie_metadata", {})
+                    parent_id = genie_meta.get("parent_session_id")
+                    slave_profile_id = genie_meta.get("slave_profile_id", "")
+                    slave_profile_tag = genie_meta.get("slave_profile_tag", "")
+                    sequence_num = genie_meta.get("slave_sequence_number", 0)
 
+                    if parent_id:
+                        try:
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO genie_session_links
+                                (parent_session_id, slave_session_id, slave_profile_id,
+                                 slave_profile_tag, user_uuid, execution_order, nesting_level)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (parent_id, session_id, slave_profile_id,
+                                  slave_profile_tag, user_uuid, sequence_num, 0))
+                            conn.commit()
+                            session["genie_metadata"]["nesting_level"] = 0
+                            repaired_count += 1
+                            app_logger.info(f"Auto-repaired genie session link: {parent_id} -> {session_id}")
+                        except Exception as repair_err:
+                            app_logger.debug(f"Could not auto-repair genie link for {session_id}: {repair_err}")
+                    else:
+                        app_logger.debug(f"Orphaned genie slave session {session_id} has no parent_session_id")
+
+            conn.close()
+
+            if repaired_count > 0:
+                app_logger.info(f"Auto-repaired {repaired_count} orphaned genie session links")
             app_logger.debug(f"Batch enriched {len(metadata_map)} genie slave sessions")
         except Exception as e:
             app_logger.error(f"Failed to batch enrich genie metadata: {e}", exc_info=True)

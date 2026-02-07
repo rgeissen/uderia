@@ -453,11 +453,14 @@ export function openPromptModal(prompt) {
         const arugments = Object.fromEntries(formData.entries());
 
         UI.closePromptModal();
+        // Priority: typed @TAG > resource panel profile > undefined
+        const profileId = window.activeProfileOverrideId || state.currentResourcePanelProfileId || undefined;
+        console.log(`🎯 [Prompt Invocation] Using profile_override_id: ${profileId}`);
         handleStreamRequest('/invoke_prompt_stream', {
             session_id: state.currentSessionId,
             prompt_name: promptName,
             arguments: arugments,
-            profile_override_id: window.activeProfileOverrideId || undefined
+            profile_override_id: profileId
         });
     };
 }

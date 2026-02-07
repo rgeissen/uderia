@@ -163,6 +163,7 @@ async def run_agent_execution(
             app_logger.warning(f"No active profile found, defaulting to tool_enabled")
 
         # Update session to reflect the profile being used (unless it's an override)
+        # profile_id tracks the "base" profile, overrides are temporary
         if not profile_override_id and active_profile:
             session_profile_id = session_data.get("profile_id")
             if session_profile_id != active_profile.get("id"):
@@ -172,6 +173,14 @@ async def run_agent_execution(
                 )
                 session_data["profile_id"] = active_profile.get("id")
                 session_data["profile_tag"] = active_profile.get("tag")
+                await session_manager._save_session(user_uuid, session_id, session_data)
+
+        # Track the last executed profile (for prompt invocations from resource panel)
+        if active_profile:
+            current_last_executed = session_data.get("last_executed_profile_id")
+            if current_last_executed != active_profile.get("id"):
+                session_data["last_executed_profile_id"] = active_profile.get("id")
+                app_logger.debug(f"Updated last_executed_profile_id to {active_profile.get('id')} (@{active_profile.get('tag')})")
                 await session_manager._save_session(user_uuid, session_id, session_data)
 
         # Route Genie profiles to Genie coordinator

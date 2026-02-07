@@ -2580,35 +2580,63 @@ async def invoke_prompt_stream():
         return Response(error_gen(), mimetype="text/event-stream")
 
     # Get active profile to check profile type
-    # Check profile override first, then session's profile_id, then fall back to default profile
+    # Check profile override first, then last executed profile, then session's profile_id, then default
     from trusted_data_agent.core.config_manager import get_config_manager
     config_manager = get_config_manager()
 
     active_profile = None
+    resolution_source = None
 
-    # Priority 1: Profile override from request
+    # Log profile sources for debugging
+    app_logger.debug(
+        f"[PROMPT INVOCATION] Profile resolution for session {session_id}: "
+        f"override={profile_override_id}, last_executed={session_data.get('last_executed_profile_id')}, "
+        f"session_profile={session_data.get('profile_id')}"
+    )
+
+    # Priority 1: Profile override from request (explicit client-side override)
     if profile_override_id:
         profiles = config_manager.get_profiles(user_uuid)
         active_profile = next((p for p in profiles if p.get("id") == profile_override_id), None)
+        if active_profile:
+            resolution_source = "Priority 1: profile_override_id from request"
 
-    # Priority 2: Session's stored profile_id
+    # Priority 2: Last executed profile (for prompt invocations after override)
+    # This captures the profile used in the most recent query, including overrides
+    if not active_profile and session_data.get("last_executed_profile_id"):
+        profiles = config_manager.get_profiles(user_uuid)
+        active_profile = next((p for p in profiles if p.get("id") == session_data.get("last_executed_profile_id")), None)
+        if active_profile:
+            resolution_source = "Priority 2: last_executed_profile_id from session"
+
+    # Priority 3: Session's stored profile_id (original session base profile)
     if not active_profile and session_data.get("profile_id"):
         profiles = config_manager.get_profiles(user_uuid)
         active_profile = next((p for p in profiles if p.get("id") == session_data.get("profile_id")), None)
+        if active_profile:
+            resolution_source = "Priority 3: profile_id from session"
 
-    # Priority 3: Default profile
+    # Priority 4: Default profile
     if not active_profile:
         default_profile_id = config_manager.get_default_profile_id(user_uuid)
         if default_profile_id:
             profiles = config_manager.get_profiles(user_uuid)
             active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
+            if active_profile:
+                resolution_source = "Priority 4: default profile"
 
     # Get profile type (default to tool_enabled for backward compatibility)
     active_profile_type = active_profile.get("profile_type", "tool_enabled") if active_profile else "tool_enabled"
 
+    app_logger.debug(f"[PROMPT INVOCATION] Resolved: @{active_profile.get('tag') if active_profile else 'NONE'} (type={active_profile_type}) via {resolution_source}")
+
     # MCP prompt invocation is only for tool-enabled profiles
     if active_profile_type != "tool_enabled":
-        app_logger.warning(f"MCP prompt invocation attempted with {active_profile_type} profile for user {user_uuid}")
+        app_logger.warning(
+            f"❌ [PROMPT INVOCATION] REJECTED - profile type '{active_profile_type}' is not tool_enabled. "
+            f"Profile: @{active_profile.get('tag') if active_profile else 'NONE'}, "
+            f"resolved via: {resolution_source}"
+        )
         async def error_gen():
             yield PlanExecutor._format_sse({
                 "error": "MCP prompts are only available for tool-enabled profiles. Please switch to a tool-enabled profile or use the chat interface.",

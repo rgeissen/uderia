@@ -3375,7 +3375,7 @@ The following domain knowledge may be relevant to this conversation:
         
         # Debug log to verify profile_override_id is being passed
         if self.profile_override_id:
-            app_logger.info(f"🔍 Profile override detected: {self.profile_override_id}")
+            app_logger.debug(f"Profile override detected: {self.profile_override_id}")
         else:
             app_logger.info(f"ℹ️  No profile override - using default profile configuration")
             # Set effective MCP server ID to the default (for RAG storage)
@@ -3414,11 +3414,7 @@ The following domain knowledge may be relevant to this conversation:
                     original_provider = self.original_provider
                     original_model = self.original_model
                     
-                    app_logger.info(f"\n{'='*80}")
-                    app_logger.info(f"🔄 TEMPORARY PROFILE SWITCH INITIATED")
-                    app_logger.info(f"From: Default Profile (Provider: {original_provider}, Model: {original_model})")
-                    app_logger.info(f"To: {override_profile.get('name', 'Unknown')} (Tag: @{override_profile.get('tag', 'N/A')}, ID: {self.profile_override_id})")
-                    app_logger.info(f"{'='*80}\n")
+                    app_logger.info(f"Profile override: {original_provider}/{original_model} -> @{override_profile.get('tag', 'N/A')} ({override_profile.get('name', 'Unknown')})")
                     
                     # Get override profile's LLM configuration
                     override_llm_config_id = override_profile.get('llmConfigurationId')
@@ -3432,10 +3428,7 @@ The following domain knowledge may be relevant to this conversation:
                             model = override_llm_config.get('model')
                             credentials = override_llm_config.get('credentials', {})
                             
-                            app_logger.info(f"📝 Creating temporary LLM instance")
-                            app_logger.info(f"   Provider: {provider}")
-                            app_logger.info(f"   Model: {model}")
-                            app_logger.info(f"   Config ID: {override_llm_config_id}")
+                            app_logger.debug(f"Creating temporary LLM instance: {provider}/{model} (config: {override_llm_config_id})")
                             
                             # Load stored credentials from encrypted database (authentication always enabled)
                             from trusted_data_agent.auth.models import User
@@ -3447,11 +3440,9 @@ The following domain knowledge may be relevant to this conversation:
                                 with get_db_session() as session:
                                     user = session.query(User).filter_by(id=self.user_uuid).first()
                                     if user:
-                                        app_logger.info(f"Loading credentials for user {user.id}, provider {provider}")
                                         stored_result = await retrieve_credentials_for_provider(user.id, provider)
                                         if stored_result.get("credentials"):
                                             credentials = {**stored_result["credentials"], **credentials}
-                                            app_logger.info(f"✓ Successfully loaded stored credentials for {provider}")
                                         else:
                                             app_logger.warning(f"No stored credentials found for {provider} (status: {stored_result.get('status')})")
                                     else:
@@ -3478,7 +3469,7 @@ The following domain knowledge may be relevant to this conversation:
                                     setattr(APP_CONFIG, key, value)
                                 
                                 APP_STATE['llm'] = temp_llm_instance
-                                app_logger.info(f"✅ LLM instance created and configured successfully")
+                                app_logger.debug(f"Override LLM instance created: {provider}/{model}")
                             except Exception as llm_error:
                                 app_logger.error(f"❌ Failed to create LLM instance for profile override: {llm_error}")
                                 app_logger.error(f"   Provider: {provider}, Model: {model}")
@@ -3490,9 +3481,7 @@ The following domain knowledge may be relevant to this conversation:
                     override_mcp_server_id = override_profile.get('mcpServerId')
                     override_profile_type = override_profile.get("profile_type", "tool_enabled")
 
-                    app_logger.info(f"🔍 Profile override MCP setup:")
-                    app_logger.info(f"   profile_type: {override_profile_type}")
-                    app_logger.info(f"   mcpServerId: {override_mcp_server_id}")
+                    app_logger.debug(f"Override MCP setup: type={override_profile_type}, server={override_mcp_server_id}")
 
                     if override_profile_type == "llm_only":
                         # LLM-only profile: Skip MCP setup entirely
@@ -3500,9 +3489,7 @@ The following domain knowledge may be relevant to this conversation:
                     elif override_mcp_server_id:
                         # CRITICAL: Pass user_uuid to load user's config from database, not bootstrap template
                         mcp_servers = config_manager.get_mcp_servers(self.user_uuid)
-                        app_logger.info(f"   Available MCP servers: {[srv.get('id') for srv in mcp_servers]}")
                         override_mcp_server = next((srv for srv in mcp_servers if srv['id'] == override_mcp_server_id), None)
-                        app_logger.info(f"   Found override server: {override_mcp_server is not None}")
 
                         if override_mcp_server:
                             server_name = override_mcp_server.get('name')  # For logging only
@@ -3511,17 +3498,13 @@ The following domain knowledge may be relevant to this conversation:
                             transport_config = override_mcp_server.get('transport', {})
                             transport_type = transport_config.get('type', 'http')  # Default to HTTP for backwards compat
 
-                            app_logger.info(f"🔧 Creating temporary MCP client")
-                            app_logger.info(f"   Server: {server_name} (ID: {override_mcp_server_id})")
-                            app_logger.info(f"   Transport: {transport_type}")
+                            app_logger.debug(f"Creating temporary MCP client: {server_name} ({transport_type})")
 
                             if transport_type == 'stdio':
                                 # STDIO transport: use command/args from transport config
                                 command = transport_config.get('command')
                                 args = transport_config.get('args', [])
                                 env = transport_config.get('env', {})
-
-                                app_logger.info(f"   Command: {command} {' '.join(args)}")
 
                                 # CRITICAL: Use server ID as key, not name
                                 # CRITICAL: Must include "transport" key for langchain_mcp_adapters
@@ -3539,8 +3522,6 @@ The following domain knowledge may be relevant to this conversation:
                                 host = override_mcp_server.get('host')
                                 port = override_mcp_server.get('port')
                                 path = override_mcp_server.get('path')
-
-                                app_logger.info(f"   URL: http://{host}:{port}{path}")
 
                                 mcp_server_url = f"http://{host}:{port}{path}"
                                 # CRITICAL: Use server ID as key, not name
@@ -3561,7 +3542,6 @@ The following domain knowledge may be relevant to this conversation:
                                     list_prompts_result = await session.list_prompts()
                                     if hasattr(list_prompts_result, 'prompts'):
                                         loaded_override_prompts = list_prompts_result.prompts
-                                        app_logger.info(f"   Loaded {len(loaded_override_prompts)} prompts from override MCP server")
                                 except Exception as e:
                                     app_logger.warning(f"   Failed to load prompts from override MCP server: {e}")
 
@@ -3575,7 +3555,7 @@ The following domain knowledge may be relevant to this conversation:
                             for tool_def in CLIENT_SIDE_TOOLS:
                                 all_processed_tools.append(SimpleTool(**tool_def))
 
-                            app_logger.info(f"   Loaded {len(all_processed_tools)} total tools (MCP + {len(CLIENT_SIDE_TOOLS)} client-side)")
+                            app_logger.debug(f"Loaded {len(all_processed_tools)} tools (MCP + {len(CLIENT_SIDE_TOOLS)} client-side)")
 
                             # Get enabled tool and prompt names for this profile
                             # CRITICAL: Must pass user_uuid to load user-specific profile config (not bootstrap template)
@@ -3659,49 +3639,55 @@ The following domain knowledge may be relevant to this conversation:
                             app_logger.info(f"   Built structured_tools from override MCP server: {len(filtered_structured_tools)} categories")
                             
                             # Rebuild structured_prompts from override MCP server (not from original)
-                            # Same approach as structured_tools: use classification results or build from scratch
+                            # CRITICAL FIX: Prioritize freshly loaded prompts over potentially stale classification
+                            # Classification results may be incomplete or outdated, causing prompt lookup failures
                             filtered_structured_prompts = {}
                             classified_prompts = classification_results.get("prompts", {})
 
-                            if classified_prompts:
-                                # Use classification categories from profile
-                                for category, prompts_list in classified_prompts.items():
-                                    filtered_category_prompts = [
-                                        prompt_info for prompt_info in prompts_list
-                                        if prompt_info.get('name') in enabled_prompt_names
-                                    ]
-                                    if filtered_category_prompts:
-                                        filtered_structured_prompts[category] = filtered_category_prompts
-                            elif loaded_override_prompts:
-                                # Fallback: build from freshly loaded MCP prompts in a single "All Prompts" category
+                            if loaded_override_prompts:
+                                # FIXED: Include ALL prompts (enabled and disabled) so they can be executed from resource panel
+                                # Deactivated prompts should still be executable via resource panel, just not used in regular conversation
                                 from trusted_data_agent.mcp_adapter.adapter import _extract_prompt_type_from_description
                                 all_prompts_category = []
                                 for prompt_obj in loaded_override_prompts:
-                                    if prompt_obj.name in enabled_prompt_names:
-                                        cleaned_desc, prompt_type = _extract_prompt_type_from_description(prompt_obj.description)
-                                        processed_args = []
-                                        if hasattr(prompt_obj, 'arguments') and prompt_obj.arguments:
-                                            for arg in prompt_obj.arguments:
-                                                arg_dict = arg.model_dump()
-                                                processed_args.append(arg_dict)
-                                        all_prompts_category.append({
-                                            "name": prompt_obj.name,
-                                            "description": cleaned_desc or "No description available.",
-                                            "arguments": processed_args,
-                                            "disabled": False,
-                                            "prompt_type": prompt_type
-                                        })
+                                    # Include ALL prompts, mark as disabled if not in enabled list
+                                    is_disabled = prompt_obj.name not in enabled_prompt_names
+                                    cleaned_desc, prompt_type = _extract_prompt_type_from_description(prompt_obj.description)
+                                    processed_args = []
+                                    if hasattr(prompt_obj, 'arguments') and prompt_obj.arguments:
+                                        for arg in prompt_obj.arguments:
+                                            arg_dict = arg.model_dump()
+                                            processed_args.append(arg_dict)
+                                    all_prompts_category.append({
+                                        "name": prompt_obj.name,
+                                        "description": cleaned_desc or "No description available.",
+                                        "arguments": processed_args,
+                                        "disabled": is_disabled,
+                                        "prompt_type": prompt_type
+                                    })
                                 if all_prompts_category:
                                     filtered_structured_prompts["All Prompts"] = all_prompts_category
+                            elif classified_prompts:
+                                # Fallback: use classification categories from profile if MCP loading failed
+                                # Include ALL prompts, mark disabled flag appropriately
+                                for category, prompts_list in classified_prompts.items():
+                                    category_prompts = []
+                                    for prompt_info in prompts_list:
+                                        prompt_copy = dict(prompt_info)
+                                        prompt_copy['disabled'] = prompt_info.get('name') not in enabled_prompt_names
+                                        category_prompts.append(prompt_copy)
+                                    if category_prompts:
+                                        filtered_structured_prompts[category] = category_prompts
                             else:
-                                # Last resort: try filtering original (might be empty)
+                                # Last resort: use original prompts (mark disabled flag appropriately)
                                 for category, prompts_list in (self.original_structured_prompts or {}).items():
-                                    filtered_category_prompts = [
-                                        prompt_info for prompt_info in prompts_list
-                                        if prompt_info['name'] in enabled_prompt_names
-                                    ]
-                                    if filtered_category_prompts:
-                                        filtered_structured_prompts[category] = filtered_category_prompts
+                                    category_prompts = []
+                                    for prompt_info in prompts_list:
+                                        prompt_copy = dict(prompt_info)
+                                        prompt_copy['disabled'] = prompt_info.get('name') not in enabled_prompt_names
+                                        category_prompts.append(prompt_copy)
+                                    if category_prompts:
+                                        filtered_structured_prompts[category] = category_prompts
                             
                             # CRITICAL FIX: Update current_server_id_by_user for tool execution
                             # The mcp_adapter uses get_user_mcp_server_id() which reads this dict
@@ -3723,15 +3709,7 @@ The following domain knowledge may be relevant to this conversation:
                             APP_STATE['tools_context'] = tools_context
                             APP_STATE['prompts_context'] = prompts_context
 
-                            app_logger.info(f"✅ MCP client created successfully")
-                            app_logger.info(f"   Tools enabled: {len(filtered_tools_dict)} (processed with load_mcp_tools)")
-                            app_logger.info(f"   Prompts enabled: {len(filtered_prompts_dict)}")
-                            app_logger.info(f"   Categories in structured_tools: {len(filtered_structured_tools)}")
-                            app_logger.info(f"   Categories in structured_prompts: {len(filtered_structured_prompts)}")
-                            app_logger.info(f"   Context strings rebuilt: tools_context ({len(tools_context)} chars), prompts_context ({len(prompts_context)} chars)")
-                            app_logger.info(f"\n{'='*80}")
-                            app_logger.info(f"✨ Profile override applied successfully - executing with temporary context")
-                            app_logger.info(f"{'='*80}\n")
+                            app_logger.info(f"Profile override applied: {len(filtered_tools_dict)} tools, {len(filtered_prompts_dict)} prompts")
                         else:
                             app_logger.warning(f"❌ MCP server {override_mcp_server_id} not found in config!")
                             app_logger.warning(f"   Profile override will continue with LLM only (no tools)")
@@ -3746,7 +3724,7 @@ The following domain knowledge may be relevant to this conversation:
                 # Restore it to the original LLM instance so execution can continue
                 if self.original_llm is not None:
                     APP_STATE['llm'] = self.original_llm
-                    app_logger.info(f"🔄 Restored original LLM instance after profile override failure")
+                    app_logger.info(f"Restored original LLM after profile override failure")
                 else:
                     app_logger.error(f"❌ Cannot restore LLM - original LLM was None (default profile may not be configured)")
 
@@ -3786,7 +3764,7 @@ The following domain knowledge may be relevant to this conversation:
                             "error_message": str(e)
                         }
                     }
-                    app_logger.info(f"📢 Yielding profile_override_failed notification: {notification_data}")
+                    app_logger.debug(f"Sending profile_override_failed notification")
                     yield self._format_sse_with_depth(notification_data, event="notification")
                 
                 # Continue with default profile if override fails
@@ -3796,9 +3774,7 @@ The following domain knowledge may be relevant to this conversation:
         # Update session with correct provider/model/profile_tag at the start of execution
         # This ensures the session data is correct before any LLM calls
         profile_tag = self._get_current_profile_tag()
-        app_logger.info(f"🔍 About to call update_models_used with: provider={self.current_provider}, model={self.current_model}, profile_tag={profile_tag}, profile_override_id={self.profile_override_id}")
         await session_manager.update_models_used(self.user_uuid, self.session_id, self.current_provider, self.current_model, profile_tag)
-        app_logger.info(f"✅ Session {self.session_id} initialized with provider={self.current_provider}, model={self.current_model}, profile_tag={profile_tag}")
         
         # Send immediate SSE notification so UI updates in real-time
         session_data = await session_manager.get_session(self.user_uuid, self.session_id)
@@ -3812,13 +3788,13 @@ The following domain knowledge may be relevant to this conversation:
                 "model": self.current_model,
                 "name": session_data.get("name", "Unnamed Session"),
             }
-            app_logger.info(f"🔔 [DEBUG] Sending session_model_update SSE notification: provider={notification_payload['provider']}, model={notification_payload['model']}, profile_tags={notification_payload['profile_tags_used']}")
+            app_logger.debug(f"Sending session_model_update: {notification_payload['provider']}/{notification_payload['model']}")
             yield self._format_sse_with_depth({
                 "type": "session_model_update",
                 "payload": notification_payload
             }, event="notification")
         else:
-            app_logger.warning(f"🔔 [DEBUG] Could not send SSE notification - session_data is None for session {self.session_id}")
+            app_logger.warning(f"Could not send session_model_update - session_data is None for {self.session_id}")
 
         # Check for cancellation before starting execution
         self._check_cancellation()
@@ -4175,9 +4151,7 @@ The following domain knowledge may be relevant to this conversation:
                         if default_profile:
                             default_profile_name = f"{default_profile.get('name')} (Tag: @{default_profile.get('tag', 'N/A')})"
                     
-                    app_logger.info(f"\n{'='*80}")
-                    app_logger.info(f"🔙 REVERTING TO DEFAULT PROFILE")
-                    app_logger.info(f"Restoring: {default_profile_name}")
+                    app_logger.info(f"Reverting to default profile: {default_profile_name}")
                     
                     if self.original_llm is not None:
                         APP_STATE['llm'] = self.original_llm
@@ -4197,32 +4171,25 @@ The following domain knowledge may be relevant to this conversation:
                             if 'aws_model_provider' in self.original_provider_details:
                                 set_user_model_provider_in_profile(self.original_provider_details['aws_model_provider'], self.user_uuid)
                         
-                        app_logger.info(f"✅ Restored original LLM instance")
-                        app_logger.info(f"   Provider: {self.original_provider}")
-                        app_logger.info(f"   Model: {self.original_model}")
+                        app_logger.debug(f"Restored LLM: {self.original_provider}/{self.original_model}")
                     
                     if self.original_mcp_tools is not None:
                         APP_STATE['mcp_tools'] = self.original_mcp_tools
-                        app_logger.info(f"✅ Restored original MCP tools ({len(self.original_mcp_tools)} tools)")
                     
                     if self.original_mcp_prompts is not None:
                         APP_STATE['mcp_prompts'] = self.original_mcp_prompts
-                        app_logger.info(f"✅ Restored original MCP prompts ({len(self.original_mcp_prompts)} prompts)")
                     
                     if self.original_structured_tools is not None:
                         APP_STATE['structured_tools'] = self.original_structured_tools
-                        app_logger.info(f"✅ Restored original structured_tools ({len(self.original_structured_tools)} categories)")
                     
                     if self.original_structured_prompts is not None:
                         APP_STATE['structured_prompts'] = self.original_structured_prompts
-                        app_logger.info(f"✅ Restored original structured_prompts ({len(self.original_structured_prompts)} categories)")
 
                     # CRITICAL FIX: Restore original current_server_id_by_user
                     # This ensures tool execution uses the correct MCP server after override
                     if self.original_server_id is not None:
                         current_server_id_by_user = APP_STATE.setdefault("current_server_id_by_user", {})
                         current_server_id_by_user[self.user_uuid] = self.original_server_id
-                        app_logger.info(f"✅ Restored original MCP server ID for tool execution")
 
                     # CRITICAL FIX: Rebuild tools_context and prompts_context after restoring original state
                     # This ensures subsequent queries in the same session see the correct default profile tools
@@ -4230,7 +4197,6 @@ The following domain knowledge may be relevant to this conversation:
                         tools_context, prompts_context = rebuild_tools_and_prompts_context()
                         APP_STATE['tools_context'] = tools_context
                         APP_STATE['prompts_context'] = prompts_context
-                        app_logger.info(f"✅ Context strings rebuilt after restoration")
 
                     # Close temporary MCP client if created
                     if temp_mcp_client:
@@ -4241,9 +4207,7 @@ The following domain knowledge may be relevant to this conversation:
                         except Exception as cleanup_error:
                             app_logger.warning(f"⚠️  Error closing temporary MCP client: {cleanup_error}")
                     
-                    app_logger.info(f"{'='*80}")
-                    app_logger.info(f"✅ Successfully reverted to default profile")
-                    app_logger.info(f"{'='*80}\n")
+                    app_logger.info(f"Reverted to default profile")
                     
                 except Exception as restore_error:
                     app_logger.error(f"❌ Error restoring original state after profile override: {restore_error}", exc_info=True)
