@@ -5501,6 +5501,26 @@ async def get_profile_resources(profile_id: str):
                 "knowledge_collections": knowledge_collections
             })
 
+        # For profiles that use MCP tools (tool_enabled or llm_only with useMcpTools),
+        # ensure the MCP server is connected and tools are loaded into APP_STATE
+        needs_mcp_tools = (
+            profile.get("profile_type") == "tool_enabled" or
+            (profile.get("profile_type") == "llm_only" and profile.get("useMcpTools", False))
+        )
+
+        if needs_mcp_tools:
+            from trusted_data_agent.core.config import APP_STATE
+            from trusted_data_agent.core import configuration_service
+
+            # Check if we need to load/switch the profile context
+            current_profile_id = APP_STATE.get('active_profile_id')
+            if not APP_STATE.get("mcp_client") or current_profile_id != profile_id:
+                app_logger.debug(f"Auto-loading profile {profile_id} for resource panel (current: {current_profile_id})")
+                result = await configuration_service.switch_profile_context(profile_id, user_uuid, validate_llm=False)
+                if result["status"] != "success":
+                    app_logger.warning(f"Failed to auto-load profile {profile_id}: {result.get('message')}")
+                    # Continue anyway - will use cached classification or empty tools
+
         # Get enabled tools and prompts for THIS profile (not inherited from master)
         # CRITICAL: Inheritance only applies to classification (categories), NOT to enabled states
         # Each profile has its own tools/prompts list
@@ -5633,7 +5653,7 @@ async def get_profile_resources(profile_id: str):
             "status": "success",
             "tools": profile_tools,
             "prompts": profile_prompts,
-            "profile_type": "tool_enabled",
+            "profile_type": profile.get("profile_type", "tool_enabled"),
             "profile_name": profile.get("name"),
             "profile_tag": profile.get("tag")
         })

@@ -431,6 +431,11 @@ async function initializeRAGAutoCompletion() {
                 }
 
                 const data = await response.json();
+                console.log(`📊 Profile resources received:`, {
+                    profile_type: data.profile_type,
+                    tag: data.profile_tag,
+                    hasTools: Object.keys(data.tools || {}).length > 0
+                });
                 tools = data.tools || {};
                 prompts = data.prompts || {};
 
@@ -454,14 +459,25 @@ async function initializeRAGAutoCompletion() {
                     state.activeLlmOnlyProfile = null;
                     console.log(`📚 RAG-focused profile active: @${data.profile_tag}`);
                 } else if (data.profile_type === 'llm_only') {
-                    // Store LLM-only profile info in state for rendering
-                    state.activeLlmOnlyProfile = {
-                        tag: data.profile_tag,
-                        knowledgeCollections: data.knowledge_collections || []
-                    };
-                    state.activeGenieProfile = null;
-                    state.activeRagProfile = null;
-                    console.log(`💬 Conversation-focused profile active: @${data.profile_tag}`);
+                    // Check if this llm_only profile has tools (useMcpTools=true case)
+                    const hasTools = data.tools && Object.keys(data.tools).length > 0;
+
+                    if (hasTools) {
+                        // llm_only with tools: treat like tool_enabled for panel display
+                        state.activeGenieProfile = null;
+                        state.activeRagProfile = null;
+                        state.activeLlmOnlyProfile = null;
+                        console.log(`💬🔧 Conversation profile with tools active: @${data.profile_tag}`);
+                    } else {
+                        // Pure llm_only: show conversation panel
+                        state.activeLlmOnlyProfile = {
+                            tag: data.profile_tag,
+                            knowledgeCollections: data.knowledge_collections || []
+                        };
+                        state.activeGenieProfile = null;
+                        state.activeRagProfile = null;
+                        console.log(`💬 Conversation-focused profile active: @${data.profile_tag}`);
+                    }
                 } else {
                     // Clear special profile info if switching away
                     state.activeGenieProfile = null;

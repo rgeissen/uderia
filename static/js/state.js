@@ -18,6 +18,7 @@ export const state = {
     currentlySelectedResource: null,
     activeGenieProfile: null, // Store Genie profile info when @GENIE override is active
     activeRagProfile: null, // Store RAG-focused profile info when active
+    activeLlmOnlyProfile: null, // Store LLM-only profile info when active
     eventSource: null,
     countdownValue: 5,
     mouseMoveHandler: null,
