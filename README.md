@@ -486,6 +486,23 @@ The Intelligence Marketplace transforms individual agent expertise into collecti
 The marketplace transforms the Uderia Platform from a single-user tool into a **collaborative intelligence platform**. By enabling pattern sharing, community validation, and knowledge reuse, it reduces costs, improves quality, and accelerates time-to-value for all users. Whether you're publishing your expertise or subscribing to community wisdom, the marketplace creates a powerful ecosystem where collective intelligence amplifies individual capabilities.
 
 
+#### Agent Packs: Portable AI Teams
+
+Agent Packs bundle complete agent configurations—coordinator profiles, expert profiles, knowledge collections, and MCP server references—into a single `.agentpack` file that can be installed, exported, and shared across environments.
+
+**Why Agent Packs matter:** Building a well-tuned multi-profile agent team (e.g., a Genie coordinator with specialized RAG experts) requires significant effort: creating profiles, assigning knowledge collections, configuring child relationships, and testing the whole ensemble. Agent Packs capture this investment as a portable, versioned artifact that can be deployed in seconds on any Uderia instance.
+
+**How to use Agent Packs:**
+
+* **Install:** Import an `.agentpack` file via Setup → Agent Packs → Import. All profiles, collections, and dependencies are created automatically with conflict resolution.
+* **Export:** Select an installed pack and click Export to produce a `.agentpack` file containing the current live state of all profiles and collections.
+* **Publish:** Share your pack to the Intelligence Marketplace for other users to discover and install with one click.
+* **Harmonize LLM:** After importing a pack, use the Harmonize LLM feature to switch all pack profiles to your preferred LLM provider in one operation.
+* **Live References:** Packs store references to profiles and collections, not copies. Changes you make to pack-managed profiles (e.g., adding an expert to a coordinator) take effect immediately and are captured in subsequent exports.
+
+Agent Packs turn the collaborative marketplace into a distribution channel for complete AI solutions—not just individual knowledge repositories, but fully operational agent teams ready for production use.
+
+
 ---
 
 ## 🎭 Profile Classes: The IFOC Workflow
@@ -2869,6 +2886,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **08-Feb-2026:** Agent Packs - Bundle complete agent teams (coordinator, experts, knowledge collections) into portable `.agentpack` files for one-click install, export, and marketplace sharing
 *   **31-Jan-2026:** Document Upload & Multimodal Analysis - Attach documents and images in chat with native multimodal delivery and automatic text extraction fallback across all providers
 *   **29-Jan-2026:** All Models Available - Access all provider models with ★ recommended highlights
 *   **29-Jan-2026:** Light Theme - Full light mode support with proper contrast and visibility across all components
