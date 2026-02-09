@@ -1680,6 +1680,45 @@ npx tailwindcss build
 - Pre-built TDA agent flows
 - Import-ready JSON templates in `docs/Flowise/`
 
+## Claude Skills
+
+**Location:** `.claude/skills/`
+
+Custom Claude Code skills provide specialized knowledge for complex integration tasks. Skills are automatically discovered and available for invocation.
+
+### Available Skills
+
+#### n8n-uderia (`n8n-uderia/`)
+**Purpose:** Comprehensive guide for n8n workflow automation integration with Uderia Platform
+
+**When to use:**
+- Developing n8n workflows for Uderia queries
+- Testing workflows (local vs production environments)
+- Deploying workflows with Docker containers
+- Troubleshooting n8n + Uderia integration issues
+- Configuring reverse proxy with WebSocket support
+- Understanding REST API vs UI profile override differences
+
+**Key topics covered:**
+- Architecture and three-step pattern (Session → Query → Poll)
+- Development workflow with ultra-clean pattern (avoiding n8n bugs)
+- Testing strategies and deployment procedures
+- **Critical:** REST API profile override method (`profile_id` parameter vs `@TAG` syntax)
+- Docker networking (cross-container communication)
+- Reverse proxy configuration (Synology + nginx)
+- Common pitfalls with solutions (8 documented scenarios)
+- Complete workflow examples (Simple Query, Scheduled Report, Slack Integration)
+
+**Documentation:** `.claude/skills/n8n-uderia/n8n.md` (44KB comprehensive guide)
+
+### Using Skills
+
+Skills are invoked automatically by Claude Code when relevant to the task. You can also explicitly reference them when asking questions about specific integrations:
+
+```
+Example: "Using the n8n-uderia skill, how do I configure profile override in a workflow?"
+```
+
 ## Performance & Scalability
 
 ### Token Optimization

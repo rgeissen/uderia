@@ -1,0 +1,32 @@
+{
+  "name": "n8n-uderia",
+  "version": "1.0.0",
+  "description": "Comprehensive guide for developing, testing, and deploying n8n workflows integrated with Uderia Platform. Covers REST API vs UI differences, Docker networking, reverse proxy configuration, profile override methods, common pitfalls, and troubleshooting.",
+  "author": "Claude + User",
+  "tags": ["n8n", "uderia", "workflow-automation", "integration", "rest-api", "docker"],
+  "keywords": [
+    "n8n",
+    "uderia",
+    "workflow",
+    "automation",
+    "REST API",
+    "profile override",
+    "docker networking",
+    "reverse proxy",
+    "webhook",
+    "cron",
+    "Slack integration"
+  ],
+  "use_cases": [
+    "Developing n8n workflows for Uderia queries",
+    "Testing workflows locally vs production",
+    "Deploying workflows with Docker containers",
+    "Configuring profile overrides via REST API",
+    "Troubleshooting n8n + Uderia integration issues",
+    "Setting up reverse proxy with WebSocket support",
+    "Creating Slack integration workflows",
+    "Building scheduled report workflows"
+  ],
+  "main_file": "n8n.md",
+  "last_updated": "2026-02-09"
+}

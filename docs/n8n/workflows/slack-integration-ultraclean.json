@@ -1,0 +1,155 @@
+{
+  "name": "Uderia Slack Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "uderia-slack",
+        "responseMode": "lastNode"
+      },
+      "id": "1",
+      "name": "Slack Command Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.body?.text || '';\nconst userId = $json.body?.user_name || 'unknown';\nreturn { json: { prompt: text, user: userId, responseUrl: $json.body?.response_url } };"
+      },
+      "id": "2",
+      "name": "Parse Slack Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tda.uderia.com/api/v1/sessions"
+      },
+      "id": "3",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://tda.uderia.com/api/v1/sessions/{{ $json.session_id }}/query",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"prompt\": \"{{ $('Parse Slack Command').item.json.prompt }}\"}"
+      },
+      "id": "4",
+      "name": "Submit Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "amount": 8,
+        "unit": "seconds"
+      },
+      "id": "5",
+      "name": "Wait for Response",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tda.uderia.com/api/v1/tasks/{{ $json.task_id }}"
+      },
+      "id": "6",
+      "name": "Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json.result || {};\nconst answer = result.final_answer_text || result.final_answer || 'No answer available';\nreturn { json: { text: answer.substring(0, 2800) } };"
+      },
+      "id": "7",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Slack Command Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Slack Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Slack Command": {
+      "main": [
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Submit Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Query": {
+      "main": [
+        [
+          {
+            "node": "Wait for Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Response": {
+      "main": [
+        [
+          {
+            "node": "Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Result": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

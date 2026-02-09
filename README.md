@@ -92,12 +92,38 @@ Eliminate the friction between conversational exploration and production automat
   - RAG collection CRUD operations
   - Analytics endpoints (session costs, token usage, efficiency metrics)
 
+* **Long-Lived Access Tokens**: Secure automation without session management:
+  - Configurable expiration (90 days default, or never)
+  - SHA256 hashed storage with audit trail
+  - Usage tracking (last used timestamp, use count, IP address)
+  - Soft-delete preservation for compliance
+  - One-time display at creation for enhanced security
+
 * **Apache Airflow Integration**: Production-ready DAG examples for batch query automation:
   - Session reuse via `tda_session_id` variable
   - Profile override via `tda_profile_id` for specialized workloads
   - Bearer token authentication for secure API access
   - Async polling pattern for reliable long-running executions
   - Complete example DAG (`tda_00_execute_questions.py`) included
+
+* **n8n Workflow Automation**: Visual node-based workflow builder for enterprise automation:
+  - Three production-ready workflow templates (Simple Query, Scheduled Reports, Slack Integration)
+  - Profile override support via REST API `profile_id` parameter
+  - Event-driven triggers (webhooks, cron schedules, manual execution)
+  - Linear ultra-clean workflow pattern for reliability
+  - Business process routing (email, Slack, CRM, databases)
+  - Docker deployment with reverse proxy support
+  - Comprehensive documentation with troubleshooting guides ([see docs/n8n](docs/n8n/README.md))
+
+* **Flowise Integration**: Low-code workflow automation and chatbot development:
+  - Pre-built agent flow for TDA Conversation handling
+  - Asynchronous submit & poll pattern implementation
+  - Session management with multi-turn conversation support
+  - Bearer token authentication for secure API access
+  - Profile override capability for specialized workflows
+  - TTS payload extraction for voice-enabled chatbots
+  - Visual workflow designer for complex orchestration
+  - Import-ready JSON template included ([see docs/Flowise](docs/Flowise/Flowise.md))
 
 * **IFOC Workflow - From Ideation to Operationalization**: Revolutionary methodology that adapts to your needs—four execution modes in one conversation with zero friction:
   - **🟢 IDEATE (Conversation)**: Brainstorm, explore, and draft solutions without touching live systems—creative ideation without constraints
@@ -130,28 +156,11 @@ Eliminate the friction between conversational exploration and production automat
   - Duplicate detection prevents configuration conflicts
   - One-click access to [MCP community servers](https://github.com/modelcontextprotocol/servers)
 
-* **Long-Lived Access Tokens**: Secure automation without session management:
-  - Configurable expiration (90 days default, or never)
-  - SHA256 hashed storage with audit trail
-  - Usage tracking (last used timestamp, use count, IP address)
-  - Soft-delete preservation for compliance
-  - One-time display at creation for enhanced security
-
 * **Docker Deployment Support**: Production-ready containerization:
   - Multi-user support in single shared container
   - Environment variable overrides
   - Volume mounts for sessions, logs, and keys
   - Load balancer ready for horizontal scaling
-
-* **Flowise Integration**: Low-code workflow automation and chatbot development:
-  - Pre-built agent flow for TDA Conversation handling
-  - Asynchronous submit & poll pattern implementation
-  - Session management with multi-turn conversation support
-  - Bearer token authentication for secure API access
-  - Profile override capability for specialized workflows
-  - TTS payload extraction for voice-enabled chatbots
-  - Visual workflow designer for complex orchestration
-  - Import-ready JSON template included ([see docs/Flowise](docs/Flowise/Flowise.md))
 
 ---
 
@@ -2700,9 +2709,15 @@ curl -X POST http://localhost:5050/api/v1/sessions/{session_id}/query \
 
 This allows you to integrate the Uderia Platform into larger automated systems, CI/CD pipelines, or other applications.
 
-For more advanced orchestration and scheduling, the Uderia Platform also integrates with Apache Airflow. You can find detailed documentation and example DAGs in the [Airflow Integration Guide (docs/Airflow/Airflow.md)](docs/Airflow/Airflow.md).
+**Production Workflow Automation:**
 
-For visual workflow construction and no-code/low-code integration, the agent provides example flows for the Flowise UI. These can be found in the [Flowise Integration Guide (docs/Flowise/Flowise.md)](docs/Flowise/Flowise.md).
+For more advanced orchestration and scheduling, the Uderia Platform integrates with multiple workflow automation platforms:
+
+* **Apache Airflow**: Enterprise batch processing with DAG-based orchestration. Detailed documentation and example DAGs in the [Airflow Integration Guide (docs/Airflow/Airflow.md)](docs/Airflow/Airflow.md).
+
+* **n8n**: Visual node-based workflow builder for event-driven automation. Three production-ready templates (Simple Query, Scheduled Reports, Slack Integration) with comprehensive deployment guides in the [n8n Integration Guide (docs/n8n/README.md)](docs/n8n/README.md).
+
+* **Flowise**: Low-code chatbot and workflow development. Pre-built agent flows with visual designer in the [Flowise Integration Guide (docs/Flowise/Flowise.md)](docs/Flowise/Flowise.md).
 
 **Step 4: Real-Time Monitoring of REST-driven Workflows**
 
@@ -2886,6 +2901,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **09-Feb-2026:** n8n Integration - Visual workflow automation with three production-ready templates (Simple Query, Scheduled Reports, Slack Integration) and comprehensive deployment guides
 *   **08-Feb-2026:** Agent Packs - Bundle complete agent teams (coordinator, experts, knowledge collections) into portable `.agentpack` files for one-click install, export, and marketplace sharing
 *   **31-Jan-2026:** Document Upload & Multimodal Analysis - Attach documents and images in chat with native multimodal delivery and automatic text extraction fallback across all providers
 *   **29-Jan-2026:** All Models Available - Access all provider models with ★ recommended highlights

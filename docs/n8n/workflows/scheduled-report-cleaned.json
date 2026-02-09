@@ -1,0 +1,616 @@
+{
+  "name": "Uderia Scheduled Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-cron-trigger",
+      "name": "Daily at 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "report-date",
+              "name": "report_date",
+              "value": "={{ $now.toFormat('yyyy-MM-dd') }}",
+              "type": "string"
+            },
+            {
+              "id": "report-title",
+              "name": "report_title",
+              "value": "Daily Inventory Report",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-set-report-params",
+      "name": "Set Report Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5050/api/v1/sessions",
+        "options": {}
+      },
+      "id": "node-create-session",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "session-id",
+              "name": "session_id",
+              "value": "={{ $json.session_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-store-session",
+      "name": "Store Session ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:5050/api/v1/sessions/{{ $('Store Session ID').item.json.session_id }}/query",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\\n  \\\"prompt\\\": \\\"Generate a daily inventory report showing all products with low stock levels (quantity < 10). Include product name, current quantity, and reorder status.\\\"\\n}",
+        "options": {}
+      },
+      "id": "node-submit-query",
+      "name": "Submit Report Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task-id",
+              "name": "task_id",
+              "value": "={{ $json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "pending",
+              "type": "string"
+            },
+            {
+              "id": "poll-count",
+              "name": "poll_count",
+              "value": "0",
+              "type": "number"
+            },
+            {
+              "id": "max-polls",
+              "name": "max_polls",
+              "value": "60",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-init-poll",
+      "name": "Initialize Poll State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "node-poll-loop",
+      "name": "Poll Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "node-wait",
+      "name": "Wait 3 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ],
+      "webhookId": "auto-webhook-scheduled"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://localhost:5050/api/v1/tasks/{{ $('Initialize Poll State').item.json.task_id }}",
+        "options": {}
+      },
+      "id": "node-poll-status",
+      "name": "Poll Task Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task-id-update",
+              "name": "task_id",
+              "value": "={{ $('Initialize Poll State').item.json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status-update",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "poll-count-update",
+              "name": "poll_count",
+              "value": "={{ $('Initialize Poll State').item.json.poll_count + 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "max-polls-update",
+              "name": "max_polls",
+              "value": "={{ $('Initialize Poll State').item.json.max_polls }}",
+              "type": "number"
+            },
+            {
+              "id": "result-update",
+              "name": "result",
+              "value": "={{ $json.result }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-update-poll",
+      "name": "Update Poll State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        2220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-complete",
+              "leftValue": "={{ $('Update Poll State').item.json.status }}",
+              "rightValue": "complete",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-error",
+              "leftValue": "={{ $('Update Poll State').item.json.status }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "node-check-complete",
+      "name": "Check If Complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Update Poll State').item.json.status }}",
+                    "rightValue": "complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "success"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Update Poll State').item.json.status }}",
+                    "rightValue": "error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "error"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-route-status",
+      "name": "Route by Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        2660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const taskData = $input.item.json;\nconst result = taskData.result;\n\nif (!result || !result.result) {\n  return {\n    json: {\n      error: true,\n      message: \"No result found\",\n      status: taskData.status\n    }\n  };\n}\n\nconst finalAnswer = result.result.final_answer || \"No answer provided\";\nconst reportDate = $('Set Report Parameters').item.json.report_date;\nconst reportTitle = $('Set Report Parameters').item.json.report_title;\n\n// Extract token counts from events\nlet inputTokens = 0;\nlet outputTokens = 0;\n\nif (result.events) {\n  const tokenEvent = result.events.find(e => e.event_type === 'token_update');\n  if (tokenEvent) {\n    inputTokens = tokenEvent.event_data.turn_input || 0;\n    outputTokens = tokenEvent.event_data.turn_output || 0;\n  }\n}\n\n// Calculate cost (example pricing for Claude Sonnet)\nconst inputCost = (inputTokens / 1000) * 0.003;  // $0.003 per 1K input tokens\nconst outputCost = (outputTokens / 1000) * 0.015; // $0.015 per 1K output tokens\nconst totalCost = inputCost + outputCost;\n\nreturn {\n  json: {\n    report_title: reportTitle,\n    report_date: reportDate,\n    final_answer: finalAnswer,\n    profile_tag: result.result.profile_tag || \"unknown\",\n    input_tokens: inputTokens,\n    output_tokens: outputTokens,\n    total_tokens: inputTokens + outputTokens,\n    cost_usd: totalCost.toFixed(4),\n    poll_count: taskData.poll_count,\n    generated_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "node-format-report",
+      "name": "Format Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@uderia.com",
+        "toEmail": "team@example.com",
+        "subject": "={{ $json.report_title }} - {{ $json.report_date }}",
+        "emailType": "html",
+        "message": "=<html>\n<body style=\"font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;\">\n  <h2 style=\"color: #2563eb;\">{{ $json.report_title }}</h2>\n  <p><strong>Generated:</strong> {{ $json.generated_at }}</p>\n  <p><strong>Profile:</strong> {{ $json.profile_tag }}</p>\n  \n  <div style=\"background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;\">\n    {{ $json.final_answer }}\n  </div>\n  \n  <hr style=\"border: 1px solid #e5e7eb; margin: 20px 0;\">\n  \n  <h3 style=\"color: #6b7280;\">Usage Statistics</h3>\n  <table style=\"width: 100%; border-collapse: collapse;\">\n    <tr>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\"><strong>Input Tokens:</strong></td>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\">{{ $json.input_tokens }}</td>\n    </tr>\n    <tr>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\"><strong>Output Tokens:</strong></td>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\">{{ $json.output_tokens }}</td>\n    </tr>\n    <tr>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\"><strong>Total Tokens:</strong></td>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\">{{ $json.total_tokens }}</td>\n    </tr>\n    <tr>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\"><strong>Estimated Cost:</strong></td>\n      <td style=\"padding: 8px; border-bottom: 1px solid #e5e7eb;\">${{ $json.cost_usd }}</td>\n    </tr>\n  </table>\n  \n  <p style=\"color: #6b7280; font-size: 12px; margin-top: 20px;\">\n    This report was generated automatically by Uderia Platform via n8n workflow automation.\n  </p>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "node-send-email",
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Report generation failed: {{ $('Update Poll State').item.json.result.error || 'Unknown error' }}"
+      },
+      "id": "node-handle-error",
+      "name": "Handle Error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Report timed out after {{ $('Update Poll State').item.json.poll_count * 3 }} seconds ({{ $('Update Poll State').item.json.poll_count }} polls)"
+      },
+      "id": "node-handle-timeout",
+      "name": "Handle Timeout",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "alerts@uderia.com",
+        "toEmail": "admin@example.com",
+        "subject": "⚠️ Scheduled Report Failed",
+        "emailType": "text",
+        "message": "=The scheduled report failed to generate.\n\nReport: {{ $('Set Report Parameters').item.json.report_title }}\nDate: {{ $('Set Report Parameters').item.json.report_date }}\nError: Report generation error or timeout\n\nPlease check the n8n workflow logs for details.",
+        "options": {}
+      },
+      "id": "node-error-notification",
+      "name": "Send Error Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3100,
+        350
+      ]
+    }
+  ],
+  "connections": {
+    "Daily at 8 AM": {
+      "main": [
+        [
+          {
+            "node": "Set Report Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Report Parameters": {
+      "main": [
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Store Session ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Session ID": {
+      "main": [
+        [
+          {
+            "node": "Submit Report Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Report Query": {
+      "main": [
+        [
+          {
+            "node": "Initialize Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Poll State": {
+      "main": [
+        [
+          {
+            "node": "Poll Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Loop": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check If Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Poll Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Task Status": {
+      "main": [
+        [
+          {
+            "node": "Update Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Poll State": {
+      "main": [
+        [
+          {
+            "node": "Poll Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Complete": {
+      "main": [
+        [
+          {
+            "node": "Route by Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Status": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Report": {
+      "main": [
+        [
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Error": {
+      "main": [
+        [
+          {
+            "node": "Send Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Timeout": {
+      "main": [
+        [
+          {
+            "node": "Send Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
