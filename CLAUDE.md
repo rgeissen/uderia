@@ -444,6 +444,68 @@ Planned feature for isolated context windows per methodology phase (Ideate/Focus
 
 Files: `src/trusted_data_agent/llm/handler.py`, `core/session_manager.py`, `agent/executor.py`
 
+#### 6.1. Date Range Orchestrator
+
+**Execution-Time Optimization** for temporal queries:
+
+The Date Range Orchestrator automatically handles queries with relative time periods ("past 2 days", "last week", "yesterday", "today") by:
+1. Calling `TDA_CurrentDate` to establish temporal context
+2. Iterating the selected tool across each date in the range
+3. Consolidating results and returning to the planner
+
+**Example Execution:**
+
+```
+User Query: "Show system utilization for the past 2 days"
+
+Strategic Plan Phase:
+{
+  "goal": "Get system usage",
+  "relevant_tools": ["dba_resusageSummary"],
+  "arguments": {"date": {"source": "date_range", "duration": 2}}
+}
+
+Orchestrator Execution:
+1. TDA_CurrentDate → "2026-02-09"
+2. dba_resusageSummary(date="2026-02-07") → 10 rows
+3. dba_resusageSummary(date="2026-02-08") → 0 rows
+4. Consolidate → Return merged results to planner
+```
+
+**Implementation:** `src/trusted_data_agent/agent/orchestrators.py` (lines 23-211: execute_date_range_orchestrator)
+
+**Session File Impact:**
+
+Orchestrated calls appear in `execution_trace` wrapped by `TDA_SystemOrchestration` events. Performance testing frameworks must parse this structure to accurately count tool usage:
+
+```json
+{
+  "execution_trace": [
+    {
+      "action": {
+        "tool_name": "TDA_SystemOrchestration",
+        "orchestrator_type": "date_range",
+        "wrapped_tool_calls": [
+          {"tool": "TDA_CurrentDate", "result": "2026-02-09"},
+          {"tool": "dba_resusageSummary", "date": "2026-02-07"},
+          {"tool": "dba_resusageSummary", "date": "2026-02-08"}
+        ]
+      }
+    }
+  ]
+}
+```
+
+**Plan Quality Validation:**
+
+The testing framework (profile-perf skill) no longer flags missing `TDA_CurrentDate` when the Date Range Orchestrator handles temporal context at execution time. This is properly annotated as an INFO-level event (not an error) indicating the optimization is functioning correctly.
+
+**Other Orchestrators:**
+- **Column Iteration Orchestrator**: Iterates tool calls across table columns for comprehensive analysis
+- **Hallucinated Loop Orchestrator**: Processes LLM-generated loop structures when the LLM creates a loop that wasn't in the strategic plan
+
+Files: `src/trusted_data_agent/agent/orchestrators.py`, `phase_executor.py`
+
 ---
 
 ### 7. Session Isolation & Live Status Panel
@@ -1524,6 +1586,59 @@ User templates: `~/.tda/templates/` (overrides system)
 
 **Files:** `templateManager.js`, `adminManager.js`, `index.html`, `rest_routes.py`
 **Docs:** `docs/RAG_Templates/TROUBLESHOOTING.md`, `rag_templates/PLUGIN_MANIFEST_SCHEMA.md`
+
+---
+
+### Performance Testing with profile-perf Skill
+
+The `profile-perf` skill provides a comprehensive framework for comparing profile performance:
+
+**Quick Start:**
+```bash
+# Run performance comparison
+python test/performance/profile_performance_test.py \
+  --query "your test query" \
+  --profile1 @IDEAT \
+  --profile2 @OPTIM
+```
+
+**Key Features:**
+- Token counting (input, output, corrections)
+- Execution time analysis
+- Self-correction metrics (tracks retry overhead)
+- RAG tracking (champion case usage)
+- **Plan quality analysis** (NEW: validates logical correctness)
+- Comparison reports (JSON + Markdown)
+
+**Use Cases:**
+1. **Non-deterministic tuning**: Compare prompt compression impact
+2. **Deterministic tuning**: Identify code inefficiencies (retry loops, schema validation)
+3. **RAG impact**: Test with/without champion cases
+4. **Profile selection**: Determine when to use @IDEAT vs @OPTIM
+5. **Plan validation**: Detect logically incorrect execution plans
+
+**Documentation:** See [.claude/skills/profile-perf/profile-perf.md](.claude/skills/profile-perf/profile-perf.md) for complete guide
+
+**Example Output:**
+```
+Plan Quality Analysis:
+- Profile 1: 100% quality (all required tools invoked)
+- Profile 2: 60% quality (missing TDA_CurrentDate for temporal query)
+- Issue: Query "past 24 hours" needs date context
+→ Action: Fix meta-planning prompt or add validation rule
+
+Self-Correction Analysis:
+- Profile 1: 0 corrections (0.0% overhead)
+- Profile 2: 3 corrections (95.4% overhead)
+- Types: SchemaValidation (3x)
+→ Action: Fix TDA_FinalReport schema communication
+```
+
+**Files:**
+- [test/performance/lib/uderia_client.py](test/performance/lib/uderia_client.py) - REST API client
+- [test/performance/lib/metrics_extractor.py](test/performance/lib/metrics_extractor.py) - Metrics extraction
+- [test/performance/lib/comparator.py](test/performance/lib/comparator.py) - Comparison engine
+- [test/performance/profile_performance_test.py](test/performance/profile_performance_test.py) - Main script
 
 ---
 

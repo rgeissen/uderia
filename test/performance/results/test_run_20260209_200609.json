@@ -1,0 +1,220 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T20:06:09.297002",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "10ac5201-6f3d-4651-8f2e-b4aa1321bec9",
+      "task_id": "task-c6bc69ab-31ba-4fdb-94b8-021c6e8cf417",
+      "status": "complete",
+      "duration_ms": 11620,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 66152,
+      "total_output_tokens": 1031,
+      "total_tokens": 67183,
+      "llm_call_count": 2,
+      "tokens_per_llm_call": 33591.5,
+      "ms_per_token": 0.1729604215352098,
+      "tools_used": [
+        "dba_resusageSummary"
+      ],
+      "llm_call_durations": [
+        2358,
+        8383
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 50.0,
+      "query_type": "procedural",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "missing_tools": []
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "d52c9c63-b902-4c41-96a2-ca48d681e6b6",
+      "task_id": "task-d47c1537-d44e-4884-80fb-f784c3e35d7c",
+      "status": "complete",
+      "duration_ms": 9320,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 7905,
+      "total_output_tokens": 1216,
+      "total_tokens": 9121,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 1.021817783137814,
+      "tools_used": [
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 50.0,
+      "query_type": "procedural",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "missing_tools": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 66152,
+        "profile2": 7905,
+        "absolute": 58247,
+        "percentage": 736.8374446552815
+      },
+      "output": {
+        "profile1": 1031,
+        "profile2": 1216,
+        "absolute": -185,
+        "percentage": -15.213815789473683
+      },
+      "total": {
+        "profile1": 67183,
+        "profile2": 9121,
+        "absolute": 58062,
+        "percentage": 636.5749369586669
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 11620,
+      "profile2_ms": 9320,
+      "absolute_ms": 2300,
+      "percentage": 24.678111587982833,
+      "profile1_seconds": 11.62,
+      "profile2_seconds": 9.32
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 33591.5,
+      "profile2_tokens_per_call": 0.0,
+      "profile1_ms_per_token": 0.1729604215352098,
+      "profile2_ms_per_token": 1.021817783137814,
+      "profile1_llm_calls": 2,
+      "profile2_llm_calls": 0
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": false,
+      "profile1_case_count": 0,
+      "profile2_case_count": 0,
+      "profile1_case_ids": [],
+      "profile2_case_ids": []
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 50.0,
+      "profile2_score": 50.0,
+      "profile1_query_type": "procedural",
+      "profile2_query_type": "procedural",
+      "profile1_issues": [
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "profile2_issues": [
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "profile1_missing_tools": [],
+      "profile2_missing_tools": []
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

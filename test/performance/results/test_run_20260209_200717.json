@@ -1,0 +1,193 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T20:07:17.103022",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "e74cdd9b-f202-49a8-98ee-18325ffb445a",
+      "task_id": "task-e72260ca-32ae-4f0c-9906-e2fe73638c81",
+      "status": "complete",
+      "duration_ms": 14165,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 66174,
+      "total_output_tokens": 1506,
+      "total_tokens": 67680,
+      "llm_call_count": 2,
+      "tokens_per_llm_call": 33840.0,
+      "ms_per_token": 0.20929373522458627,
+      "tools_used": [
+        "dba_resusageSummary"
+      ],
+      "llm_call_durations": [
+        3712,
+        10008
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "procedural",
+      "issues": [],
+      "missing_tools": []
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "2c62b271-7567-4041-b0e7-08e5e3fb46fb",
+      "task_id": "task-14b5bd2b-0369-4082-b27d-be5b6d12b072",
+      "status": "complete",
+      "duration_ms": 12495,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 7832,
+      "total_output_tokens": 1372,
+      "total_tokens": 9204,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 1.3575619295958279,
+      "tools_used": [
+        "dba_resusageSummary",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "procedural",
+      "issues": [],
+      "missing_tools": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 66174,
+        "profile2": 7832,
+        "absolute": 58342,
+        "percentage": 744.9182839632277
+      },
+      "output": {
+        "profile1": 1506,
+        "profile2": 1372,
+        "absolute": 134,
+        "percentage": 9.7667638483965
+      },
+      "total": {
+        "profile1": 67680,
+        "profile2": 9204,
+        "absolute": 58476,
+        "percentage": 635.3324641460235
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 14165,
+      "profile2_ms": 12495,
+      "absolute_ms": 1670,
+      "percentage": 13.365346138455383,
+      "profile1_seconds": 14.165,
+      "profile2_seconds": 12.495
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 33840.0,
+      "profile2_tokens_per_call": 0.0,
+      "profile1_ms_per_token": 0.20929373522458627,
+      "profile2_ms_per_token": 1.3575619295958279,
+      "profile1_llm_calls": 2,
+      "profile2_llm_calls": 0
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": false,
+      "profile1_case_count": 0,
+      "profile2_case_count": 0,
+      "profile1_case_ids": [],
+      "profile2_case_ids": []
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 100.0,
+      "profile2_score": 100.0,
+      "profile1_query_type": "procedural",
+      "profile2_query_type": "procedural",
+      "profile1_issues": [],
+      "profile2_issues": [],
+      "profile1_missing_tools": [],
+      "profile2_missing_tools": []
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

@@ -252,7 +252,7 @@ def execute_profile_query(
 
     # Extract metrics from task
     print(f"    Extracting metrics...", end=" ", flush=True)
-    task_metrics = MetricsExtractor.extract_from_task(task_result)
+    task_metrics = MetricsExtractor.extract_from_task(task_result, query)
 
     # Try to load session file for additional context
     try:

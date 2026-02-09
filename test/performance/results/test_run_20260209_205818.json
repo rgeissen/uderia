@@ -1,0 +1,224 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T20:58:18.490249",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "3f572fb1-adc7-4c7b-a6ea-ca8a8c856e2d",
+      "task_id": "task-2c8b5ef7-2801-4ac4-a6d2-e99a87a3c1ba",
+      "status": "complete",
+      "duration_ms": 1229,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 5094,
+      "total_output_tokens": 85,
+      "total_tokens": 5179,
+      "llm_call_count": 1,
+      "tokens_per_llm_call": 5179.0,
+      "ms_per_token": 0.23730449893801892,
+      "tools_used": [],
+      "llm_call_durations": [
+        1224
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 10.0,
+      "query_type": "temporal",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "missing_tools": [
+        "TDA_CurrentDate"
+      ]
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "3ff761ce-d73f-4286-a071-4da2319c4da9",
+      "task_id": "task-c645b9ef-ec95-4ddc-8ee1-db4bc76d9bc5",
+      "status": "complete",
+      "duration_ms": 7653,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 14266,
+      "total_output_tokens": 589,
+      "total_tokens": 14855,
+      "llm_call_count": 8,
+      "tokens_per_llm_call": 1856.875,
+      "ms_per_token": 0.5151800740491417,
+      "tools_used": [
+        "TDA_CurrentDate",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": true,
+      "rag_case_count": 1,
+      "rag_case_ids": [
+        "case_242b7fcb-3588-54b7-90cb-c78ac54823de"
+      ]
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "temporal",
+      "issues": [],
+      "missing_tools": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 5094,
+        "profile2": 14266,
+        "absolute": -9172,
+        "percentage": -64.29272395906351
+      },
+      "output": {
+        "profile1": 85,
+        "profile2": 589,
+        "absolute": -504,
+        "percentage": -85.56876061120543
+      },
+      "total": {
+        "profile1": 5179,
+        "profile2": 14855,
+        "absolute": -9676,
+        "percentage": -65.1363177381353
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 1229,
+      "profile2_ms": 7653,
+      "absolute_ms": -6424,
+      "percentage": -83.94093819417222,
+      "profile1_seconds": 1.229,
+      "profile2_seconds": 7.653
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 5179.0,
+      "profile2_tokens_per_call": 1856.875,
+      "profile1_ms_per_token": 0.23730449893801892,
+      "profile2_ms_per_token": 0.5151800740491417,
+      "profile1_llm_calls": 1,
+      "profile2_llm_calls": 8
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": true,
+      "profile1_case_count": 0,
+      "profile2_case_count": 1,
+      "profile1_case_ids": [],
+      "profile2_case_ids": [
+        "case_242b7fcb-3588-54b7-90cb-c78ac54823de"
+      ]
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 10.0,
+      "profile2_score": 100.0,
+      "profile1_query_type": "temporal",
+      "profile2_query_type": "temporal",
+      "profile1_issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "profile2_issues": [],
+      "profile1_missing_tools": [
+        "TDA_CurrentDate"
+      ],
+      "profile2_missing_tools": []
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

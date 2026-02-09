@@ -154,6 +154,69 @@ Response Synthesis
 
 ---
 
+### Date Range Orchestrator (Execution-Time Optimization)
+
+**CRITICAL:** The Date Range Orchestrator is an **execution-time optimization** that automatically handles temporal queries, NOT a planning-time feature.
+
+**How It Works:**
+1. Strategic planner creates phase with tool like `dba_resusageSummary` and temporal arguments
+2. Phase executor detects date-range pattern (e.g., `"past 2 days"`) via `_is_date_query_candidate()`
+3. **Orchestrator automatically calls TDA_CurrentDate** if not already called
+4. Orchestrator calculates date range and **iterates tool call** for each date
+5. Results are consolidated and returned as single phase output
+
+**Example Execution:**
+```json
+Strategic Plan Phase 2:
+{
+  "goal": "Get system usage for past 2 days",
+  "relevant_tools": ["dba_resusageSummary"],
+  "arguments": {
+    "date": {"source": "date_range", "duration": 2}
+  }
+}
+
+Orchestrator Execution:
+1. TDA_CurrentDate → "2026-02-09"
+2. dba_resusageSummary(date="2026-02-07") → 10 rows
+3. dba_resusageSummary(date="2026-02-08") → 0 rows
+4. Consolidate results → Return to phase executor
+```
+
+**Tool Extraction Impact:**
+The orchestrated tool calls (lines 2-3 above) happen **inside** the `TDA_SystemOrchestration` wrapper. The metrics extractor must parse the **execution_trace** from the session file to capture these calls, not just top-level events.
+
+**Session File Structure:**
+```json
+"execution_trace": [
+  {"action": {"tool_name": "TDA_CurrentDate"}, "result": {...}},
+  {"action": {"tool_name": "TDA_SystemOrchestration", "arguments": {"target_tool": "dba_resusageSummary"}}, ...},
+  {"action": {"tool_name": "dba_resusageSummary", "arguments": {"date": "2026-02-07"}}, "result": {...}},
+  {"action": {"tool_name": "dba_resusageSummary", "arguments": {"date": "2026-02-08"}}, "result": {...}},
+  {"action": {"tool_name": "TDA_SystemOrchestration", "arguments": {"orchestration_type": "date_range_complete"}}, ...},
+  {"action": {"tool_name": "TDA_FinalReport"}, "result": {...}}
+]
+```
+
+**Why This Matters:**
+- **Temporal preprocessing** (plan-time): Injects TDA_CurrentDate into strategic plan if missing
+- **Date Range Orchestrator** (execution-time): Handles multi-day iteration automatically
+- **Metrics extraction**: Must parse execution_trace to count all tool calls (including orchestrated)
+
+**Fixed in metrics_extractor.py:**
+```python
+# OLD: Only looked at top-level tool events
+tools_used = last_turn.get("tools_used", [])
+
+# NEW: Parse execution_trace to capture orchestrated calls
+for trace_entry in execution_trace:
+    tool_name = trace_entry.get("action", {}).get("tool_name", "")
+    if tool_name and not tool_name.startswith("TDA_System"):
+        tools_used_set.add(tool_name)
+```
+
+---
+
 ## Critical Data Structures
 
 ### Task Result (from REST API)
@@ -369,6 +432,470 @@ correction_rate = workaround_events / total_phases
 **For Complex Queries (3+ steps):**
 - **Winner**: Profile with higher success rate + better answer quality
 - **Expectation**: @OPTIM should win (strategic planning adds value)
+
+---
+
+## Self-Correction Metrics Analysis
+
+The framework now tracks self-correction attempts to identify deterministic code inefficiencies:
+
+### Metrics Tracked
+
+- **Correction Count**: Number of self-correction attempts
+- **Correction Types**: Categories (TableNotFound, ColumnNotFound, SchemaValidation, Generic)
+- **Token Overhead**: Separate accounting for correction LLM calls
+- **Failed Tools**: Which tool calls triggered corrections
+- **Retry Attempts**: Context size for each retry
+
+### Common Patterns
+
+#### 1. Schema Validation Failures
+
+**Symptom**: Multiple retries with same schema error
+
+**Example**: TDA_FinalReport expecting Observation objects, LLM returns strings
+
+**Impact**: 95%+ of tokens wasted on blind retries with full context
+
+**Fix**: Add examples to tool schema, compress retry context
+
+#### 2. Table/Column Name Errors
+
+**Symptom**: TableNotFound or ColumnNotFound corrections
+
+**Impact**: Moderate (10-30% overhead)
+
+**Fix**: Improve schema retrieval, add fuzzy matching
+
+#### 3. Generic Errors
+
+**Symptom**: Generic correction strategy triggered
+
+**Impact**: Variable
+
+**Fix**: Create specialized strategies for common errors
+
+### Interpreting Results
+
+Example from comparison report:
+
+```json
+"self_correction": {
+  "profile1_count": 0,
+  "profile2_count": 3,
+  "profile2_types": ["SchemaValidation", "SchemaValidation", "SchemaValidation"],
+  "correction_overhead_percentage": {
+    "profile1": 0.0,
+    "profile2": 95.4
+  }
+}
+```
+
+**Analysis:**
+- Profile 2 made 3 correction attempts (all schema validation)
+- 95.4% of Profile 2's tokens were spent on corrections
+- **Root cause**: Deterministic code issue (schema communication)
+- **Action**: Code changes needed, not prompt tuning
+
+### Using for Code Optimization
+
+Unlike prompt tuning (non-deterministic), self-correction metrics reveal deterministic inefficiencies:
+
+1. Run test with and without RAG to isolate correction behavior
+2. Identify retry loops that re-send full context
+3. Quantify token waste from schema mismatches
+4. Prioritize code fixes with highest ROI
+
+### Example Workflow
+
+**Step 1: Run Performance Test**
+```bash
+python profile_performance_test.py \
+  --query "what is the system utilization for the past 24 hours" \
+  --profile1 @IDEAT \
+  --profile2 @OPTIM
+```
+
+**Step 2: Check Markdown Report**
+
+Look for the "Self-Correction Analysis" section:
+
+```
+## Self-Correction Analysis
+
+| Metric | @IDEAT | @OPTIM |
+|--------|--------|--------|
+| **Correction Attempts** | 0 | 3 |
+| **Correction Types** | None | SchemaValidation, SchemaValidation, SchemaValidation |
+| **Correction Token Overhead** | 0.0% | 95.4% |
+
+### Self-Correction Insights
+
+⚠️ **@OPTIM**: Self-correction consumed 95.4% of total tokens. Consider:
+- Improving schema documentation in tool prompts
+- Adding examples to reduce validation failures
+- Compressing context for retry attempts
+```
+
+**Step 3: Investigate Failed Tool Calls**
+
+Check JSON output for details:
+
+```json
+"failed_tool_calls": [
+  {
+    "tool": "TDA_FinalReport",
+    "error": "3 validation errors for CanonicalResponse\nkey_observations.0: Input should be a valid dictionary or instance of Observation"
+  }
+]
+```
+
+**Step 4: Create Optimization Ticket**
+
+Document the issue with specific metrics:
+- Tool: TDA_FinalReport
+- Error: Schema validation failure
+- Token waste: 159,000 input tokens (3 retries × 53K each)
+- Fix: Add Observation object examples to schema
+
+**Step 5: Implement Fix**
+
+Update tool schema with examples:
+
+```python
+"key_observations": {
+    "type": "array",
+    "items": {"$ref": "#/definitions/Observation"},
+    "examples": [[
+        {"observation": "High CPU usage detected", "insight": "Potential bottleneck"},
+        {"observation": "Memory stable at 45%", "insight": "No memory pressure"}
+    ]]
+}
+```
+
+**Step 6: Re-run Test to Validate**
+
+```bash
+# Run same test again
+python profile_performance_test.py \
+  --query "what is the system utilization for the past 24 hours" \
+  --profile1 @IDEAT \
+  --profile2 @OPTIM
+
+# Check improvement
+cat results/comparison_<new_timestamp>.md | grep "Correction Token Overhead"
+# Expected: 0.0% or <10% (down from 95.4%)
+```
+
+### Self-Correction vs Prompt Tuning
+
+**Non-deterministic (Prompt Tuning)**:
+- LLM output varies between runs
+- Metrics track output style (verbosity, structure)
+- Optimization: Adjust prompts, add compression directives
+- Success: Measured by output token reduction
+
+**Deterministic (Self-Correction)**:
+- Code logic is repeatable and predictable
+- Metrics track retry loops, schema failures
+- Optimization: Fix code (schema examples, context compression, retry limits)
+- Success: Measured by correction overhead reduction
+
+**Key Insight**: If self-correction overhead > 30%, the problem is in the code, not the prompts. Testing framework helps quantify which inefficiency type you're dealing with.
+
+---
+
+## RAG Champion Case Usage Metrics
+
+The framework now tracks RAG champion case retrieval to understand when RAG is helping optimize performance:
+
+### Metrics Tracked
+
+- **RAG Used**: Whether champion cases were retrieved (yes/no)
+- **Case Count**: Number of champion cases retrieved
+- **Case IDs**: Specific case IDs used for plan reuse
+
+### Understanding RAG Impact
+
+**What are Champion Cases?**
+- Proven execution patterns stored in ChromaDB
+- Retrieved via semantic search when similar queries detected
+- Provide "few-shot examples" to guide strategic planning
+- Enable plan reuse and token optimization
+
+**When RAG Helps:**
+- Similar queries have been executed before
+- Champion cases exist in planner repositories
+- Cases haven't been downranked (marked as unhelpful)
+- Semantic similarity threshold met
+
+**Token Impact:**
+- **With RAG**: ~30K input tokens (plan reuse from champion case)
+- **Without RAG**: ~166K input tokens (fresh planning from scratch)
+- **Savings**: 80%+ reduction in strategic planning tokens
+
+### Interpreting Results
+
+Example from comparison report:
+
+```
+## RAG Champion Case Usage
+
+| Metric | @IDEAT | @OPTIM |
+|--------|--------|--------|
+| **RAG Used** | No | Yes |
+| **Champion Cases Retrieved** | 0 | 1 |
+| **Case IDs** | None | case_abc123 |
+
+### RAG Impact Analysis
+
+✅ **@OPTIM** leveraged 1 champion case(s) from RAG retrieval.
+⚠️ **@IDEAT** executed without RAG assistance (fresh planning).
+
+**Expected Impact**: Profile 2 likely has lower input tokens due to plan reuse from champion cases.
+
+**Token Savings from RAG**: 136,066 tokens (+444.4%) compared to @IDEAT without RAG.
+```
+
+**Analysis:**
+- @OPTIM used RAG, @IDEAT did not
+- Token savings: 136K tokens (444% reduction)
+- RAG enabled efficient plan reuse vs fresh planning
+
+### Testing RAG Impact
+
+**Compare With vs Without RAG:**
+
+```bash
+# Test 1: With RAG (normal behavior)
+python profile_performance_test.py \
+  --query "what is the system utilization for the past 24 hours" \
+  --profile1 @IDEAT \
+  --profile2 @OPTIM
+
+# Results: @OPTIM uses RAG, ~30K input tokens
+```
+
+**To disable RAG for comparison:**
+1. Go to UI → RAG Collections → Find the collection
+2. Find champion cases and click "Not helpful" to downrank
+3. Re-run test
+
+```bash
+# Test 2: Without RAG (downranked cases)
+python profile_performance_test.py \
+  --query "what is the system utilization for the past 24 hours" \
+  --profile1 @IDEAT \
+  --profile2 @OPTIM
+
+# Results: @OPTIM without RAG, ~166K input tokens (5x increase)
+```
+
+**Compare the reports:**
+- Check "RAG Champion Case Usage" section
+- Verify `rag_used: false` in downranked test
+- Compare input tokens between tests
+- Calculate RAG token savings
+
+### RAG vs Self-Correction Interaction
+
+**Important**: RAG can mask self-correction issues:
+
+**With RAG:**
+- Champion case provides proven plan structure
+- Strategic planning completes quickly
+- Fewer opportunities for self-correction to trigger
+- Metrics: Low token usage, no corrections
+
+**Without RAG:**
+- LLM generates plan from scratch
+- Schema validation may fail (e.g., TDA_FinalReport)
+- Self-correction triggers multiple retries
+- Metrics: High token usage, correction overhead
+
+**Testing Strategy:**
+1. **First**: Test with RAG to establish baseline performance
+2. **Then**: Test without RAG to isolate code issues
+3. **Compare**: RAG savings vs self-correction overhead
+4. **Optimize**:
+   - If RAG saves > 80% tokens → RAG is working well
+   - If self-correction overhead > 30% without RAG → Fix code issues
+   - Both can be true: RAG helps, AND code has issues to fix
+
+### Example: Identifying Hidden Issues
+
+```bash
+# Test 1: With RAG
+# Result: 30K input, 1.3K output, 0 corrections (looks great!)
+
+# Test 2: Without RAG (downrank champion cases)
+# Result: 166K input, 4K output, 3 corrections (95% correction overhead!)
+
+# Analysis:
+# - RAG provided 80% token savings (excellent)
+# - BUT: Without RAG, self-correction wastes 95% of tokens (code issue)
+# - Action: Keep using RAG AND fix schema validation to prevent worst-case
+```
+
+**Key Takeaway**: Use RAG metrics to:
+- Quantify RAG effectiveness (token savings)
+- Detect when RAG is disabled or failing
+- Compare RAG vs non-RAG performance
+- Identify code issues masked by RAG success
+
+---
+
+## Plan Quality Analysis
+
+The framework validates **logical correctness** of execution plans, not just token efficiency or speed.
+
+### What It Detects
+
+**1. Missing Temporal Context (HIGH SEVERITY)**
+- **Pattern**: Query mentions "past X hours/days" but doesn't call TDA_CurrentDate
+- **Example**: "system utilization for the past 24 hours" → Missing date range calculation
+- **Impact**: Query uses incorrect time window or system defaults
+- **Score Penalty**: -40 points
+
+**2. Missing Data Gathering (MEDIUM SEVERITY)**
+- **Pattern**: TDA_FinalReport used without prior data collection
+- **Example**: Report phase runs before database query phase
+- **Impact**: Report has no concrete data to analyze
+- **Score Penalty**: -20 points
+
+**3. Incorrect Phase Sequence (HIGH SEVERITY)**
+- **Pattern**: Data gathering occurs AFTER report generation
+- **Example**: Phase 1: TDA_FinalReport, Phase 2: base_readQuery
+- **Impact**: Report cannot reference data that wasn't gathered yet
+- **Score Penalty**: -30 points
+
+**4. No Tools Invoked (HIGH SEVERITY)**
+- **Pattern**: Query completed with zero tool executions
+- **Example**: Empty execution trace
+- **Impact**: Query likely failed or returned generic response
+- **Score Penalty**: -50 points
+
+### Query Type Classification
+
+The framework automatically classifies queries:
+
+| Type | Indicators | Expected Tools |
+|------|-----------|----------------|
+| **Temporal** | "past X hours/days", "yesterday", "recent" | TDA_CurrentDate + data tools |
+| **Analytical** | "summarize", "analyze", "report on", "insights" | Data gathering + TDA_FinalReport |
+| **Procedural** | "list", "show", "get", "retrieve" | Direct data tools |
+| **Conversational** | "hello", "thanks", short greetings | None (conversational response) |
+
+### Metrics Tracked
+
+```json
+"plan_quality": {
+  "score": 60.0,  // 100 = perfect, 0 = critical failure
+  "query_type": "temporal",
+  "issues": [
+    {
+      "severity": "high",
+      "category": "missing_temporal_context",
+      "description": "Query references time period but didn't call TDA_CurrentDate",
+      "impact": "Date range calculation may be incorrect"
+    }
+  ],
+  "missing_tools": ["TDA_CurrentDate"]
+}
+```
+
+### Interpreting Results
+
+**Score Interpretation:**
+- **90-100**: Excellent plan, all required tools invoked
+- **70-89**: Good plan, minor issues
+- **50-69**: Moderate issues, plan partially correct
+- **0-49**: Critical issues, plan logically incorrect
+
+**Example Report Output:**
+
+```
+## Plan Quality Analysis
+
+| Metric | @IDEAT | @OPTIM |
+|--------|--------|--------|
+| **Quality Score** | 100.0% | 60.0% |
+| **Query Type** | temporal | temporal |
+| **Issues Found** | 0 | 1 |
+| **Missing Tools** | 0 | 1 |
+
+### Detected Issues
+
+**@OPTIM**:
+1. 🔴 **missing_temporal_context**: Query references time period but didn't call TDA_CurrentDate to establish temporal context
+   - **Impact**: Date range calculation may be incorrect or use system default
+
+### Missing Required Tools
+
+**@OPTIM**: `TDA_CurrentDate`
+```
+
+### Using for Plan Validation
+
+**Workflow:**
+
+1. Run performance test with temporal query
+2. Check "Plan Quality Analysis" section in report
+3. If score < 70, investigate issues list
+4. Verify missing tools are actually required
+5. Create optimization ticket or prompt fix
+
+**Example:**
+
+```bash
+# Query: "what is the system utilization for the past 24 hours"
+
+# Profile 1 (@IDEAT): 100% quality score
+# - Called TDA_CurrentDate to establish time window
+# - Executed dba_resusageSummary with correct date range
+# - Generated report with TDA_FinalReport
+
+# Profile 2 (@OPTIM): 60% quality score
+# - SKIPPED TDA_CurrentDate (missing temporal context)
+# - Called TDA_FinalReport directly
+# - Date range likely incorrect
+
+# Root Cause: RAG disabled, LLM generated incomplete plan
+# Action: Add validation rule or improve meta-planning prompt
+```
+
+### Plan Quality vs Other Metrics
+
+| Metric | What It Measures | When To Use |
+|--------|------------------|-------------|
+| **Token Efficiency** | Cost per query | Non-deterministic tuning |
+| **Self-Correction** | Retry overhead from errors | Deterministic code bugs |
+| **RAG Usage** | Champion case effectiveness | Learning system validation |
+| **Plan Quality** | Logical correctness | Plan generation validation |
+
+**Key Insight**: A query can be **fast and cheap but logically wrong**. Plan quality catches what other metrics miss.
+
+### Validation Rules
+
+The framework uses pattern matching to detect issues:
+
+**Temporal Patterns:**
+```python
+patterns = [
+    r'past\s+\d+\s+(hour|day|week|month)',
+    r'last\s+\d+\s+(hour|day|week|month)',
+    r'(yesterday|today|recent|latest)',
+    r'\d+\s+(hour|day)s?\s+ago'
+]
+```
+
+**Analytical Patterns:**
+```python
+keywords = ["summarize", "analyze", "report", "overview", "insights"]
+```
+
+**Add Custom Rules:**
+Extend `_extract_plan_quality_metrics()` in `metrics_extractor.py` with domain-specific patterns.
 
 ---
 

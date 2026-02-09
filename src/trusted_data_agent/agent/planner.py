@@ -604,6 +604,67 @@ class Planner:
 
         return plan
 
+    def _inject_temporal_context(self, plan):
+        """
+        Injects TDA_CurrentDate phase at the beginning of plans for temporal queries.
+
+        Detects temporal patterns in the original user input and ensures proper
+        temporal context is established before data gathering.
+
+        Args:
+            plan: List of phase dictionaries from LLM
+
+        Returns:
+            Tuple of (plan, was_injected) where was_injected is True if temporal phase was added
+        """
+        if not isinstance(plan, list) or not plan:
+            return plan, False
+
+        # Detect temporal patterns in original user input
+        query_lower = self.executor.original_user_input.lower()
+        temporal_patterns = [
+            r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
+            r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
+            r'(yesterday|today|recent|latest)',
+            r'in\s+the\s+(last|past)',
+            r'for\s+the\s+(past|last)',
+            r'\d+\s+(hours?|days?|weeks?|months?)\s+ago',
+            r'this\s+(week|month|year)',
+            r'current\s+(week|month|year)'
+        ]
+
+        is_temporal = any(re.search(pattern, query_lower) for pattern in temporal_patterns)
+
+        if not is_temporal:
+            return plan, False
+
+        # Check if TDA_CurrentDate is already in the plan
+        has_current_date = any(
+            phase.get("relevant_tools") == ["TDA_CurrentDate"]
+            for phase in plan if isinstance(phase, dict)
+        )
+
+        if has_current_date:
+            return plan, False  # Already has temporal context
+
+        # Inject TDA_CurrentDate as Phase 1
+        app_logger.info(f"TEMPORAL PREPROCESSING: Injecting TDA_CurrentDate phase for temporal query")
+
+        temporal_phase = {
+            "phase": 1,
+            "goal": "Establish current date as temporal context",
+            "relevant_tools": ["TDA_CurrentDate"],
+            "arguments": {}
+        }
+
+        # Re-number all existing phases
+        for phase in plan:
+            if isinstance(phase, dict) and "phase" in phase:
+                phase["phase"] += 1
+
+        # Insert temporal phase at the beginning
+        return [temporal_phase] + plan, True
+
     async def _rewrite_plan_for_multi_loop_synthesis(self):
         """
         Surgically corrects plans where multiple, parallel loops feed into a
@@ -1943,6 +2004,20 @@ Ranking:"""
         if self.executor.meta_plan:
             self.executor.meta_plan = self._normalize_plan_syntax(self.executor.meta_plan)
         # --- END NORMALIZATION ---
+
+        # --- TEMPORAL QUERY PREPROCESSING: Inject TDA_CurrentDate for temporal queries ---
+        if self.executor.meta_plan and self.executor.execution_depth == 0:
+            original_plan, was_injected = self._inject_temporal_context(self.executor.meta_plan)
+            self.executor.meta_plan = original_plan
+            if was_injected:
+                event_data = {
+                    "step": "System Correction",
+                    "type": "system_correction",
+                    "details": "Temporal preprocessing injected TDA_CurrentDate phase to establish date context for temporal query."
+                }
+                self.executor._log_system_event(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
+        # --- END TEMPORAL PREPROCESSING ---
 
         if self.executor.active_prompt_name and self.executor.meta_plan:
             if len(self.executor.meta_plan) > 1 or any(phase.get("type") == "loop" for phase in self.executor.meta_plan):

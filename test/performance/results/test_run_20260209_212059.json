@@ -1,0 +1,224 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T21:20:59.611448",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "573b160e-ab64-43e6-9875-fe734b440521",
+      "task_id": "task-a8ee2ed8-823a-44d8-a797-98969d262277",
+      "status": "complete",
+      "duration_ms": 851,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 5094,
+      "total_output_tokens": 37,
+      "total_tokens": 5131,
+      "llm_call_count": 1,
+      "tokens_per_llm_call": 5131.0,
+      "ms_per_token": 0.1658546092379653,
+      "tools_used": [],
+      "llm_call_durations": [
+        845
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 10.0,
+      "query_type": "temporal",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "missing_tools": [
+        "TDA_CurrentDate"
+      ]
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "0fab2d9c-7e8c-471f-b9b7-1757b0759c83",
+      "task_id": "task-e198a838-570b-43e2-ad9b-1fc1142e97bf",
+      "status": "complete",
+      "duration_ms": 7478,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 14265,
+      "total_output_tokens": 617,
+      "total_tokens": 14882,
+      "llm_call_count": 8,
+      "tokens_per_llm_call": 1860.25,
+      "ms_per_token": 0.5024862249697621,
+      "tools_used": [
+        "TDA_CurrentDate",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": true,
+      "rag_case_count": 1,
+      "rag_case_ids": [
+        "case_242b7fcb-3588-54b7-90cb-c78ac54823de"
+      ]
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "temporal",
+      "issues": [],
+      "missing_tools": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 5094,
+        "profile2": 14265,
+        "absolute": -9171,
+        "percentage": -64.29022082018928
+      },
+      "output": {
+        "profile1": 37,
+        "profile2": 617,
+        "absolute": -580,
+        "percentage": -94.0032414910859
+      },
+      "total": {
+        "profile1": 5131,
+        "profile2": 14882,
+        "absolute": -9751,
+        "percentage": -65.52210724365005
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 851,
+      "profile2_ms": 7478,
+      "absolute_ms": -6627,
+      "percentage": -88.61995185878577,
+      "profile1_seconds": 0.851,
+      "profile2_seconds": 7.478
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 5131.0,
+      "profile2_tokens_per_call": 1860.25,
+      "profile1_ms_per_token": 0.1658546092379653,
+      "profile2_ms_per_token": 0.5024862249697621,
+      "profile1_llm_calls": 1,
+      "profile2_llm_calls": 8
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": true,
+      "profile1_case_count": 0,
+      "profile2_case_count": 1,
+      "profile1_case_ids": [],
+      "profile2_case_ids": [
+        "case_242b7fcb-3588-54b7-90cb-c78ac54823de"
+      ]
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 10.0,
+      "profile2_score": 100.0,
+      "profile1_query_type": "temporal",
+      "profile2_query_type": "temporal",
+      "profile1_issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "profile2_issues": [],
+      "profile1_missing_tools": [
+        "TDA_CurrentDate"
+      ],
+      "profile2_missing_tools": []
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}
