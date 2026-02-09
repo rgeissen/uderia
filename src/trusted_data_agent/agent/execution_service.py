@@ -171,6 +171,8 @@ async def run_agent_execution(
                     f"Updating session profile from {session_profile_id} to {active_profile.get('id')} "
                     f"(default changed to @{active_profile.get('tag')})"
                 )
+                # BUG FIX: Reload session to get the user message that was just added
+                session_data = await session_manager.get_session(user_uuid, session_id)
                 session_data["profile_id"] = active_profile.get("id")
                 session_data["profile_tag"] = active_profile.get("tag")
                 await session_manager._save_session(user_uuid, session_id, session_data)
@@ -179,6 +181,8 @@ async def run_agent_execution(
         if active_profile:
             current_last_executed = session_data.get("last_executed_profile_id")
             if current_last_executed != active_profile.get("id"):
+                # BUG FIX: Reload session to get the user message that was just added
+                session_data = await session_manager.get_session(user_uuid, session_id)
                 session_data["last_executed_profile_id"] = active_profile.get("id")
                 app_logger.debug(f"Updated last_executed_profile_id to {active_profile.get('id')} (@{active_profile.get('tag')})")
                 await session_manager._save_session(user_uuid, session_id, session_data)

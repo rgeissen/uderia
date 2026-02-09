@@ -1744,10 +1744,11 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
             case 'genie_routing':
             case 'genie_coordination_start': {
                 const profileCount = details.slave_profiles?.length || 0;
+                const profileTag = details.profile_tag || 'GENIE';
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Profile</div>
-                        <div class="status-kv-value">${renderProfileTag('GENIE', 'genie')}</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, 'genie')}</div>
                         <div class="status-kv-key">Experts</div>
                         <div class="status-kv-value">${profileCount} available</div>
                     </div>

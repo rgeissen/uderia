@@ -63,7 +63,7 @@ export function initGenieCoordination(payload) {
     genieState.startTime = Date.now();
     genieState.availableProfiles = slave_profiles || [];
     genieState.profilesInvoked = [];
-    genieState.profileTag = 'GENIE';
+    genieState.profileTag = payload.profile_tag || 'GENIE';
 
     // Initialize progress tracking for each slave profile
     (slave_profiles || []).forEach(p => {

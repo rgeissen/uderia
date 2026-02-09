@@ -660,6 +660,7 @@ After gathering information from profiles, provide a synthesized answer that:
         self._emit_event("genie_coordination_start", {
             "genie_session_id": self.parent_session_id,
             "session_id": self.parent_session_id,
+            "profile_tag": self.genie_profile.get("tag", "GENIE"),
             "query": query[:200] if query else "",
             "slave_profiles": [
                 {
