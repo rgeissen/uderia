@@ -1,0 +1,38 @@
+{
+  "name": "profile-perf",
+  "version": "1.0.0",
+  "description": "Performance testing and optimization framework for Uderia profiles. Compare execution metrics between profile types (@IDEAT vs @OPTIM), analyze strategic plans, identify optimization opportunities, and detect issues like recursive executions or inappropriate LLM result formats.",
+  "author": "Claude + User",
+  "tags": ["uderia", "performance", "testing", "optimization", "profiles", "llm"],
+  "keywords": [
+    "profile testing",
+    "performance comparison",
+    "@IDEAT",
+    "@OPTIM",
+    "tool_enabled",
+    "llm_only",
+    "strategic planning",
+    "tactical planning",
+    "token optimization",
+    "FASTPATH",
+    "planner executor",
+    "conversation agent",
+    "REST API testing",
+    "execution trace",
+    "optimization report"
+  ],
+  "use_cases": [
+    "Compare performance between IDEAT and OPTIM profiles",
+    "Analyze strategic plan efficiency for tool_enabled profiles",
+    "Identify token optimization opportunities in @OPTIM",
+    "Detect recursive execution issues",
+    "Validate LLM result formats and tool selections",
+    "Generate optimization reports with phase-by-phase breakdown",
+    "Test profile overrides via REST API",
+    "Benchmark query execution across profile types",
+    "Troubleshoot tool-focused profile complexity",
+    "Optimize prompts, plans, and execution steps"
+  ],
+  "main_file": "profile-perf.md",
+  "last_updated": "2026-02-09"
+}

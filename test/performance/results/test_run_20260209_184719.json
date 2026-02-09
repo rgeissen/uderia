@@ -1,0 +1,101 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T18:47:19.455305",
+    "query": "how many databases are on the system?"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "7e143a40-558d-4b1f-aa0d-d1833aaaf3c4",
+      "task_id": "task-a2af49b6-6a47-4e19-a506-7d5f1e637a88",
+      "status": "complete",
+      "duration_ms": 16979,
+      "execution_path": "unknown"
+    },
+    "metrics": {
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_tokens": 0,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 0.0,
+      "tools_used": [],
+      "llm_call_durations": []
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "ba0a0379-c36f-4524-bd76-a810ec2f1a2f",
+      "task_id": "task-7f837ac5-8154-4601-b69f-787ed2afa6bd",
+      "status": "complete",
+      "duration_ms": 4777,
+      "execution_path": "unknown"
+    },
+    "metrics": {
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_tokens": 0,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 0.0,
+      "tools_used": [],
+      "llm_call_durations": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 0,
+        "profile2": 0,
+        "absolute": 0,
+        "percentage": 0.0
+      },
+      "output": {
+        "profile1": 0,
+        "profile2": 0,
+        "absolute": 0,
+        "percentage": 0.0
+      },
+      "total": {
+        "profile1": 0,
+        "profile2": 0,
+        "absolute": 0,
+        "percentage": 0.0
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 16979,
+      "profile2_ms": 4777,
+      "absolute_ms": 12202,
+      "percentage": 255.43227967343523,
+      "profile1_seconds": 16.979,
+      "profile2_seconds": 4.777
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 0.0,
+      "profile2_tokens_per_call": 0.0,
+      "profile1_ms_per_token": 0.0,
+      "profile2_ms_per_token": 0.0,
+      "profile1_llm_calls": 0,
+      "profile2_llm_calls": 0
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

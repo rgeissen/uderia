@@ -1,0 +1,109 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T19:00:05.881916",
+    "query": "what is the system utilization for the past 24 hours"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "7e4aabaa-bfa4-4e0a-b06e-dcf35f967edf",
+      "task_id": "task-707f153e-2e20-4bb0-88ae-6d0e693f1de0",
+      "status": "complete",
+      "duration_ms": 14005,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 60027,
+      "total_output_tokens": 1335,
+      "total_tokens": 61362,
+      "llm_call_count": 2,
+      "tokens_per_llm_call": 30681.0,
+      "ms_per_token": 0.22823571591538738,
+      "tools_used": [
+        "dba_resusageSummary"
+      ],
+      "llm_call_durations": [
+        5497,
+        7743
+      ]
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "88663f9d-0154-4fe9-97ec-cfed3144fca8",
+      "task_id": "task-988df414-e165-4a0f-a10f-49781b9c8d2b",
+      "status": "complete",
+      "duration_ms": 19833,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 30117,
+      "total_output_tokens": 2186,
+      "total_tokens": 32303,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 0.6139677429340928,
+      "tools_used": [
+        "dba_resusageSummary",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 60027,
+        "profile2": 30117,
+        "absolute": 29910,
+        "percentage": 99.3126805458711
+      },
+      "output": {
+        "profile1": 1335,
+        "profile2": 2186,
+        "absolute": -851,
+        "percentage": -38.9295516925892
+      },
+      "total": {
+        "profile1": 61362,
+        "profile2": 32303,
+        "absolute": 29059,
+        "percentage": 89.95758907841378
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 14005,
+      "profile2_ms": 19833,
+      "absolute_ms": -5828,
+      "percentage": -29.385367821307923,
+      "profile1_seconds": 14.005,
+      "profile2_seconds": 19.833
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 30681.0,
+      "profile2_tokens_per_call": 0.0,
+      "profile1_ms_per_token": 0.22823571591538738,
+      "profile2_ms_per_token": 0.6139677429340928,
+      "profile1_llm_calls": 2,
+      "profile2_llm_calls": 0
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}
