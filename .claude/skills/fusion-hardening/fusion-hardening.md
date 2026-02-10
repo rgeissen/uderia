@@ -14,10 +14,62 @@ This skill provides deep, implementation-level knowledge of the Uderia Fusion Op
 
 **Core files:**
 - `src/trusted_data_agent/agent/executor.py` - Main orchestrator, proactive re-planning, context distillation
-- `src/trusted_data_agent/agent/planner.py` - Strategic planning, 8 rewrite passes, plan normalization
+- `src/trusted_data_agent/agent/planner.py` - Strategic planning, 9 rewrite passes, plan normalization
 - `src/trusted_data_agent/agent/phase_executor.py` - Tactical execution, fast-path, 3-tier error recovery
 - `src/trusted_data_agent/agent/orchestrators.py` - Date range, column iteration, hallucinated loop orchestrators
 - `src/trusted_data_agent/agent/profile_prompt_resolver.py` - Profile-aware prompt resolution
+
+---
+
+## Section 0: Core Design Principle — Deterministic vs Non-Deterministic
+
+**This is the most important design decision in the Fusion Optimizer.**
+
+> If something can be handled deterministically, it MUST be written as code.
+> If something cannot be described deterministically, prompt engineering is the way forward.
+> When it makes sense, **blend both approaches** — deterministic detection with non-deterministic resolution.
+> System prompts must NOT be convoluted.
+
+### The Three Strategies
+
+| Strategy | Detection | Resolution | Token Cost | Reliability | When to Use |
+|----------|-----------|------------|------------|-------------|-------------|
+| **Purely Deterministic** | Code (regex, schema, structure) | Code (rewrite, inject, remove) | Zero | 100% | Structural deficiencies, missing wiring, hallucinated args |
+| **Hybrid** | Code (detect the pattern) | LLM (generate the fix) | Low (targeted call) | High | Pattern is clear but fix requires semantic understanding |
+| **Purely Non-Deterministic** | LLM (understand intent) | LLM (generate solution) | High (in system prompt) | Variable | Conceptual issues, wrong tool choice, bad SQL logic |
+
+**Prefer deterministic.** When that's not enough, use a hybrid approach — deterministic detection keeps reliability high while the LLM handles only the part that requires understanding. Only fall back to pure prompt engineering when the problem itself can't be described as a pattern.
+
+### Decision Framework
+
+When encountering a plan quality issue or execution failure, apply this test:
+
+| Question | Answer | Action |
+|----------|--------|--------|
+| Can the pattern be detected AND fixed with code alone? | Yes | **Purely deterministic** — plan rewrite pass |
+| Can the pattern be detected with code, but the fix needs LLM? | Yes | **Hybrid** — detect in code, call LLM for targeted resolution |
+| Is it a content quality issue (wrong SQL, bad report text)? | Yes | **Hybrid or non-deterministic** — prompt directive or RAG example |
+| Does the error come from a tool schema mismatch? | Yes | **Purely deterministic** — add to validation (Pass 5) |
+| Does the error come from conceptual misunderstanding? | Yes | **Non-deterministic** — correction strategy or prompt directive |
+
+### Rationale
+
+- **Deterministic passes are reliable**: They fire 100% of the time when the pattern matches. No token cost. No LLM variability.
+- **Hybrid passes get the best of both worlds**: Deterministic detection ensures the fix triggers reliably; LLM resolution handles the semantic complexity. The LLM call is targeted (small prompt, specific task) rather than embedded in a system prompt.
+- **Prompt directives are fragile**: Adding more rules to system prompts can cause regression on other query types. Each directive competes for LLM attention.
+- **System prompt size matters**: Every token in the system prompt is sent on EVERY planning call. Keeping prompts clean reduces cost and improves focus.
+
+### Examples
+
+| Issue | Strategy | Fix |
+|-------|----------|-----|
+| TDA_CurrentDate result not wired to data tool | **Purely deterministic** — pattern: "TDA_CurrentDate + data tool without date arg" | Pass 0: Temporal Data Flow Wiring (code only) |
+| Missing TDA_CurrentDate for temporal query | **Purely deterministic** — regex detects temporal phrases | Pre-gen: `_inject_temporal_context` (code only) |
+| LLM puts prompt in `relevant_tools` | **Purely deterministic** — compare against known prompt names | Pass 5: Deterministic Validation (code only) |
+| LLM generates inefficient sequential SQL | **Hybrid** — detect consecutive SQL phases (code), merge them (LLM) | Pass 1: SQL Consolidation (detect in code, fix via LLM) |
+| TDA_LLMTask loop needs aggregation vs synthesis classification | **Hybrid** — detect TDA_LLMTask in loop (code), classify (LLM) | Pass 3: LLMTask Loop Classification (detect in code, classify via LLM) |
+| LLM picks wrong tool for a query | **Non-deterministic** — requires semantic understanding | Prompt directive or RAG example |
+| LLM generates bad SQL WHERE clause | **Non-deterministic** — requires domain knowledge | Self-correction strategy (Tier 1-3) |
 
 ---
 
@@ -47,7 +99,8 @@ User Query
     |       |--- _normalize_plan_syntax() - Template canonicalization
     |       |--- _inject_temporal_context() - Add TDA_CurrentDate for temporal queries
     |
-    |--- [2b-2i] 8 Plan Rewrite Passes (in order):
+    |--- [2b-2j] 9 Plan Rewrite Passes (in order):
+    |       0. _rewrite_plan_for_temporal_data_flow()
     |       1. _rewrite_plan_for_sql_consolidation()
     |       2. _rewrite_plan_for_multi_loop_synthesis()
     |       3. _rewrite_plan_for_corellmtask_loops()
@@ -87,9 +140,32 @@ User Query
     |--- Accumulate token counts
 ```
 
-### The 8 Plan Rewrite Passes
+### The 9 Plan Rewrite Passes
 
 Each pass runs sequentially after `_generate_meta_plan()` returns. They modify `self.executor.meta_plan` in-place.
+
+#### Pass 0: Temporal Data Flow Wiring (planner.py:~697)
+
+**Trigger:** `TDA_CurrentDate` phase exists in plan AND query matches temporal patterns AND a data-gathering phase has no date-related argument AND the tool's schema has a date parameter.
+
+**Action:** Injects the temporal phrase (e.g., "past 5 days") as the date argument value in the data tool's phase. This creates the trigger for the Date Range Orchestrator at execution time.
+
+**LLM call:** No - entirely deterministic.
+
+**Example:**
+```
+Before: Phase 1: TDA_CurrentDate
+        Phase 2: dba_resusageSummary({dimensions: ["LogDate"]})
+After:  Phase 1: TDA_CurrentDate
+        Phase 2: dba_resusageSummary({dimensions: ["LogDate"], date: "past 5 days"})
+        → Date Range Orchestrator now detects "date" param and iterates per day
+```
+
+**Design principle:** This is a deterministic code fix (not prompt engineering) because the pattern "TDA_CurrentDate + data tool without date arg + temporal query" can be reliably detected via regex and schema inspection.
+
+**Trace signature:** "System Correction" with `correction_type: "temporal_data_flow_wiring"`.
+
+---
 
 #### Pass 1: SQL Consolidation (planner.py:1056)
 
@@ -336,7 +412,7 @@ Correction result:
 - Only 1 re-plan attempt. If second plan still mixes, it proceeds as-is.
 - Granted prompts bypass entirely (configurable).
 
-**Cross-references:** Re-planned version goes through all 8 rewrite passes again.
+**Cross-references:** Re-planned version goes through all 9 rewrite passes again.
 
 **Trace signature:** "Re-planning for Efficiency" event.
 
@@ -384,7 +460,7 @@ Correction result:
 7. Log "RECOVERY_REPLAN" action
 
 **Known limitations:**
-- Recovery plan does NOT go through the 8 rewrite passes (potential quality gap).
+- Recovery plan does NOT go through the 9 rewrite passes (potential quality gap).
 - `globally_skipped_tools` only prevents the immediate failed tool.
 
 **Trace signature:** "Attempting LLM-based Recovery" followed by "Recovery Plan Generated".
@@ -490,7 +566,7 @@ Each entry:
 | Message | Meaning | Safeguard |
 |---------|---------|-----------|
 | `"Calling LLM for Planning"` | Strategic meta-plan LLM call (tokens in details) | - |
-| `"Strategic Meta-Plan Generated"` | Plan generation + all 8 rewrites complete | - |
+| `"Strategic Meta-Plan Generated"` | Plan generation + all 9 rewrites complete | - |
 | `"Plan Optimization" + "FASTPATH initiated for '...'"` | Fast-path activated, skipping tactical LLM | - |
 | `"Plan Optimization" + "FASTPATH Data Expansion"` | Column-level iteration fast-path | - |
 | `"Plan Optimization" + "PLAN HYDRATION"` | Previous turn data injected | Pass 6 |
@@ -504,6 +580,7 @@ Each entry:
 | `"Analyzing Plan Efficiency"` | TDA_LLMTask loop classification | Pass 3 |
 | `"Synthesizing Knowledge Answer"` | Empty context report synthesis | Pass 7 |
 | `"Temporal preprocessing injected TDA_CurrentDate"` | Missing temporal context auto-fixed | Pre-gen |
+| `"System Correction" + "temporal_data_flow_wiring"` | TDA_CurrentDate result wired to data tool | Pass 0 |
 | `"Conversational Response Identified"` | No tool execution needed | - |
 
 ### How to Identify Which Safeguards Fired
@@ -722,6 +799,27 @@ current (week|month|year)
 
 ---
 
+### Anti-Pattern 9: Disconnected Temporal Context
+
+**Symptom:** Temporal query ("past 5 days") returns data for the full month/default range instead of the requested period. TDA_CurrentDate is present in the trace but its result is never consumed by the data-gathering tool.
+
+**Root cause:** The LLM generates a plan with TDA_CurrentDate (Phase 1) and a data tool (Phase 2) but doesn't wire the date result into Phase 2's arguments. The 5-layer temporal chain has a gap:
+1. LLM directive → generates TDA_CurrentDate (works)
+2. `_inject_temporal_context` → sees it's already there (works)
+3. `_rewrite_plan_for_date_range_loops` → only checks for TDA_DateRange, not TDA_CurrentDate (gap)
+4. Date Range Orchestrator → needs a "date" argument in the action to trigger, but Phase 2 has no date arg (gap)
+5. Hallucinated Loop Orchestrator → not applicable (gap)
+
+**Fix:** Pass 0 (`_rewrite_plan_for_temporal_data_flow`) now bridges this gap deterministically by injecting the temporal phrase as a date argument into data-gathering phases. This triggers the Date Range Orchestrator at execution time.
+
+**Trace indicator (before fix):** TDA_CurrentDate in trace + data tool returning too many rows + NO "System Orchestration: date_range" event + NO "temporal_data_flow_wiring" event.
+
+**Trace indicator (after fix):** "System Correction" with `correction_type: "temporal_data_flow_wiring"` followed by "System Orchestration: date_range" event.
+
+**Design principle:** This is a deterministic fix (code-based rewrite pass) because the pattern can be reliably detected via schema inspection without LLM involvement. See Section 0.
+
+---
+
 ## Section 6: Prompt Engineering Guide
 
 ### Key Variables in WORKFLOW_META_PLANNING_PROMPT
@@ -858,46 +956,60 @@ Recommend:
 ### Worked Example
 
 ```
-Query: "Show me system utilization for the past 3 days"
+Query: "What is the system utilization for the past 5 days?"
 Query type: Temporal + Analytical
 
 EXPECTED PLAN:
   Phase 1: TDA_CurrentDate (temporal context)
-  Phase 2: TDA_DateRange or date-aware tool (looped for 3 days)
+  Phase 2: Data tool with date argument wired (looped for 5 days)
   Phase 3: TDA_FinalReport
 
-ACTUAL TRACE:
-  [1] TDA_SystemLog: "Calling LLM for Planning" (7,376 input, 262 output)
-  [2] TDA_SystemLog: "Temporal preprocessing injected TDA_CurrentDate"
-      --> Pass Pre-gen fired: _inject_temporal_context()
-  [3] TDA_SystemLog: "Strategic Meta-Plan Generated" (3 phases)
-  [4] TDA_SystemLog: "FASTPATH initiated for 'TDA_CurrentDate'"
-      --> Phase 1 fast-path: single tool, no args needed
-  [5] TDA_CurrentDate -> "2026-02-10"
-  [6] TDA_SystemLog: "System Orchestration: date_range"
-      --> Date range orchestrator detected temporal pattern in Phase 2
-  [7] dba_resusageSummary(date="2026-02-07") -> 10 rows
-  [8] dba_resusageSummary(date="2026-02-08") -> 8 rows
-  [9] dba_resusageSummary(date="2026-02-09") -> 12 rows
-  [10] TDA_SystemLog: "FASTPATH initiated for 'TDA_FinalReport'"
-  [11] TDA_FinalReport -> formatted response
+CASE A — WITHOUT Pass 0 (the bug):
 
-ASSESSMENT:
-  Plan quality: GOOD (all expected tools present)
-  Temporal handling: GOOD (preprocessing injected TDA_CurrentDate + orchestrator handled range)
-  Fast-path: GOOD (activated for TDA_CurrentDate and TDA_FinalReport)
-  Self-corrections: 0 (clean execution)
-  Safeguards fired: _inject_temporal_context (Pre-gen), date range orchestrator
+  LLM generates:
+    Phase 1: TDA_CurrentDate
+    Phase 2: dba_resusageSummary({dimensions: ["LogDate"]})  ← NO date arg!
+    Phase 3: TDA_FinalReport
 
-  POTENTIAL ISSUE: TDA_CurrentDate may be called twice
-    - Once by _inject_temporal_context (Phase 1)
-    - Once by date range orchestrator (Step 6)
-  RECOMMENDATION: Check if orchestrator detects existing TDA_CurrentDate result
-    in workflow_state and skips its own call. If not, add deduplication.
+  ACTUAL TRACE:
+    [1] TDA_CurrentDate -> "2026-02-05"
+    [2] dba_resusageSummary({dimensions: ["LogDate"]}) -> 25 rows (FULL MONTH!)
+    [3] TDA_FinalReport -> report covers all dates, not just past 5 days
 
-  TOKEN ANALYSIS:
-    Strategic planning: 7,376 input (reasonable for temporal + tool context)
-    Total: within expected range
+  WHY DATE RANGE ORCHESTRATOR DIDN'T FIRE:
+    _is_date_query_candidate() checks action argument NAMES for "date".
+    Phase 2 args = {dimensions: ["LogDate"]} — "dimensions" doesn't contain "date".
+    → Returns (False, None, False) → orchestrator never evaluated.
+
+  ASSESSMENT:
+    Plan quality: POOR — temporal context established but never consumed.
+    Anti-Pattern 9: Disconnected Temporal Context
+
+CASE B — WITH Pass 0 (the fix):
+
+  LLM generates same plan, then Pass 0 fires:
+    Phase 1: TDA_CurrentDate
+    Phase 2: dba_resusageSummary({dimensions: ["LogDate"], date: "past 5 days"})  ← INJECTED
+    Phase 3: TDA_FinalReport
+
+  ACTUAL TRACE:
+    [1] TDA_SystemLog: "System Correction" (temporal_data_flow_wiring)
+        --> Pass 0 wired "past 5 days" into Phase 2 date argument
+    [2] TDA_CurrentDate -> "2026-02-10"
+    [3] TDA_SystemLog: "System Orchestration: date_range"
+        --> _is_date_query_candidate now finds "date" param → orchestrator activates
+    [4] dba_resusageSummary(date="2026-02-05") -> 10 rows
+    [5] dba_resusageSummary(date="2026-02-06") -> 8 rows
+    [6] dba_resusageSummary(date="2026-02-07") -> 12 rows
+    [7] dba_resusageSummary(date="2026-02-08") -> 9 rows
+    [8] dba_resusageSummary(date="2026-02-09") -> 11 rows
+    [9] TDA_FinalReport -> report covers exactly past 5 days
+
+  ASSESSMENT:
+    Plan quality: GOOD (temporal context wired correctly)
+    Safeguards fired: Pass 0 (temporal data flow), Date Range Orchestrator
+    Fast-path: Activated for TDA_CurrentDate and TDA_FinalReport
+    Self-corrections: 0
 ```
 
 ---
@@ -910,6 +1022,7 @@ ASSESSMENT:
 | Strategic planner | `planner.py` | meta-plan L1625, rewrites L1573-1612, validation L251 |
 | Plan normalization | `planner.py` | L566 |
 | Temporal injection | `planner.py` | L607 |
+| Temporal data flow wiring | `planner.py` | ~L697 |
 | SQL consolidation | `planner.py` | L1056 |
 | Multi-loop synthesis | `planner.py` | L668 |
 | LLMTask classification | `planner.py` | L757 |
@@ -929,6 +1042,14 @@ ASSESSMENT:
 ---
 
 ## Changelog
+
+**v1.1.0 (2026-02-10)**
+- Added **Section 0: Core Design Principle** — deterministic vs non-deterministic decision framework
+- Added **Pass 0: Temporal Data Flow Wiring** (`_rewrite_plan_for_temporal_data_flow`) — bridges the gap between TDA_CurrentDate and data-gathering tools
+- Added **Anti-Pattern 9: Disconnected Temporal Context** — documents the temporal data flow gap and its fix
+- Updated worked example to show before/after comparison of the temporal fix
+- Updated pass count from 8 to 9 throughout
+- Added `_extract_temporal_phrase()` helper documentation
 
 **v1.0.0 (2026-02-10)**
 - Initial skill creation

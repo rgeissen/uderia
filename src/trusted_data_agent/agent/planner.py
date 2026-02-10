@@ -665,6 +665,135 @@ class Planner:
         # Insert temporal phase at the beginning
         return [temporal_phase] + plan, True
 
+    def _extract_temporal_phrase(self, query_lower: str):
+        """
+        Extracts the matched temporal phrase from the user query.
+        Reuses the same regex patterns as _inject_temporal_context.
+        Returns the phrase string or None.
+        """
+        temporal_patterns = [
+            r'(past\s+\d+\s+(?:hours?|days?|weeks?|months?))',
+            r'(last\s+\d+\s+(?:hours?|days?|weeks?|months?))',
+            r'(yesterday|today)',
+            r'(in\s+the\s+(?:last|past)\s+\d+\s+(?:hours?|days?|weeks?|months?))',
+            r'(for\s+the\s+(?:past|last)\s+\d+\s+(?:hours?|days?|weeks?|months?))',
+            r'(\d+\s+(?:hours?|days?|weeks?|months?)\s+ago)',
+            r'(this\s+(?:week|month|year))',
+            r'(current\s+(?:week|month|year))'
+        ]
+        for pattern in temporal_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                return match.group(1)
+        return None
+
+    # Tools that are NOT data-gathering (system/reporting/synthesis tools)
+    _SYSTEM_TOOLS = {
+        "TDA_CurrentDate", "TDA_DateRange", "TDA_FinalReport",
+        "TDA_LLMTask", "TDA_ContextReport", "TDA_ComplexPromptReport",
+        "TDA_SystemLog", "TDA_Charting"
+    }
+
+    def _rewrite_plan_for_temporal_data_flow(self):
+        """
+        Deterministic rewrite: when TDA_CurrentDate is in the plan but its result
+        is not wired to subsequent data-gathering phases, injects the temporal phrase
+        as a date argument. This creates the trigger for the Date Range Orchestrator
+        at execution time.
+
+        Design principle: This is a deterministic fix (detectable pattern in code)
+        rather than a prompt engineering change, avoiding system prompt convolution.
+        """
+        if not self.executor.meta_plan or len(self.executor.meta_plan) < 2:
+            return
+
+        # Find TDA_CurrentDate phase
+        current_date_phase = None
+        for phase in self.executor.meta_plan:
+            if "TDA_CurrentDate" in phase.get("relevant_tools", []):
+                current_date_phase = phase
+                break
+
+        if not current_date_phase:
+            return
+
+        # Extract temporal phrase from query
+        query_lower = self.executor.original_user_input.lower()
+        temporal_phrase = self._extract_temporal_phrase(query_lower)
+        if not temporal_phrase:
+            return
+
+        made_change = False
+        mcp_tools = self.executor.dependencies['STATE'].get('mcp_tools', {})
+
+        for phase in self.executor.meta_plan:
+            if phase is current_date_phase:
+                continue
+
+            tools = phase.get("relevant_tools", [])
+            if not tools or tools[0] in self._SYSTEM_TOOLS:
+                continue
+
+            tool_name = tools[0]
+            args = phase.get("arguments", {})
+
+            # Skip if phase already has a date-related argument
+            has_date_arg = any('date' in k.lower() for k in args.keys())
+            if has_date_arg:
+                continue
+
+            # Check tool schema for date-related parameters
+            tool_spec = mcp_tools.get(tool_name)
+            if not tool_spec or not hasattr(tool_spec, 'args') or not isinstance(tool_spec.args, dict):
+                continue
+
+            date_param = None
+            for param_name in tool_spec.args.keys():
+                if 'date' in param_name.lower():
+                    date_param = param_name
+                    break
+
+            if not date_param:
+                continue  # Tool doesn't accept date parameter
+
+            # Wire the temporal phrase into the data tool's arguments
+            if "arguments" not in phase:
+                phase["arguments"] = {}
+            phase["arguments"][date_param] = temporal_phrase
+
+            app_logger.info(
+                f"PLAN REWRITE (Temporal Data Flow): Wired '{temporal_phrase}' "
+                f"into phase {phase.get('phase')} argument '{date_param}' "
+                f"for tool '{tool_name}'."
+            )
+
+            event_data = {
+                "step": "System Correction",
+                "type": "workaround",
+                "details": {
+                    "summary": (
+                        f"The agent's plan established temporal context (TDA_CurrentDate) "
+                        f"but did not wire the date into the data tool '{tool_name}'. "
+                        f"The system has injected '{temporal_phrase}' as the '{date_param}' "
+                        f"argument to enable automatic date range handling."
+                    ),
+                    "correction_type": "temporal_data_flow_wiring",
+                    "injected_argument": date_param,
+                    "injected_value": temporal_phrase,
+                    "target_tool": tool_name,
+                    "phase_number": phase.get("phase")
+                }
+            }
+            self.executor._log_system_event(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
+            made_change = True
+
+        if made_change:
+            app_logger.info(
+                f"PLAN REWRITE (Temporal Data Flow): Final rewritten plan: "
+                f"{self.executor.meta_plan}"
+            )
+
     async def _rewrite_plan_for_multi_loop_synthesis(self):
         """
         Surgically corrects plans where multiple, parallel loops feed into a
@@ -1585,6 +1714,10 @@ Ranking:"""
             # Capture knowledge context if it was generated
             if hasattr(self, '_last_knowledge_context'):
                 knowledge_context_for_optimization = self._last_knowledge_context
+            yield event
+
+        # Temporal data flow: wire TDA_CurrentDate result to data-gathering tools
+        for event in self._rewrite_plan_for_temporal_data_flow():
             yield event
 
         # --- MODIFICATION START: Make SQL consolidation rewrite conditional ---

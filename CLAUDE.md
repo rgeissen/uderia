@@ -1839,11 +1839,12 @@ Custom Claude Code skills provide specialized knowledge for complex integration 
 - Tuning WORKFLOW_META_PLANNING_PROMPT or WORKFLOW_TACTICAL_PROMPT
 
 **Key topics covered:**
-- Complete execution flow (strategic planning → 8 rewrite passes → tactical execution → response)
+- Complete execution flow (strategic planning → 9 rewrite passes → tactical execution → response)
+- Core design principle: deterministic vs non-deterministic decision framework
 - All 6 enterprise safeguards with file:line locations, trigger conditions, and known limitations
 - TDA_SystemLog message catalog for execution trace analysis
 - Plan quality checklists for 5 query types (temporal, data, loop, knowledge, multi-turn)
-- 8 common anti-patterns with fixes and trace indicators
+- 9 common anti-patterns with fixes and trace indicators
 - Prompt engineering guide for all template variables
 - Interactive 6-step analysis workflow with worked examples
 
