@@ -866,9 +866,47 @@ class PhaseExecutor:
                      all_required_present_and_valid = True
                      for req_can_arg in required_args_canonical:
                           value = get_argument_by_canonical_name(strategic_args, req_can_arg)
+
+                          # Reject None, empty string, or missing values
                           if value in [None, ""]:
                               all_required_present_and_valid = False
                               break
+
+                          # Reject dict placeholders (Pass 0 temporal wiring, loop sources)
+                          # Examples: {"source": "date_range", "duration": 2}, {"key": "phase_1_result"}
+                          if isinstance(value, dict) and ("source" in value or "key" in value):
+                              all_required_present_and_valid = False
+                              app_logger.debug(
+                                  f"FASTPATH REJECTED: Argument '{req_can_arg}' contains dict placeholder: {value}"
+                              )
+                              break
+
+                          # Reject list placeholders (hallucinated loop items)
+                          # Example: ["item1", "item2"] from loop without TDA_LLMTask wrapper
+                          if isinstance(value, list) and len(value) > 0 and all(isinstance(x, str) for x in value):
+                              all_required_present_and_valid = False
+                              app_logger.debug(
+                                  f"FASTPATH REJECTED: Argument '{req_can_arg}' contains list placeholder: {value}"
+                              )
+                              break
+
+                          # Reject temporal phrases that need date resolution
+                          # Examples: "past 5 days", "last week", "yesterday"
+                          if isinstance(value, str):
+                              temporal_phrase_patterns = [
+                                  r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
+                                  r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
+                                  r'(yesterday|today)',
+                                  r'in\s+the\s+(last|past)',
+                                  r'for\s+the\s+(past|last)',
+                                  r'\d+\s+(hours?|days?|weeks?|months?)\s+ago'
+                              ]
+                              if any(re.search(pattern, value.lower()) for pattern in temporal_phrase_patterns):
+                                  all_required_present_and_valid = False
+                                  app_logger.debug(
+                                      f"FASTPATH REJECTED: Argument '{req_can_arg}' contains temporal phrase: '{value}'"
+                                  )
+                                  break
                      if all_required_present_and_valid:
                          is_fast_path_candidate = True
 

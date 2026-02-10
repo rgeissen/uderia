@@ -52,6 +52,52 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
                     date_list = potential_dates
                     is_pre_calculated = True
 
+    # Scenario 1.5: Validate date argument format before proceeding
+    if not is_pre_calculated:
+        # If arg_value is a dict placeholder, log error and fail fast
+        if isinstance(arg_value, dict) and ("source" in arg_value or "key" in arg_value):
+            yield _format_sse({
+                "step": "System Correction", "type": "workaround",
+                "details": (
+                    f"Date Range Orchestrator received unresolved placeholder: {arg_value}. "
+                    f"This indicates fast-path validation failed. Falling back to tactical planning."
+                )
+            })
+            app_logger.error(
+                f"ORCHESTRATOR GUARD: Unresolved placeholder detected in date argument: {arg_value}. "
+                f"Fast-path validation should have blocked this. Forcing tactical planning."
+            )
+
+            # Raise error to trigger phase retry with tactical planning
+            raise ValueError(
+                f"Date argument contains unresolved placeholder: {arg_value}. "
+                f"Cannot proceed with orchestration. Requires tactical planning."
+            )
+
+        # If arg_value is a temporal phrase string, it should have been resolved
+        if isinstance(arg_value, str) and not re.match(r'^\d{4}-\d{2}-\d{2}$', arg_value):
+            temporal_patterns = [
+                r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
+                r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
+                r'(yesterday|today)'
+            ]
+            if any(re.search(pattern, arg_value.lower()) for pattern in temporal_patterns):
+                yield _format_sse({
+                    "step": "System Correction", "type": "workaround",
+                    "details": (
+                        f"Date Range Orchestrator received temporal phrase '{arg_value}' "
+                        f"instead of resolved dates. Forcing tactical planning."
+                    )
+                })
+                app_logger.error(
+                    f"ORCHESTRATOR GUARD: Temporal phrase '{arg_value}' was not resolved. "
+                    f"This indicates fast-path incorrectly executed. Forcing tactical planning."
+                )
+                raise ValueError(
+                    f"Date argument contains unresolved temporal phrase: '{arg_value}'. "
+                    f"Requires tactical planning to resolve dates."
+                )
+
     # Scenario 2: The date argument is a single, valid date string (prevents recursion).
     if not is_pre_calculated and isinstance(arg_value, str) and re.match(r'^\d{4}-\d{2}-\d{2}$', arg_value):
         yield _format_sse({

@@ -21,6 +21,47 @@ This skill provides deep, implementation-level knowledge of the Uderia Fusion Op
 
 ---
 
+## Investigation Methodology (MANDATORY - READ FIRST)
+
+### The Golden Rule: Session File is Ground Truth
+
+**NEVER begin code investigation without first analyzing the session execution trace.**
+
+The session file contains the complete, immutable record of what actually happened. **Location:** `tda_sessions/{user_uuid}/{session_id}.json` or per-turn files.
+
+### Step 0: Get Session Execution Trace (ALWAYS FIRST)
+
+1. **Ask user** for session ID and turn number
+2. **Read the session file** from the correct location (local vs remote server)
+3. **Extract the turn data:** `last_turn_data.workflow_history[turn_number]`
+4. **Verify:** Check `user_query` and `timestamp` match the reported issue
+
+### Step 1: Analyze What Actually Happened
+
+**Key fields to examine:**
+
+- `original_plan[]` - Strategic plan after all rewrite passes
+- `execution_trace[]` - Every tool call, arguments, results, errors
+- `system_events[]` - Safeguards fired, corrections applied
+- `raw_llm_plan` - LLM output before rewrite passes
+
+**Questions to answer:**
+- Which tools were called? With what arguments?
+- Did any tools fail? What error messages?
+- How many self-correction attempts?
+- Which safeguards fired (Pass 0, orchestrators)?
+- Are arguments empty, placeholders, or resolved?
+
+### Step 2: Map Expected vs Actual Behavior
+
+Compare what SHOULD have happened against what DID happen in the trace. This reveals the exact failure point.
+
+### Step 3: Investigate Code (Only After Steps 0-2)
+
+Now that you know WHAT failed, investigate WHY in the code.
+
+---
+
 ## Section 0: Core Design Principles
 
 ### Principle 1: Deterministic vs Non-Deterministic

@@ -359,6 +359,70 @@ class Planner:
                         app_logger.warning(f"PLAN CORRECTION: After removing hallucinated args, tool '{tool_name}' is missing required arguments: {missing_required}")
                         phase['_needs_refinement'] = True  # Flag for executor to force refinement
 
+                    # Correction 5: Validate parameter names against tool schema (NEW)
+                    # Check if provided argument names are close to expected names but misspelled
+                    schema_params = set(tool_def.args.keys())
+                    provided_params = set(phase['arguments'].keys())
+
+                    # Find parameters that don't match schema (not in valid_args which includes synonyms)
+                    unmatched_params = provided_params - valid_args
+                    missing_schema_params = schema_params - provided_params
+
+                    if unmatched_params and missing_schema_params:
+                        # Potential parameter name mismatch - try to match
+                        param_corrections = {}
+                        for unmatched in list(unmatched_params):
+                            best_match = None
+                            best_similarity = 0
+
+                            # Try to find the best matching schema parameter
+                            for schema_param in missing_schema_params:
+                                # Check exact synonym mapping first
+                                if self._is_param_synonym(unmatched, schema_param):
+                                    best_match = schema_param
+                                    best_similarity = 1.0
+                                    break
+
+                                # Check similarity (fuzzy match)
+                                import difflib
+                                similarity = difflib.SequenceMatcher(None, unmatched.lower(), schema_param.lower()).ratio()
+                                if similarity > best_similarity and similarity > 0.7:  # 70% similar threshold
+                                    best_match = schema_param
+                                    best_similarity = similarity
+
+                            if best_match:
+                                param_corrections[unmatched] = best_match
+
+                        # Apply corrections
+                        if param_corrections:
+                            for wrong_name, correct_name in param_corrections.items():
+                                # Rename the parameter
+                                phase['arguments'][correct_name] = phase['arguments'].pop(wrong_name)
+                                app_logger.info(
+                                    f"PASS 5: Corrected parameter name: '{wrong_name}' → '{correct_name}' "
+                                    f"in {tool_name} (phase {phase.get('phase', '?')})"
+                                )
+                                correction_made = True
+                                correction_type = "parameter_name_mismatch"
+
+                    # Check for missing REQUIRED parameters after all corrections
+                    final_provided_canonical = set()
+                    for arg in phase['arguments'].keys():
+                        canonical_arg = arg
+                        for canonical, synonyms in AppConfig.ARGUMENT_SYNONYM_MAP.items():
+                            if arg in synonyms:
+                                canonical_arg = canonical
+                                break
+                        final_provided_canonical.add(canonical_arg)
+
+                    final_missing_required = required_args - final_provided_canonical
+                    if final_missing_required:
+                        app_logger.warning(
+                            f"PASS 5: Tool {tool_name} missing required parameters: {final_missing_required}. "
+                            f"This may cause execution error. Marking for refinement."
+                        )
+                        phase['_needs_refinement'] = True
+
             if correction_made:
                 # Determine the appropriate message based on correction type
                 if correction_type == "invalid_prompt":
@@ -369,6 +433,8 @@ class Planner:
                     summary = "Planner misclassified a tool as a prompt. The system has corrected the plan to ensure proper execution."
                 elif correction_type == "extraneous_args":
                     summary = "Plan contained hallucinated arguments not accepted by the tool. The system has removed them to prevent validation errors."
+                elif correction_type == "parameter_name_mismatch":
+                    summary = "Plan contained parameter names that don't match the tool schema. The system has corrected them to prevent execution errors."
                 else:
                     summary = "Plan has been corrected by the system."
                 
@@ -383,6 +449,33 @@ class Planner:
                 }
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse_with_depth(event_data)
+
+    def _is_param_synonym(self, provided: str, expected: str) -> bool:
+        """Check if provided parameter is likely a synonym of expected parameter."""
+        # Exact substring match
+        if provided in expected or expected in provided:
+            return True
+
+        # Common parameter name synonyms
+        synonyms = {
+            'date_string': 'start_date',
+            'time_phrase': 'date_phrase',
+            'query': 'sql',
+            'text': 'content',
+            'columns': 'dimensions',
+            'rows': 'data',
+            # Add more as discovered
+        }
+
+        # Check direct synonym mapping
+        if synonyms.get(provided.lower()) == expected.lower():
+            return True
+
+        # Check reverse mapping
+        if synonyms.get(expected.lower()) == provided.lower():
+            return True
+
+        return False
 
     def _ensure_final_report_phase(self):
         """
@@ -2144,6 +2237,14 @@ Ranking:"""
         # --- END CAPTURE ---
 
         # --- TEMPORAL QUERY PREPROCESSING: Inject TDA_CurrentDate for temporal queries ---
+        # Log preprocessing gate evaluation for debugging
+        app_logger.debug(
+            f"TEMPORAL PREPROCESSING GATE: "
+            f"meta_plan exists={bool(self.executor.meta_plan)}, "
+            f"execution_depth={self.executor.execution_depth}, "
+            f"will_run={bool(self.executor.meta_plan and self.executor.execution_depth == 0)}"
+        )
+
         if self.executor.meta_plan and self.executor.execution_depth == 0:
             original_plan, was_injected = self._inject_temporal_context(self.executor.meta_plan)
             self.executor.meta_plan = original_plan
@@ -2155,6 +2256,23 @@ Ranking:"""
                 }
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse_with_depth(event_data)
+            else:
+                # Log when preprocessing runs but doesn't inject
+                app_logger.debug(
+                    f"TEMPORAL PREPROCESSING: Evaluated but did not inject. "
+                    f"Reasons: query not temporal, or TDA_CurrentDate already present."
+                )
+        else:
+            # Log when preprocessing is skipped
+            if self.executor.meta_plan:
+                app_logger.info(
+                    f"TEMPORAL PREPROCESSING SKIPPED: execution_depth={self.executor.execution_depth} (expected 0). "
+                    f"This may cause temporal queries to fail if fast-path executes with placeholders."
+                )
+            else:
+                app_logger.debug(
+                    f"TEMPORAL PREPROCESSING SKIPPED: No meta_plan available (depth={self.executor.execution_depth})."
+                )
         # --- END TEMPORAL PREPROCESSING ---
 
         if self.executor.active_prompt_name and self.executor.meta_plan:
