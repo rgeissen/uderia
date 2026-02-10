@@ -1826,6 +1826,29 @@ Custom Claude Code skills provide specialized knowledge for complex integration 
 
 **Documentation:** `.claude/skills/n8n-uderia/n8n.md` (44KB comprehensive guide)
 
+#### fusion-hardening (`fusion-hardening/`)
+**Purpose:** Deep knowledge skill for analyzing and hardening the Fusion Optimizer (tool_enabled) execution pipeline
+
+**When to use:**
+- Analyzing execution traces from tool_enabled profile sessions
+- Diagnosing plan quality issues in strategic meta-plans
+- Identifying which enterprise safeguards fired during execution
+- Detecting anti-patterns (missing temporal context, hallucinated arguments, excessive self-correction)
+- Evaluating fast-path vs slow-path decision correctness
+- Adding new plan rewrite passes or correction strategies
+- Tuning WORKFLOW_META_PLANNING_PROMPT or WORKFLOW_TACTICAL_PROMPT
+
+**Key topics covered:**
+- Complete execution flow (strategic planning → 8 rewrite passes → tactical execution → response)
+- All 6 enterprise safeguards with file:line locations, trigger conditions, and known limitations
+- TDA_SystemLog message catalog for execution trace analysis
+- Plan quality checklists for 5 query types (temporal, data, loop, knowledge, multi-turn)
+- 8 common anti-patterns with fixes and trace indicators
+- Prompt engineering guide for all template variables
+- Interactive 6-step analysis workflow with worked examples
+
+**Documentation:** `.claude/skills/fusion-hardening/fusion-hardening.md` (40KB comprehensive guide)
+
 ### Using Skills
 
 Skills are invoked automatically by Claude Code when relevant to the task. You can also explicitly reference them when asking questions about specific integrations:
