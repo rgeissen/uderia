@@ -1121,10 +1121,12 @@ def detect_issues(metrics: ExecutionMetrics) -> List[str]:
 
 ## Best Practices
 
-1. **Always use profile override in query submission, not session creation**
-   - Create session without profile_id (uses default)
-   - Override with profile_id parameter when submitting query
-   - This ensures proper REST API behavior
+1. **CRITICAL: Profile override must be specified in BOTH session creation AND query submission**
+   - **Session creation**: Include `profile_id` parameter to set initial session profile
+   - **Query submission**: Include `profile_id` parameter to prevent fallback to default
+   - **Why both?**: Query execution falls back to `config_manager.get_default_profile_id()` if not specified
+   - **Common mistake**: Only specifying in query causes session creation to use default, creating mismatch
+   - **DO NOT use @TAG syntax**: REST API only accepts `profile_id` parameter (see n8n-uderia skill for details)
 
 2. **Capture both task results AND session files**
    - Task results: Real-time event stream, token counts
