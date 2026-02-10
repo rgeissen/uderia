@@ -140,6 +140,115 @@ python -m trusted_data_agent.main
 5. Changes saved to database (`prompts` table)
 6. Version history tracked in `prompt_versions`
 
+### Option 3: Production Deployment (Zero-Downtime)
+
+**⚠️ CRITICAL: Use this method for deploying prompts to production installations WITHOUT restart.**
+
+The `update_prompt.py` script provides safe, idempotent prompt deployments:
+
+```bash
+# 1. Edit source files in default_prompts/ (as usual)
+nano /Users/livin2rave/my_private_code/trusted-data-agent-license/default_prompts/WORKFLOW_META_PLANNING_PROMPT.txt
+
+# 2. Deploy to production (NO encryption step needed!)
+cd /Users/livin2rave/my_private_code/trusted-data-agent-license
+python update_prompt.py \
+  --app-root /Users/livin2rave/my_private_code/uderia \
+  --prompt WORKFLOW_META_PLANNING_PROMPT
+
+# 3. Verify (check output for success)
+# Application continues running - no restart needed!
+```
+
+**What This Does:**
+1. ✅ Reads plain text from `default_prompts/` directory
+2. ✅ Encrypts using tier-specific format (matching bootstrap)
+3. ✅ Compares with existing database content (skips if unchanged)
+4. ✅ Updates `prompts` table directly
+5. ✅ Syncs global parameters from `tda_config.json`
+6. ✅ Syncs profile prompt mappings
+7. ✅ Invalidates runtime cache via API (changes take effect immediately!)
+8. ✅ Creates version history for audit trail
+
+**Output Example:**
+```
+Analyzing 'WORKFLOW_META_PLANNING_PROMPT'...
+  Current version: 3
+  Content type: String
+  Content size: 12,456 chars
+  Encrypted size: 16,608 bytes
+  ✓ Updated successfully (version 3 → 4)
+
+Syncing global parameters from tda_config.json...
+  Parameters added: 0
+
+Syncing profile prompt mappings from tda_config.json...
+  Mappings added: 0
+
+Invalidating runtime cache...
+  ✓ Cache cleared successfully
+
+Summary
+  Updated:   1
+  Unchanged: 0
+  Skipped:   0
+  Errors:    0
+```
+
+**Update All Prompts:**
+```bash
+python update_prompt.py \
+  --app-root /Users/livin2rave/my_private_code/uderia \
+  --all
+```
+
+**Key Differences vs Development Workflow:**
+
+| Aspect | Development (Option 1) | Production (Option 3) |
+|--------|----------------------|----------------------|
+| Encryption | Manual (`encrypt_default_prompts.py`) | Automatic (built into script) |
+| Format | Creates `.dat` file | Updates database directly |
+| Restart | Required | **Not required** |
+| Cache | Cleared on restart | **Cleared via API** |
+| Sync | Manual bootstrap | **Automatic** (parameters + mappings) |
+| Idempotent | No (always overwrites) | **Yes** (skips unchanged) |
+| Version History | Only via database trigger | **Explicit versioning** |
+
+**When to Use Each Method:**
+
+- **Option 1 (Development)**: Local development, testing new prompts
+- **Option 2 (UI Editor)**: Quick tweaks, PE/Enterprise tier testing
+- **Option 3 (Production)**: **Deploying to production, customer installations, zero-downtime updates**
+
+**Troubleshooting Production Deployment:**
+
+**Issue: Application not running**
+```
+WARNING: Application not running on port 5050
+Cache will be cleared on next startup
+```
+**Solution:** This is safe - prompts are updated in database, cache will be cleared when app restarts.
+
+**Issue: Authentication failed**
+```
+WARNING: Authentication failed (status 401)
+```
+**Solution:** Check admin credentials (default: `admin`/`admin`) or update script with correct credentials.
+
+**Issue: Dictionary prompts showing `[ENCRYPTED CONTENT]`**
+**Cause:** Wrong encryption format (old bug - now fixed in Feb 2026)
+**Solution:** Prompts must be encrypted as `encrypt(json_string)` not `json({k: encrypt(v)})`
+
+**Issue: Parameters missing**
+```
+ERROR: Template variable {new_param} undefined
+```
+**Solution:** Run sync manually:
+```python
+from update_prompt import sync_parameters_from_config
+sync_parameters_from_config(Path('/path/to/uderia'), Path('/path/to/uderia/tda_auth.db'))
+```
+
 ## Backup Strategy
 
 ### Before Major Changes

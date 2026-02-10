@@ -2334,3 +2334,42 @@ async def save_knowledge_global_settings():
             'status': 'error',
             'message': str(e)
         }), 500
+
+
+# ==============================================================================
+# PROMPT CACHE MANAGEMENT ENDPOINT
+# ==============================================================================
+
+@admin_api_bp.route("/v1/admin/prompts/clear-cache", methods=["POST"])
+@require_admin
+async def clear_prompt_cache():
+    """
+    Clear the PromptLoader cache (admin only).
+
+    This endpoint allows external scripts (like update_prompt.py) to invalidate
+    the in-memory prompt cache after database updates.
+
+    Returns:
+    {
+        "success": true,
+        "message": "Prompt cache cleared successfully"
+    }
+    """
+    try:
+        from trusted_data_agent.agent.prompt_loader import PromptLoader
+
+        loader = PromptLoader()
+        loader.clear_cache()
+
+        logger.info("PromptLoader cache cleared by admin request")
+
+        return jsonify({
+            'success': True,
+            'message': 'Prompt cache cleared successfully'
+        }), 200
+    except Exception as e:
+        logger.error(f"Failed to clear prompt cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

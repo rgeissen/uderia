@@ -26,6 +26,9 @@
    - [Knowledge Repository Management](#315-knowledge-repository-management)
    - [LLM Configuration Management](#316-llm-configuration-management)
    - [Consumption & Analytics](#317-consumption--analytics)
+   - [Cost Management](#318-cost-management)
+   - [Genie Multi-Profile Coordination](#319-genie-multi-profile-coordination)
+   - [Admin Endpoints](#320-admin-endpoints)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -7024,6 +7027,117 @@ Frontend can use this endpoint to:
 **Issue: Synthesis produces generic response**
 - **Cause**: Coordinator LLM insufficient for synthesis complexity
 - **Fix**: Upgrade to more powerful LLM (e.g., Claude Opus), or customize synthesis prompt
+
+---
+
+### 3.20. Admin Endpoints
+
+Admin-only endpoints for system management and maintenance operations.
+
+**Authentication Required:**
+- All endpoints require admin-level authentication (JWT with admin role)
+- Non-admin users receive `403 Forbidden`
+
+**Available Endpoints:**
+- Clear Prompt Cache
+
+---
+
+#### 3.20.1. Clear Prompt Cache
+
+**Endpoint:** `POST /v1/admin/prompts/clear-cache`
+
+**Purpose:** Invalidate the in-memory PromptLoader cache to force reloading of system prompts from the database. Used after deploying prompt updates via external scripts (e.g., `update_prompt.py`).
+
+**Authentication:** Admin JWT required
+
+**Request:**
+```bash
+# Get admin JWT token
+JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your_password"}' | jq -r '.token')
+
+# Clear cache
+curl -X POST http://localhost:5050/api/v1/admin/prompts/clear-cache \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json"
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Prompt cache cleared successfully"
+}
+```
+
+**Response (Error):**
+```json
+{
+  "success": false,
+  "error": "Failed to clear prompt cache: [error details]"
+}
+```
+
+**Status Codes:**
+- `200 OK` - Cache cleared successfully
+- `401 Unauthorized` - Missing or invalid JWT token
+- `403 Forbidden` - User is not an admin
+- `500 Internal Server Error` - Cache clearing failed
+
+**Use Cases:**
+
+1. **After Prompt Updates**: When deploying updated system prompts via `update_prompt.py`, call this endpoint to ensure changes take effect immediately without restarting the application.
+
+2. **Development/Testing**: Clear cache to test prompt changes during development.
+
+3. **Troubleshooting**: Force reload of prompts if incorrect prompts are being served.
+
+**Example Workflow (Prompt Deployment):**
+
+```bash
+# 1. Update prompts in database
+cd /path/to/trusted-data-agent-license
+python update_prompt.py --app-root /path/to/uderia --all
+
+# 2. Clear cache (done automatically by update_prompt.py, but can be manual)
+JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}' | jq -r '.token')
+
+curl -X POST http://localhost:5050/api/v1/admin/prompts/clear-cache \
+  -H "Authorization: Bearer $JWT"
+
+# 3. Verify new prompts are in use
+# Submit a query and check logs for "Using prompt: [prompt_name]"
+```
+
+**Technical Details:**
+
+The PromptLoader maintains three in-memory caches:
+- `_prompt_cache`: Loaded prompts with resolved parameters
+- `_parameter_cache`: Global and prompt-specific parameters
+- `_override_cache`: User/profile-level prompt overrides
+
+This endpoint calls `PromptLoader.clear_cache()` which empties all three caches, forcing fresh reads from the database on next prompt access.
+
+**Performance Impact:**
+- Cache clearing is instant (~1ms)
+- Next prompt access will be slower (~50-100ms) as it reads from database
+- Subsequent accesses resume normal cached speed (~1ms)
+
+**Security Considerations:**
+- Only admin users can clear cache (prevents unauthorized cache manipulation)
+- Cache clearing does not modify database (read-only operation)
+- No risk of data loss or corruption
+
+**Monitoring:**
+
+Check application logs for confirmation:
+```
+INFO - PromptLoader cache cleared by admin request
+```
 
 ---
 

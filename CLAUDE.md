@@ -1553,14 +1553,88 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 
 ### Modifying System Prompts
 
-**For PE/Enterprise tiers only**:
+> **📚 Deep Dive:** Use the `system-prompts` skill for comprehensive guide on development workflow, production deployment, encryption troubleshooting, and recovery procedures.
+
+**For PE/Enterprise tiers (via UI)**:
 1. UI: Setup → System Prompts → Edit prompt
 2. Database: Prompts stored encrypted in `prompts` table
 3. Versioning: Changes saved to `prompt_versions` table
 
-**For development**:
-1. Edit `schema/default_prompts.dat` (requires encryption tools)
-2. Or modify database directly after decryption
+**For development (source files)**:
+1. Edit plain text files in `trusted-data-agent-license/default_prompts/`
+   - `.txt` files for string prompts
+   - `.json` files for dictionary prompts (e.g., CHARTING_INSTRUCTIONS)
+2. Encrypt: `python encrypt_default_prompts.py` (creates `schema/default_prompts.dat`)
+3. Test locally or deploy to production
+
+**Deploying Prompt Updates to Production**:
+
+Use the `update_prompt.py` script for **zero-downtime** prompt deployments:
+
+```bash
+# Navigate to license repo
+cd /path/to/trusted-data-agent-license
+
+# Update a single prompt
+python update_prompt.py \
+  --app-root /path/to/uderia \
+  --prompt WORKFLOW_META_PLANNING_PROMPT
+
+# Update all prompts
+python update_prompt.py \
+  --app-root /path/to/uderia \
+  --all
+```
+
+**What `update_prompt.py` does:**
+1. ✅ Compares existing vs new content (skips unchanged)
+2. ✅ Encrypts using tier-specific format (matching bootstrap)
+3. ✅ Syncs global parameters from `tda_config.json`
+4. ✅ Syncs profile prompt mappings
+5. ✅ Invalidates runtime cache via API (no restart needed!)
+6. ✅ Creates version history for audit trail
+
+**Key Implementation Details:**
+
+**Encryption Format (CRITICAL)**:
+- Dictionary prompts: Encrypted as `encrypt(json_string)` → single encrypted blob
+- String prompts: Encrypted as `encrypt(string)` → single encrypted blob
+- **NOT** JSON with individually encrypted values (old format)
+
+**Synchronization Steps**:
+```python
+# Parameters: New template variables added to global_parameters table
+sync_parameters_from_config(app_root, db_path)
+
+# Mappings: Profile routing updated for all categories
+sync_prompt_mappings(app_root, db_path)
+
+# Cache: Invalidated via POST /v1/admin/prompts/clear-cache
+invalidate_cache_via_api(app_root)
+```
+
+**Troubleshooting**:
+
+If deployment causes instability:
+- **Symptom**: Dictionary prompts return `[ENCRYPTED CONTENT]`
+- **Cause**: Wrong encryption format (individually encrypted values vs encrypted JSON string)
+- **Fix**: Ensure `update_prompt.py` uses `encrypt_prompt(json.dumps(dict), key)` not `json.dumps({k: encrypt(v)})`
+
+If parameters missing:
+- **Symptom**: Prompt templates show `{undefined_param}`
+- **Cause**: New parameters not synced from `tda_config.json`
+- **Fix**: Check `global_parameters` table, manually run `sync_parameters_from_config()`
+
+If cache not invalidated:
+- **Symptom**: Old prompts still served after update
+- **Cause**: Application not running or authentication failed
+- **Fix**: Restart application (cache cleared on startup) or fix admin credentials
+
+**Files**:
+- Source: `trusted-data-agent-license/default_prompts/*.{txt,json}`
+- Encrypted: `schema/default_prompts.dat` (committed to repo)
+- Deploy script: `trusted-data-agent-license/update_prompt.py`
+- REST endpoint: `POST /v1/admin/prompts/clear-cache` (cache invalidation)
 
 ### Creating RAG Template Plugins
 
