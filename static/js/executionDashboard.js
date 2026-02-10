@@ -287,7 +287,7 @@ class ExecutionDashboard {
                     ? `System-Wide Performance (${userCount} Users)`
                     : 'System-Wide Performance (All Users)';
             } else {
-                scopeIndicator.textContent = 'Your Learning Performance';
+                scopeIndicator.textContent = 'Your Operation Insights';
             }
         }
 
@@ -1167,7 +1167,7 @@ Tokens: ${c.output_tokens || 0}
         if (scopeIndicator) {
             scopeIndicator.textContent = view === 'system'
                 ? 'System-Wide Performance (All Users)'
-                : 'Your Learning Performance';
+                : 'Your Operation Insights';
         }
 
         // Refresh only the analytics section (not session gallery)

@@ -1404,7 +1404,7 @@ function updateKPIDisplay(kpis) {
                 ? `System-Wide Performance (${userCount} Users)`
                 : 'System-Wide Performance (All Users)';
         } else {
-            scopeIndicator.textContent = 'Your Learning Performance';
+            scopeIndicator.textContent = 'Your Learning Insights';
         }
     }
 
@@ -4246,7 +4246,7 @@ async function switchIntelligenceTab(view) {
     if (scopeIndicator) {
         scopeIndicator.textContent = view === 'system'
             ? 'System-Wide Performance (All Users)'
-            : 'Your Learning Performance';
+            : 'Your Learning Insights';
     }
 
     // Refresh KPIs with new view
