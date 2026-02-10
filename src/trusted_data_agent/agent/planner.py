@@ -112,7 +112,8 @@ class Planner:
                 "session_input_tokens",  # Session totals for UI display only
                 "session_output_tokens",  # Session totals for UI display only
                 "final_summary_html",  # HTML formatted output (UI only, LLM uses final_summary_text)
-                "tts_payload"  # Text-to-speech data (UI only)
+                "tts_payload",  # Text-to-speech data (UI only)
+                "raw_llm_plan"  # Pre-rewrite LLM plan (session analysis only, not needed for planning)
             ]
             for field in ui_only_fields:
                 if field in new_turn:
@@ -2137,6 +2138,10 @@ Ranking:"""
         if self.executor.meta_plan:
             self.executor.meta_plan = self._normalize_plan_syntax(self.executor.meta_plan)
         # --- END NORMALIZATION ---
+
+        # --- CAPTURE RAW LLM PLAN: Before any preprocessing or rewrite passes ---
+        self.executor.raw_llm_plan = copy.deepcopy(self.executor.meta_plan)
+        # --- END CAPTURE ---
 
         # --- TEMPORAL QUERY PREPROCESSING: Inject TDA_CurrentDate for temporal queries ---
         if self.executor.meta_plan and self.executor.execution_depth == 0:

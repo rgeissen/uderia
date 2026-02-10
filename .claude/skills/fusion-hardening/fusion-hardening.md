@@ -21,7 +21,9 @@ This skill provides deep, implementation-level knowledge of the Uderia Fusion Op
 
 ---
 
-## Section 0: Core Design Principle — Deterministic vs Non-Deterministic
+## Section 0: Core Design Principles
+
+### Principle 1: Deterministic vs Non-Deterministic
 
 **This is the most important design decision in the Fusion Optimizer.**
 
@@ -29,6 +31,30 @@ This skill provides deep, implementation-level knowledge of the Uderia Fusion Op
 > If something cannot be described deterministically, prompt engineering is the way forward.
 > When it makes sense, **blend both approaches** — deterministic detection with non-deterministic resolution.
 > System prompts must NOT be convoluted.
+
+### Principle 2: Context Window Hygiene — Never Convolute the Chat Object
+
+> The chat object (session context sent to the LLM) must stay lean. Every byte added to it is paid on EVERY subsequent LLM call for the life of the session.
+
+**Rule:** When adding new data to the session file (workflow_history, turn summaries), always ask: **"Does the LLM need this for planning?"**
+
+- **YES** → Include it in the turn summary (it flows into `_distill_conversation_context()`)
+- **NO** → Add it to the `ui_only_fields` strip list in `_distill_conversation_context()` (planner.py:~102)
+
+**The strip list** (`ui_only_fields`) removes fields that are stored on disk for UI replay, session analysis, or debugging — but are never sent to the LLM. Current members include: `genie_events`, `slave_sessions`, `provider`, `model`, `status`, `system_events`, `session_input_tokens`, `session_output_tokens`, `final_summary_html`, `tts_payload`, `raw_llm_plan`, and others.
+
+**Example:** `raw_llm_plan` captures the LLM's plan before rewrite passes — essential for session analysis but useless to the LLM planner. It is stripped from context and only exists on disk.
+
+**Why this matters:**
+- Multi-turn sessions accumulate workflow history. Bloated turns compound across the session.
+- Token cost scales linearly with context size on every planning and tactical call.
+- Irrelevant context dilutes LLM attention on what actually matters (previous results, tool schemas, user query).
+
+**Checklist for new session fields:**
+1. Does the LLM need it to plan the next turn? → Keep
+2. Is it only for UI display or replay? → Strip (`ui_only_fields`)
+3. Is it only for debugging or session analysis? → Strip (`ui_only_fields`)
+4. Is it already represented elsewhere in context? → Strip (avoid duplication)
 
 ### The Three Strategies
 
@@ -916,12 +942,19 @@ Based on query type:
 
 From session file, extract:
 ```
-1. original_plan (workflow_history[N].original_plan)
-2. execution_trace (workflow_history[N].execution_trace)
-3. Token counts (turn_input_tokens, turn_output_tokens)
-4. tools_used list
-5. duration_ms
+1. raw_llm_plan (workflow_history[N].raw_llm_plan)  ← LLM's actual output before any preprocessing/rewrites
+2. original_plan (workflow_history[N].original_plan) ← Plan after all 9 rewrite passes (what was executed)
+3. execution_trace (workflow_history[N].execution_trace)
+4. Token counts (turn_input_tokens, turn_output_tokens)
+5. tools_used list
+6. duration_ms
 ```
+
+**Comparing raw_llm_plan vs original_plan reveals exactly what the system corrected:**
+- Phase added? → Temporal injection (`_inject_temporal_context`)
+- Argument added? → Pass 0 (temporal data flow wiring) or Pass 5 (validation)
+- Phases merged? → Pass 1 (SQL consolidation)
+- Loop restructured? → Pass 2/3 (multi-loop synthesis, LLMTask classification)
 
 ### Step 4: Compare Expected vs Actual
 
@@ -1042,6 +1075,11 @@ CASE B — WITH Pass 0 (the fix):
 ---
 
 ## Changelog
+
+**v1.2.0 (2026-02-10)**
+- Added **Principle 2: Context Window Hygiene** to Section 0 — never convolute the chat object; new session fields must be checked against the `ui_only_fields` strip list
+- Added `raw_llm_plan` field to session workflow history — captures LLM's actual output before any preprocessing or rewrite passes (stripped from LLM context via `ui_only_fields`)
+- Updated trace analysis guide (Step 3) to document `raw_llm_plan` vs `original_plan` comparison for identifying system corrections
 
 **v1.1.0 (2026-02-10)**
 - Added **Section 0: Core Design Principle** — deterministic vs non-deterministic decision framework

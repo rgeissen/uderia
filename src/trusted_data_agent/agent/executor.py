@@ -453,6 +453,7 @@ class PlanExecutor:
         self.turn_action_history = []
         self.meta_plan = None
         self.original_plan_for_history = None # Added to store original plan
+        self.raw_llm_plan = None  # LLM's raw output before any preprocessing/rewrite passes
         self.current_phase_index = 0
         self.last_tool_output = None
 
@@ -2494,6 +2495,7 @@ The following domain knowledge may be relevant to this conversation:
                 "final_summary_text": response_text,
                 "status": "success",
                 "execution_trace": [],  # No tool executions for llm_only
+                "raw_llm_plan": None,  # No plan for llm_only
                 "original_plan": None,  # No plan for llm_only
                 "system_events": system_events,  # Session name generation and other system operations (UI replay only)
                 "knowledge_events": llm_execution_events,  # Intermediate execution events for plan reload (matching rag_focused)
@@ -2832,6 +2834,7 @@ The following domain knowledge may be relevant to this conversation:
                     "status": "success",  # NOT "error"
                     "no_knowledge_found": True,  # Flag for UI indication
                     "execution_trace": [],
+                    "raw_llm_plan": None,
                     "original_plan": None,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "provider": self.current_provider,
@@ -3256,6 +3259,7 @@ The following domain knowledge may be relevant to this conversation:
                 "final_summary_text": response_text,
                 "status": "success",
                 "execution_trace": [],  # No tool executions for rag_focused
+                "raw_llm_plan": None,  # No plan for rag_focused
                 "original_plan": None,  # No plan for rag_focused
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "provider": self.current_provider,
@@ -4258,7 +4262,8 @@ The following domain knowledge may be relevant to this conversation:
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
                     "user_query": self.original_user_input, # Store the original query
-                    "original_plan": self.original_plan_for_history, # Store the actual plan used
+                    "raw_llm_plan": self.raw_llm_plan,  # LLM's raw output before preprocessing/rewrites
+                    "original_plan": self.original_plan_for_history, # Plan after all rewrite passes (what was actually executed)
                     "execution_trace": self.turn_action_history,
                     "final_summary": self.final_summary_text,
                     "system_events": system_events,  # Session name generation and other system operations (UI replay only)
@@ -4355,6 +4360,7 @@ The following domain knowledge may be relevant to this conversation:
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
+                "raw_llm_plan": self.raw_llm_plan,  # LLM's raw output (None if error before planning)
                 "original_plan": self.original_plan_for_history,  # May be None if error before planning
                 "execution_trace": self.turn_action_history,  # Partial trace up to failure
                 "final_summary": None,  # No final summary for failed turns
