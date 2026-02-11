@@ -1804,6 +1804,58 @@ docs/
 2. Verify license signature in database matches file
 3. Check logs for decryption errors
 
+### Self-Correction Loops with None Values (Feb 2026 - FIXED)
+
+**Problem**: Excessive self-correction events during FASTPATH execution with errors like:
+- `"Input validation error: None is not of type 'string'"`
+- `"Input validation error: 'column_name' is a required property"`
+- Tools failing with schema validation, then succeeding on retry
+- Wasted tokens on unnecessary LLM correction calls (~30,000 tokens per affected query)
+
+**Root Causes**:
+1. **None Values in Arguments** (executor.py:1012): Explicitly set `resolved_args[key] = None` when placeholder resolution failed
+2. **Column Iterator Missing for Single-Tool Phases** (phase_executor.py): Column orchestrator only ran for multi-tool phases, bypassing single-tool phases entirely
+
+**Fixes Applied** (Feb 2026):
+
+**Phase 1: None Value Fixes**
+- **Priority 1**: `executor.py:1006-1012` - Removed `resolved_args[key] = None` line, arguments now omitted when resolution fails
+- **Priority 2**: `executor.py:1029-1038` - Added None-value filter (defense in depth) before returning resolved arguments
+- **Priority 3**: `phase_executor.py:1258-1266` - Enhanced refinement check to treat None-valued required arguments as missing
+
+**Phase 2: Column Iterator Fix (Architectural)**
+- **Location**: `phase_executor.py:1149-1180` - Added column orchestrator check inside `_execute_action_with_orchestrators()`
+- **Problem**: Single-tool phases bypassed Scope-Aware Dispatcher (line 699), never reaching column orchestrator check (line 724)
+- **Solution**: Column check now runs in shared execution method called by both FASTPATH and tactical LLM paths
+- **Impact**:
+  - Zero self-corrections for column-scoped tools in single-tool phases
+  - ~30,000 token savings per affected MCP prompt execution
+  - Consistent behavior across multi-tool and single-tool paths
+
+**How Column Iterator Works**:
+```python
+# When tool is column-scoped but missing column_name:
+# 1. Detect: tool_scope == 'column' and not has_column_arg
+# 2. Call base_columnDescription to get all columns
+# 3. Iterate tool across each column
+# 4. Return consolidated results (no self-correction needed)
+```
+
+**Expected Behavior After Fix**:
+- Optional parameters omitted from dict when unresolved (not set to None)
+- Column-scoped tools automatically trigger column iteration (no manual intervention)
+- FASTPATH executions succeed on first attempt without self-correction
+- Zero unnecessary LLM correction calls for both None values and missing column names
+- Existing safety nets (refinement LLM, self-correction) remain available for genuine errors
+
+**Affected MCP Prompts**:
+- `qlty_databaseQuality` (uses `qlty_univariateStatistics`, `qlty_rowsWithMissingValues`)
+- Any single-tool phase using column-scoped tools (requires `database_name`, `object_name`, `column_name`)
+
+**Files Modified**:
+- `src/trusted_data_agent/agent/executor.py` - Root cause fix + defense filter (Priority 1/2)
+- `src/trusted_data_agent/agent/phase_executor.py` - Enhanced None value detection (Priority 3) + Column orchestrator fix
+
 ### Frontend Build Issues
 
 **Note**: The application uses CDN-loaded Tailwind CSS (no build step required)

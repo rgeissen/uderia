@@ -210,6 +210,7 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
     APP_STATE['structured_tools'] = classification_results.get('tools', {})
     APP_STATE['structured_prompts'] = classification_results.get('prompts', {})
     APP_STATE['structured_resources'] = classification_results.get('resources', {})
+    APP_STATE['tool_scopes'] = classification_results.get('tool_scopes', {})
     
     # Reconstruct mcp_tools and mcp_prompts dictionaries from structured data
     # This is needed for the agent execution and validation checks

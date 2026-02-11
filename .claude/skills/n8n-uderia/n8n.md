@@ -1718,6 +1718,7 @@ if (currentRetry < maxRetries) {
 3. **Optimize wait times**: Start with 8s, increase only if needed
 4. **Monitor token usage**: Track costs, optimize prompts
 5. **Use appropriate profiles**: @CHAT for simple queries, @FOCUS for complex
+6. **Model selection for MCP prompts**: For structured MCP prompt execution (e.g., `Executing prompt: qlty_databaseQuality`), lower-intelligence models (Llama-3.3-70B) often outperform higher-intelligence models (Claude Sonnet) with 80% cost savings and 26% fewer tokens. Orchestrator-driven architecture reduces LLM reasoning requirements. See fusion-hardening skill Section 5.1 for detailed guidance on when to use lower vs higher intelligence models
 
 ### Maintainability
 

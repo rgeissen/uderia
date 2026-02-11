@@ -606,6 +606,7 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
             'tools': STATE.get('structured_tools', {}),
             'prompts': {} if is_conversation_profile else STATE.get('structured_prompts', {}),
             'resources': STATE.get('structured_resources', {}),
+            'tool_scopes': STATE.get('tool_scopes', {}),
             'classified_with_mode': classification_mode
         }
 

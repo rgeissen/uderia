@@ -555,6 +555,80 @@ Check JSON output for details:
 Document the issue with specific metrics:
 - Tool: TDA_FinalReport
 - Error: Schema validation failure
+
+---
+
+### Model Intelligence Comparison (Feb 2026)
+
+When comparing models of different capabilities (e.g., Claude Sonnet vs Llama-3.3-70B), analyze these metrics:
+
+**Primary Comparison Metrics:**
+
+| Metric | Why It Matters |
+|--------|---------------|
+| **Token efficiency** | Total tokens (input + output) - lower is better |
+| **Self-correction count** | Should be 0 for well-architected systems |
+| **JSON error rate** | TDA_ComplexPromptReport failures (intermittent LLM quality) |
+| **Plan quality** | Phase count, tool selection accuracy |
+| **Cost per query** | Provider pricing × token usage |
+| **Execution time** | Fewer tokens = lower latency |
+
+**Unexpected Pattern Discovery:**
+
+Lower-intelligence models may **outperform** higher-intelligence models for structured workflows:
+- Orchestrator-driven architecture reduces LLM reasoning burden
+- Simpler plan generation often more efficient (3 phases vs 6 phases)
+- More predictable JSON formatting = fewer errors
+- 5× cost reduction with equal or better reliability
+
+**Example Comparison:**
+
+```
+Model A (Claude Sonnet 4.5): 68,570 tokens, 1 JSON error, $0.0139
+Model B (Llama-3.3-70B):     50,884 tokens, 0 errors,    $0.0027
+
+Winner: Model B
+- 26% fewer tokens
+- 5× cheaper
+- Higher reliability (zero self-corrections, zero JSON errors)
+- Equal report quality
+```
+
+**When Lower-Intelligence Wins:**
+
+✅ Structured MCP prompts with clear goals
+✅ Tool-focused profiles (@OPTIM) with orchestrator support
+✅ Data analysis and reporting tasks
+✅ Cost-sensitive workloads
+✅ High-volume batch processing
+
+**When Higher-Intelligence Wins:**
+
+❌ Complex reasoning tasks requiring multi-step logic
+❌ Ambiguous queries needing clarification
+❌ Creative content generation
+❌ Deep domain expertise required
+
+**Testing Strategy:**
+
+```bash
+# Test same query with different models
+python profile_performance_test.py \
+  --query "Executing prompt: qlty_databaseQuality" \
+  --profile1 @OPTIM  # Claude Sonnet 4.5 \
+  --profile2 @OPTIM  # Llama-3.3-70B
+
+# Compare metrics in results/comparison_*.md
+# Look for:
+# - Self-correction count (should be 0 for both)
+# - Token usage (lower-intelligence often lower)
+# - JSON errors (lower-intelligence often fewer)
+# - Cost per query (lower-intelligence 3-5× cheaper)
+```
+
+**Recommendation:** Always test lower-cost models before assuming higher-intelligence is better. The Fusion Optimizer's orchestrator architecture makes model intelligence less critical for structured workflows.
+
+**Reference:** See fusion-hardening skill "Section 5.1: Model Selection for Structured Workflows" for detailed analysis
 - Token waste: 159,000 input tokens (3 retries × 53K each)
 - Fix: Add Observation object examples to schema
 

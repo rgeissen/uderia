@@ -1008,8 +1008,8 @@ class PlanExecutor:
                         if found_value is not None:
                             resolved_args[key] = found_value
                         else:
-                            app_logger.warning(f"Could not resolve placeholder: key '{target_data_key}' not found in '{source_phase_key}'.")
-                            resolved_args[key] = None
+                            app_logger.warning(f"Could not resolve placeholder: key '{target_data_key}' not found in '{source_phase_key}'. Omitting argument.")
+                            # Don't set None - just omit the argument entirely
                     else:
                         unwrapped_value = self._unwrap_single_value_from_result(data_from_phase)
                         resolved_args[key] = unwrapped_value
@@ -1029,7 +1029,14 @@ class PlanExecutor:
             else:
                 resolved_args[key] = value
 
-        return resolved_args
+        # Filter out None values (defense in depth)
+        filtered_args = {k: v for k, v in resolved_args.items() if v is not None}
+
+        if len(filtered_args) < len(resolved_args):
+            removed_keys = set(resolved_args.keys()) - set(filtered_args.keys())
+            app_logger.debug(f"Filtered out None values for keys: {removed_keys}")
+
+        return filtered_args
 
     async def _generate_and_emit_session_name(self):
         """

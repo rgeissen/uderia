@@ -574,6 +574,48 @@ class PhaseExecutor:
 
                 merged_args = {**resolved_item_args, **pruned_item_data}
 
+                # === Column Iteration Orchestrator Check (FASTPATH Loop) ===
+                # Check if this is a column-scoped tool missing column_name argument
+                tool_scope = self.executor.dependencies['STATE'].get('tool_scopes', {}).get(tool_name)
+                has_column_arg = get_argument_by_canonical_name(merged_args, 'column_name') is not None
+
+                # === DIAGNOSTIC LOGGING: Orchestrator FASTPATH ===
+                app_logger.warning(
+                    f"[DIAGNOSTIC-ORCH-FAST] Tool='{tool_name}' | "
+                    f"Scope={tool_scope} | "
+                    f"Has_Column={has_column_arg} | "
+                    f"Arguments={list(merged_args.keys())} | "
+                    f"Trigger={tool_scope == 'column' and not has_column_arg}"
+                )
+                # === END DIAGNOSTIC ===
+
+                if tool_scope == 'column' and not has_column_arg:
+                    app_logger.info(f"FASTPATH Loop: Tool '{tool_name}' is column-scoped but missing column_name. Invoking column iteration orchestrator.")
+
+                    event_data = {
+                        "step": "Scope-Aware Dispatcher Action",
+                        "type": "plan_optimization",
+                        "details": f"FASTPATH loop invoking column iteration for '{tool_name}' because 'column_name' was missing."
+                    }
+                    self.executor._log_system_event(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
+
+                    command_for_orchestrator = {"tool_name": tool_name, "arguments": merged_args}
+                    try:
+                        async for event in orchestrators.execute_column_iteration(self.executor, command_for_orchestrator):
+                            yield event
+                        enriched_tool_output = copy.deepcopy(self.executor.last_tool_output)
+                        if (isinstance(enriched_tool_output, dict) and
+                            enriched_tool_output.get("status") == "success" and
+                            isinstance(item, dict)):
+                            enriched_tool_output.setdefault("metadata", {}).update(item_data)
+                        all_loop_item_results.append(enriched_tool_output)
+                        continue  # Skip normal tool execution for this item
+                    except Exception as orch_e:
+                        app_logger.error(f"FASTPATH Loop: Column iteration orchestrator failed for '{tool_name}': {orch_e}", exc_info=True)
+                        # Fall through to normal tool execution for recovery
+                # === End Column Iteration Check ===
+
                 command = {"tool_name": tool_name, "arguments": merged_args}
                 async for event in self._execute_tool(command, phase, is_fast_path=True):
                     yield event
@@ -1146,6 +1188,49 @@ class PhaseExecutor:
                 yield event
             return
 
+        # === Column Iteration Orchestrator Check ===
+        # Check if this is a column-scoped tool missing column_name argument
+        # This handles single-tool phases that bypass the multi-tool dispatcher
+        arguments = action.get("arguments", {})
+        tool_scope = self.executor.dependencies['STATE'].get('tool_scopes', {}).get(tool_name)
+        has_column_arg = get_argument_by_canonical_name(arguments, 'column_name') is not None
+
+        # === DIAGNOSTIC LOGGING: Orchestrator Standard Path ===
+        app_logger.warning(
+            f"[DIAGNOSTIC-ORCH-STD] Tool='{tool_name}' | "
+            f"Scope={tool_scope} | "
+            f"Has_Column={has_column_arg} | "
+            f"Arguments={list(arguments.keys())} | "
+            f"Trigger={tool_scope == 'column' and not has_column_arg}"
+        )
+        # === END DIAGNOSTIC ===
+
+        if tool_scope == 'column' and not has_column_arg:
+            app_logger.info(f"Tool '{tool_name}' is column-scoped but missing column_name. Invoking column iteration orchestrator.")
+
+            event_data = {
+                "step": "Scope-Aware Dispatcher Action",
+                "type": "plan_optimization",
+                "details": f"Dispatcher is invoking column iteration for '{tool_name}' because 'column_name' was missing."
+            }
+            self.executor._log_system_event(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
+
+            try:
+                async for event in orchestrators.execute_column_iteration(self.executor, action):
+                    yield event
+                # --- MODIFICATION START: Manually log orchestrator action to history ---
+                action_for_history = copy.deepcopy(action)
+                action_for_history.setdefault("metadata", {})["execution_depth"] = self.executor.execution_depth
+                action_for_history.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
+                self.executor.turn_action_history.append({"action": action_for_history, "result": self.executor.last_tool_output})
+                # --- MODIFICATION END ---
+                return  # Column orchestrator handled execution
+            except Exception as orch_e:
+                app_logger.error(f"Column iteration orchestrator failed for '{tool_name}': {orch_e}", exc_info=True)
+                # Fall through to normal tool execution for recovery
+        # === End Column Iteration Check ===
+
         is_range_candidate, date_param_name, tool_supports_range = self._is_date_query_candidate(action)
         is_date_orchestrator_target = (
             is_range_candidate and
@@ -1255,10 +1340,30 @@ class PhaseExecutor:
         extraneous_canonical_args = provided_canonical_arg_names - tool_canonical_arg_names_all
         missing_required_args = tool_canonical_arg_names_required - provided_canonical_arg_names
 
+        # Check for None values in required arguments (treat as missing)
+        none_valued_required_args = set()
+        for req_arg in tool_canonical_arg_names_required:
+            if req_arg in normalized_provided_args and normalized_provided_args[req_arg] is None:
+                none_valued_required_args.add(req_arg)
+                missing_required_args.add(req_arg)  # Treat None as missing
+
+        if none_valued_required_args:
+            app_logger.warning(f"Required arguments have None values: {none_valued_required_args}. Will call refinement LLM.")
+
         # Check if planner marked this phase as needing refinement (after stripping extraneous args)
         force_refinement = phase.get('_needs_refinement', False)
         if '_needs_refinement' in phase:
             del phase['_needs_refinement']  # Clean up internal flag
+
+        # === DIAGNOSTIC LOGGING: Refinement Check ===
+        app_logger.warning(
+            f"[DIAGNOSTIC-REFINE] Tool='{tool_name}' | "
+            f"Required={tool_canonical_arg_names_required} | "
+            f"Provided={provided_canonical_arg_names} | "
+            f"Missing={missing_required_args} | "
+            f"Skip={(not missing_required_args and not extraneous_canonical_args and not force_refinement)}"
+        )
+        # === END DIAGNOSTIC ===
 
         # Skip refinement if:
         # 1. No arguments are missing OR the only missing arguments are NOT required, AND
