@@ -579,16 +579,6 @@ class PhaseExecutor:
                 tool_scope = self.executor.dependencies['STATE'].get('tool_scopes', {}).get(tool_name)
                 has_column_arg = get_argument_by_canonical_name(merged_args, 'column_name') is not None
 
-                # === DIAGNOSTIC LOGGING: Orchestrator FASTPATH ===
-                app_logger.warning(
-                    f"[DIAGNOSTIC-ORCH-FAST] Tool='{tool_name}' | "
-                    f"Scope={tool_scope} | "
-                    f"Has_Column={has_column_arg} | "
-                    f"Arguments={list(merged_args.keys())} | "
-                    f"Trigger={tool_scope == 'column' and not has_column_arg}"
-                )
-                # === END DIAGNOSTIC ===
-
                 if tool_scope == 'column' and not has_column_arg:
                     app_logger.info(f"FASTPATH Loop: Tool '{tool_name}' is column-scoped but missing column_name. Invoking column iteration orchestrator.")
 
@@ -1195,16 +1185,6 @@ class PhaseExecutor:
         tool_scope = self.executor.dependencies['STATE'].get('tool_scopes', {}).get(tool_name)
         has_column_arg = get_argument_by_canonical_name(arguments, 'column_name') is not None
 
-        # === DIAGNOSTIC LOGGING: Orchestrator Standard Path ===
-        app_logger.warning(
-            f"[DIAGNOSTIC-ORCH-STD] Tool='{tool_name}' | "
-            f"Scope={tool_scope} | "
-            f"Has_Column={has_column_arg} | "
-            f"Arguments={list(arguments.keys())} | "
-            f"Trigger={tool_scope == 'column' and not has_column_arg}"
-        )
-        # === END DIAGNOSTIC ===
-
         if tool_scope == 'column' and not has_column_arg:
             app_logger.info(f"Tool '{tool_name}' is column-scoped but missing column_name. Invoking column iteration orchestrator.")
 
@@ -1354,16 +1334,6 @@ class PhaseExecutor:
         force_refinement = phase.get('_needs_refinement', False)
         if '_needs_refinement' in phase:
             del phase['_needs_refinement']  # Clean up internal flag
-
-        # === DIAGNOSTIC LOGGING: Refinement Check ===
-        app_logger.warning(
-            f"[DIAGNOSTIC-REFINE] Tool='{tool_name}' | "
-            f"Required={tool_canonical_arg_names_required} | "
-            f"Provided={provided_canonical_arg_names} | "
-            f"Missing={missing_required_args} | "
-            f"Skip={(not missing_required_args and not extraneous_canonical_args and not force_refinement)}"
-        )
-        # === END DIAGNOSTIC ===
 
         # Skip refinement if:
         # 1. No arguments are missing OR the only missing arguments are NOT required, AND
