@@ -1052,11 +1052,23 @@ export async function handleStreamRequest(endpoint, body) {
     if (body.message) {
         // Only add user message if it's NOT a replay initiated by the replay button
         if (!body.is_replay) {
-            // Extract profile tag - use explicit @tag override if present, otherwise use default profile
+            // Extract profile tag - parse the actual message to detect @TAG (same pattern as handleChatSubmit)
             let profileTag = null;
-            if (window.activeTagPrefix) {
-                profileTag = window.activeTagPrefix.replace('@', '').trim();
-            } else if (window.configState?.defaultProfileId && window.configState?.profiles) {
+
+            // Parse the actual message to detect @TAG
+            if (body.message) {
+                const tagMatch = body.message.match(/^@(\w+)\s/);
+                if (tagMatch && window.configState?.profiles) {
+                    const tag = tagMatch[1].toUpperCase();
+                    const profile = window.configState.profiles.find(p => p.tag === tag);
+                    if (profile && profile.id !== window.configState?.defaultProfileId) {
+                        profileTag = tag;
+                    }
+                }
+            }
+
+            // Fall back to default profile if no tag detected
+            if (!profileTag && window.configState?.defaultProfileId && window.configState?.profiles) {
                 const defaultProfile = window.configState.profiles.find(p => p.id === window.configState.defaultProfileId);
                 profileTag = defaultProfile?.tag || null;
             }
@@ -1070,11 +1082,9 @@ export async function handleStreamRequest(endpoint, body) {
         } else {
         }
     } else {
-        // Extract profile tag - use explicit @tag override if present, otherwise use default profile
+        // For MCP prompt execution, always use default profile (no message to parse for @TAG)
         let profileTag = null;
-        if (window.activeTagPrefix) {
-            profileTag = window.activeTagPrefix.replace('@', '').trim();
-        } else if (window.configState?.defaultProfileId && window.configState?.profiles) {
+        if (window.configState?.defaultProfileId && window.configState?.profiles) {
             const defaultProfile = window.configState.profiles.find(p => p.id === window.configState.defaultProfileId);
             profileTag = defaultProfile?.tag || null;
         }
@@ -1138,9 +1148,13 @@ export async function handleChatSubmit(e, source = 'text') {
     if (isUploadInProgress()) return;
 
     // Get the active tag prefix from main.js if badge is showing
-    const activeTagPrefix = window.activeTagPrefix || '';
     const rawMessage = DOM.userInput.value.trim();
-    
+
+    // Only use activeTagPrefix if the raw message doesn't have its own @TAG
+    // This prevents stale @TAG from previous queries being automatically prepended
+    const hasExplicitTag = /^@\w+\s/.test(rawMessage);
+    const activeTagPrefix = hasExplicitTag ? '' : (window.activeTagPrefix || '');
+
     // Reconstruct full message with tag if badge was active
     const message = activeTagPrefix ? activeTagPrefix + rawMessage : rawMessage;
     
