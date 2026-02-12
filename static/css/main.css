@@ -4538,12 +4538,12 @@ button.bg-gray-700.px-2:hover {
     border-left-color: #facc15;
 }
 
-/* CYAN - Optimization/Workaround Events */
+/* BLUE - Plan Optimization Events */
 .status-step.completed.optimization,
 .genie-status-step.completed.optimization,
 .conversation-agent-status-step.completed.optimization,
 .knowledge-retrieval-status-step.completed.optimization {
-    border-left-color: #06b6d4;
+    border-left-color: #3b82f6;
 }
 
 /* RED - Error Events */
@@ -4591,12 +4591,12 @@ button.bg-gray-700.px-2:hover {
     background: #facc15;
 }
 
-/* CYAN - Optimization/Workaround Events ::before */
+/* BLUE - Plan Optimization Events ::before */
 .status-step.completed.optimization::before,
 .genie-status-step.completed.optimization::before,
 .conversation-agent-status-step.completed.optimization::before,
 .knowledge-retrieval-status-step.completed.optimization::before {
-    background: #06b6d4;
+    background: #3b82f6;
 }
 
 /* RED - Error Events ::before */
@@ -4646,12 +4646,12 @@ button.bg-gray-700.px-2:hover {
     background: linear-gradient(90deg, rgba(250, 204, 21, 0.08) 0%, transparent 100%);
 }
 
-/* CYAN - Optimization/Workaround Events */
+/* BLUE - Plan Optimization Events */
 .status-step.optimization,
 .genie-status-step.optimization,
 .conversation-agent-status-step.optimization,
 .knowledge-retrieval-status-step.optimization {
-    background: linear-gradient(90deg, rgba(6, 182, 212, 0.08) 0%, transparent 100%);
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, transparent 100%);
 }
 
 /* RED - Error Events */

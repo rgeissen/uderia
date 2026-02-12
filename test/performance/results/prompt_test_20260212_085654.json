@@ -1,0 +1,87 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-12T08:56:54.151754",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1770712262852-43v5d2zb9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 0,
+    "warned": 1,
+    "errored": 0,
+    "total_tokens": 17024,
+    "total_duration_ms": 10079,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 17024.0,
+    "avg_duration_ms": 10079.0
+  },
+  "results": [
+    {
+      "fixture_id": "base_tableBusinessDesc_example",
+      "prompt_name": "base_tableBusinessDesc",
+      "verdict": "WARN",
+      "verdict_reasons": [
+        "Argument 'database_name' value 'fitness_db' not found in execution events",
+        "Argument 'table_name' value 'products' not found in execution events"
+      ],
+      "status": "complete",
+      "task_id": "task-4c1472b2-243b-4526-b62b-48d5ec044573",
+      "session_id": "19fd9516-df81-4fa4-bfef-084c1e2b5646",
+      "duration_ms": 10079,
+      "tokens": {
+        "input": 16345,
+        "output": 679,
+        "total": 17024
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 2,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 2,
+        "slow_path_count": 1,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": false,
+        "resolved": {
+          "database_name": false,
+          "table_name": false
+        },
+        "unresolved": [
+          "database_name",
+          "table_name"
+        ]
+      },
+      "issues": [
+        {
+          "severity": "warning",
+          "category": "parameter_not_resolved",
+          "description": "Argument 'database_name' value 'fitness_db' not found in execution events",
+          "impact": "Parameter may not have been properly substituted by MCP server"
+        },
+        {
+          "severity": "warning",
+          "category": "parameter_not_resolved",
+          "description": "Argument 'table_name' value 'products' not found in execution events",
+          "impact": "Parameter may not have been properly substituted by MCP server"
+        }
+      ]
+    }
+  ]
+}

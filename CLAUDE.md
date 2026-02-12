@@ -1663,56 +1663,27 @@ User templates: `~/.tda/templates/` (overrides system)
 
 ---
 
-### Performance Testing with profile-perf Skill
+### Performance Testing
 
-The `profile-perf` skill provides a comprehensive framework for comparing profile performance:
+Two testing frameworks exist for different purposes:
 
-**Quick Start:**
+**Profile Comparison** (`profile-perf` skill): Compare two profiles against each other on the same query. Measures token efficiency, execution time, self-correction overhead, and plan quality.
+
 ```bash
-# Run performance comparison
 python test/performance/profile_performance_test.py \
-  --query "your test query" \
-  --profile1 @IDEAT \
-  --profile2 @OPTIM
+  --query "your test query" --profile1 @IDEAT --profile2 @OPTIM
 ```
 
-**Key Features:**
-- Token counting (input, output, corrections)
-- Execution time analysis
-- Self-correction metrics (tracks retry overhead)
-- RAG tracking (champion case usage)
-- **Plan quality analysis** (NEW: validates logical correctness)
-- Comparison reports (JSON + Markdown)
+**Documentation:** [.claude/skills/profile-perf/profile-perf.md](.claude/skills/profile-perf/profile-perf.md)
 
-**Use Cases:**
-1. **Non-deterministic tuning**: Compare prompt compression impact
-2. **Deterministic tuning**: Identify code inefficiencies (retry loops, schema validation)
-3. **RAG impact**: Test with/without champion cases
-4. **Profile selection**: Determine when to use @IDEAT vs @OPTIM
-5. **Plan validation**: Detect logically incorrect execution plans
+**MCP Prompt Testing** (`fusion-hardening` skill, Section 8): Validate individual MCP prompt execution quality with parameter handling. Creates real sessions visible in the UI. Analyzes self-corrections, plan quality, safeguards, and orchestrator behavior.
 
-**Documentation:** See [.claude/skills/profile-perf/profile-perf.md](.claude/skills/profile-perf/profile-perf.md) for complete guide
-
-**Example Output:**
-```
-Plan Quality Analysis:
-- Profile 1: 100% quality (all required tools invoked)
-- Profile 2: 60% quality (missing TDA_CurrentDate for temporal query)
-- Issue: Query "past 24 hours" needs date context
-→ Action: Fix meta-planning prompt or add validation rule
-
-Self-Correction Analysis:
-- Profile 1: 0 corrections (0.0% overhead)
-- Profile 2: 3 corrections (95.4% overhead)
-- Types: SchemaValidation (3x)
-→ Action: Fix TDA_FinalReport schema communication
+```bash
+python test/performance/mcp_prompt_test.py --profile-tag OPTIM --verbose
+python test/performance/mcp_prompt_test.py --discover  # List available prompts
 ```
 
-**Files:**
-- [test/performance/lib/uderia_client.py](test/performance/lib/uderia_client.py) - REST API client
-- [test/performance/lib/metrics_extractor.py](test/performance/lib/metrics_extractor.py) - Metrics extraction
-- [test/performance/lib/comparator.py](test/performance/lib/comparator.py) - Comparison engine
-- [test/performance/profile_performance_test.py](test/performance/profile_performance_test.py) - Main script
+**Documentation:** [.claude/skills/fusion-hardening/fusion-hardening.md](.claude/skills/fusion-hardening/fusion-hardening.md) (Section 8)
 
 ---
 

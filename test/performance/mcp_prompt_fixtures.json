@@ -1,0 +1,24 @@
+{
+  "$schema_version": "1.0",
+  "description": "MCP prompt performance test fixtures for Uderia platform. Update argument values to match your environment.",
+  "defaults": {
+    "timeout_seconds": 180,
+    "expect_zero_self_corrections": true
+  },
+  "fixtures": [
+    {
+      "id": "base_tableBusinessDesc_example",
+      "prompt_name": "base_tableBusinessDesc",
+      "description": "Business description for a table - requires database_name and table_name",
+      "arguments": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["base", "table-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+  ]
+}

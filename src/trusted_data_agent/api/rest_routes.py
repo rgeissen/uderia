@@ -2262,6 +2262,10 @@ async def execute_query(session_id: str):
     if not prompt:
         return jsonify({"error": "The 'prompt' field is required."}), 400
 
+    # Optional MCP prompt execution (same as UI resource panel invoke_prompt_stream)
+    active_prompt_name = data.get("prompt_name")        # MCP prompt name (e.g., "base_tableBusinessDesc")
+    prompt_arguments = data.get("prompt_arguments")      # Dict of prompt arguments (e.g., {"database_name": "mydb"})
+
     # Optional file attachments (uploaded via /api/v1/chat/upload)
     attachments = data.get("attachments")  # [{file_id, filename, ...}]
 
@@ -2382,6 +2386,8 @@ async def execute_query(session_id: str):
                 session_id=session_id,
                 user_input=prompt,
                 event_handler=event_handler,
+                active_prompt_name=active_prompt_name,  # MCP prompt name (from resource panel)
+                prompt_arguments=prompt_arguments,      # MCP prompt arguments
                 source='rest', # Identify source as REST
                 task_id=task_id, # Pass the task_id here
                 profile_override_id=profile_id_override, # Pass profile override for per-message tracking
@@ -5611,6 +5617,35 @@ async def get_profile_resources(profile_id: str):
             structured_tools = classification_results.get('tools', {})
             structured_prompts = classification_results.get('prompts', {})
 
+        # CRITICAL FIX: Inject TDA_* client-side tools into structured_tools if missing.
+        # Classification results only contain MCP server tools. TDA_* tools are client-side
+        # system tools that must always be present and enabled for the Fusion Optimizer.
+        from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS
+        existing_tool_names = {t['name'] for tools in structured_tools.values() for t in tools}
+        missing_system_tools = [t for t in CLIENT_SIDE_TOOLS if t['name'] not in existing_tool_names]
+        if missing_system_tools:
+            system_category = []
+            for tool_def in missing_system_tools:
+                processed_args = []
+                for arg_name, arg_details in tool_def.get("args", {}).items():
+                    if isinstance(arg_details, dict):
+                        processed_args.append({
+                            "name": arg_name,
+                            "type": arg_details.get("type", "any"),
+                            "description": arg_details.get("description", "No description."),
+                            "required": arg_details.get("required", False)
+                        })
+                system_category.append({
+                    "name": tool_def["name"],
+                    "description": tool_def.get("description", ""),
+                    "arguments": processed_args,
+                    "disabled": False
+                })
+            structured_tools["System Tools"] = system_category
+
+        # TDA_* tools are core system tools — always enabled regardless of profile config
+        TDA_CORE_TOOLS = {t['name'] for t in CLIENT_SIDE_TOOLS}
+
         # Rebuild with correct disabled flags for this profile
         profile_tools = {}
         for category, tools in structured_tools.items():
@@ -5618,8 +5653,11 @@ async def get_profile_resources(profile_id: str):
             for tool in tools:
                 tool_copy = dict(tool)
                 # Override disabled flag based on THIS profile's enabled tools
-                if wildcard_tools:
-                    # Wildcard: all tools enabled (except TDA_ tools which are always enabled anyway)
+                if tool['name'] in TDA_CORE_TOOLS:
+                    # TDA_* system tools: always enabled
+                    tool_copy['disabled'] = False
+                elif wildcard_tools:
+                    # Wildcard: all tools enabled
                     tool_copy['disabled'] = False
                 else:
                     # Specific list: check if tool is in enabled list

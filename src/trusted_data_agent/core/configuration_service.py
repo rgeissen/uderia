@@ -211,7 +211,34 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
     APP_STATE['structured_prompts'] = classification_results.get('prompts', {})
     APP_STATE['structured_resources'] = classification_results.get('resources', {})
     APP_STATE['tool_scopes'] = classification_results.get('tool_scopes', {})
-    
+
+    # CRITICAL FIX: Inject TDA_* client-side tools into structured_tools if missing from cached classification.
+    # Classification only covers MCP server tools. TDA_* tools are client-side system tools that
+    # must always be present for the Fusion Optimizer (TDA_FinalReport, TDA_Charting, etc.).
+    from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS
+    existing_tool_names = {t['name'] for tools in APP_STATE['structured_tools'].values() for t in tools}
+    missing_system_tools = [t for t in CLIENT_SIDE_TOOLS if t['name'] not in existing_tool_names]
+    if missing_system_tools:
+        system_category = []
+        for tool_def in missing_system_tools:
+            processed_args = []
+            for arg_name, arg_details in tool_def.get("args", {}).items():
+                if isinstance(arg_details, dict):
+                    processed_args.append({
+                        "name": arg_name,
+                        "type": arg_details.get("type", "any"),
+                        "description": arg_details.get("description", "No description."),
+                        "required": arg_details.get("required", False)
+                    })
+            system_category.append({
+                "name": tool_def["name"],
+                "description": tool_def.get("description", ""),
+                "arguments": processed_args,
+                "disabled": False
+            })
+        APP_STATE['structured_tools']["System Tools"] = system_category
+        app_logger.info(f"Injected {len(missing_system_tools)} missing TDA_* tools into structured_tools from cached classification")
+
     # Reconstruct mcp_tools and mcp_prompts dictionaries from structured data
     # This is needed for the agent execution and validation checks
     # We need to create simple objects that have attributes (not just dicts)

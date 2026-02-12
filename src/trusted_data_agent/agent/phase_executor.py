@@ -705,6 +705,172 @@ class PhaseExecutor:
                 return False
         return False
 
+    def _generate_charting_mapping(self, chart_type: str, data: list[dict]) -> dict:
+        """
+        Algorithmically determine chart mapping from data columns and chart type.
+        Avoids hallucinated LLM mappings (x/y vs x_axis/y_axis, unknown columns).
+
+        Classification: date-like strings → prefer as x_axis, numeric → y_axis/angle, other strings → categories.
+        """
+        if not data or not isinstance(data[0], dict):
+            return {}
+
+        date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}')
+
+        first_row = data[0]
+        date_cols = []
+        numeric_cols = []
+        string_cols = []
+
+        for col, val in first_row.items():
+            if isinstance(val, str) and date_pattern.match(val):
+                date_cols.append(col)
+            elif self._is_numeric(val):
+                numeric_cols.append(col)
+            else:
+                string_cols.append(col)
+
+        mapping = {}
+        chart_type_lower = chart_type.lower() if chart_type else "bar"
+
+        if chart_type_lower in ('bar', 'column', 'line', 'area'):
+            x_candidates = date_cols + string_cols
+            if x_candidates:
+                mapping['x_axis'] = x_candidates[0]
+            if numeric_cols:
+                mapping['y_axis'] = numeric_cols[0]
+        elif chart_type_lower == 'pie':
+            if numeric_cols:
+                mapping['angle'] = numeric_cols[0]
+            cat_candidates = string_cols + date_cols
+            if cat_candidates:
+                mapping['color'] = cat_candidates[0]
+        elif chart_type_lower == 'scatter':
+            if len(numeric_cols) >= 2:
+                mapping['x_axis'] = numeric_cols[0]
+                mapping['y_axis'] = numeric_cols[1]
+            elif len(numeric_cols) == 1:
+                x_candidates = date_cols + string_cols
+                if x_candidates:
+                    mapping['x_axis'] = x_candidates[0]
+                mapping['y_axis'] = numeric_cols[0]
+
+        return mapping
+
+    def _resolve_charting_data(self, action: dict) -> bool:
+        """
+        Deterministic pre-flight fix for TDA_Charting: resolves placeholder references
+        in the 'data' argument to actual data from workflow_state.
+
+        Less capable LLMs (e.g., Llama 3.3 70B) output the literal string
+        "result_of_phase_2" instead of embedding the actual data array. This method
+        detects such placeholders and resolves them from workflow_state, avoiding
+        expensive self-correction cycles.
+
+        Returns True if data was resolved/fixed, False if no fix was needed.
+        """
+        if action.get("tool_name") != "TDA_Charting":
+            return False
+
+        args = action.get("arguments", {})
+        data = args.get("data")
+
+        # Case 1: data is already a valid list of dicts — no fix needed
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return False
+
+        # Case 2: data is a string placeholder like "result_of_phase_2"
+        resolved_data = None
+        if isinstance(data, str):
+            match = re.match(r'^result_of_phase_(\d+)$', data)
+            if match:
+                resolved_data = self.executor.workflow_state.get(data)
+                app_logger.info(f"Charting Data Resolver: Resolved string placeholder '{data}' from workflow state.")
+
+        # Case 3: data is a dict wrapper (hallucinated function call, nested result, etc.)
+        elif isinstance(data, dict):
+            if 'results' in data:
+                resolved_data = [data]
+            elif 'args' in data:
+                # Hallucinated function call like {"function_name": "...", "args": ["result_of_phase_2"]}
+                ref_args = data.get('args', [])
+                if isinstance(ref_args, list):
+                    for ref in ref_args:
+                        if isinstance(ref, str) and re.match(r'^result_of_phase_\d+$', ref):
+                            resolved_data = self.executor.workflow_state.get(ref)
+                            app_logger.info(f"Charting Data Resolver: Resolved hallucinated wrapper referencing '{ref}'.")
+                            break
+
+        # Case 4: data is None or missing — find the most recent phase result
+        elif data is None:
+            current_phase = self.executor.current_phase_index + 1
+            for prev_phase in range(current_phase - 1, 0, -1):
+                key = f"result_of_phase_{prev_phase}"
+                if key in self.executor.workflow_state:
+                    resolved_data = self.executor.workflow_state[key]
+                    app_logger.info(f"Charting Data Resolver: Data was None, resolved from '{key}'.")
+                    break
+
+        # Case 5: Placeholder not found in current workflow_state — search previous turn data
+        # This handles cross-turn charting where Turn 2 references Turn 1's data.
+        # Collect ALL successful results from the most recent turn (not just the first one),
+        # because looped tool calls produce multiple entries (e.g., 3x dba_resusageSummary).
+        if resolved_data is None and self.executor.previous_turn_data:
+            workflow_history = self.executor.previous_turn_data.get("workflow_history", [])
+            if isinstance(workflow_history, list):
+                for turn in reversed(workflow_history):
+                    if not isinstance(turn, dict):
+                        continue
+                    execution_trace = turn.get("execution_trace", [])
+                    turn_results = []
+                    for entry in execution_trace:  # Forward order (chronological)
+                        if not isinstance(entry, dict):
+                            continue
+                        result = entry.get("result", {})
+                        entry_action = entry.get("action", {})
+                        # Skip system logs and reporting tools
+                        if isinstance(entry_action, dict):
+                            tool = entry_action.get("tool_name", "")
+                            if tool in ("TDA_SystemLog", "TDA_FinalReport", "TDA_ComplexPromptReport",
+                                        "TDA_CurrentDate", "TDA_DateRange"):
+                                continue
+                        if (isinstance(result, dict) and
+                            result.get("status") == "success" and
+                            isinstance(result.get("results"), list) and
+                            result["results"]):
+                            turn_results.append(result)
+                    if turn_results:
+                        resolved_data = turn_results
+                        total_rows = sum(len(r.get("results", [])) for r in turn_results)
+                        app_logger.info(
+                            f"Charting Data Resolver: Resolved from previous turn "
+                            f"({len(turn_results)} result entries, {total_rows} total rows)."
+                        )
+                        break
+
+        if resolved_data is None:
+            return False
+
+        # Flatten: workflow_state stores list of tool outputs, each with a "results" key
+        flat_data = []
+        if isinstance(resolved_data, list):
+            for item in resolved_data:
+                if isinstance(item, dict) and 'results' in item:
+                    results = item['results']
+                    if isinstance(results, list):
+                        flat_data.extend(results)
+                elif isinstance(item, dict):
+                    flat_data.append(item)
+        elif isinstance(resolved_data, dict) and 'results' in resolved_data:
+            flat_data = resolved_data['results']
+
+        if flat_data:
+            args['data'] = flat_data
+            app_logger.info(f"Charting Data Resolver: Injected {len(flat_data)} data rows into TDA_Charting action.")
+            return True
+
+        return False
+
     async def _execute_standard_phase(self, phase: dict, is_loop_iteration: bool = False, loop_item: dict = None):
         """Executes a single, non-looping phase or a single iteration of a complex loop."""
         phase_goal = phase.get("goal", "No goal defined.")
@@ -875,6 +1041,84 @@ class PhaseExecutor:
                 yield self.executor._format_sse_with_depth(event_data)
             return
         # --- END SYSTEM TOOL BYPASS ---
+
+        # --- CHARTING BYPASS: Deterministic TDA_Charting (zero LLM calls) ---
+        # TDA_Charting requires 4 args (chart_type, data, title, mapping) — all deterministic.
+        # The tactical LLM hallucinates mapping keys (x/y vs x_axis/y_axis) and column names,
+        # then self-correction fails because it tries to re-emit all data rows in JSON.
+        if tool_name == "TDA_Charting":
+            app_logger.info("Charting Bypass: Handling TDA_Charting deterministically (no tactical LLM).")
+
+            chart_type = strategic_args.get("chart_type", "bar")
+            title = phase_goal
+
+            # Step 1: Resolve data from workflow_state or previous_turn_data
+            temp_action = {"tool_name": "TDA_Charting", "arguments": dict(strategic_args)}
+            self._resolve_charting_data(temp_action)
+            resolved_data = temp_action["arguments"].get("data")
+
+            if not isinstance(resolved_data, list) or not resolved_data:
+                # Cannot proceed without data — fall through to tactical LLM as last resort
+                app_logger.warning("Charting Bypass: Could not resolve data. Falling through to tactical LLM.")
+            else:
+                # Step 2: Generate mapping algorithmically from data columns
+                mapping = self._generate_charting_mapping(chart_type, resolved_data)
+
+                if not mapping:
+                    app_logger.warning("Charting Bypass: Could not generate mapping. Falling through to tactical LLM.")
+                else:
+                    # Step 3: Build complete action and execute directly
+                    charting_action = {
+                        "tool_name": "TDA_Charting",
+                        "arguments": {
+                            "chart_type": chart_type,
+                            "data": resolved_data,
+                            "title": title,
+                            "mapping": mapping
+                        }
+                    }
+
+                    event_data = {
+                        "step": "Plan Optimization",
+                        "type": "plan_optimization",
+                        "details": {
+                            "summary": (
+                                f"Deterministic Charting: bypassing tactical LLM. "
+                                f"Resolved {len(resolved_data)} data rows, mapping: {mapping}."
+                            ),
+                            "correction_type": "deterministic_charting"
+                        }
+                    }
+                    self.executor._log_system_event(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
+
+                    async for event in self._execute_action_with_orchestrators(charting_action, phase):
+                        yield event
+
+                    # Phase complete — store result and emit phase_end
+                    phase_num = phase.get("phase", self.executor.current_phase_index + 1)
+                    phase_result_key = f"result_of_phase_{phase_num}"
+                    if self.executor.last_tool_output:
+                        self.executor.workflow_state.setdefault(phase_result_key, []).append(
+                            self.executor.last_tool_output
+                        )
+                        self.executor._add_to_structured_data(self.executor.last_tool_output)
+
+                    if not is_loop_iteration:
+                        event_data = {
+                            "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
+                            "type": "phase_end",
+                            "details": {
+                                "phase_num": phase_num,
+                                "total_phases": len(self.executor.meta_plan),
+                                "status": "completed",
+                                "execution_depth": self.executor.execution_depth
+                            }
+                        }
+                        self.executor._log_system_event(event_data)
+                        yield self.executor._format_sse_with_depth(event_data)
+                    return
+        # --- END CHARTING BYPASS ---
 
         is_fast_path_candidate = False
         if tool_name:
@@ -1078,6 +1322,19 @@ class PhaseExecutor:
                 phase_goal, relevant_tools, enriched_args, strategic_args, executable_prompt
             )
 
+            # --- Log tactical LLM call to execution trace for reload consistency ---
+            tactical_log_event = {
+                "step": "Calling LLM for Tactical Action",
+                "type": "system_message",
+                "details": {
+                    "summary": f"Deciding next action for phase goal: '{phase_goal}'",
+                    "call_id": tactical_call_id,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens
+                }
+            }
+            self.executor._log_system_event(tactical_log_event)
+
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             current_action_str = json.dumps(next_action, sort_keys=True)
@@ -1177,6 +1434,27 @@ class PhaseExecutor:
             async for event in self.executor._run_sub_prompt(prompt_name, action.get("arguments", {})):
                 yield event
             return
+
+        # === Charting Data Resolver ===
+        # Resolve placeholder references in TDA_Charting data argument.
+        # Less capable LLMs output "result_of_phase_2" (string) instead of actual data.
+        if action.get("tool_name") == "TDA_Charting":
+            if self._resolve_charting_data(action):
+                data_len = len(action.get("arguments", {}).get("data", []))
+                event_data = {
+                    "step": "System Correction",
+                    "type": "workaround",
+                    "details": {
+                        "summary": (
+                            f"The agent referenced phase results by placeholder instead of "
+                            f"embedding actual data. Resolved to {data_len} rows from workflow state."
+                        ),
+                        "correction_type": "charting_data_resolution"
+                    }
+                }
+                self.executor._log_system_event(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
+        # === End Charting Data Resolver ===
 
         # === Column Iteration Orchestrator Check ===
         # Check if this is a column-scoped tool missing column_name argument
@@ -1403,6 +1681,19 @@ class PhaseExecutor:
             # user_uuid implicitly passed
         )
 
+        # --- Log refinement LLM call to execution trace for reload consistency ---
+        refinement_log_event = {
+            "step": "Calling LLM for Argument Refinement",
+            "type": "system_message",
+            "details": {
+                "summary": reason,
+                "call_id": call_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
+            }
+        }
+        self.executor._log_system_event(refinement_log_event)
+
         yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
@@ -1572,6 +1863,20 @@ class PhaseExecutor:
                 workflow_state=full_context_for_tool
             )
             # --- MODIFICATION END ---
+
+            # --- Log client-side LLM call to execution trace for reload consistency ---
+            if call_id_for_tool and (input_tokens > 0 or output_tokens > 0):
+                tool_llm_log_event = {
+                    "step": f"Calling LLM for {tool_name}",
+                    "type": "system_message",
+                    "details": {
+                        "summary": reason,
+                        "call_id": call_id_for_tool,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens
+                    }
+                }
+                self.executor._log_system_event(tool_llm_log_event)
 
             yield self.executor._format_sse_with_depth({"target": status_target, "state": "idle"}, "status_indicator_update")
 

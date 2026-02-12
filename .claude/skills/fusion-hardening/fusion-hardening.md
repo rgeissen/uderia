@@ -1258,7 +1258,159 @@ CASE B — WITH Pass 0 (the fix):
 
 ---
 
+## Section 8: MCP Prompt & Tool Testing Framework
+
+### Overview
+
+Two complementary test frameworks exercise the Fusion Optimizer pipeline end-to-end, analyzing execution quality using the trace patterns documented in this skill:
+
+1. **MCP Prompt Tester** (`mcp_prompt_test.py`) — Invokes MCP prompts with parameters (e.g., `base_tableBusinessDesc` with `database_name`/`table_name`). Tests prompt resolution, parameter substitution, and execution quality.
+
+2. **MCP Tool Tester** (`mcp_tool_test.py`) — Submits natural language queries designed to trigger specific MCP tools. Tests the full Fusion Optimizer chain: query understanding → strategic planning → tool selection → argument resolution → execution → reporting.
+
+**Key difference from profile-perf:** Profile-perf compares two profiles against each other. These testers validate individual execution quality — self-corrections, plan quality, parameter resolution, tool invocation correctness, and safeguard behavior.
+
+### Architecture
+
+Both frameworks share the session-based approach: each fixture creates a real session visible in the UI.
+
+```
+Test Script                    Uderia Server                      UI
+    |                              |                               |
+    |-- POST /v1/sessions (create) |                               |
+    |-- POST /v1/sessions/{id}/query                               |
+    |   (prompt testing):                                          |
+    |   { prompt_name, prompt_arguments, profile_id }              |
+    |   (tool testing):                                            |
+    |   { prompt: "natural language query", profile_id }           |
+    |                              |                               |
+    |                              |-- PlanExecutor.run()           |
+    |                              |   plan generated + executed    |
+    |                              |                        User can watch
+    |                              |                        session in UI
+    |-- GET /v1/tasks/{id} (poll)  |                               |
+    |<- events[] with full trace   |                               |
+    |                              |                               |
+    |-- Analyze (fusion patterns)  |                               |
+    |-- Generate report            |                               |
+```
+
+### REST Endpoint Extension
+
+The `POST /v1/sessions/{id}/query` endpoint accepts optional MCP prompt parameters (same mechanism as the UI resource panel's `/invoke_prompt_stream`):
+
+```json
+{
+  "prompt": "Executing prompt: base_tableBusinessDesc",
+  "prompt_name": "base_tableBusinessDesc",
+  "prompt_arguments": { "database_name": "fitness_db", "table_name": "products" },
+  "profile_id": "profile-xxx"
+}
+```
+
+For tool testing, only `prompt` (natural language) and `profile_id` are sent.
+
+**File:** `src/trusted_data_agent/api/rest_routes.py` (lines ~2265-2267, ~2389-2390)
+
+### Test Fixtures
+
+**Prompt fixtures** (`mcp_prompt_fixtures.json`):
+```json
+{
+  "fixtures": [{
+    "id": "base_tableBusinessDesc_example",
+    "prompt_name": "base_tableBusinessDesc",
+    "arguments": { "database_name": "fitness_db", "table_name": "products" },
+    "tags": ["base", "table-level"],
+    "expectations": { "max_self_corrections": 0, "expect_status": "complete" }
+  }]
+}
+```
+
+**Tool fixtures** (`mcp_tool_fixtures.json`):
+```json
+{
+  "fixtures": [{
+    "id": "base_tableDDL_schema",
+    "query": "Show me the schema definition for the products table in the fitness_db database",
+    "expected_tool": "base_tableDDL",
+    "expected_tool_args": { "database_name": "fitness_db", "table_name": "products" },
+    "tags": ["base", "table-scope"],
+    "expectations": { "max_self_corrections": 0, "expect_status": "complete", "expect_final_report": true }
+  }]
+}
+```
+
+**Expectation fields** (shared): `max_self_corrections`, `max_total_tokens`, `required_tools_in_trace`, `forbidden_errors`, `expect_orchestrator`, `expect_final_report`, `expect_status`
+
+### Analysis Engine
+
+The shared analyzer (`lib/prompt_analyzer.py`) applies fusion hardening patterns to task events:
+
+| Analysis Pass | What It Detects | Source Pattern |
+|---------------|-----------------|----------------|
+| Self-correction | `"System Self-Correction"` events, None value errors | Safeguard 2 (Section 2) |
+| Plan quality | Fast-path/slow-path counts, tools invoked, orchestrators | Section 1 decision tree |
+| Safeguards | Proactive re-planning, error correction, autonomous recovery | Section 2 safeguards |
+| Rewrite passes | SQL consolidation, temporal wiring, plan hydration, final report guarantee | Section 1 passes |
+| Parameter resolution | Fixture argument values present in execution events | MCP prompt/tool args |
+| **Tool invocation** | Expected tool appears in `tools_invoked` list | Tool fixture `expected_tool` |
+| **Tool arguments** | Expected argument values found in tool call events | Tool fixture `expected_tool_args` |
+| Token metrics | Input/output from `token_update` events | Context window hygiene |
+
+**Verdict computation:** ERROR issues → FAIL, WARNING only → WARN, no issues → PASS
+
+### CLI Usage
+
+```bash
+# --- Prompt Testing ---
+python test/performance/mcp_prompt_test.py --discover
+python test/performance/mcp_prompt_test.py --profile-tag OPTIM --verbose
+python test/performance/mcp_prompt_test.py --profile-tag OPTIM --filter base_tableBusinessDesc
+
+# --- Tool Testing ---
+python test/performance/mcp_tool_test.py --discover
+python test/performance/mcp_tool_test.py --discover --generate-fixtures > mcp_tool_fixtures.json
+python test/performance/mcp_tool_test.py --profile-tag OPTIM --verbose
+python test/performance/mcp_tool_test.py --profile-tag OPTIM --filter base_tableDDL
+python test/performance/mcp_tool_test.py --profile-tag OPTIM --tag column-scope
+```
+
+**Reports:** `test/performance/results/prompt_test_*.{json,md}` and `tool_test_*.{json,md}`
+
+**Auto-fixture generation:** `--discover --generate-fixtures` scaffolds tool fixtures from live MCP server. Excludes TDA_ client-side tools. User customizes query text and argument values.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `test/performance/mcp_prompt_test.py` | Prompt test CLI orchestrator |
+| `test/performance/mcp_tool_test.py` | Tool test CLI orchestrator |
+| `test/performance/mcp_prompt_fixtures.json` | Prompt test fixture definitions |
+| `test/performance/mcp_tool_fixtures.json` | Tool test fixture definitions |
+| `test/performance/lib/prompt_client.py` | HTTP client (auth, session, query, poll, discover tools/prompts) |
+| `test/performance/lib/prompt_analyzer.py` | Fusion hardening trace analysis + tool verification |
+| `test/performance/lib/prompt_reporter.py` | JSON + Markdown report generation (shared) |
+| `src/trusted_data_agent/api/rest_routes.py` | REST endpoint (prompt_name/prompt_arguments support) |
+
+---
+
 ## Changelog
+
+**v1.4.0 (2026-02-12)**
+- Extended **Section 8** to cover both MCP Prompt and MCP Tool testing
+- Added `mcp_tool_test.py` — natural language query-based tool testing with tool invocation verification
+- Added `discover_tools()` and `submit_query()` to shared HTTP client
+- Added `_verify_tool_invocation()` and `_verify_tool_arguments()` analyzer passes
+- Auto-fixture generation via `--discover --generate-fixtures` mode
+- Tool scope detection (database/table/column) matching `config.py:TOOL_SCOPE_HIERARCHY`
+
+**v1.3.0 (2026-02-12)**
+- Added **Section 8: MCP Prompt Testing Framework** — session-based testing of MCP prompts with parameter handling
+- Documents REST endpoint extension (`prompt_name`/`prompt_arguments` on `/v1/sessions/{id}/query`)
+- Analysis engine applies fusion hardening trace patterns to prompt executions
+- Test fixtures with expectations (self-corrections, tokens, required tools, orchestrators)
+- CLI with `--discover`, `--filter`, `--tag`, `--profile-tag`, `--verbose` modes
 
 **v1.2.0 (2026-02-10)**
 - Added **Principle 2: Context Window Hygiene** to Section 0 — never convolute the chat object; new session fields must be checked against the `ui_only_fields` strip list

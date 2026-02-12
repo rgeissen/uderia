@@ -3592,7 +3592,7 @@ The following domain knowledge may be relevant to this conversation:
                             # Filter to only enabled tools (prompts handled separately via original structure)
                             # CRITICAL FIX: Always include TDA client-side tools (reporting, synthesis) regardless of profile filtering
                             # These are core system tools, not MCP server tools, and must always be available for FASTPATH optimization
-                            TDA_CORE_TOOLS = {"TDA_FinalReport", "TDA_ComplexPromptReport", "TDA_ContextReport", "TDA_LLMTask", "TDA_LLMFilter", "TDA_Charting"}
+                            TDA_CORE_TOOLS = {"TDA_FinalReport", "TDA_ComplexPromptReport", "TDA_ContextReport", "TDA_LLMTask", "TDA_LLMFilter", "TDA_Charting", "TDA_CurrentDate", "TDA_DateRange"}
                             filtered_tools = [tool for tool in all_processed_tools if tool.name in enabled_tool_names or tool.name in TDA_CORE_TOOLS]
 
                             # Convert to dictionary with tool names as keys (matching normal structure)
@@ -3647,8 +3647,36 @@ The following domain knowledge may be relevant to this conversation:
                                 if all_tools_category:
                                     filtered_structured_tools["All Tools"] = all_tools_category
 
+                            # CRITICAL FIX: Inject TDA_* client-side tools into structured_tools.
+                            # These tools are in filtered_tools_dict (protected by TDA_CORE_TOOLS)
+                            # but NOT in classification_results (they're not MCP server tools).
+                            # Without this, TDA_* tools appear deactivated in the resource panel
+                            # and invisible to the planner during profile overrides.
+                            from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS
+                            system_tools_category = []
+                            for tool_def in CLIENT_SIDE_TOOLS:
+                                tool_name_cs = tool_def["name"]
+                                if tool_name_cs in filtered_tools_dict:
+                                    processed_args = []
+                                    for arg_name, arg_details in tool_def.get("args", {}).items():
+                                        if isinstance(arg_details, dict):
+                                            processed_args.append({
+                                                "name": arg_name,
+                                                "type": arg_details.get("type", "any"),
+                                                "description": arg_details.get("description", "No description."),
+                                                "required": arg_details.get("required", False)
+                                            })
+                                    system_tools_category.append({
+                                        "name": tool_name_cs,
+                                        "description": tool_def.get("description", ""),
+                                        "arguments": processed_args,
+                                        "disabled": False
+                                    })
+                            if system_tools_category:
+                                filtered_structured_tools["System Tools"] = system_tools_category
+
                             app_logger.info(f"   Built structured_tools from override MCP server: {len(filtered_structured_tools)} categories")
-                            
+
                             # Rebuild structured_prompts from override MCP server (not from original)
                             # CRITICAL FIX: Prioritize freshly loaded prompts over potentially stale classification
                             # Classification results may be incomplete or outdated, causing prompt lookup failures

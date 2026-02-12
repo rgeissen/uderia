@@ -1,0 +1,26 @@
+{
+  "$schema_version": "1.0",
+  "description": "MCP tool performance test fixtures for Uderia platform. Update queries and argument values to match your environment. Generate templates with: python mcp_tool_test.py --discover --generate-fixtures",
+  "defaults": {
+    "timeout_seconds": 180,
+    "expect_zero_self_corrections": true
+  },
+  "fixtures": [
+    {
+      "id": "base_tableDDL_schema",
+      "description": "Get table DDL using base_tableDDL",
+      "query": "Show me the schema definition for the products table in the fitness_db database",
+      "expected_tool": "base_tableDDL",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["base", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      }
+    }
+  ]
+}

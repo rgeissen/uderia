@@ -1,0 +1,72 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-12T09:41:34.289839",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1770712262852-43v5d2zb9",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 9159,
+    "total_duration_ms": 6031,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 9159.0,
+    "avg_duration_ms": 6031.0
+  },
+  "results": [
+    {
+      "fixture_id": "base_tableDDL_schema",
+      "prompt_name": "base_tableDDL",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d79eb109-4a5b-4778-9688-ea9aa2b5c1a0",
+      "session_id": "4fb94592-3408-4c14-b13f-d2cfac99f28d",
+      "duration_ms": 6031,
+      "tokens": {
+        "input": 8851,
+        "output": 308,
+        "total": 9159
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableDDL",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 3,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

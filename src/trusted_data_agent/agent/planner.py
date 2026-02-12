@@ -450,6 +450,198 @@ class Planner:
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse_with_depth(event_data)
 
+    def _rewrite_plan_for_charting_phases(self):
+        """
+        Deterministic rewrite: strips unreliable arguments from TDA_Charting phases.
+
+        The strategic planner cannot know actual column names at planning time
+        (data-gathering phases haven't executed yet), so its `mapping` and `data`
+        arguments are inherently hallucinated. Stripping them ensures the tactical
+        planner — which has access to actual data via workflow state — generates
+        correct mapping on the first attempt, avoiding an expensive refinement cycle.
+
+        Design principle: This is a deterministic fix (detectable pattern in code)
+        rather than a prompt engineering change, avoiding system prompt convolution.
+        """
+        if not self.executor.meta_plan:
+            return
+
+        # Utility tools that do NOT gather external data (used for same-turn vs cross-turn detection)
+        UTILITY_TOOLS = {
+            "TDA_Charting", "TDA_FinalReport", "TDA_ComplexPromptReport",
+            "TDA_LLMTask", "TDA_ContextReport", "TDA_CurrentDate",
+            "TDA_DateRange", "TDA_LLMFilter"
+        }
+
+        for phase in self.executor.meta_plan:
+            tools = phase.get("relevant_tools", [])
+            if not tools or "TDA_Charting" not in tools:
+                continue
+
+            # Determine if there are data-gathering phases before this TDA_Charting phase.
+            # If yes (same-turn): strip both data and mapping (data doesn't exist yet).
+            # If no (cross-turn chart-only): preserve data reference, strip only mapping.
+            charting_phase_num = phase.get("phase", 0)
+            has_preceding_data_phase = False
+            for other_phase in self.executor.meta_plan:
+                other_tools = other_phase.get("relevant_tools", [])
+                if other_phase.get("phase", 0) < charting_phase_num and other_tools:
+                    if not all(t in UTILITY_TOOLS for t in other_tools):
+                        has_preceding_data_phase = True
+                        break
+
+            if has_preceding_data_phase:
+                # Same-turn: strip both data and mapping (data doesn't exist yet)
+                UNRELIABLE_ARGS = {"mapping", "data"}
+            else:
+                # Cross-turn: preserve data reference, strip only mapping (keys unreliable)
+                UNRELIABLE_ARGS = {"mapping"}
+
+            args = phase.get("arguments", {})
+            stripped = []
+            for key in list(args.keys()):
+                if key in UNRELIABLE_ARGS:
+                    del args[key]
+                    stripped.append(key)
+
+            # Clear stale _needs_refinement flag. It was set by _validate_and_correct_plan()
+            # based on the strategic plan's (now-stripped) arguments. The tactical planner
+            # will determine correct arguments from actual data — forcing refinement would
+            # waste ~14,000 tokens re-generating the data array a second time.
+            if '_needs_refinement' in phase:
+                app_logger.info(
+                    f"PLAN REWRITE (Charting Cleanup): Cleared stale _needs_refinement flag "
+                    f"from TDA_Charting phase {phase.get('phase')}."
+                )
+                del phase['_needs_refinement']
+
+            if stripped:
+                app_logger.info(
+                    f"PLAN REWRITE (Charting Cleanup): Stripped arguments "
+                    f"{stripped} from TDA_Charting phase {phase.get('phase')}. "
+                    f"Execution engine will determine correct values from actual data."
+                )
+                event_data = {
+                    "step": "Plan Optimization",
+                    "type": "plan_optimization",
+                    "details": {
+                        "summary": (
+                            f"Charting Argument Cleanup: Stripped pre-filled arguments "
+                            f"({', '.join(stripped)}) from charting phase. The execution engine "
+                            f"will determine correct mapping from actual data columns."
+                        ),
+                        "correction_type": "charting_argument_cleanup",
+                        "stripped_arguments": stripped,
+                        "phase_number": phase.get("phase")
+                    }
+                }
+                self.executor._log_system_event(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
+
+    def _rewrite_plan_collapse_chart_data_refetch(self):
+        """
+        Collapse redundant data-gathering phases in chart-only follow-up plans.
+
+        When Turn 2 is a chart request and Turn 1 already gathered the data,
+        the strategic LLM often re-fetches redundantly (without date filters).
+        This pass removes those phases, letting the charting bypass use Turn 1 data.
+        """
+        if not self.executor.meta_plan or not self.executor.previous_turn_data:
+            return
+
+        UTILITY_TOOLS = {
+            "TDA_Charting", "TDA_FinalReport", "TDA_ComplexPromptReport",
+            "TDA_LLMTask", "TDA_ContextReport", "TDA_CurrentDate",
+            "TDA_DateRange", "TDA_LLMFilter"
+        }
+        SKIP_TOOLS = {
+            "TDA_SystemLog", "TDA_FinalReport", "TDA_ComplexPromptReport",
+            "TDA_CurrentDate", "TDA_DateRange"
+        }
+
+        # 1. Find TDA_Charting phase
+        charting_phase = None
+        for phase in self.executor.meta_plan:
+            tools = phase.get("relevant_tools", [])
+            if tools and "TDA_Charting" in tools:
+                charting_phase = phase
+                break
+        if not charting_phase:
+            return
+
+        charting_phase_num = charting_phase.get("phase", 0)
+
+        # 2. Find preceding data-gathering phases (non-utility tools)
+        data_phases = []
+        plan_data_tools = set()
+        for phase in self.executor.meta_plan:
+            if phase.get("phase", 0) >= charting_phase_num:
+                continue
+            tools = phase.get("relevant_tools", [])
+            if tools and not all(t in UTILITY_TOOLS for t in tools):
+                data_phases.append(phase)
+                plan_data_tools.add(tools[0])
+
+        if not data_phases:
+            return  # Already a chart-only plan
+
+        # 3. Check if the most recent previous turn has successful results from the SAME tools
+        prev_data_tools = set()
+        workflow_history = self.executor.previous_turn_data.get("workflow_history", [])
+        if workflow_history and isinstance(workflow_history, list):
+            last_turn = workflow_history[-1]
+            if isinstance(last_turn, dict):
+                for entry in last_turn.get("execution_trace", []):
+                    if not isinstance(entry, dict):
+                        continue
+                    action = entry.get("action", {})
+                    if not isinstance(action, dict):
+                        continue
+                    tool = action.get("tool_name", "")
+                    if tool in SKIP_TOOLS:
+                        continue
+                    result = entry.get("result", {})
+                    if (isinstance(result, dict) and
+                        result.get("status") == "success" and
+                        isinstance(result.get("results"), list) and
+                        result["results"]):
+                        prev_data_tools.add(tool)
+
+        # 4. Only collapse if ALL plan data tools were already used in previous turn
+        if not plan_data_tools.issubset(prev_data_tools):
+            return
+
+        # 5. Collapse: remove data-gathering phases from the plan
+        data_phase_nums = {p.get("phase") for p in data_phases}
+        new_plan = [p for p in self.executor.meta_plan if p.get("phase") not in data_phase_nums]
+
+        # 6. Renumber phases sequentially
+        for i, phase in enumerate(new_plan):
+            phase["phase"] = i + 1
+
+        self.executor.meta_plan = new_plan
+
+        app_logger.info(
+            f"PLAN REWRITE (Chart Data Reuse): Collapsed {len(data_phases)} redundant "
+            f"data-gathering phase(s). Tools {plan_data_tools} already executed in previous turn."
+        )
+
+        event_data = {
+            "step": "Plan Optimization",
+            "type": "plan_optimization",
+            "details": {
+                "summary": (
+                    f"Chart Data Reuse: Collapsed {len(data_phases)} redundant data-gathering "
+                    f"phase(s). Previous turn already gathered data via {', '.join(plan_data_tools)}. "
+                    f"Chart will use existing data."
+                ),
+                "correction_type": "chart_data_reuse",
+                "collapsed_phases": list(data_phase_nums)
+            }
+        }
+        self.executor._log_system_event(event_data)
+        yield self.executor._format_sse_with_depth(event_data)
+
     def _is_param_synonym(self, provided: str, expected: str) -> bool:
         """Check if provided parameter is likely a synonym of expected parameter."""
         # Exact substring match
@@ -1827,6 +2019,10 @@ Ranking:"""
         for event in self._rewrite_plan_for_date_range_loops():
             yield event
         for event in self._validate_and_correct_plan():
+            yield event
+        for event in self._rewrite_plan_collapse_chart_data_refetch():
+            yield event
+        for event in self._rewrite_plan_for_charting_phases():
             yield event
         for event in self._hydrate_plan_from_previous_turn():
             yield event

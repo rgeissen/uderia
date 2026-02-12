@@ -73,8 +73,10 @@ const EVENT_CATEGORY_MAP = {
     'status_indicator_update': 'system',
     'token_update': 'system',
 
-    // Optimization Events (Cyan background)
-    'workaround': 'optimization',
+    // System Correction Events (Yellow background) - reactive fixes
+    'workaround': 'system',
+
+    // Plan Optimization Events (Blue background) - proactive improvements
     'plan_optimization': 'optimization',
 
     // Error Events (Red background)
@@ -2957,6 +2959,79 @@ export function renderConversationAgentStepForReload(eventData, parentContainer,
     _renderConversationAgentStep(eventData, parentContainer, isFinal);
 }
 
+/**
+ * Renders details for optimization events (workaround, plan_optimization).
+ * Handles both string payloads and structured objects with summary/correction_type/etc.
+ */
+function _renderOptimizationDetails(details) {
+    // String details — display as clean text
+    if (typeof details === 'string') {
+        return `<div class="text-xs text-gray-300 mt-1">${details}</div>`;
+    }
+
+    if (typeof details !== 'object' || details === null) return null;
+
+    const summary = details.summary || '';
+    let html = '';
+
+    // Primary: summary text
+    if (summary) {
+        html += `<div class="text-xs text-gray-300 mt-1">${summary}</div>`;
+    }
+
+    // Metadata KV pairs
+    const kvPairs = [];
+
+    if (details.correction_type) {
+        kvPairs.push(['Type', `<code class="status-code">${details.correction_type}</code>`]);
+    }
+    if (details.stripped_arguments) {
+        kvPairs.push(['Stripped', details.stripped_arguments.map(a => `<code class="status-code">${a}</code>`).join(', ')]);
+    }
+    if (details.pruned_arguments) {
+        const pruned = Array.isArray(details.pruned_arguments) ? details.pruned_arguments : [details.pruned_arguments];
+        kvPairs.push(['Pruned', pruned.map(a => `<code class="status-code">${a}</code>`).join(', ')]);
+    }
+    if (details.collapsed_phases) {
+        kvPairs.push(['Collapsed Phases', details.collapsed_phases.join(', ')]);
+    }
+    if (details.from !== undefined && details.to !== undefined) {
+        const fmtVal = (v) => typeof v === 'object' ? JSON.stringify(v) : String(v);
+        kvPairs.push(['From', `<code class="status-code">${fmtVal(details.from)}</code>`]);
+        kvPairs.push(['To', `<code class="status-code">${fmtVal(details.to)}</code>`]);
+    }
+    if (details.phase_number !== undefined) {
+        kvPairs.push(['Phase', String(details.phase_number)]);
+    }
+
+    if (kvPairs.length > 0) {
+        html += '<div class="status-kv-grid mt-1">';
+        for (const [key, value] of kvPairs) {
+            html += `<div class="status-kv-key">${key}</div><div class="status-kv-value">${value}</div>`;
+        }
+        html += '</div>';
+    }
+
+    // Complex nested objects in collapsible sections
+    const complexFields = [];
+    if (details.original_plan) complexFields.push(['Original Plan', details.original_plan]);
+    if (details.correction?.added_phase) complexFields.push(['Added Phase', details.correction.added_phase]);
+    // Self-correction events have nested `details` object (different from outer `details`)
+    if (details.details && typeof details.details === 'object') complexFields.push(['Details', details.details]);
+
+    for (const [label, obj] of complexFields) {
+        const jsonStr = JSON.stringify(obj, null, 2);
+        html += `
+            <details class="text-xs mt-1">
+                <summary class="cursor-pointer text-gray-400 hover:text-white">View ${label}</summary>
+                <div class="mt-2 p-2 status-text-block whitespace-pre-wrap">${jsonStr}</div>
+            </details>
+        `;
+    }
+
+    return html || null;
+}
+
 function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
@@ -3080,6 +3155,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderExecutionStartDetails(details);
             } else if (type === "execution_complete") {
                 customRenderedHtml = _renderExecutionCompleteDetails(details);
+            } else if (type === "workaround" || type === "plan_optimization") {
+                customRenderedHtml = _renderOptimizationDetails(details);
             } else {
                 try {
                     const cache = new Set();
