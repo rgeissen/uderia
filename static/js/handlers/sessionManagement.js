@@ -29,6 +29,15 @@ export async function handleStartNewSession() {
     
     DOM.chatLog.innerHTML = '';
     DOM.statusWindowContent.innerHTML = '<p class="text-gray-400">Waiting for a new request...</p>';
+
+    // Reset cost accumulator for new session
+    if (window.sessionCostAccumulator) {
+        window.sessionCostAccumulator.turn = 0;
+        window.sessionCostAccumulator.session = 0;
+        window.sessionCostAccumulator.strategic = 0;
+        window.sessionCostAccumulator.tactical = 0;
+    }
+
     UI.updateTokenDisplay({ statement_input: 0, statement_output: 0, total_input: 0, total_output: 0 });
     UI.addMessage('assistant', "Starting a new conversation... Please wait.");
     UI.setThinkingIndicator(false);
@@ -594,6 +603,14 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // Hide welcome screen when loading a session with history
         if (window.hideWelcomeScreen) {
             window.hideWelcomeScreen();
+        }
+
+        // Reset cost accumulator when loading a different session
+        if (window.sessionCostAccumulator) {
+            window.sessionCostAccumulator.turn = 0;
+            window.sessionCostAccumulator.session = 0;
+            window.sessionCostAccumulator.strategic = 0;
+            window.sessionCostAccumulator.tactical = 0;
         }
 
         DOM.chatLog.innerHTML = '';

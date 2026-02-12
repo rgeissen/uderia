@@ -100,6 +100,24 @@ function _getTurnCost(turnData) {
         return parseFloat(details.cost_usd || 0);
     };
 
+    // CRITICAL FIX: Skip aggregate events that duplicate individual step costs
+    // Aggregate events to exclude (they sum individual steps, causing double-counting):
+    const aggregateEventTypes = [
+        'conversation_llm_complete',      // Duplicates last conversation_llm_step
+        'conversation_agent_complete',    // Sums all conversation_llm_step costs
+        'genie_coordinator_complete',     // Sums all genie_llm_step costs
+        'knowledge_retrieval_complete'    // Sums knowledge step costs
+    ];
+
+    // Individual step events to include (actual LLM calls):
+    const stepEventTypes = [
+        'conversation_llm_step',          // Conversation agent individual steps
+        'genie_llm_step',                 // Genie coordinator individual steps
+        'rag_llm_step',                   // RAG retrieval LLM calls
+        'llm_execution_complete',         // Knowledge repository LLM calls
+        'session_name_generation_complete' // Session naming LLM call (when present)
+    ];
+
     // Sum costs from all event types
     const eventArrays = [
         turnData.genie_events || [],
@@ -111,7 +129,18 @@ function _getTurnCost(turnData) {
     eventArrays.forEach(events => {
         if (Array.isArray(events)) {
             events.forEach(event => {
-                totalCost += extractCost(event);
+                const eventType = event.type;
+
+                // Skip aggregate events to avoid double-counting
+                if (aggregateEventTypes.includes(eventType)) {
+                    return; // Skip this event
+                }
+
+                // Only count individual step events (or any event with cost not in aggregate list)
+                const cost = extractCost(event);
+                if (cost > 0) {
+                    totalCost += cost;
+                }
             });
         }
     });
@@ -738,11 +767,30 @@ async function processStream(responseBody, originSessionId) {
                                 }, eventData.type === 'conversation_agent_complete', 'conversation_agent');
 
                                 // Update token display for cost tracking (llm_only and conversation_with_tools profiles)
+                                // CRITICAL: Skip aggregate events to avoid double/triple-counting costs
                                 if (payload.cost_usd) {
-                                    if (eventData.type === 'conversation_llm_step' ||
-                                        eventData.type === 'conversation_llm_complete' ||
-                                        eventData.type === 'conversation_agent_complete') {
+                                    // Define aggregate event types that sum individual step costs
+                                    const aggregateEventTypes = [
+                                        'conversation_llm_complete',      // Duplicates last conversation_llm_step
+                                        'conversation_agent_complete',    // Sums all conversation_llm_step costs
+                                        'genie_coordinator_complete',     // Sums all genie_llm_step costs
+                                        'knowledge_retrieval_complete'    // Sums knowledge step costs
+                                    ];
+
+                                    // DEBUG: Log event type and cost
+                                    console.log('[COST DEBUG]', {
+                                        type: eventData.type,
+                                        cost: payload.cost_usd,
+                                        isAggregate: aggregateEventTypes.includes(eventData.type),
+                                        willAccumulate: !aggregateEventTypes.includes(eventData.type)
+                                    });
+
+                                    // Only accumulate costs from individual step events, not aggregates
+                                    if (!aggregateEventTypes.includes(eventData.type)) {
+                                        console.log('[COST DEBUG] ✓ Accumulating cost for:', eventData.type, '$' + payload.cost_usd);
                                         UI.updateTokenDisplay(payload);
+                                    } else {
+                                        console.log('[COST DEBUG] ✗ Skipping aggregate event:', eventData.type, '$' + payload.cost_usd);
                                     }
                                 }
 
@@ -872,6 +920,16 @@ async function processStream(responseBody, originSessionId) {
                         const { details, step, type } = eventData;
 
                         console.log(`[${eventName}] Received:`, details);
+
+                        // Accumulate cost for session name generation (if available)
+                        if (eventName === 'session_name_generation_complete' && details?.cost_usd) {
+                            console.log('[COST DEBUG] Session name generation:', {
+                                cost: details.cost_usd,
+                                input: details.input_tokens,
+                                output: details.output_tokens
+                            });
+                            UI.updateTokenDisplay(details);
+                        }
 
                         // Update status window with formatted rendering (existing renderers in ui.js will be called)
                         UI.updateStatusWindow({

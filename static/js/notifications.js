@@ -551,6 +551,12 @@ export function subscribeToNotifications() {
                     console.log('[ConversationAgent] Ignoring event for different session:', payload.session_id);
                     break;
                 }
+                // CRITICAL: Skip if there's an active stream for this session
+                // The /ask_stream channel is the primary handler - notifications are supplementary
+                if (payload.session_id && state.activeStreamSessions && state.activeStreamSessions.has(payload.session_id)) {
+                    console.log('[ConversationAgent] Skipping - active stream handling this session:', payload.session_id);
+                    break;
+                }
                 // IMPORTANT: Update status window BEFORE calling handler for completion event
                 // because handler sets isConversationAgentActive=false which would trigger a reset
                 const agentStepTitle = _getConversationAgentStepTitle(data.type, payload);

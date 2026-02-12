@@ -1516,12 +1516,24 @@ function _renderSessionNameCompleteDetails(details) {
     const sessionName = details.session_name || 'Unknown';
     const inputTokens = details.input_tokens || 0;
     const outputTokens = details.output_tokens || 0;
+    const costUsd = details.cost_usd;
+
+    // Build cost HTML if cost is available
+    let costHtml = '';
+    if (costUsd !== null && costUsd !== undefined && costUsd > 0) {
+        costHtml = `
+            <div class="status-kv-key">Cost</div>
+            <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+        `;
+    }
+
     return `
         <div class="status-kv-grid">
             <div class="status-kv-key">Name</div>
             <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
             <div class="status-kv-key">Tokens</div>
             <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+            ${costHtml}
         </div>
     `;
 }
@@ -2123,6 +2135,16 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const sessionName = details.session_name || details.name || 'Unknown';
                 const inputTokens = details.input_tokens || 0;
                 const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd;
+
+                // Build cost HTML if cost is available
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined && costUsd > 0) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
@@ -2130,6 +2152,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                        ${costHtml}
                     </div>
                 `;
             }

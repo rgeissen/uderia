@@ -319,6 +319,22 @@ async def generate_session_name_with_events(
         logger.info(f"[SessionName] Using query-based fallback: '{fallback}'")
         name, input_tokens, output_tokens = fallback, 0, 0
 
+    # Calculate cost for session name generation
+    cost_usd = 0.0
+    if input_tokens > 0 or output_tokens > 0:
+        try:
+            from trusted_data_agent.core.cost_manager import CostManager
+            cost_manager = CostManager()
+            cost_usd = cost_manager.calculate_cost(
+                provider=current_provider or "Unknown",
+                model=current_model or "Unknown",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+        except Exception as e:
+            logger.warning(f"Failed to calculate cost for session name generation: {e}")
+            cost_usd = 0.0
+
     # Always yield completion event (caller decides whether to emit as SSE)
     complete_event = {
         "step": "Session Name Generated",
@@ -327,7 +343,8 @@ async def generate_session_name_with_events(
             "session_name": name,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "summary": f"Generated name: '{name}' ({input_tokens} in / {output_tokens} out)",
+            "cost_usd": cost_usd,  # NEW: Add cost to event
+            "summary": f"Generated name: '{name}' ({input_tokens} in / {output_tokens} out, ${cost_usd:.6f})",
             "session_id": session_id
         }
     }
