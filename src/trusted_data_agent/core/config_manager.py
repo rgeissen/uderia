@@ -1017,16 +1017,65 @@ class ConfigManager:
     def get_profile(self, profile_id: str, user_uuid: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get a single profile by ID.
-        
+
         Args:
             profile_id: Profile ID to retrieve
             user_uuid: Optional user UUID for per-user configuration isolation
-        
+
         Returns:
             Profile configuration dictionary or None if not found
         """
         profiles = self.get_profiles(user_uuid)
         return next((p for p in profiles if p.get("id") == profile_id), None)
+
+    def get_dual_model_configs(self, profile_id: str, user_uuid: str) -> Optional[Dict[str, Any]]:
+        """
+        Returns strategic and tactical model configs for a profile.
+        Falls back to main llmConfigurationId if dual-model not configured.
+
+        Args:
+            profile_id: Profile ID to retrieve dual-model configuration for
+            user_uuid: User UUID for per-user configuration isolation
+
+        Returns:
+            Dictionary with keys:
+                - 'strategic': LLM config dict for strategic planning (or None)
+                - 'tactical': LLM config dict for tactical execution (or None)
+                - 'is_dual_model': Boolean indicating if different models are used
+            Returns None if profile not found
+        """
+        profile = self.get_profile(profile_id, user_uuid)
+        if not profile:
+            app_logger.warning(f"Profile '{profile_id}' not found for user '{user_uuid}'")
+            return None
+
+        dual_config = profile.get('dualModelConfig')
+        base_llm_id = profile.get('llmConfigurationId')
+
+        llm_configs = self.get_llm_configurations(user_uuid)
+
+        # Helper to get config by ID
+        def get_config(config_id):
+            if not config_id:
+                return None
+            return next((cfg for cfg in llm_configs if cfg['id'] == config_id), None)
+
+        # Resolve strategic and tactical model IDs
+        if dual_config:
+            strategic_id = dual_config.get('strategicModelId') or base_llm_id
+            tactical_id = dual_config.get('tacticalModelId') or base_llm_id
+        else:
+            strategic_id = base_llm_id
+            tactical_id = base_llm_id
+
+        strategic_config = get_config(strategic_id)
+        tactical_config = get_config(tactical_id)
+
+        return {
+            'strategic': strategic_config,
+            'tactical': tactical_config,
+            'is_dual_model': (strategic_id != tactical_id and strategic_id and tactical_id)
+        }
 
     def save_profiles(self, profiles: list, user_uuid: Optional[str] = None) -> bool:
         """

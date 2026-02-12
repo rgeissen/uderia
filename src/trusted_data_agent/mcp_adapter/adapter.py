@@ -944,7 +944,7 @@ async def _invoke_core_llm_task(STATE: dict, command: dict, workflow_state: dict
     # --- MODIFICATION END ---
 
 
-    # --- MODIFICATION START: Pass user_uuid ---
+    # --- MODIFICATION START: Pass user_uuid and planning_phase ---
     response_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
         llm_instance=llm_instance,
         prompt=final_prompt,
@@ -952,7 +952,8 @@ async def _invoke_core_llm_task(STATE: dict, command: dict, workflow_state: dict
         system_prompt_override="You are a text processing and synthesis assistant.",
         raise_on_error=True,
         user_uuid=user_uuid,
-        session_id=session_id
+        session_id=session_id,
+        planning_phase="conversation"  # Track as conversation phase
     )
     # --- MODIFICATION END ---
 
@@ -1056,7 +1057,7 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
     app_logger.info(f"TDA_FinalReport: Prompt size={prompt_char_count} chars, workflow_data size={workflow_data_char_count} chars")
     # --- END FIX ---
 
-    # --- MODIFICATION START: Pass user_uuid ---
+    # --- MODIFICATION START: Pass user_uuid and planning_phase ---
     response_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
         llm_instance=llm_instance,
         prompt=final_summary_prompt_text,
@@ -1064,7 +1065,8 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
         system_prompt_override="You are a JSON-only reporting assistant.",
         raise_on_error=True,
         user_uuid=user_uuid,
-        session_id=session_id
+        session_id=session_id,
+        planning_phase="conversation"  # Track as conversation phase
     )
     # --- MODIFICATION END ---
 

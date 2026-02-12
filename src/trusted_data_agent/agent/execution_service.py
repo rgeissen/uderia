@@ -84,23 +84,28 @@ async def run_agent_execution(
         # For a normal query, we save the actual user input.
         message_to_save = display_message if is_replay and display_message else user_input
 
-        # Get profile tag from profile_override_id, session's profile_id, or profile_tag
+        # Get profile tag from profile_override_id or current default profile
+        # IMPORTANT: Use default profile, not stale session profile_id, to avoid wrong tags after override expires
         profile_tag = None
-        if profile_override_id or session_data.get("profile_id") or session_data.get("profile_tag"):
-            try:
-                from trusted_data_agent.core.config_manager import get_config_manager
-                config_manager = get_config_manager()
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
 
-                # Priority: override > session's profile_id > session's profile_tag
-                # This ensures profile overrides are correctly applied to session primers
-                profile_id_to_check = profile_override_id or session_data.get("profile_id") or session_data.get("profile_tag")
-                if profile_id_to_check:
-                    profiles = config_manager.get_profiles(user_uuid)
-                    profile = next((p for p in profiles if p.get("id") == profile_id_to_check or p.get("tag") == profile_id_to_check), None)
-                    if profile:
-                        profile_tag = profile.get("tag")
-            except Exception as e:
-                app_logger.warning(f"Failed to get profile tag: {e}")
+            # Priority: override > current default profile (NOT stale session profile_id)
+            # This ensures profile tags are always correct, even after override expires
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+            profile_id_to_check = profile_override_id or default_profile_id
+
+            if profile_id_to_check:
+                profiles = config_manager.get_profiles(user_uuid)
+                profile = next((p for p in profiles if p.get("id") == profile_id_to_check), None)
+                if profile:
+                    profile_tag = profile.get("tag")
+                    app_logger.debug(f"Resolved profile_tag for user message: {profile_tag} (override={bool(profile_override_id)})")
+                else:
+                    app_logger.warning(f"Profile {profile_id_to_check} not found when resolving user message tag")
+        except Exception as e:
+            app_logger.warning(f"Failed to get profile tag: {e}")
 
         if message_to_save:
             await session_manager.add_message_to_histories(

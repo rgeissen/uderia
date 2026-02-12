@@ -163,6 +163,56 @@ function updateSessionHeaderProfile(defaultProfile, overrideProfile) {
         headerOverrideProfile.style.removeProperty('--profile-tag-border');
         headerOverrideProfile.style.removeProperty('--profile-tag-text');
     }
+
+    // Update Live Status header Configuration section with profile's model info
+    const activeProfile = overrideProfile || defaultProfile;
+    if (activeProfile && window.configState?.llmConfigurations) {
+        // Extract model info from profile
+        let provider, model, dualModelInfo = null;
+
+        // Check if profile has dual-model configuration
+        if (activeProfile.dualModelConfig &&
+            (activeProfile.dualModelConfig.strategicModelId || activeProfile.dualModelConfig.tacticalModelId)) {
+
+            const strategicConfig = window.configState.llmConfigurations.find(
+                c => c.id === activeProfile.dualModelConfig.strategicModelId
+            );
+            const tacticalConfig = window.configState.llmConfigurations.find(
+                c => c.id === activeProfile.dualModelConfig.tacticalModelId
+            );
+
+            if (strategicConfig && tacticalConfig) {
+                // Dual-model profile
+                provider = strategicConfig.provider;
+                model = strategicConfig.model;
+                dualModelInfo = {
+                    strategicProvider: strategicConfig.provider,
+                    strategicModel: strategicConfig.model,
+                    tacticalProvider: tacticalConfig.provider,
+                    tacticalModel: tacticalConfig.model
+                };
+            }
+        }
+
+        // Fallback to single-model configuration
+        if (!dualModelInfo && activeProfile.llmConfigurationId) {
+            const llmConfig = window.configState.llmConfigurations.find(
+                c => c.id === activeProfile.llmConfigurationId
+            );
+            if (llmConfig) {
+                provider = llmConfig.provider;
+                model = llmConfig.model;
+            }
+        }
+
+        // Update the Live Status header if we have model info
+        if (provider && model) {
+            state.currentProvider = provider;
+            state.currentModel = model;
+            state.currentDualModelInfo = dualModelInfo;
+            UI.updateStatusPromptName(provider, model, false, dualModelInfo);
+        }
+    }
 }
 
 // Update knowledge indicator based on all active profiles' knowledge collections

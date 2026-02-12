@@ -174,6 +174,7 @@ Build trust through complete visibility into every decision, action, and data po
   - Raw data inspection for every tool response
   - Self-correction events with recovery strategy visibility
   - Streaming updates via Server-Sent Events (SSE)
+  - Dual-model cost breakdown for Fusion Optimizer showing strategic vs tactical costs with color-coded visualization (12-Feb-2026)
 
 * **Dynamic Capability Discovery**: Instant overview of agent potential:
   - Automatic loading of all MCP Tools from connected servers
@@ -195,6 +196,7 @@ Build trust through complete visibility into every decision, action, and data po
   - Token-to-cost mapping with provider-specific pricing
   - Historical token trends across sessions
   - Optimization insights for cost-conscious users
+  - Theme-aware KPI displays adapt seamlessly to dark and light themes (11-Feb-2026)
 
 * **Execution Monitoring Dashboard**: Cross-source workload tracking:
   - Real-time task list (running, completed, failed)
@@ -1124,6 +1126,40 @@ The Optimizer deconstructs every user request into a sophisticated, hierarchical
 2. **Tactical Execution**: Within each phase, the agent operates tactically, determining the single best next action (a tool or prompt call) to advance the plan.
 
 3. **Recursive Delegation**: The Planner is fully recursive. A single phase in a high-level plan can delegate its execution to a new, subordinate instance of the Planner. This allows the agent to solve complex problems by breaking them down into smaller, self-contained sub-tasks, executing them, and then returning the results to the parent process.
+
+#### 💎 Dual-Model Architecture for Cost Optimization
+
+The Fusion Optimizer supports **heterogeneous model assignment** across planning layers, enabling sophisticated cost-performance trade-offs:
+
+* **Strategic Model**: More capable model for high-level reasoning
+  - Handles complex meta-planning and multi-phase orchestration
+  - Examples: GPT-4o, Claude Opus 4.6, Gemini 2.0 Flash Thinking
+  - Runs once per query (low call frequency)
+  - Investment justified by quality of strategic decisions
+
+* **Tactical Model**: Faster, cost-efficient model for execution
+  - Handles tool selection and argument generation
+  - Examples: GPT-4o-mini, Claude Haiku, Llama 3.3 70B
+  - Runs multiple times per phase (high call frequency)
+  - 80-90% cost reduction vs. using premium model throughout
+
+* **Real-Time Cost Visibility**: Live Status panel displays color-coded cost breakdown
+  - **Strategic cost** (blue): Planning and orchestration overhead
+  - **Tactical cost** (green): Per-phase execution costs
+  - Enables data-driven model selection and optimization
+
+**Example Configuration:**
+```
+Strategic: Claude Opus 4.6 ($15/$75 per 1M tokens)
+Tactical:  Claude Haiku 4.5 ($1/$5 per 1M tokens)
+Result:    70% cost reduction with negligible quality impact
+```
+
+This architecture is particularly effective for:
+- High-volume production workloads where tactical calls dominate
+- Iterative refinement queries with multiple tactical cycles
+- Multi-turn sessions with shared strategic context
+- Budget-conscious deployments requiring predictable costs
 
 ### 🔧 Proactive Optimization Engine
 
@@ -2901,6 +2937,8 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **12-Feb-2026:** Dual-Model Cost Breakdown - Live Status displays strategic vs tactical costs for Fusion Optimizer dual-model executions with color-coded visualization
+*   **11-Feb-2026:** Theme-Aware Token/Cost KPIs - Live Status token and cost displays now adapt to both dark and light themes with consistent visibility
 *   **09-Feb-2026:** n8n Integration - Visual workflow automation with three production-ready templates (Simple Query, Scheduled Reports, Slack Integration) and comprehensive deployment guides
 *   **08-Feb-2026:** Agent Packs - Bundle complete agent teams (coordinator, experts, knowledge collections) into portable `.agentpack` files for one-click install, export, and marketplace sharing
 *   **31-Jan-2026:** Document Upload & Multimodal Analysis - Attach documents and images in chat with native multimodal delivery and automatic text extraction fallback across all providers

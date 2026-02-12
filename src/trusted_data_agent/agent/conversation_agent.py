@@ -74,7 +74,9 @@ class ConversationAgentExecutor:
         knowledge_context: Optional[str] = None,
         document_context: Optional[str] = None,
         multimodal_content: Optional[List[Dict]] = None,
-        turn_number: Optional[int] = None
+        turn_number: Optional[int] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -96,6 +98,8 @@ class ConversationAgentExecutor:
             document_context: Optional extracted text from uploaded documents
             multimodal_content: Optional list of native multimodal blocks for providers that support it
             turn_number: Optional turn number for status title tracking in the UI
+            provider: Optional provider name for event tracking (dual-model feature)
+            model: Optional model name for event tracking (dual-model feature)
         """
         self.profile = profile
         self.profile_id = profile.get("id")
@@ -112,6 +116,8 @@ class ConversationAgentExecutor:
         self.document_context = document_context
         self.multimodal_content = multimodal_content
         self.turn_number = turn_number
+        self.provider = provider or "Unknown"
+        self.model = model or "Unknown"
 
         # Collect events during execution for session storage/replay
         self.collected_events = []
@@ -485,13 +491,26 @@ RESPONSE FORMAT:
                     else:
                         step_name = "Response Generation" if not has_tool_calls else f"Tool Selection #{self.llm_call_count}"
 
+                    # Calculate cost for this LLM call
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    cost_manager = CostManager()
+                    call_cost = cost_manager.calculate_cost(
+                        provider=self.provider,
+                        model=self.model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+
                     await self._emit_event("conversation_llm_step", {
                         "step_number": self.llm_call_count,
                         "step_name": step_name,
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
                         "duration_ms": duration_ms,
-                        "session_id": self.session_id
+                        "provider": self.provider,  # NEW: Track provider for dual-model
+                        "model": self.model,        # NEW: Track model for dual-model
+                        "session_id": self.session_id,
+                        "cost_usd": call_cost  # NEW: Track cost for all profile types
                     })
 
                     logger.info(f"[ConvAgent] ✓ Emitted conversation_llm_step event #{self.llm_call_count} ({step_name})")
@@ -510,12 +529,23 @@ RESPONSE FORMAT:
                             # For ChatResult objects
                             response_content = output.generations[0].text if hasattr(output.generations[0], 'text') else ""
 
+                        # Calculate cost for this LLM completion
+                        from trusted_data_agent.core.cost_manager import CostManager
+                        cost_manager = CostManager()
+                        completion_cost = cost_manager.calculate_cost(
+                            provider=self.provider,
+                            model=self.model,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens
+                        )
+
                         await self._emit_event("conversation_llm_complete", {
                             "input_tokens": input_tokens,
                             "output_tokens": output_tokens,
                             "response_preview": response_content[:500] + "..." if len(response_content) > 500 else response_content,
                             "response_length": len(response_content),
-                            "session_id": self.session_id
+                            "session_id": self.session_id,
+                            "cost_usd": completion_cost
                         })
                         logger.info(f"[ConvAgent] ✓ Emitted conversation_llm_complete event (response length: {len(response_content)})")
                         await asyncio.sleep(0.001)
@@ -675,6 +705,16 @@ RESPONSE FORMAT:
             # Calculate total duration
             total_duration_ms = int((time.time() - start_time) * 1000)
 
+            # Calculate total cost for this conversation agent execution
+            from trusted_data_agent.core.cost_manager import CostManager
+            cost_manager = CostManager()
+            total_cost = cost_manager.calculate_cost(
+                provider=self.provider,
+                model=self.model,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens
+            )
+
             # Emit agent complete event (carries combined data for single Live Status card)
             await self._emit_event("conversation_agent_complete", {
                 "total_duration_ms": total_duration_ms,
@@ -685,6 +725,7 @@ RESPONSE FORMAT:
                 "output_tokens": total_output_tokens,
                 "profile_tag": self.profile_tag,
                 "profile_type": "conversation_with_tools",
+                "cost_usd": total_cost
             })
 
             logger.info(

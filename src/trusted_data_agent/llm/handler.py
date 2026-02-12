@@ -507,7 +507,7 @@ def _normalize_bedrock_model_id(model_id: str) -> str:
     return model_id.split(':')[0]
 
     # --- MODIFICATION START: Add user_uuid parameter ---
-async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, current_model: str = None, multimodal_content: list = None) -> tuple[str, int, int, str, str]: # Added provider and model to return type
+async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, current_model: str = None, multimodal_content: list = None, planning_phase: str = None) -> tuple[str, int, int, str, str]: # Added provider, model, and planning_phase parameters
 # --- MODIFICATION END ---
     if not llm_instance:
         raise RuntimeError("LLM is not initialized.")
@@ -1027,7 +1027,27 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
     # Return the effective provider and model used for this call
     actual_provider = effective_provider
     actual_model = effective_model
-    
+
+    # Track model usage with planning_phase (dual-model support)
+    if user_uuid and session_id:
+        from trusted_data_agent.core.session_manager import update_models_used
+
+        # Determine planning phase if not explicitly provided
+        if not planning_phase:
+            # Default to "conversation" for non-planning LLM calls
+            # (TDA_FinalReport, TDA_LLMTask, self-correction, etc.)
+            planning_phase = "conversation"
+
+        await update_models_used(
+            user_uuid=user_uuid,
+            session_id=session_id,
+            provider=actual_provider,
+            model=actual_model,
+            profile_tag=None,  # Not available at this level
+            planning_phase=planning_phase
+        )
+        app_logger.debug(f"[Model Tracking] Tracked {actual_provider}/{actual_model} for {planning_phase} phase")
+
     return response_text, input_tokens, output_tokens, actual_provider, actual_model
 
 def _get_recommended_patterns(provider: str) -> list[str]:

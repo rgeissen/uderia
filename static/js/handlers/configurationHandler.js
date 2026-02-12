@@ -3101,6 +3101,30 @@ function renderProfileCard(profile) {
                                 }
                                 return 'N/A';
                             })()}</p>
+                            ${(() => {
+                                // Show dual-model badge if configured
+                                if (profile.dualModelConfig && (profile.dualModelConfig.strategicModelId || profile.dualModelConfig.tacticalModelId)) {
+                                    const getLLMName = (id) => {
+                                        const config = configState.llmConfigurations.find(c => c.id === id);
+                                        return config ? config.name.split('/').pop() : 'default'; // Short name
+                                    };
+
+                                    const strategicName = profile.dualModelConfig.strategicModelId ?
+                                        getLLMName(profile.dualModelConfig.strategicModelId) : 'main';
+                                    const tacticalName = profile.dualModelConfig.tacticalModelId ?
+                                        getLLMName(profile.dualModelConfig.tacticalModelId) : 'main';
+
+                                    return `
+                                        <div class="mt-1 text-xs text-blue-400 flex items-center gap-1">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                            </svg>
+                                            <span>Dual: ${escapeHtml(strategicName)} / ${escapeHtml(tacticalName)}</span>
+                                        </div>
+                                    `;
+                                }
+                                return '';
+                            })()}
                             ${profile.profile_type === 'tool_enabled' ? `
                             <p><span class="font-medium">MCP:</span> ${escapeHtml(configState.mcpServers.find(s => s.id === profile.mcpServerId)?.name || 'Unknown')}</p>
                             ` : ''}
@@ -5265,6 +5289,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             if (genieSlaveProfilesSection) genieSlaveProfilesSection.style.display = 'none';
             if (genieProfileSettingsSection) genieProfileSettingsSection.style.display = 'none';
 
+            // Hide dual-model section (only for tool_enabled)
+            const dualModelSection = modal.querySelector('#dual-model-section');
+            if (dualModelSection) dualModelSection.style.display = 'none';
+
             // SHOW Conversation Capabilities section
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = '';
 
@@ -5336,6 +5364,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             if (genieProfileSettingsSection) genieProfileSettingsSection.style.display = 'none';
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
 
+            // Hide dual-model section (only for tool_enabled)
+            const dualModelSection = modal.querySelector('#dual-model-section');
+            if (dualModelSection) dualModelSection.style.display = 'none';
+
             // Hide MCP sections (RAG focused doesn't use tools/planner)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
@@ -5374,6 +5406,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
 
             // Hide Conversation Capabilities section
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = 'none';
+
+            // Hide dual-model section (only for tool_enabled)
+            const dualModelSection = modal.querySelector('#dual-model-section');
+            if (dualModelSection) dualModelSection.style.display = 'none';
 
             // Hide MCP-related sections (genie doesn't use MCP directly)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
@@ -5456,6 +5492,25 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             if (knowledgeRerankingSection) knowledgeRerankingSection.style.display = 'none';
             if (knowledgeAdvancedSection) knowledgeAdvancedSection.style.display = 'none';
             console.log('[Profile Modal] Hiding knowledge sections for tool-enabled profile');
+
+            // Show dual-model section for tool_enabled only
+            const dualModelSection = modal.querySelector('#dual-model-section');
+            const dualModelCheckbox = modal.querySelector('#enable-dual-model');
+            const dualModelControls = modal.querySelector('#dual-model-controls');
+
+            if (dualModelSection) {
+                dualModelSection.style.display = '';
+
+                if (dualModelCheckbox && dualModelControls) {
+                    // Clone checkbox to remove existing listeners and avoid duplicates
+                    const newCheckbox = dualModelCheckbox.cloneNode(true);
+                    dualModelCheckbox.parentNode.replaceChild(newCheckbox, dualModelCheckbox);
+
+                    newCheckbox.addEventListener('change', (e) => {
+                        dualModelControls.style.display = e.target.checked ? '' : 'none';
+                    });
+                }
+            }
 
             // KEEP System Prompts tab visible (for enterprise users to configure all prompts)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
@@ -5721,12 +5776,44 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     const activeMCPId = configState.activeMCP || configState.mcpServers[0]?.id;
     mcpSelect.innerHTML = configState.mcpServers
         .map(server => {
-            const isSelected = profile ? 
-                (profile.mcpServerId === server.id) : 
+            const isSelected = profile ?
+                (profile.mcpServerId === server.id) :
                 (server.id === activeMCPId);
             return `<option value="${server.id}" ${isSelected ? 'selected' : ''}>${escapeHtml(server.name)}</option>`;
         })
         .join('');
+
+    // Populate strategic and tactical model dropdowns (for dual-model feature)
+    const strategicSelect = modal.querySelector('#profile-modal-strategic-model');
+    const tacticalSelect = modal.querySelector('#profile-modal-tactical-model');
+
+    if (strategicSelect && tacticalSelect) {
+        const llmOptions = configState.llmConfigurations
+            .map(config => `<option value="${config.id}">${escapeHtml(config.name)}</option>`)
+            .join('');
+
+        // Add default option + all LLM configs
+        strategicSelect.innerHTML = '<option value="">Use main LLM configuration</option>' + llmOptions;
+        tacticalSelect.innerHTML = '<option value="">Use main LLM configuration</option>' + llmOptions;
+
+        // Restore saved values if editing a dual-model profile
+        if (profile && profile.dualModelConfig) {
+            const dualModelCheckbox = modal.querySelector('#enable-dual-model');
+            const dualModelControls = modal.querySelector('#dual-model-controls');
+
+            if (dualModelCheckbox && dualModelControls) {
+                dualModelCheckbox.checked = true;
+                dualModelControls.style.display = '';
+
+                if (profile.dualModelConfig.strategicModelId) {
+                    strategicSelect.value = profile.dualModelConfig.strategicModelId;
+                }
+                if (profile.dualModelConfig.tacticalModelId) {
+                    tacticalSelect.value = profile.dualModelConfig.tacticalModelId;
+                }
+            }
+        }
+    }
 
     // Set classification mode
     const classificationMode = profile?.classification_mode || 'light';
@@ -6622,7 +6709,53 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             // Session primer - auto-execute question when starting a new session
             session_primer: sessionPrimerValue
         };
-        
+
+        // Extract dual-model configuration (tool_enabled only)
+        if (selectedProfileType === 'tool_enabled') {
+            const dualModelCheckbox = modal.querySelector('#enable-dual-model');
+            const strategicSelect = modal.querySelector('#profile-modal-strategic-model');
+            const tacticalSelect = modal.querySelector('#profile-modal-tactical-model');
+
+            if (dualModelCheckbox && dualModelCheckbox.checked && strategicSelect && tacticalSelect) {
+                const strategicId = strategicSelect.value || null;
+                const tacticalId = tacticalSelect.value || null;
+
+                // Validation: At least one model must be specified when dual-model is enabled
+                if (!strategicId && !tacticalId) {
+                    showNotification('error', 'Dual-model mode requires at least one specialized model');
+                    return;
+                }
+
+                // **NEW: Validate that selected model configurations exist**
+                // Note: We don't validate credentials here because they're encrypted on the frontend.
+                // Backend will validate credentials during client creation and provide clear error messages.
+                const validateModelExists = (modelId, modelLabel) => {
+                    if (!modelId) return true; // Empty selection uses main config
+
+                    const config = configState.llmConfigurations.find(c => c.id === modelId);
+                    if (!config) {
+                        showNotification('error', `${modelLabel} model configuration not found`);
+                        return false;
+                    }
+
+                    return true;
+                };
+
+                // Validate both strategic and tactical model configs exist
+                if (!validateModelExists(strategicId, 'Strategic')) return;
+                if (!validateModelExists(tacticalId, 'Tactical')) return;
+
+                profileData.dualModelConfig = {
+                    strategicModelId: strategicId,
+                    tacticalModelId: tacticalId
+                };
+            } else {
+                profileData.dualModelConfig = null;
+            }
+        } else {
+            profileData.dualModelConfig = null;
+        }
+
         // For new profiles: if a default profile exists, enable inherit_classification by default
         if (!isEdit && configState.defaultProfileId) {
             profileData.inherit_classification = true;

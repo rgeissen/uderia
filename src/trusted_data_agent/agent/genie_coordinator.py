@@ -218,21 +218,48 @@ class SlaveSessionTool(BaseTool):
 
             # Execute session primer if configured (leverages existing _execute_and_poll)
             if session_primer:
-                logger.info(f"Executing session primer for @{self.profile_tag}: {session_primer[:50]}...")
-                self._emit_event("genie_slave_progress", {
-                    "profile_tag": self.profile_tag,
-                    "slave_session_id": session_id,
-                    "status": "primer_executing",
-                    "message": "Executing session primer...",
-                    "session_id": self.parent_session_id
-                })
+                # Handle session_primer as string or dict
+                primer_text = None
 
-                try:
-                    await self._execute_primer(session_id, session_primer)
-                    logger.info(f"Session primer completed for @{self.profile_tag}")
-                except Exception as e:
-                    logger.warning(f"Session primer failed for @{self.profile_tag}: {e}")
-                    # Continue anyway - primer failure shouldn't block the main query
+                if isinstance(session_primer, dict):
+                    # Check if enabled
+                    if not session_primer.get("enabled", False):
+                        logger.debug(f"Session primer disabled for @{self.profile_tag}")
+                    else:
+                        # Extract statements based on mode
+                        statements = session_primer.get("statements", [])
+                        mode = session_primer.get("mode", "combined")
+
+                        if mode == "combined":
+                            # Combine all statements into one query
+                            primer_text = "\n\n".join(statements) if statements else None
+                        elif mode == "sequential":
+                            # Execute first statement only (for now)
+                            primer_text = statements[0] if statements else None
+                        else:
+                            logger.warning(f"Unknown session_primer mode '{mode}' for @{self.profile_tag}")
+                            primer_text = "\n\n".join(statements) if statements else None
+                elif isinstance(session_primer, str):
+                    # Legacy string format
+                    primer_text = session_primer
+
+                if primer_text:
+                    primer_preview = primer_text[:50] if len(primer_text) > 50 else primer_text
+                    logger.info(f"Executing session primer for @{self.profile_tag}: {primer_preview}...")
+                    self._emit_event("genie_slave_progress", {
+                        "profile_tag": self.profile_tag,
+                        "slave_session_id": session_id,
+                        "status": "primer_executing",
+                        "message": "Executing session primer...",
+                        "session_id": self.parent_session_id
+                    })
+
+                    try:
+                        await self._execute_primer(session_id, primer_text)
+                        logger.info(f"Session primer completed for @{self.profile_tag}")
+                    except Exception as e:
+                        logger.warning(f"Session primer failed for @{self.profile_tag}: {e}")
+                        # Continue anyway - primer failure shouldn't block the main query
 
             return session_id
 
@@ -429,6 +456,19 @@ class GenieCoordinator:
         genie_config = genie_config or {}
         self.query_timeout = float(genie_config.get('queryTimeout', 300))
         self.max_iterations = int(genie_config.get('maxIterations', 10))
+
+        # Extract provider and model info for cost tracking
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        llm_config_id = genie_profile.get("llmConfigurationId")
+        if llm_config_id:
+            llm_configurations = config_manager.get_llm_configurations(user_uuid)
+            llm_config = next((c for c in llm_configurations if c.get("id") == llm_config_id), None)
+            self.provider = llm_config.get('provider', 'Unknown') if llm_config else 'Unknown'
+            self.model = llm_config.get('model', 'unknown') if llm_config else 'unknown'
+        else:
+            self.provider = 'Unknown'
+            self.model = 'unknown'
 
         # Log nesting level for debugging
         if current_nesting_level > 0:
@@ -755,12 +795,23 @@ After gathering information from profiles, provide a synthesized answer that:
                     else:
                         step_name = "Response Synthesis" if not has_tool_calls else f"Routing Decision #{self.llm_call_count}"
 
+                    # Calculate cost for this Genie coordinator LLM call
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    cost_manager = CostManager()
+                    call_cost = cost_manager.calculate_cost(
+                        provider=self.provider,
+                        model=self.model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+
                     self._emit_event("genie_llm_step", {
                         "step_number": self.llm_call_count,
                         "step_name": step_name,
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
-                        "session_id": self.parent_session_id
+                        "session_id": self.parent_session_id,
+                        "cost_usd": call_cost  # NEW: Track cost for Genie coordinator LLM calls
                     })
 
                     logger.info(f"[Genie] LLM Step {self.llm_call_count} ({step_name}): {input_tokens} in / {output_tokens} out")

@@ -1210,9 +1210,15 @@ async def update_token_count(user_uuid: str, session_id: str, input_tokens: int,
         app_logger.warning(f"Could not update tokens: Session {session_id} not found for user {user_uuid}.")
 
 
-async def update_models_used(user_uuid: str, session_id: str, provider: str, model: str, profile_tag: str | None = None):
-    """Adds the current model/profile to the list used in the session."""
-    app_logger.debug(f"update_models_used called for session {session_id} with provider={provider}, model={model}, profile_tag={profile_tag}")
+async def update_models_used(user_uuid: str, session_id: str, provider: str, model: str, profile_tag: str | None = None, planning_phase: str | None = None):
+    """
+    Adds the current model/profile to the list used in the session.
+
+    Args:
+        planning_phase: Optional planning phase indicator ("strategic" | "tactical" | "conversation")
+                       for dual-model tracking
+    """
+    app_logger.debug(f"update_models_used called for session {session_id} with provider={provider}, model={model}, profile_tag={profile_tag}, planning_phase={planning_phase}")
     session_data = await _load_session(user_uuid, session_id)
     if session_data:
         # Keep models_used for backwards compatibility
@@ -1221,6 +1227,21 @@ async def update_models_used(user_uuid: str, session_id: str, provider: str, mod
         if model_string not in models_used:
             models_used.append(model_string)
             session_data['models_used'] = models_used
+
+        # Track strategic vs tactical usage (NEW: Dual-model traceability)
+        if planning_phase and planning_phase in ["strategic", "tactical", "tactical_fastpath", "conversation"]:
+            if "dual_model_usage" not in session_data:
+                session_data["dual_model_usage"] = {
+                    "strategic": [],
+                    "tactical": [],
+                    "tactical_fastpath": [],  # NEW: Tactical model configured but FASTPATH used
+                    "conversation": []          # NEW: TDA_FinalReport, TDA_LLMTask, etc.
+                }
+
+            phase_models = session_data["dual_model_usage"][planning_phase]
+            if model_string not in phase_models:
+                phase_models.append(model_string)
+                app_logger.debug(f"[Dual-Model] Tracked {model_string} as {planning_phase} model")
 
         # Add profile tag to profile_tags_used
         if profile_tag:
@@ -1599,6 +1620,19 @@ async def update_turn_token_counts(user_uuid: str, session_id: str, turn_number:
                     turn["session_input_tokens"] = session_data.get("input_tokens", input_tokens)
                 if "session_output_tokens" in turn:
                     turn["session_output_tokens"] = session_data.get("output_tokens", output_tokens)
+
+                # Calculate and save turn cost
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    cost_manager = CostManager()
+                    provider = session_data.get("provider", "")
+                    model = session_data.get("model", "")
+                    turn_cost = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
+                    turn["turn_cost"] = turn_cost
+                    app_logger.debug(f"Calculated turn cost: ${turn_cost:.6f} for {provider}/{model}")
+                except Exception as e:
+                    app_logger.warning(f"Failed to calculate turn cost: {e}")
+
                 turn_found = True
                 app_logger.debug(f"Updated turn {turn_number} token counts: {input_tokens} in / {output_tokens} out")
                 break

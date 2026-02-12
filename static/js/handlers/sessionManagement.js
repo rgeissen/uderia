@@ -662,8 +662,52 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // --- MODIFICATION START ---
         // Explicitly update the models/profile tags for the loaded session in the UI
         UI.updateSessionModels(sessionId, data.models_used, data.profile_tags_used);
-        // This will reset the status display to the globally configured model
-        UI.updateStatusPromptName(data.provider, data.model);
+
+        // Get dual-model info from session data OR profile configuration (for new sessions)
+        let dualModelInfo = data.dual_model_info;
+        console.log('[Session Load] 🔍 Checking dual-model:', {
+            sessionDualModelInfo: dualModelInfo,
+            profileId: data.profile_id,
+            hasConfigState: !!window.configState,
+            hasProfiles: !!window.configState?.profiles,
+            hasLLMConfigs: !!window.configState?.llmConfigurations
+        });
+
+        // For new sessions without dual_model_info, check the profile configuration
+        if (!dualModelInfo && data.profile_id && window.configState?.profiles) {
+            const currentProfile = window.configState.profiles.find(p => p.id === data.profile_id);
+            console.log('[Session Load] Found profile:', currentProfile?.name, {
+                hasDualModelConfig: !!currentProfile?.dualModelConfig,
+                strategicModelId: currentProfile?.dualModelConfig?.strategicModelId,
+                tacticalModelId: currentProfile?.dualModelConfig?.tacticalModelId
+            });
+
+            if (currentProfile?.dualModelConfig && (currentProfile.dualModelConfig.strategicModelId || currentProfile.dualModelConfig.tacticalModelId)) {
+                // Profile has dual-model configured - extract model info from LLM configs
+                const strategicConfig = window.configState.llmConfigurations?.find(c => c.id === currentProfile.dualModelConfig.strategicModelId);
+                const tacticalConfig = window.configState.llmConfigurations?.find(c => c.id === currentProfile.dualModelConfig.tacticalModelId);
+                console.log('[Session Load] LLM Configs:', {
+                    strategic: strategicConfig ? `${strategicConfig.provider}/${strategicConfig.model}` : 'NOT FOUND',
+                    tactical: tacticalConfig ? `${tacticalConfig.provider}/${tacticalConfig.model}` : 'NOT FOUND'
+                });
+
+                if (strategicConfig && tacticalConfig) {
+                    dualModelInfo = {
+                        strategicProvider: strategicConfig.provider,
+                        strategicModel: strategicConfig.model,
+                        tacticalProvider: tacticalConfig.provider,
+                        tacticalModel: tacticalConfig.model
+                    };
+                    console.log('[Session Load] ✅ Extracted dual-model info from profile config:', dualModelInfo);
+                }
+            }
+        }
+
+        // Store dual-model info in state for use throughout the session
+        state.currentDualModelInfo = dualModelInfo;
+        console.log('[Session Load] Stored in state.currentDualModelInfo:', state.currentDualModelInfo);
+        // This will reset the status display to the globally configured model, including dual-model info
+        UI.updateStatusPromptName(data.provider, data.model, false, dualModelInfo);
         // --- MODIFICATION END ---
 
         // Initialize upload capabilities for the loaded session's provider

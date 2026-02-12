@@ -410,7 +410,7 @@ class PlanExecutor:
                     if llm_config_id:
                         llm_configs = config_manager.get_llm_configurations(user_uuid)
                         llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
-                        
+
                         if llm_config:
                             self.current_provider = llm_config.get('provider', get_user_provider(user_uuid))
                             self.current_model = llm_config.get('model', get_user_model(user_uuid))
@@ -423,21 +423,111 @@ class PlanExecutor:
                         # Fallback to global config if no LLM config in profile
                         self.current_model = get_user_model(user_uuid)
                         self.current_provider = get_user_provider(user_uuid)
+
+                    # Initialize dual-model configuration (tool_enabled only)
+                    dual_model_config = active_profile.get('dualModelConfig')
+                    if dual_model_config and active_profile.get('profile_type') == 'tool_enabled':
+                        strategic_id = dual_model_config.get('strategicModelId')
+                        tactical_id = dual_model_config.get('tacticalModelId')
+
+                        llm_configs = config_manager.get_llm_configurations(user_uuid)
+
+                        # Resolve strategic model (fallback to base)
+                        if strategic_id:
+                            strategic_config = next((cfg for cfg in llm_configs if cfg['id'] == strategic_id), None)
+                            if strategic_config:
+                                self.strategic_provider = strategic_config.get('provider')
+                                self.strategic_model = strategic_config.get('model')
+                                app_logger.info(f"[Dual-Model] Strategic: {self.strategic_provider}/{self.strategic_model}")
+                            else:
+                                app_logger.warning(f"Strategic model '{strategic_id}' not found, using base")
+                                self.strategic_provider = self.current_provider
+                                self.strategic_model = self.current_model
+                        else:
+                            self.strategic_provider = self.current_provider
+                            self.strategic_model = self.current_model
+
+                        # Resolve tactical model (fallback to base)
+                        if tactical_id:
+                            tactical_config = next((cfg for cfg in llm_configs if cfg['id'] == tactical_id), None)
+                            if tactical_config:
+                                self.tactical_provider = tactical_config.get('provider')
+                                self.tactical_model = tactical_config.get('model')
+                                app_logger.info(f"[Dual-Model] Tactical: {self.tactical_provider}/{self.tactical_model}")
+                            else:
+                                app_logger.warning(f"Tactical model '{tactical_id}' not found, using base")
+                                self.tactical_provider = self.current_provider
+                                self.tactical_model = self.current_model
+                        else:
+                            self.tactical_provider = self.current_provider
+                            self.tactical_model = self.current_model
+
+                        # Track if dual-model is active
+                        self.is_dual_model_active = (
+                            self.strategic_provider != self.tactical_provider or
+                            self.strategic_model != self.tactical_model
+                        )
+
+                        # Initialize client instances (created in async run() method)
+                        self.strategic_llm_instance = None
+                        self.tactical_llm_instance = None
+                    else:
+                        # No dual-model config: Use base for both
+                        self.strategic_provider = self.current_provider
+                        self.strategic_model = self.current_model
+                        self.tactical_provider = self.current_provider
+                        self.tactical_model = self.current_model
+                        self.is_dual_model_active = False
+                        self.strategic_llm_instance = None
+                        self.tactical_llm_instance = None
                 else:
                     # Fallback to global config if profile not found
                     self.current_model = get_user_model(user_uuid)
                     self.current_provider = get_user_provider(user_uuid)
+                    # No dual-model for fallback
+                    self.strategic_provider = self.current_provider
+                    self.strategic_model = self.current_model
+                    self.tactical_provider = self.current_provider
+                    self.tactical_model = self.current_model
+                    self.is_dual_model_active = False
+                    self.strategic_config = None
+                    self.tactical_config = None
+                    self.strategic_llm_instance = None
+                    self.tactical_llm_instance = None
             else:
                 # Fallback to global config if no active profile
                 self.active_profile_id = "__system_default__"
                 self.current_model = get_user_model(user_uuid)
                 self.current_provider = get_user_provider(user_uuid)
+                # No dual-model for fallback
+                self.strategic_provider = self.current_provider
+                self.strategic_model = self.current_model
+                self.tactical_provider = self.current_provider
+                self.tactical_model = self.current_model
+                self.is_dual_model_active = False
+                self.strategic_config = None
+                self.tactical_config = None
+                self.strategic_llm_instance = None
+                self.tactical_llm_instance = None
         except Exception as e:
             # Fallback to global config on error
             app_logger.warning(f"Failed to get model/provider from profile, using global config: {e}")
             self.active_profile_id = "__system_default__"
             self.current_model = get_user_model(user_uuid)
             self.current_provider = get_user_provider(user_uuid)
+            # No dual-model for fallback
+            self.strategic_provider = self.current_provider
+            self.strategic_model = self.current_model
+            self.tactical_provider = self.current_provider
+            self.tactical_model = self.current_model
+            self.is_dual_model_active = False
+            self.strategic_config = None
+            self.tactical_config = None
+            self.strategic_llm_instance = None
+            self.tactical_llm_instance = None
+            self.tactical_provider = self.current_provider
+            self.tactical_model = self.current_model
+            self.is_dual_model_active = False
         
         # Initialize profile-aware prompt resolver
         from trusted_data_agent.agent.profile_prompt_resolver import ProfilePromptResolver
@@ -591,13 +681,40 @@ class PlanExecutor:
             data.setdefault("metadata", {})["execution_depth"] = self.execution_depth
         return self._format_sse(data, event)
 
-    async def _call_llm_and_update_tokens(self, prompt: str, reason: str, system_prompt_override: str = None, raise_on_error: bool = False, disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", multimodal_content: list = None) -> tuple[str, int, int]:
-        """A centralized wrapper for calling the LLM that handles token updates."""
+    async def _call_llm_and_update_tokens(self, prompt: str, reason: str, system_prompt_override: str = None, raise_on_error: bool = False, disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", multimodal_content: list = None, planning_phase: str = None, current_provider: str = None, current_model: str = None) -> tuple[str, int, int]:
+        """
+        A centralized wrapper for calling the LLM that handles token updates.
+
+        Args:
+            planning_phase: Optional string indicating which phase of planning this call belongs to.
+                           Valid values: "strategic" | "tactical" | "conversation"
+            current_provider: Optional override for LLM provider (for dual-model support)
+            current_model: Optional override for LLM model (for dual-model support)
+        """
         final_disabled_history = disabled_history or self.disabled_history
 
-        # Use profile-specific LLM instance when available (e.g., RAG profile with Friendli
-        # while default profile uses Google). Falls back to global instance.
-        llm_instance = self.profile_llm_instance if self.profile_llm_instance else self.dependencies['STATE']['llm']
+        # Use explicitly passed provider/model if provided (dual-model feature)
+        # Otherwise fall back to instance defaults
+        effective_provider = current_provider if current_provider else self.current_provider
+        effective_model = current_model if current_model else self.current_model
+
+        # **NEW: Select LLM instance based on planning_phase for dual-model**
+        # When dual-model is active, use strategic/tactical instances based on planning phase.
+        # Otherwise, use profile-specific or global instance.
+        if self.is_dual_model_active and planning_phase:
+            if planning_phase == "strategic" and self.strategic_llm_instance:
+                llm_instance = self.strategic_llm_instance
+                app_logger.debug(f"[Dual-Model] Using strategic LLM instance for {effective_provider}/{effective_model}")
+            elif planning_phase == "tactical" and self.tactical_llm_instance:
+                llm_instance = self.tactical_llm_instance
+                app_logger.debug(f"[Dual-Model] Using tactical LLM instance for {effective_provider}/{effective_model}")
+            else:
+                # Fallback if instances weren't created
+                llm_instance = self.profile_llm_instance if self.profile_llm_instance else self.dependencies['STATE']['llm']
+        else:
+            # Single-model mode: Use profile-specific LLM instance when available (e.g., RAG profile with Friendli
+            # while default profile uses Google). Falls back to global instance.
+            llm_instance = self.profile_llm_instance if self.profile_llm_instance else self.dependencies['STATE']['llm']
         response_text, statement_input_tokens, statement_output_tokens, actual_provider, actual_model = await llm_handler.call_llm_api(
             llm_instance, prompt,
             # --- MODIFICATION START: Pass user_uuid and session_id ---
@@ -610,8 +727,8 @@ class PlanExecutor:
             source=source,
             # --- MODIFICATION START: Pass active profile, provider and model for prompt resolution ---
             active_profile_id=self.active_profile_id,
-            current_provider=self.current_provider,
-            current_model=self.current_model,
+            current_provider=effective_provider,  # Use effective provider (may be overridden)
+            current_model=effective_model,        # Use effective model (may be overridden)
             # --- MODIFICATION END ---
             multimodal_content=multimodal_content
         )
@@ -620,6 +737,28 @@ class PlanExecutor:
 
         self.turn_input_tokens += statement_input_tokens
         self.turn_output_tokens += statement_output_tokens
+
+        # Store planning phase and model info for potential event emission
+        # (actual event emission happens in callers that have access to event handlers)
+        self._last_call_metadata = {
+            "planning_phase": planning_phase,
+            "provider": actual_provider,
+            "model": actual_model,
+            "input_tokens": statement_input_tokens,
+            "output_tokens": statement_output_tokens
+        }
+
+        # **NEW: Track model usage with planning_phase for dual-model visibility**
+        # This ensures session data accurately reflects which models were used for
+        # strategic vs tactical planning
+        await session_manager.update_models_used(
+            user_uuid=self.user_uuid,
+            session_id=self.session_id,
+            provider=actual_provider,
+            model=actual_model,
+            profile_tag=self._get_current_profile_tag(),
+            planning_phase=planning_phase  # ← Enables dual-model tracking
+        )
 
         return response_text, statement_input_tokens, statement_output_tokens
 
@@ -1446,7 +1585,9 @@ class PlanExecutor:
                 knowledge_context=knowledge_context_str if knowledge_enabled else None,
                 document_context=self.document_context,
                 multimodal_content=self.multimodal_content,
-                turn_number=self.current_turn_number
+                turn_number=self.current_turn_number,
+                provider=self.current_provider,  # NEW: Pass provider for event tracking
+                model=self.current_model         # NEW: Pass model for event tracking
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
@@ -2024,6 +2165,81 @@ Response:"""
                 app_logger.warning(f"Falling back to global LLM instance — provider branching in call_llm_api will still use correct provider path")
         # --- PROFILE LLM INSTANCE END ---
 
+        # --- DUAL-MODEL LLM INSTANCES: Create strategic and tactical clients ---
+        # When dual-model is active, create separate client instances for each model
+        # because they may use different providers (e.g., Google for strategic, Friendli for tactical)
+        if self.is_dual_model_active:
+            try:
+                from trusted_data_agent.llm.client_factory import create_llm_client
+                from trusted_data_agent.auth.encryption import decrypt_credentials
+
+                # Create strategic LLM instance
+                # Credentials are stored per-provider in user_credentials table, not in LLM configs
+                strategic_creds = decrypt_credentials(self.user_uuid, self.strategic_provider)
+                if not strategic_creds:
+                    raise ValueError(f"No credentials found for strategic model provider: {self.strategic_provider}")
+
+                self.strategic_llm_instance = await create_llm_client(
+                    self.strategic_provider,
+                    self.strategic_model,
+                    strategic_creds
+                )
+                app_logger.info(f"✅ Created strategic LLM instance: {self.strategic_provider}/{self.strategic_model}")
+
+                # Create tactical LLM instance
+                # Credentials are stored per-provider in user_credentials table, not in LLM configs
+                tactical_creds = decrypt_credentials(self.user_uuid, self.tactical_provider)
+                if not tactical_creds:
+                    raise ValueError(f"No credentials found for tactical model provider: {self.tactical_provider}")
+
+                self.tactical_llm_instance = await create_llm_client(
+                    self.tactical_provider,
+                    self.tactical_model,
+                    tactical_creds
+                )
+                app_logger.info(f"✅ Created tactical LLM instance: {self.tactical_provider}/{self.tactical_model}")
+
+            except Exception as e:
+                app_logger.error(f"Failed to create dual-model LLM instances: {e}")
+                # Fall back to single-model mode - reset provider/model to base
+                app_logger.warning(f"Dual-model disabled, falling back to single model: {self.current_provider}/{self.current_model}")
+                self.is_dual_model_active = False
+                self.strategic_llm_instance = None
+                self.tactical_llm_instance = None
+                self.strategic_provider = self.current_provider
+                self.strategic_model = self.current_model
+                self.tactical_provider = self.current_provider
+                self.tactical_model = self.current_model
+                app_logger.warning(f"Dual-model disabled, falling back to single model: {self.current_provider}/{self.current_model}")
+        # --- DUAL-MODEL LLM INSTANCES END ---
+
+        # --- Save dual-model configuration to session for UI display ---
+        if self.is_dual_model_active and session_data:
+            try:
+                session_data["is_dual_model_active"] = True
+                session_data["strategic_provider"] = self.strategic_provider
+                session_data["strategic_model"] = self.strategic_model
+                session_data["tactical_provider"] = self.tactical_provider
+                session_data["tactical_model"] = self.tactical_model
+                await session_manager._save_session(self.user_uuid, self.session_id, session_data)
+                app_logger.debug(f"[Dual-Model] Saved configuration to session: strategic={self.strategic_provider}/{self.strategic_model}, tactical={self.tactical_provider}/{self.tactical_model}")
+            except Exception as e:
+                app_logger.warning(f"Failed to save dual-model configuration to session: {e}")
+        elif session_data:
+            # Clear dual-model metadata when switching to single-model (e.g., profile override expires)
+            try:
+                session_data["is_dual_model_active"] = False
+                # Remove dual-model specific fields to prevent stale UI indicators
+                session_data.pop("strategic_provider", None)
+                session_data.pop("strategic_model", None)
+                session_data.pop("tactical_provider", None)
+                session_data.pop("tactical_model", None)
+                await session_manager._save_session(self.user_uuid, self.session_id, session_data)
+                app_logger.debug("[Dual-Model] Cleared dual-model metadata (switched to single-model)")
+            except Exception as e:
+                app_logger.warning(f"Failed to clear dual-model metadata: {e}")
+        # --- Dual-model configuration saved ---
+
         if is_llm_only:
             # DIRECT EXECUTION PATH - Bypass planner entirely
             app_logger.info("🗨️ LLM-only profile detected - direct execution mode")
@@ -2479,6 +2695,16 @@ The following domain knowledge may be relevant to this conversation:
             # Send SSE notification to update UI sidebar in real-time
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
             if session_data:
+                # Build dual_model_info from session metadata (for header display)
+                dual_model_info = None
+                if session_data.get("is_dual_model_active"):
+                    dual_model_info = {
+                        "strategicProvider": session_data.get("strategic_provider"),
+                        "strategicModel": session_data.get("strategic_model"),
+                        "tacticalProvider": session_data.get("tactical_provider"),
+                        "tacticalModel": session_data.get("tactical_model")
+                    }
+
                 notification_payload = {
                     "session_id": self.session_id,
                     "models_used": session_data.get("models_used", []),
@@ -2487,8 +2713,9 @@ The following domain knowledge may be relevant to this conversation:
                     "provider": self.current_provider,
                     "model": self.current_model,
                     "name": session_data.get("name", "Unnamed Session"),
+                    "dual_model_info": dual_model_info
                 }
-                app_logger.info(f"🔔 [LLM-only] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}")
+                app_logger.info(f"🔔 [LLM-only] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}, dual_model={dual_model_info is not None}")
                 yield self._format_sse_with_depth({
                     "type": "session_model_update",
                     "payload": notification_payload
@@ -3099,6 +3326,16 @@ The following domain knowledge may be relevant to this conversation:
                         "call_id": call_id
                     }, "token_update")
 
+            # Calculate cost for RAG LLM synthesis call
+            from trusted_data_agent.core.cost_manager import CostManager
+            cost_manager = CostManager()
+            call_cost = cost_manager.calculate_cost(
+                provider=self.current_provider if hasattr(self, 'current_provider') else "Unknown",
+                model=self.current_model if hasattr(self, 'current_model') else "Unknown",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+
             # Emit RAG LLM step event for plan reload (similar to conversation_llm_step)
             rag_llm_step_payload = {
                 "step_name": "Knowledge Synthesis",
@@ -3106,7 +3343,8 @@ The following domain knowledge may be relevant to this conversation:
                 "output_tokens": output_tokens,
                 "duration_ms": llm_duration_ms,
                 "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown",
-                "session_id": self.session_id
+                "session_id": self.session_id,
+                "cost_usd": call_cost  # NEW: Track cost for RAG synthesis
             }
             knowledge_events.append({"type": "rag_llm_step", "payload": rag_llm_step_payload})
             yield self._format_sse_with_depth({
@@ -3215,6 +3453,16 @@ The following domain knowledge may be relevant to this conversation:
             # Send SSE notification to update UI sidebar in real-time
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
             if session_data:
+                # Build dual_model_info from session metadata (for header display)
+                dual_model_info = None
+                if session_data.get("is_dual_model_active"):
+                    dual_model_info = {
+                        "strategicProvider": session_data.get("strategic_provider"),
+                        "strategicModel": session_data.get("strategic_model"),
+                        "tacticalProvider": session_data.get("tactical_provider"),
+                        "tacticalModel": session_data.get("tactical_model")
+                    }
+
                 notification_payload = {
                     "session_id": self.session_id,
                     "models_used": session_data.get("models_used", []),
@@ -3223,8 +3471,9 @@ The following domain knowledge may be relevant to this conversation:
                     "provider": self.current_provider,
                     "model": self.current_model,
                     "name": session_data.get("name", "Unnamed Session"),
+                    "dual_model_info": dual_model_info
                 }
-                app_logger.info(f"🔔 [RAG Focused] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}")
+                app_logger.info(f"🔔 [RAG Focused] Sending session_model_update SSE: profile_tags={notification_payload['profile_tags_used']}, dual_model={dual_model_info is not None}")
                 yield self._format_sse_with_depth({
                     "type": "session_model_update",
                     "payload": notification_payload
@@ -3823,6 +4072,16 @@ The following domain knowledge may be relevant to this conversation:
         # Send immediate SSE notification so UI updates in real-time
         session_data = await session_manager.get_session(self.user_uuid, self.session_id)
         if session_data:
+            # Include dual-model info if active
+            dual_model_info = None
+            if session_data.get("is_dual_model_active"):
+                dual_model_info = {
+                    "strategicProvider": session_data.get("strategic_provider"),
+                    "strategicModel": session_data.get("strategic_model"),
+                    "tacticalProvider": session_data.get("tactical_provider"),
+                    "tacticalModel": session_data.get("tactical_model")
+                }
+
             notification_payload = {
                 "session_id": self.session_id,
                 "models_used": session_data.get("models_used", []),
@@ -3831,6 +4090,7 @@ The following domain knowledge may be relevant to this conversation:
                 "provider": self.current_provider,
                 "model": self.current_model,
                 "name": session_data.get("name", "Unnamed Session"),
+                "dual_model_info": dual_model_info
             }
             app_logger.debug(f"Sending session_model_update: {notification_payload['provider']}/{notification_payload['model']}")
             yield self._format_sse_with_depth({
@@ -4299,6 +4559,21 @@ The following domain knowledge may be relevant to this conversation:
                         "metadata": {"execution_depth": self.execution_depth}
                     })
 
+                # Calculate turn cost for persistence (fixes historical reload $0 cost bug)
+                turn_cost = 0  # Default
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    cost_manager = CostManager()
+                    turn_cost = cost_manager.calculate_cost(
+                        provider=self.current_provider,
+                        model=self.current_model,
+                        input_tokens=self.turn_input_tokens,
+                        output_tokens=self.turn_output_tokens
+                    )
+                    app_logger.debug(f"Calculated turn cost for persistence: ${turn_cost:.6f}")
+                except Exception as e:
+                    app_logger.warning(f"Failed to calculate turn cost for persistence: {e}")
+
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
                     "user_query": self.original_user_input, # Store the original query
@@ -4316,6 +4591,7 @@ The following domain knowledge may be relevant to this conversation:
                     "task_id": self.task_id,            # Add the task_id
                     "turn_input_tokens": self.turn_input_tokens,
                     "turn_output_tokens": self.turn_output_tokens,
+                    "turn_cost": turn_cost,  # Add turn cost for historical reload (fixes $0 cost bug)
                     # Session totals at the time of this turn (for plan reload)
                     "session_input_tokens": session_input_tokens,
                     "session_output_tokens": session_output_tokens,

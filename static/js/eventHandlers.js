@@ -82,6 +82,53 @@ function _getConversationAgentStepTitle(eventType, payload) {
 }
 
 /**
+ * Extract total turn cost from all LLM calls in turnData for reload display.
+ * Sums up cost_usd from all event types that contain cost information.
+ *
+ * @param {Object} turnData - Turn data containing various event arrays
+ * @returns {number} Total cost in USD for the turn (0 if no cost data found)
+ */
+function _getTurnCost(turnData) {
+    let totalCost = 0;
+
+    // Helper to extract cost from event payload
+    const extractCost = (event) => {
+        if (!event || !event.payload) return 0;
+        const payload = event.payload;
+        // Handle nested details structure
+        const details = payload.details || payload;
+        return parseFloat(details.cost_usd || 0);
+    };
+
+    // Sum costs from all event types
+    const eventArrays = [
+        turnData.genie_events || [],
+        turnData.conversation_agent_events || [],
+        turnData.knowledge_events || [],
+        turnData.system_events || []
+    ];
+
+    eventArrays.forEach(events => {
+        if (Array.isArray(events)) {
+            events.forEach(event => {
+                totalCost += extractCost(event);
+            });
+        }
+    });
+
+    // Also check execution_trace for tool_enabled profiles
+    if (turnData.execution_trace && Array.isArray(turnData.execution_trace)) {
+        turnData.execution_trace.forEach(step => {
+            if (step.action && step.action.cost_usd) {
+                totalCost += parseFloat(step.action.cost_usd);
+            }
+        });
+    }
+
+    return totalCost;
+}
+
+/**
  * Extract the last statement token counts from turnData for reload display.
  * The "Last Statement" should show the most recent individual LLM call, not turn totals.
  *
@@ -653,12 +700,13 @@ async function processStream(responseBody, originSessionId) {
                             }
                         } else if (eventData.type === 'session_model_update') {
                             // Handle session metadata updates during execution
-                            const { session_id, models_used, profile_tags_used, last_updated, provider, model, name } = eventData.payload;
+                            const { session_id, models_used, profile_tags_used, last_updated, provider, model, name, dual_model_info } = eventData.payload;
                             UI.updateSessionModels(session_id, models_used, profile_tags_used);
                             if (session_id === state.currentSessionId) {
                                 state.currentProvider = provider;
                                 state.currentModel = model;
-                                UI.updateStatusPromptName();
+                                state.currentDualModelInfo = dual_model_info;  // Store in state
+                                UI.updateStatusPromptName(provider, model, false, dual_model_info);
                             }
                         } else if (eventData.type === 'user_message_profile_tag') {
                             // Update the last user message's profile badge with the backend-resolved tag
@@ -688,6 +736,16 @@ async function processStream(responseBody, originSessionId) {
                                     details: payload,
                                     type: eventData.type
                                 }, eventData.type === 'conversation_agent_complete', 'conversation_agent');
+
+                                // Update token display for cost tracking (llm_only and conversation_with_tools profiles)
+                                if (payload.cost_usd) {
+                                    if (eventData.type === 'conversation_llm_step' ||
+                                        eventData.type === 'conversation_llm_complete' ||
+                                        eventData.type === 'conversation_agent_complete') {
+                                        UI.updateTokenDisplay(payload);
+                                    }
+                                }
+
                                 // Delegate to conversation agent handler for state tracking (after UI update)
                                 handleConversationAgentEvent(eventData.type, payload);
                             }
@@ -720,6 +778,11 @@ async function processStream(responseBody, originSessionId) {
                                 UI.updateKnowledgeIndicator(collections, documentCount);
                                 // Store the knowledge event for potential replay
                                 state.pendingKnowledgeRetrievalEvent = payload;
+                            }
+
+                            // Update token display for cost tracking (rag_focused profiles)
+                            if (eventData.type === 'rag_llm_step' && payload.cost_usd) {
+                                UI.updateTokenDisplay(payload);
                             }
 
                             // Always update status window for these events
@@ -853,6 +916,12 @@ async function processStream(responseBody, originSessionId) {
                         // Handle genie coordination events - delegate to genieHandler
                         console.log('[SSE] Genie event received:', eventName, eventData);
                         handleGenieEvent(eventName, eventData);
+
+                        // Update token display for cost tracking (genie coordinator LLM calls)
+                        if (eventName === 'genie_llm_step' && eventData.cost_usd) {
+                            UI.updateTokenDisplay(eventData);
+                        }
+
                         // Also update status window
                         const genieStepTitle = _getGenieStepTitle(eventName, eventData);
                         UI.updateStatusWindow({
@@ -1091,6 +1160,20 @@ export async function handleStreamRequest(endpoint, body) {
         UI.addMessage('user', `Executing prompt: ${body.prompt_name}`, null, true, 'text', profileTag);
     }
     DOM.userInput.value = '';
+
+    // Hide suggestions and profile selector when clearing input
+    const suggestionsContainer = document.getElementById('rag-suggestions-container');
+    if (suggestionsContainer) {
+        suggestionsContainer.innerHTML = '';
+        suggestionsContainer.classList.add('hidden');
+    }
+
+    const profileTagSelector = document.getElementById('profile-tag-selector');
+    if (profileTagSelector) {
+        profileTagSelector.innerHTML = '';
+        profileTagSelector.classList.add('hidden');
+    }
+
     UI.setExecutionState(true);
     UI.resetStatusWindowForNewTask();
     // Set default title for the brief window before execution_start arrives with branding
@@ -1371,13 +1454,15 @@ export async function handleReloadPlanClick(element) {
 
             // Update token display with partial data (isHistorical = true for plan reloads)
             const lastStatement = _getLastStatementTokens(turnData);
+            const turnCost = _getTurnCost(turnData);
             UI.updateTokenDisplay({
                 statement_input: lastStatement.input,
                 statement_output: lastStatement.output,
                 turn_input: turnData.turn_input_tokens || turnData.input_tokens || 0,
                 turn_output: turnData.turn_output_tokens || turnData.output_tokens || 0,
                 total_input: turnData.session_input_tokens || 0,
-                total_output: turnData.session_output_tokens || 0
+                total_output: turnData.session_output_tokens || 0,
+                cost_usd: turnCost
             }, true);
 
             // Hide replay buttons for partial turns
@@ -1436,13 +1521,15 @@ export async function handleReloadPlanClick(element) {
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
                 const lastStatement = _getLastStatementTokens(turnData);
+                const turnCost = _getTurnCost(turnData);
                 UI.updateTokenDisplay({
                     statement_input: lastStatement.input,
                     statement_output: lastStatement.output,
                     turn_input: inputTokens,
                     turn_output: outputTokens,
                     total_input: turnData.session_input_tokens || 0,
-                    total_output: turnData.session_output_tokens || 0
+                    total_output: turnData.session_output_tokens || 0,
+                    cost_usd: turnCost
                 }, true);
             } else {
                 // Fallback: Show simple summary if no detailed events available
@@ -1566,13 +1653,15 @@ export async function handleReloadPlanClick(element) {
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
                 const lastStatement = _getLastStatementTokens(turnData);
+                const turnCost = _getTurnCost(turnData);
                 UI.updateTokenDisplay({
                     statement_input: lastStatement.input,
                     statement_output: lastStatement.output,
                     turn_input: inputTokens,
                     turn_output: outputTokens,
                     total_input: turnData.session_input_tokens || 0,
-                    total_output: turnData.session_output_tokens || 0
+                    total_output: turnData.session_output_tokens || 0,
+                    cost_usd: turnCost
                 }, true);
             } else {
                 // Fallback: Show simple summary if no detailed events available
@@ -1720,13 +1809,15 @@ export async function handleReloadPlanClick(element) {
             const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
             const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
             const lastStatement = _getLastStatementTokens(turnData);
+            const turnCost = _getTurnCost(turnData);
             UI.updateTokenDisplay({
                 statement_input: lastStatement.input,
                 statement_output: lastStatement.output,
                 turn_input: inputTokens,
                 turn_output: outputTokens,
                 total_input: turnData.session_input_tokens || 0,
-                total_output: turnData.session_output_tokens || 0
+                total_output: turnData.session_output_tokens || 0,
+                cost_usd: turnCost
             }, true);
 
             // Hide replay buttons for non-tool profiles (no plan to replay)
@@ -1771,18 +1862,20 @@ export async function handleReloadPlanClick(element) {
 
             // Update token display
             const lastStatement = _getLastStatementTokens(turnData);
+            const turnCost = _getTurnCost(turnData);
             UI.updateTokenDisplay({
                 statement_input: lastStatement.input,
                 statement_output: lastStatement.output,
                 turn_input: turnData.turn_input_tokens || 0,
                 turn_output: turnData.turn_output_tokens || 0,
                 total_input: turnData.session_input_tokens || 0,
-                total_output: turnData.session_output_tokens || 0
+                total_output: turnData.session_output_tokens || 0,
+                cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0  // Add fallback to turn_cost field
             }, true);
 
             // Update model display
             if (turnData.provider && turnData.model) {
-                UI.updateStatusPromptName(turnData.provider, turnData.model, true);
+                UI.updateStatusPromptName(turnData.provider, turnData.model, true, turnData.dual_model_info);
             }
 
             // Show replay buttons
@@ -1830,8 +1923,8 @@ export async function handleReloadPlanClick(element) {
         // --- MODIFICATION START: Update model display for reloaded turn ---
         // After rendering, update the model display to reflect the turn's actual model
         if (turnData.provider && turnData.model) {
-            // --- MODIFICATION: Pass historical data directly to UI function ---
-            UI.updateStatusPromptName(turnData.provider, turnData.model, true);
+            // --- MODIFICATION: Pass historical data and dual-model info directly to UI function ---
+            UI.updateStatusPromptName(turnData.provider, turnData.model, true, turnData.dual_model_info);
         }
         // --- MODIFICATION END ---
 
@@ -1839,13 +1932,16 @@ export async function handleReloadPlanClick(element) {
         const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
         const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
         const lastStatement = _getLastStatementTokens(turnData);
+        const turnCost = _getTurnCost(turnData);
         UI.updateTokenDisplay({
             statement_input: lastStatement.input,
             statement_output: lastStatement.output,
             turn_input: inputTokens,
             turn_output: outputTokens,
             total_input: turnData.session_input_tokens || 0,
-            total_output: turnData.session_output_tokens || 0
+            total_output: turnData.session_output_tokens || 0,
+            cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,  // Use _getTurnCost() with fallback
+            planning_phase: turnData.planning_phase  // Add planning phase for dual-model cost tracking
         }, true);
 
         // --- MODIFICATION START: Synchronize header buttons ---

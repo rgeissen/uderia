@@ -1207,6 +1207,19 @@ class PhaseExecutor:
             self.executor._log_system_event(event_data)
             yield self.executor._format_sse_with_depth(event_data)
 
+            # Track configured tactical model even when FASTPATH skips LLM call
+            if self.executor.is_dual_model_active:
+                from trusted_data_agent.core.session_manager import update_models_used
+                await update_models_used(
+                    user_uuid=self.executor.user_uuid,
+                    session_id=self.executor.session_id,
+                    provider=self.executor.tactical_provider,
+                    model=self.executor.tactical_model,
+                    profile_tag=None,
+                    planning_phase="tactical_fastpath"  # Distinguish FASTPATH from actual LLM calls
+                )
+                app_logger.debug(f"[Dual-Model FASTPATH] Tracked configured tactical model: {self.executor.tactical_provider}/{self.executor.tactical_model}")
+
             fast_path_action = {"tool_name": tool_name, "arguments": strategic_args}
 
             if tool_name == "TDA_LLMTask" and is_loop_iteration and loop_item:
@@ -2182,14 +2195,26 @@ class PhaseExecutor:
             context_enrichment_section=context_enrichment_section
         )
 
+        # Use tactical model for per-phase execution (dual-model feature)
+        tactical_provider = self.executor.tactical_provider
+        tactical_model = self.executor.tactical_model
+
         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt="Determine the next action based on the instructions and state provided in the system prompt.",
             reason=f"Deciding next tactical action for phase: {current_phase_goal}",
             system_prompt_override=tactical_system_prompt,
             disabled_history=True,
-            source=self.executor.source
+            source=self.executor.source,
+            current_provider=tactical_provider,  # NEW: Tactical model override
+            current_model=tactical_model,        # NEW: Tactical model override
+            planning_phase="tactical"            # NEW: Identify as tactical planning call
             # user_uuid implicitly passed
         )
+
+        # Log dual-model usage
+        if self.executor.is_dual_model_active:
+            phase_num = getattr(self.executor, 'current_phase_index', '?')
+            app_logger.info(f"[Tactical Execution] Phase {phase_num}: {tactical_provider}/{tactical_model}")
 
         self.executor.last_failed_action_info = "None"
 

@@ -2592,6 +2592,16 @@ Ranking:"""
         tools_context = APP_STATE.get('tools_context', '--- No Tools Available ---')
         prompts_context = APP_STATE.get('prompts_context', '--- No Prompts Available ---')
 
+        # DEBUG: Log tools_context details
+        app_logger.info(f"[DEBUG] tools_context length: {len(tools_context)} characters")
+        app_logger.info(f"[DEBUG] tools_context preview (first 2000 chars): {tools_context[:2000]}")
+
+        # Check if TDA_CurrentDate is in the context
+        if "TDA_CurrentDate" in tools_context:
+            app_logger.info("[DEBUG] ✅ TDA_CurrentDate found in tools_context for strategic planning")
+        else:
+            app_logger.error("[DEBUG] ❌ TDA_CurrentDate NOT found in tools_context for strategic planning")
+
         # CRITICAL FIX: Inject previous query context for chart-only continuation queries
         # This ensures the strategic planner preserves constraints (LIMIT, WHERE, ORDER BY)
         # when re-fetching data for visualization requests
@@ -2642,15 +2652,54 @@ CRITICAL REQUIREMENTS:
         )
 
         yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
+
+        # Use strategic model for meta-planning (dual-model feature)
+        strategic_provider = self.executor.strategic_provider
+        strategic_model = self.executor.strategic_model
+
         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt=planning_prompt,
             reason=f"Generating a strategic meta-plan for the goal: '{self.executor.workflow_goal_prompt[:100]}'",
             disabled_history=force_disable_history,
             active_prompt_name_for_filter=self.executor.active_prompt_name,
-            source=self.executor.source
+            source=self.executor.source,
+            current_provider=strategic_provider,  # NEW: Strategic model override
+            current_model=strategic_model,        # NEW: Strategic model override
+            planning_phase="strategic"            # NEW: Identify as strategic planning call
             # No user_uuid/session_id needed here directly as _call_llm takes from self.executor
         )
         yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
+
+        # Log dual-model usage
+        if self.executor.is_dual_model_active:
+            app_logger.info(f"[Strategic Planning] Used {strategic_provider}/{strategic_model}")
+
+        # Calculate cost for this LLM call (NEW: Per-call cost tracking)
+        from trusted_data_agent.core.cost_manager import CostManager
+        cost_manager = CostManager()
+        call_cost = cost_manager.calculate_cost(
+            provider=strategic_provider,
+            model=strategic_model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
+        # Emit token_update event with provider/model/planning_phase/cost (NEW: Dual-model traceability)
+        updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
+        if updated_session:
+            yield self.executor._format_sse_with_depth({
+                "statement_input": input_tokens,
+                "statement_output": output_tokens,
+                "turn_input": self.executor.turn_input_tokens,
+                "turn_output": self.executor.turn_output_tokens,
+                "total_input": updated_session.get("input_tokens", 0),
+                "total_output": updated_session.get("output_tokens", 0),
+                "call_id": call_id,
+                "provider": strategic_provider,     # NEW: Provider used for this call
+                "model": strategic_model,           # NEW: Model used for this call
+                "planning_phase": "strategic",      # NEW: Identify as strategic planning
+                "cost_usd": call_cost               # NEW: Cost for this call
+            }, "token_update")
 
         # --- MODIFICATION START: Build payload *after* LLM call to include tokens ---
         details_payload = {

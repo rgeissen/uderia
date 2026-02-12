@@ -110,7 +110,13 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
                 # Credentials are stored using user.id (which IS the user_uuid)
                 stored_creds = encryption.decrypt_credentials(user.id, provider)
                 if stored_creds:
-                    credentials = {**stored_creds, **credentials}
+                    logger.info(f"[DEBUG] Before merge - config_creds keys: {list(credentials.keys())}, stored_creds keys: {list(stored_creds.keys())}")
+                    # CRITICAL FIX: Reverse merge order so stored_creds (from database) overwrites config values
+                    # Config may have None/empty placeholder values that should NOT overwrite actual credentials
+                    credentials = {**credentials, **stored_creds}
+                    logger.info(f"[DEBUG] After merge - credentials keys: {list(credentials.keys())}")
+                    token_val = credentials.get('friendli_token')
+                    logger.info(f"[DEBUG] friendli_token present: {bool(token_val)}, value length: {len(token_val) if token_val else 0}")
                     logger.info(f"✓ Successfully loaded stored credentials for {provider}")
                 else:
                     logger.warning(f"No stored credentials found for {provider}")
@@ -122,6 +128,8 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
 
     # Fall back to environment variables if no credentials found
     # Check for provider-specific credential keys, not just generic apiKey
+    logger.info(f"[DEBUG] Before has_credentials check for {provider} - credentials keys: {list(credentials.keys())}")
+    logger.info(f"[DEBUG] Credential values (bool): {{{', '.join([f'{k}: {bool(v)}' for k, v in credentials.items()])}}}")
     has_credentials = (
         credentials.get("apiKey") or
         credentials.get("api_key") or
@@ -130,6 +138,7 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
         credentials.get("aws_access_key_id")  # Amazon
         # Ollama doesn't require credentials
     )
+    logger.info(f"[DEBUG] has_credentials result: {bool(has_credentials)} (type: {type(has_credentials).__name__}, repr: {repr(has_credentials)})")
     if not has_credentials:
         logger.info(f"No credentials in store, checking environment variables for {provider}")
         if provider == "Google":

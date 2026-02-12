@@ -1624,6 +1624,16 @@ async def get_session_history(current_user, session_id):
             if profile:
                 profile_type = profile.get("profile_type", "tool_enabled")
 
+        # Extract dual-model information if available
+        dual_model_info = None
+        if session_data.get("is_dual_model_active"):
+            dual_model_info = {
+                "strategicProvider": session_data.get("strategic_provider"),
+                "strategicModel": session_data.get("strategic_model"),
+                "tacticalProvider": session_data.get("tactical_provider"),
+                "tacticalModel": session_data.get("tactical_model")
+            }
+
         response_data = {
             "history": session_data.get("session_history", []),
             "input_tokens": session_data.get("input_tokens", 0),
@@ -1636,7 +1646,9 @@ async def get_session_history(current_user, session_id):
             "profile_tag": session_data.get("profile_tag"),  # Current profile tag
             "profile_id": profile_id,  # Profile ID for resource panel updates
             "profile_type": profile_type,  # Profile type for resource panel updates
-            "workflow_history": workflow_history  # For genie card rendering
+            "workflow_history": workflow_history,  # For genie card rendering
+            "dual_model_info": dual_model_info,  # Dual-model configuration
+            "dual_model_usage": session_data.get("dual_model_usage")  # Dual-model usage breakdown
         }
         return jsonify(response_data)
     app_logger.warning(f"Session {session_id} not found for user {user_uuid}.")
@@ -1784,6 +1796,15 @@ async def get_turn_details(current_user, session_id: str, turn_id: int):
     # Add session-level token totals for display
     turn_data_copy["session_input_tokens"] = session_data.get("input_tokens", 0)
     turn_data_copy["session_output_tokens"] = session_data.get("output_tokens", 0)
+
+    # Add dual-model information if available
+    if session_data.get("is_dual_model_active"):
+        turn_data_copy["dual_model_info"] = {
+            "strategicProvider": session_data.get("strategic_provider"),
+            "strategicModel": session_data.get("strategic_model"),
+            "tacticalProvider": session_data.get("tactical_provider"),
+            "tacticalModel": session_data.get("tactical_model")
+        }
 
     # Return the copy with ensured model/provider info
     return jsonify(turn_data_copy)
@@ -2282,6 +2303,36 @@ async def ask_stream():
             profiles = config_manager.get_profiles(user_uuid)
             active_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
 
+    # CRITICAL FIX: Switch profile context to reload tools when profile changes
+    # This ensures TDA_* tools and MCP tools are correctly loaded for the active profile
+    # Fixes hallucinated tool names when switching from override back to default
+    # IMPORTANT: Use profile_id directly, not active_profile object which might be None due to cache issues
+    from trusted_data_agent.core import configuration_service
+
+    # Determine which profile ID to use
+    profile_id_to_load = None
+    if profile_override_id:
+        profile_id_to_load = profile_override_id
+        app_logger.debug(f"Using profile override: {profile_override_id}")
+    else:
+        # Get default profile - don't rely on active_profile object which might be None
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+        if default_profile_id:
+            profile_id_to_load = default_profile_id
+            app_logger.debug(f"Using default profile: {default_profile_id}")
+
+    # Always switch profile context if we have a profile_id
+    if profile_id_to_load:
+        profile_context = await configuration_service.switch_profile_context(
+            profile_id_to_load, user_uuid, validate_llm=False
+        )
+        if "error" not in profile_context:
+            app_logger.info(f"✅ Switched profile context for query execution (profile: {profile_id_to_load})")
+        else:
+            app_logger.warning(f"Failed to switch profile context: {profile_context.get('error')}")
+    else:
+        app_logger.warning("No profile ID available to switch context!")
+
     # Get profile type (default to tool_enabled for backward compatibility)
     active_profile_type = active_profile.get("profile_type", "tool_enabled") if active_profile else "tool_enabled"
 
@@ -2329,13 +2380,21 @@ async def ask_stream():
     if default_profile_id:
         profiles = config_manager.get_profiles(user_uuid)
         default_profile = next((p for p in profiles if p.get("id") == default_profile_id), None)
-        profile_tag = default_profile.get("tag") if default_profile else None
+        if default_profile:
+            profile_tag = default_profile.get("tag")
+        else:
+            # Profile not found - log error and preserve existing session value
+            app_logger.error(f"Default profile {default_profile_id} not found in profiles list for user {user_uuid}")
+            # Don't set profile_tag to None - fetch from existing session to avoid corruption
+            existing_session_data = await session_manager.get_session(user_uuid, session_id)
+            profile_tag = existing_session_data.get('profile_tag') if existing_session_data else None
     else:
         profile_tag = None
 
-    # Only update session if no profile override is active
+    # Only update session if no profile override is active AND we have a valid profile_tag
     # If profile override is active, let executor handle the update after validation
-    if not profile_override_id:
+    # If profile_tag is None (profile lookup failed), don't corrupt existing session data
+    if not profile_override_id and profile_tag is not None:
         await session_manager.update_models_used(user_uuid=user_uuid, session_id=session_id, provider=APP_CONFIG.CURRENT_PROVIDER, model=APP_CONFIG.CURRENT_MODEL, profile_tag=profile_tag)
 
     # --- MODIFICATION START: Initialize user's LLM instance for chat route ---

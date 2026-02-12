@@ -239,6 +239,13 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
         APP_STATE['structured_tools']["System Tools"] = system_category
         app_logger.info(f"Injected {len(missing_system_tools)} missing TDA_* tools into structured_tools from cached classification")
 
+    # CRITICAL FIX: Always regenerate tools_context string after loading classification
+    # The strategic planner reads APP_STATE['tools_context'] (string), not structured_tools (dict).
+    # This must run even if TDA_* tools were already in cached classification (not missing).
+    # Without this step, the LLM doesn't see TDA_* tools and hallucinates tool names.
+    _regenerate_contexts()
+    app_logger.debug(f"[Profile Load] Regenerated tools_context string with {len(APP_STATE.get('structured_tools', {}).get('System Tools', []))} System Tools")
+
     # Reconstruct mcp_tools and mcp_prompts dictionaries from structured data
     # This is needed for the agent execution and validation checks
     # We need to create simple objects that have attributes (not just dicts)

@@ -2332,15 +2332,31 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const outputTokens = details.output_tokens || 0;
                 const durationMs = details.duration_ms || 0;
                 const duration = durationMs > 0 ? `${(durationMs / 1000).toFixed(2)}s` : 'N/A';
+                const provider = details.provider || state.currentProvider || 'Unknown';
+                const model = details.model || state.currentModel || 'Unknown';
+                const costUsd = details.cost_usd || null;
+
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Step</div>
                         <div class="status-kv-value"><code class="status-code text-indigo-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-key">Provider</div>
+                        <div class="status-kv-value"><code class="status-code text-blue-300">${provider}</code></div>
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${model}</code></div>
                         <div class="status-kv-key">Status</div>
                         <div class="status-kv-value text-emerald-400">✓ Complete</div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costHtml}
                         <div class="status-kv-key">Duration</div>
                         <div class="status-kv-value">${duration}</div>
                     </div>
@@ -3788,6 +3804,79 @@ export function updateTokenDisplay(data, isHistorical = false) {
     document.getElementById('turn-output-tokens').textContent = (data.turn_output || 0).toLocaleString();
     document.getElementById('total-input-tokens').textContent = (data.total_input || 0).toLocaleString();
     document.getElementById('total-output-tokens').textContent = (data.total_output || 0).toLocaleString();
+
+    // ========== COST TRACKING (Dual-Model Feature) ==========
+    // Initialize cost accumulator if not exists
+    if (!window.sessionCostAccumulator) {
+        window.sessionCostAccumulator = {
+            turn: 0,
+            session: 0,
+            strategic: 0,
+            tactical: 0
+        };
+    }
+
+    // Update costs if provided in event data
+    if (data.cost_usd !== undefined && data.cost_usd !== null) {
+        const callCost = parseFloat(data.cost_usd) || 0;
+
+        // Only accumulate costs for live events, NOT historical reloads
+        if (!isHistorical) {
+            // Live event - accumulate costs
+            // Accumulate turn cost (reset on new turn)
+            if (data.statement_input === 0 && data.statement_output === 0) {
+                // New turn starting, reset turn cost
+                window.sessionCostAccumulator.turn = 0;
+            }
+            window.sessionCostAccumulator.turn += callCost;
+            window.sessionCostAccumulator.session += callCost;
+
+            // Track strategic vs tactical costs
+            const planningPhase = data.planning_phase;
+            if (planningPhase === 'strategic') {
+                window.sessionCostAccumulator.strategic += callCost;
+            } else if (planningPhase === 'tactical') {
+                window.sessionCostAccumulator.tactical += callCost;
+            }
+        } else {
+            // Historical reload - set turn cost for display
+            window.sessionCostAccumulator.turn = callCost;
+
+            // Set session cost if provided in data (for historical context)
+            if (data.session_cost_usd !== undefined && data.session_cost_usd !== null) {
+                window.sessionCostAccumulator.session = parseFloat(data.session_cost_usd) || 0;
+            } else if (window.sessionCostAccumulator.session === 0) {
+                // If session cost is 0 (no live queries yet), show turn cost as minimum estimate
+                // This prevents showing $0.00000 when viewing historical turns
+                // Note: This is an approximation until backend provides cumulative session_cost_usd
+                window.sessionCostAccumulator.session = callCost;
+            }
+            // Otherwise keep current session cost value
+        }
+
+        // Display costs (always show current accumulator values)
+        const costSection = document.getElementById('cost-display-section');
+        const turnCostEl = document.getElementById('turn-cost-value');
+        const sessionCostEl = document.getElementById('session-cost-value');
+        const dualModelBreakdown = document.getElementById('dual-model-cost-breakdown');
+        const strategicCostEl = document.getElementById('strategic-cost');
+        const tacticalCostEl = document.getElementById('tactical-cost');
+
+        if (costSection && turnCostEl && sessionCostEl) {
+            costSection.classList.remove('hidden');
+            turnCostEl.textContent = `$${window.sessionCostAccumulator.turn.toFixed(6)}`;
+            sessionCostEl.textContent = `$${window.sessionCostAccumulator.session.toFixed(6)}`;
+
+            // Show dual-model breakdown if both strategic and tactical costs exist
+            if (window.sessionCostAccumulator.strategic > 0 && window.sessionCostAccumulator.tactical > 0) {
+                dualModelBreakdown.classList.remove('hidden');
+                strategicCostEl.textContent = `$${window.sessionCostAccumulator.strategic.toFixed(4)}`;
+                tacticalCostEl.textContent = `$${window.sessionCostAccumulator.tactical.toFixed(4)}`;
+            } else {
+                dualModelBreakdown.classList.add('hidden');
+            }
+        }
+    }
 }
 
 // --- MODIFICATION START: Add function to refresh all feedback button states ---
@@ -3840,35 +3929,68 @@ export function refreshFeedbackButtons() {
 // --- MODIFICATION END ---
 
 export function setThinkingIndicator(isThinking) {
+    // Just toggle the small spinning gear icon next to "Configuration" label
+    // Keep the model configuration display always visible
     if (isThinking) {
-        DOM.promptNameDisplay.classList.add('hidden');
         DOM.thinkingIndicator.classList.remove('hidden');
-        DOM.thinkingIndicator.classList.add('flex');
     } else {
         DOM.thinkingIndicator.classList.add('hidden');
-        DOM.thinkingIndicator.classList.remove('flex');
-        DOM.promptNameDisplay.classList.remove('hidden');
     }
 }
 
-export function updateStatusPromptName(provider = null, model = null, isHistorical = false) {
+export function updateStatusPromptName(provider = null, model = null, isHistorical = false, dualModelInfo = null) {
     const promptNameDiv = document.getElementById('prompt-name-display');
 
     // Use the provided args, or fall back to the global state
     const providerToShow = provider || state.currentProvider;
     const modelToShow = model || state.currentModel;
+    const dualModelInfoToShow = dualModelInfo || state.currentDualModelInfo;
 
     if (providerToShow && modelToShow) {
         const isCustom = isPromptCustomForModel(providerToShow, modelToShow);
         const promptType = isPrivilegedUser() ? (isCustom ? 'Custom' : 'Default') : 'Default (Server-Side)';
-        
+
         // Add a visual indicator if we are showing a *historical* turn's model
         const historicalIndicator = isHistorical ? ' (History)' : '';
+
+        // Check if dual-model is active (strategic != tactical)
+        console.log('[updateStatusPromptName] dualModelInfo:', dualModelInfoToShow);
+        const isDualModel = dualModelInfoToShow &&
+                          dualModelInfoToShow.strategicProvider &&
+                          dualModelInfoToShow.tacticalProvider &&
+                          (dualModelInfoToShow.strategicProvider !== dualModelInfoToShow.tacticalProvider ||
+                           dualModelInfoToShow.strategicModel !== dualModelInfoToShow.tacticalModel);
+        console.log('[updateStatusPromptName] isDualModel:', isDualModel);
+
+        let modelDisplay = '';
+        if (isDualModel) {
+            // Show dual-model badge with strategic/tactical breakdown (compact vertical layout)
+            const strategicShort = `${dualModelInfoToShow.strategicProvider}/${getNormalizedModelId(dualModelInfoToShow.strategicModel)}`;
+            const tacticalShort = `${dualModelInfoToShow.tacticalProvider}/${getNormalizedModelId(dualModelInfoToShow.tacticalModel)}`;
+            modelDisplay = `
+                <div class="flex flex-col gap-0.5">
+                    <div class="flex items-center gap-1.5">
+                        <svg class="w-3 h-3 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span class="text-xs text-gray-400">Strategic:</span>
+                        <span class="font-mono text-blue-300 text-xs truncate">${strategicShort}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 pl-4">
+                        <span class="text-xs text-gray-400">Tactical:</span>
+                        <span class="font-mono text-emerald-300 text-xs truncate">${tacticalShort}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Standard single-model display
+            modelDisplay = `<span class="font-mono text-teradata-orange text-xs">${providerToShow}/${getNormalizedModelId(modelToShow)}</span>`;
+        }
 
         promptNameDiv.innerHTML = `
             <span class="font-semibold text-gray-300">${promptType} Prompt${historicalIndicator}</span>
             <span class="text-gray-500">/</span>
-            <span class="font-mono text-teradata-orange text-xs">${providerToShow}/${getNormalizedModelId(modelToShow)}</span>
+            ${modelDisplay}
         `;
     } else {
         promptNameDiv.innerHTML = '<span>No Model/Prompt Loaded</span>';

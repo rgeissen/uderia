@@ -10,6 +10,7 @@ export const state = {
     simpleChatHistory: [],
     currentProvider: 'Google',
     currentModel: '',
+    currentDualModelInfo: null, // Dual-model configuration for status display
     currentStatusId: 0,
     currentSessionId: null,
     currentTaskId: null, // Add this line

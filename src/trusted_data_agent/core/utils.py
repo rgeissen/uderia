@@ -215,7 +215,7 @@ def _regenerate_contexts():
     in the global STATE based on the current disabled lists and prints the
     current status to the console for debugging.
     """
-    app_logger.debug("Regenerating Agent Capability Contexts")
+    app_logger.info("[DEBUG] _regenerate_contexts() called - rebuilding tools_context string")
 
     disabled_tools_list = APP_STATE.get("disabled_tools", [])
     disabled_prompts_list = APP_STATE.get("disabled_prompts", [])
@@ -255,6 +255,13 @@ def _regenerate_contexts():
         
         if len(tool_context_parts) > 1:
             APP_STATE['tools_context'] = "\n".join(tool_context_parts)
+            app_logger.info(f"[DEBUG] Generated tools_context with {len(tool_context_parts)-1} categories")
+
+            # Check for TDA_CurrentDate specifically
+            if "TDA_CurrentDate" in APP_STATE['tools_context']:
+                app_logger.info("[DEBUG] ✅ TDA_CurrentDate is in final tools_context")
+            else:
+                app_logger.error("[DEBUG] ❌ TDA_CurrentDate MISSING from final tools_context")
         else:
             APP_STATE['tools_context'] = "--- No Tools Available ---"
         app_logger.debug(f"Regenerated LLM tool context. {enabled_count} tools are active.")
