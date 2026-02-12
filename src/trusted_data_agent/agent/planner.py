@@ -538,6 +538,293 @@ class Planner:
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse_with_depth(event_data)
 
+    def _is_chart_only_query(self, query: str) -> bool:
+        """
+        Detect if query is purely a charting request without new data requirements.
+
+        Used to identify continuation queries that should reuse previous turn's data.
+
+        Examples of chart-only queries:
+        - "show me a bar chart"
+        - "make a pie chart"
+        - "visualize it"
+        - "chart that data"
+
+        Returns True if query requests visualization without specifying new data to fetch.
+        """
+        if not query:
+            return False
+
+        query_lower = query.lower()
+
+        # Chart/visualization keywords
+        chart_keywords = r'\b(chart|graph|plot|visualiz\w+|show|display)\b'
+
+        # Data/entity keywords that indicate a NEW data request
+        data_keywords = r'\b(customers?|products?|orders?|sales?|items?|users?|employees?|transactions?|invoices?|payments?|get|find|list|top|all|where|from|select)\b'
+
+        has_chart = re.search(chart_keywords, query_lower)
+        has_data_request = re.search(data_keywords, query_lower)
+
+        # Chart keyword present but no new data request = chart-only query
+        is_chart_only = has_chart and not has_data_request
+
+        if is_chart_only:
+            app_logger.debug(f"Detected chart-only query: '{query}'")
+
+        return is_chart_only
+
+    def _queries_are_semantically_similar(self, current_query: str, previous_query: str) -> bool:
+        """
+        Check if two user queries are semantically similar using lightweight heuristics.
+
+        This is used to prevent inappropriate data reuse when query context changes
+        (e.g., products query vs customers query).
+
+        Returns True if queries appear to be about the same topic/entities.
+        """
+        if not current_query or not previous_query:
+            return False
+
+        # Normalize queries for comparison
+        current_lower = current_query.lower()
+        previous_lower = previous_query.lower()
+
+        # Extract key entities (table names, domain terms)
+        # Common patterns: "show me X", "get X", "list X", "chart X", etc.
+        entity_patterns = [
+            r'\b(products?|customers?|orders?|sales?|items?|users?|employees?|transactions?|invoices?|payments?)\b',
+            r'\b(inventory|stock|warehouse|database|table|system)\b',
+            r'\bfrom\s+(\w+)\b',  # SQL table references
+        ]
+
+        import re
+        current_entities = set()
+        previous_entities = set()
+
+        for pattern in entity_patterns:
+            current_entities.update(re.findall(pattern, current_lower))
+            previous_entities.update(re.findall(pattern, previous_lower))
+
+        # Special case: Detect chart-only continuation queries
+        # These queries explicitly request visualization of previous data
+        continuation_patterns = [
+            r'\b(chart|graph|plot|visualiz\w+)\b.*\b(that|it|this|those|the data)\b',
+            r'\b(show|display|create|generate|make)\b.*\b(chart|graph|plot|visualization)\b',
+            r'\bchart\b(?!.*\b(for|of|about|showing)\b)',  # "chart" without a subject
+        ]
+
+        is_continuation = any(re.search(p, current_lower) for p in continuation_patterns)
+
+        if is_continuation and previous_entities:
+            # Current query is a chart-only request that refers to previous data implicitly
+            app_logger.info(
+                f"Query comparison: '{current_query}' detected as continuation query "
+                f"for previous context with entities {previous_entities}"
+            )
+            return True
+
+        # If no entities found, check for high word overlap as fallback
+        if not current_entities and not previous_entities:
+            current_words = set(current_lower.split())
+            previous_words = set(previous_lower.split())
+            # Remove common stop words
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+                         'of', 'with', 'by', 'from', 'show', 'me', 'get', 'list', 'chart', 'display'}
+            current_words -= stop_words
+            previous_words -= stop_words
+
+            if current_words and previous_words:
+                overlap = len(current_words & previous_words) / max(len(current_words), len(previous_words))
+                return overlap > 0.5  # 50% word overlap threshold
+            return False
+
+        # Check entity overlap
+        if current_entities and previous_entities:
+            # Both queries have entities - check for overlap
+            overlap = len(current_entities & previous_entities)
+            app_logger.debug(f"Query entity comparison: current={current_entities}, previous={previous_entities}, overlap={overlap}")
+            return overlap > 0  # Any shared entity indicates similar context
+        elif not current_entities and previous_entities:
+            # Current has no entities but it's not a continuation query (already checked above)
+            app_logger.debug(f"Query comparison: current query has no entities, not detected as continuation")
+            return False
+        elif current_entities and not previous_entities:
+            # Previous has no entities - can't determine similarity
+            app_logger.debug(f"Query comparison: previous query has no entities")
+            return False
+
+        # Both queries have no entities - word overlap fallback already handled above
+        return False
+
+    def _extract_tool_arguments(self) -> dict:
+        """
+        Extract tool arguments from previous turn's execution trace.
+
+        Returns dict: {tool_name: arguments}
+        """
+        tool_args = {}
+
+        workflow_history = self.executor.previous_turn_data.get("workflow_history", [])
+        if not workflow_history or not isinstance(workflow_history, list):
+            return tool_args
+
+        last_turn = workflow_history[-1]
+        if not isinstance(last_turn, dict):
+            return tool_args
+
+        execution_trace = last_turn.get("execution_trace", [])
+        for entry in execution_trace:
+            if not isinstance(entry, dict):
+                continue
+
+            action = entry.get("action", {})
+            if not isinstance(action, dict):
+                continue
+
+            tool_name = action.get("tool_name", "")
+            arguments = action.get("arguments", {})
+
+            # Handle orchestrated tools (TDA_SystemOrchestration)
+            if tool_name == "TDA_SystemOrchestration":
+                wrapped_calls = action.get("wrapped_tool_calls", [])
+                for wrapped_call in wrapped_calls:
+                    if isinstance(wrapped_call, dict):
+                        wrapped_tool = wrapped_call.get("tool", "")
+                        wrapped_args = wrapped_call.get("arguments", {})
+                        if wrapped_tool and wrapped_args:
+                            tool_args[wrapped_tool] = wrapped_args
+            elif tool_name and arguments:
+                tool_args[tool_name] = arguments
+
+        return tool_args
+
+    def _sql_queries_are_similar(self, current_sql: str, previous_sql: str) -> bool:
+        """
+        Compare two SQL queries to check if they access similar data.
+
+        Returns True if queries access the same primary table(s).
+        """
+        if not current_sql or not previous_sql:
+            return False
+
+        import re
+
+        # Extract table names from FROM clauses
+        from_pattern = r'FROM\s+(\w+)'
+        current_tables = set(re.findall(from_pattern, current_sql, re.IGNORECASE))
+        previous_tables = set(re.findall(from_pattern, previous_sql, re.IGNORECASE))
+
+        # Also check JOIN clauses
+        join_pattern = r'JOIN\s+(\w+)'
+        current_tables.update(re.findall(join_pattern, current_sql, re.IGNORECASE))
+        previous_tables.update(re.findall(join_pattern, previous_sql, re.IGNORECASE))
+
+        if not current_tables or not previous_tables:
+            # If can't extract tables, be conservative
+            app_logger.debug("Could not extract tables from SQL queries for comparison")
+            return False
+
+        # Normalize table names (lowercase for comparison)
+        current_tables = {t.lower() for t in current_tables}
+        previous_tables = {t.lower() for t in previous_tables}
+
+        # Check for overlap
+        overlap = current_tables & previous_tables
+
+        app_logger.debug(
+            f"SQL table comparison: current={current_tables}, previous={previous_tables}, overlap={overlap}"
+        )
+
+        # Return True if primary tables overlap
+        return len(overlap) > 0
+
+    def _validate_query_context_match(self, data_phases: list, plan_data_tools: set) -> bool:
+        """
+        Validate that the current query context matches the previous turn's context.
+
+        This prevents inappropriate data reuse when the query topic changes
+        (e.g., products → customers).
+
+        Returns True only if:
+        1. User queries are semantically similar
+        2. For SQL tools, the SQL queries access similar tables
+        """
+        # Extract user queries
+        current_query = self.executor.original_user_input
+
+        workflow_history = self.executor.previous_turn_data.get("workflow_history", [])
+        if not workflow_history or not isinstance(workflow_history, list):
+            app_logger.info("Chart data reuse skipped: No previous workflow history available")
+            return False
+
+        last_turn = workflow_history[-1]
+        if not isinstance(last_turn, dict):
+            return False
+
+        previous_query = last_turn.get("user_query", "")
+
+        # Check 1: Query similarity
+        if not self._queries_are_semantically_similar(current_query, previous_query):
+            app_logger.info(
+                f"Chart data reuse skipped: User queries are semantically different. "
+                f"Current: '{current_query}', Previous: '{previous_query}'"
+            )
+            return False
+
+        # Check 2: SQL argument similarity (for SQL-based tools)
+        SQL_TOOLS = {"base_readQuery", "base_readQueries", "base_writeQuery"}
+        sql_tools_in_plan = plan_data_tools & SQL_TOOLS
+
+        if sql_tools_in_plan:
+            # Extract previous tool arguments
+            prev_tool_args = self._extract_tool_arguments()
+
+            # Get current plan's SQL from data phases
+            for phase in data_phases:
+                tools = phase.get("relevant_tools", [])
+                if not tools:
+                    continue
+
+                tool_name = tools[0]
+                if tool_name not in SQL_TOOLS:
+                    continue
+
+                # Get current SQL from phase arguments
+                current_args = phase.get("arguments", {})
+                current_sql = current_args.get("sql", "")
+
+                # Get previous SQL
+                prev_args = prev_tool_args.get(tool_name, {})
+                previous_sql = prev_args.get("sql", "")
+
+                # Compare SQL queries
+                if current_sql and previous_sql:
+                    if not self._sql_queries_are_similar(current_sql, previous_sql):
+                        # Extract table names for logging
+                        import re
+                        current_tables = re.findall(r'FROM\s+(\w+)', current_sql, re.IGNORECASE)
+                        previous_tables = re.findall(r'FROM\s+(\w+)', previous_sql, re.IGNORECASE)
+
+                        app_logger.info(
+                            f"Chart data reuse skipped: SQL queries access different tables. "
+                            f"Current: {current_tables}, Previous: {previous_tables}"
+                        )
+                        return False
+                elif not prev_args:
+                    # Previous turn didn't use this tool (edge case)
+                    app_logger.info(
+                        f"Chart data reuse skipped: Tool {tool_name} not found in previous turn execution"
+                    )
+                    return False
+
+        # All checks passed
+        app_logger.info(
+            f"Chart data reuse validation passed: Query context is similar. "
+            f"Queries semantically similar, SQL tables match."
+        )
+        return True
+
     def _rewrite_plan_collapse_chart_data_refetch(self):
         """
         Collapse redundant data-gathering phases in chart-only follow-up plans.
@@ -611,6 +898,10 @@ class Planner:
         if not plan_data_tools.issubset(prev_data_tools):
             return
 
+        # 4b. NEW: Validate query context similarity before collapsing
+        if not self._validate_query_context_match(data_phases, plan_data_tools):
+            return
+
         # 5. Collapse: remove data-gathering phases from the plan
         data_phase_nums = {p.get("phase") for p in data_phases}
         new_plan = [p for p in self.executor.meta_plan if p.get("phase") not in data_phase_nums]
@@ -623,7 +914,8 @@ class Planner:
 
         app_logger.info(
             f"PLAN REWRITE (Chart Data Reuse): Collapsed {len(data_phases)} redundant "
-            f"data-gathering phase(s). Tools {plan_data_tools} already executed in previous turn."
+            f"data-gathering phase(s). Tools {plan_data_tools} already executed in previous turn "
+            f"with SIMILAR QUERY CONTEXT."
         )
 
         event_data = {
@@ -2300,7 +2592,38 @@ Ranking:"""
         tools_context = APP_STATE.get('tools_context', '--- No Tools Available ---')
         prompts_context = APP_STATE.get('prompts_context', '--- No Prompts Available ---')
 
-        planning_prompt = WORKFLOW_META_PLANNING_PROMPT.format(
+        # CRITICAL FIX: Inject previous query context for chart-only continuation queries
+        # This ensures the strategic planner preserves constraints (LIMIT, WHERE, ORDER BY)
+        # when re-fetching data for visualization requests
+        chart_context_injection = ""
+        if self.executor.previous_turn_data and self._is_chart_only_query(self.executor.original_user_input):
+            workflow_history = self.executor.previous_turn_data.get("workflow_history", [])
+            if workflow_history:
+                last_turn = workflow_history[-1]
+                previous_query = last_turn.get("user_query", "")
+
+                if previous_query:
+                    chart_context_injection = f"""
+**IMPORTANT CONTEXT - CHART CONTINUATION REQUEST:**
+The user's previous query was: "{previous_query}"
+The current request is to VISUALIZE that data.
+
+CRITICAL REQUIREMENTS:
+1. If you need to re-fetch data, preserve ALL constraints from the previous query:
+   - LIMIT clauses (e.g., top 5, top 10)
+   - WHERE filters
+   - ORDER BY clauses
+   - Any grouping or aggregations
+2. The chart should show the SAME data set that was returned in the previous turn.
+3. Do NOT generate a broader query that returns more rows than the original.
+
+"""
+                    app_logger.info(
+                        f"Chart-only query detected: Injecting previous context to preserve constraints. "
+                        f"Previous query: '{previous_query[:100]}...'"
+                    )
+
+        planning_prompt = chart_context_injection + WORKFLOW_META_PLANNING_PROMPT.format(
             workflow_goal=self.executor.workflow_goal_prompt,
             explicit_parameters_section=explicit_parameters_section,
             original_user_input=self.executor.original_user_input,

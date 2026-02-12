@@ -100,22 +100,84 @@ export async function handleStartNewSession() {
         DOM.sessionList.prepend(sessionItem);
         await handleLoadSession(data.id, true);
 
-        // Check if session has a primer configured - execute it automatically
+        // AUTO-EXECUTE PRIMER IF CONFIGURED AND ENABLED
         if (data.session_primer) {
-            console.log('[Session Primer] Executing session primer:', data.session_primer.substring(0, 50) + '...');
-            // Import and use handleStreamRequest to execute the primer
-            const { handleStreamRequest } = await import('../eventHandlers.js?v=3.4');
-            const primerRequest = {
-                message: data.session_primer,
-                session_id: data.id,
-                is_session_primer: true
-            };
-            // Pass profile_override_id if present (ensures executor uses correct profile)
-            if (data.profile_override_id) {
-                primerRequest.profile_override_id = data.profile_override_id;
-                console.log('[Session Primer] Using profile override:', data.profile_override_id);
+            // Backward compatibility: convert string to new format
+            const primerConfig = typeof data.session_primer === 'string'
+                ? { enabled: true, mode: 'combined', statements: [data.session_primer] }
+                : data.session_primer;
+
+            // Only execute if explicitly enabled
+            if (!primerConfig.enabled) {
+                console.log('[Session Primer] Primer data exists but is disabled - skipping execution');
+            } else {
+                console.log(`[Session Primer] Executing ${primerConfig.statements.length} statement(s) in ${primerConfig.mode} mode`);
+
+                // Import and use handleStreamRequest to execute the primer(s)
+                const { handleStreamRequest } = await import('../eventHandlers.js?v=3.4');
+
+                if (primerConfig.mode === 'combined') {
+                    // Execute all statements as one merged query with clear separators
+                    let mergedQuery;
+                    if (primerConfig.statements.length === 1) {
+                        // Single statement - no need for numbering
+                        mergedQuery = primerConfig.statements[0];
+                    } else {
+                        // Multiple statements - add clear numbering and separators
+                        mergedQuery = primerConfig.statements
+                            .map((stmt, idx) => `[Statement ${idx + 1}]\n${stmt}`)
+                            .join('\n\n---\n\n');
+                    }
+                    console.log('[Session Primer] Combined mode - merging statements into single query with separators');
+                    const primerRequest = {
+                        message: mergedQuery,
+                        session_id: data.id,
+                        is_session_primer: true
+                    };
+
+                    if (data.profile_override_id) {
+                        primerRequest.profile_override_id = data.profile_override_id;
+                    }
+
+                    handleStreamRequest('/ask_stream', primerRequest);
+
+                } else if (primerConfig.mode === 'individual') {
+                    // Execute each statement separately in sequence
+                    console.log('[Session Primer] Individual mode - executing statements sequentially');
+
+                    // Simple sequential execution with delays
+                    const executeNextStatement = (index) => {
+                        if (index >= primerConfig.statements.length) {
+                            console.log('[Session Primer] All statements executed');
+                            return;
+                        }
+
+                        const statement = primerConfig.statements[index];
+                        console.log(`[Session Primer] Executing statement ${index + 1}/${primerConfig.statements.length}`);
+
+                        const primerRequest = {
+                            message: statement,
+                            session_id: data.id,
+                            is_session_primer: true
+                        };
+
+                        if (data.profile_override_id) {
+                            primerRequest.profile_override_id = data.profile_override_id;
+                        }
+
+                        // Execute statement (uses existing combined mode logic)
+                        handleStreamRequest('/ask_stream', primerRequest);
+
+                        // Wait 10 seconds before next statement (ensures completion)
+                        if (index < primerConfig.statements.length - 1) {
+                            setTimeout(() => executeNextStatement(index + 1), 10000);
+                        }
+                    };
+
+                    // Start with first statement
+                    executeNextStatement(0);
+                }
             }
-            handleStreamRequest('/ask_stream', primerRequest);
         }
     } catch (error) {
         UI.addMessage('assistant', `Failed to start a new session: ${error.message}`);

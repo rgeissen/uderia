@@ -5040,6 +5040,107 @@ async function populateSystemPrompts(modal, profile) {
     }
 }
 
+// ============================================================================
+// SESSION PRIMER UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Renders statement cards in the primer configuration UI
+ * @param {Array<string>} statements - Array of statement strings
+ */
+function renderPrimerStatements(statements) {
+    const container = document.getElementById('primer-statements-container');
+    if (!container) return;
+
+    const html = statements.map((statement, index) => {
+        const statementId = `stmt-${index}`;
+        return `
+            <div class="bg-gradient-to-br from-white/10 to-white/5 border-2 border-white/10 rounded-lg p-3 hover:border-white/20 transition-all duration-200" data-statement-index="${index}">
+                <div class="flex items-start justify-between gap-2 mb-2">
+                    <span class="text-xs font-semibold text-gray-300">Statement ${index + 1}</span>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                        <button type="button" data-action="move-up" data-index="${index}"
+                            class="card-btn card-btn--neutral card-btn--sm" ${index === 0 ? 'disabled' : ''}>
+                            ↑
+                        </button>
+                        <button type="button" data-action="move-down" data-index="${index}"
+                            class="card-btn card-btn--neutral card-btn--sm" ${index === statements.length - 1 ? 'disabled' : ''}>
+                            ↓
+                        </button>
+                        <button type="button" data-action="delete" data-index="${index}"
+                            class="card-btn card-btn--danger card-btn--sm">
+                            ×
+                        </button>
+                    </div>
+                </div>
+                <textarea id="${statementId}" rows="2"
+                    placeholder="Enter a statement or question to execute..."
+                    class="w-full px-3 py-2 bg-gray-800/40 border border-gray-700/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-teradata-orange focus:ring-1 focus:ring-teradata-orange resize-y"
+                >${escapeHtml(statement)}</textarea>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+    attachPrimerEventListeners();
+}
+
+/**
+ * Attaches event listeners to primer statement cards and buttons
+ */
+function attachPrimerEventListeners() {
+    const container = document.getElementById('primer-statements-container');
+    if (!container) return;
+
+    // Add statement button
+    const addBtn = document.getElementById('add-primer-statement');
+    if (addBtn) {
+        // Remove old listener by cloning
+        const newAddBtn = addBtn.cloneNode(true);
+        addBtn.replaceWith(newAddBtn);
+
+        newAddBtn.addEventListener('click', () => {
+            const currentStatements = collectPrimerStatements();
+            currentStatements.push('');
+            renderPrimerStatements(currentStatements);
+        });
+    }
+
+    // Move up/down/delete buttons
+    container.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const action = e.currentTarget.dataset.action;
+            const index = parseInt(e.currentTarget.dataset.index);
+            const statements = collectPrimerStatements();
+
+            if (action === 'move-up' && index > 0) {
+                [statements[index - 1], statements[index]] = [statements[index], statements[index - 1]];
+            } else if (action === 'move-down' && index < statements.length - 1) {
+                [statements[index], statements[index + 1]] = [statements[index + 1], statements[index]];
+            } else if (action === 'delete') {
+                statements.splice(index, 1);
+            }
+
+            renderPrimerStatements(statements);
+        });
+    });
+}
+
+/**
+ * Collects current statement values from the UI
+ * @returns {Array<string>} Array of statement strings (trimmed)
+ */
+function collectPrimerStatements() {
+    const container = document.getElementById('primer-statements-container');
+    if (!container) return [];
+
+    const statements = [];
+    container.querySelectorAll('textarea').forEach(textarea => {
+        statements.push(textarea.value.trim());
+    });
+    return statements;
+}
+
 async function showProfileModal(profileId = null, defaultProfileType = null) {
     const profile = profileId ? configState.profiles.find(p => p.id === profileId) : null;
     const isEdit = !!profile;
@@ -5904,23 +6005,67 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     profileTagInput.value = profile ? (profile.tag || '').replace('@', '') : '';
     profileDescInput.value = profile ? profile.description : '';
 
-    // Set session primer fields
+    // Set session primer fields with state preservation support
     const sessionPrimerCheckbox = modal.querySelector('#profile-modal-enable-primer');
     const sessionPrimerContainer = modal.querySelector('#profile-modal-primer-container');
-    const sessionPrimerTextarea = modal.querySelector('#profile-modal-primer');
 
-    if (sessionPrimerCheckbox && sessionPrimerContainer && sessionPrimerTextarea) {
-        const hasPrimer = profile && profile.session_primer;
-        sessionPrimerCheckbox.checked = hasPrimer;
-        sessionPrimerContainer.classList.toggle('hidden', !hasPrimer);
-        sessionPrimerTextarea.value = hasPrimer ? profile.session_primer : '';
+    if (sessionPrimerCheckbox && sessionPrimerContainer) {
+        let primerConfig = null;
 
-        // Add change handler for checkbox (remove old handler first to avoid duplicates)
-        sessionPrimerCheckbox.onchange = () => {
-            sessionPrimerContainer.classList.toggle('hidden', !sessionPrimerCheckbox.checked);
-            if (!sessionPrimerCheckbox.checked) {
-                sessionPrimerTextarea.value = '';
+        // Backward compatibility: convert string to new format
+        if (profile && profile.session_primer) {
+            if (typeof profile.session_primer === 'string') {
+                primerConfig = {
+                    enabled: true,  // Old format assumes enabled
+                    mode: 'combined',
+                    statements: [profile.session_primer]
+                };
+            } else {
+                primerConfig = profile.session_primer;
+                // Handle old object format without 'enabled' field
+                if (primerConfig.enabled === undefined) {
+                    primerConfig.enabled = true;  // Default to enabled if field missing
+                }
             }
+        }
+
+        const hasPrimerData = primerConfig !== null && primerConfig.statements?.length > 0;
+        const isEnabled = primerConfig?.enabled || false;
+
+        // Set checkbox state
+        sessionPrimerCheckbox.checked = isEnabled;
+        sessionPrimerContainer.classList.toggle('hidden', !isEnabled);
+
+        // Load execution mode and statements (even if disabled, for recall)
+        if (hasPrimerData) {
+            const modeRadios = modal.querySelectorAll('input[name="primer-mode"]');
+            modeRadios.forEach(radio => {
+                radio.checked = radio.value === primerConfig.mode;
+            });
+
+            // Render statements (always, even if disabled - they're just hidden)
+            renderPrimerStatements(primerConfig.statements);
+        }
+
+        // Toggle handler with state preservation
+        sessionPrimerCheckbox.onchange = () => {
+            const isEnabled = sessionPrimerCheckbox.checked;
+            sessionPrimerContainer.classList.toggle('hidden', !isEnabled);
+
+            // IMPORTANT: Don't clear statements when disabled - preserve for recall
+            if (isEnabled) {
+                // Check if there are existing statements to restore
+                const container = document.getElementById('primer-statements-container');
+                if (!container.querySelector('textarea')) {
+                    // No statements yet - initialize with one empty or restore from saved
+                    const statementsToRestore = hasPrimerData && primerConfig.statements.length > 0
+                        ? primerConfig.statements
+                        : [''];
+                    renderPrimerStatements(statementsToRestore);
+                }
+                // Otherwise, statements are already rendered and preserved
+            }
+            // When disabled: Keep statements in DOM (just hidden) for easy recall
         };
     }
 
@@ -6431,12 +6576,30 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const useMcpTools = selectedProfileType === 'llm_only' && useMcpToolsCheckbox?.checked || false;
         const useKnowledgeCollections = selectedProfileType === 'llm_only' && useKnowledgeCheckbox?.checked || false;
 
-        // Get session primer value (only if checkbox is checked and textarea has content)
+        // Get session primer configuration (PRESERVE EVEN WHEN DISABLED)
         const sessionPrimerCheckbox = modal.querySelector('#profile-modal-enable-primer');
-        const sessionPrimerTextarea = modal.querySelector('#profile-modal-primer');
-        const sessionPrimerValue = (sessionPrimerCheckbox?.checked && sessionPrimerTextarea?.value.trim())
-            ? sessionPrimerTextarea.value.trim()
-            : null;
+        let sessionPrimerValue = null;
+
+        // Collect statements regardless of checkbox state (for recall capability)
+        const statements = collectPrimerStatements().filter(s => s.length > 0);
+
+        if (statements.length > 0) {
+            const mode = modal.querySelector('input[name="primer-mode"]:checked')?.value || 'individual';
+
+            sessionPrimerValue = {
+                enabled: sessionPrimerCheckbox?.checked || false,  // Track enabled state separately
+                mode: mode,
+                statements: statements
+            };
+        } else if (!sessionPrimerCheckbox?.checked) {
+            // No statements but checkbox was previously enabled - preserve empty config
+            // This prevents losing the mode selection when temporarily disabling
+            sessionPrimerValue = {
+                enabled: false,
+                mode: modal.querySelector('input[name="primer-mode"]:checked')?.value || 'individual',
+                statements: []
+            };
+        }
 
         const profileData = {
             id: profile ? profile.id : `profile-${generateId()}`,

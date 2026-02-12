@@ -6548,6 +6548,7 @@
 
                 <!-- Session Primer Section -->
                 <div class="bg-gradient-to-br from-cyan-900/10 to-blue-900/10 rounded-xl p-4 border border-cyan-700/20">
+                    <!-- Toggle Header -->
                     <div class="flex items-center gap-3 cursor-pointer group">
                         <label class="ind-toggle">
                             <input type="checkbox" id="profile-modal-enable-primer">
@@ -6555,18 +6556,54 @@
                         </label>
                         <div>
                             <span class="text-sm font-bold text-gray-100 group-hover:text-white">Enable Session Primer</span>
-                            <p class="text-xs text-gray-400 group-hover:text-gray-300">Auto-execute a question when starting a new session with this profile</p>
+                            <p class="text-xs text-gray-400 group-hover:text-gray-300">Auto-execute questions when starting a new session with this profile</p>
                         </div>
                     </div>
 
-                    <!-- Hidden textarea, revealed when checkbox checked -->
+                    <!-- Primer Configuration (hidden when disabled) -->
                     <div id="profile-modal-primer-container" class="hidden mt-4 ml-7">
-                        <textarea id="profile-modal-primer" rows="3"
-                            placeholder="Enter a question to initialize context (e.g., 'Describe the database schema and available tables')"
-                            class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg
-                                   focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none transition-all
-                                   placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50 resize-none"></textarea>
-                        <p class="text-xs text-gray-500 mt-2">This question will run automatically before any user input when a new session is created.</p>
+
+                        <!-- Execution Mode Selector -->
+                        <div class="mb-4">
+                            <label class="text-xs font-semibold text-gray-300 mb-2 block">Execution Mode</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
+                                    <input type="radio" name="primer-mode" value="individual" checked
+                                           class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="text-sm font-bold text-gray-100 group-hover:text-white">Individual</span>
+                                            <span class="px-2 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">Recommended</span>
+                                        </div>
+                                        <p class="text-xs text-gray-400 group-hover:text-gray-300">Execute each statement separately in sequence</p>
+                                    </div>
+                                </label>
+
+                                <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                                    <input type="radio" name="primer-mode" value="combined"
+                                           class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                                    <div class="flex-1">
+                                        <span class="text-sm font-bold text-gray-100 group-hover:text-white">Combined</span>
+                                        <p class="text-xs text-gray-400 group-hover:text-gray-300">Merge all statements and execute as one query</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Statements List -->
+                        <div class="mb-3">
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-xs font-semibold text-gray-300">Statements</label>
+                                <button type="button" id="add-primer-statement" class="card-btn card-btn--primary card-btn--sm">
+                                    + Add Statement
+                                </button>
+                            </div>
+                            <div id="primer-statements-container" class="space-y-3">
+                                <!-- Statement cards rendered here dynamically -->
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-gray-500 mt-3">These questions will run automatically before any user input when a new session is created.</p>
                     </div>
                 </div>
 
