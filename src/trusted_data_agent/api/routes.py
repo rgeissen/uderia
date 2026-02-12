@@ -231,6 +231,10 @@ async def get_rag_questions(current_user):
                     include=["metadatas"]
                 )
                 for metadata in results.get("metadatas", []):
+                    # Skip session primers (only if explicitly True; missing field = include)
+                    if metadata.get("is_session_primer") is True:
+                        continue
+
                     user_query = metadata.get("user_query", "")
                     # Filter out very short queries (< 3 chars) as they're not useful suggestions
                     if user_query and len(user_query.strip()) >= 3:
@@ -250,6 +254,7 @@ async def get_rag_questions(current_user):
         try:
             # Build where clause with user filtering if context available
             # Note: Template-generated cases should be accessible to all users, so we use OR logic
+            # Note: We don't filter by is_session_primer in the query because ChromaDB excludes missing fields
             where_clause = {"$and": [
                 {"strategy_type": {"$eq": "successful"}},
                 {"is_most_efficient": {"$eq": True}},
@@ -263,7 +268,7 @@ async def get_rag_questions(current_user):
                         {"user_uuid": {"$eq": RAGTemplateGenerator.TEMPLATE_SESSION_ID}}
                     ]
                 })
-            
+
             # Only query successful and most efficient cases (not downvoted)
             results = collection.query(
                 query_texts=[query_text],
@@ -271,12 +276,17 @@ async def get_rag_questions(current_user):
                 where=where_clause,
                 include=["metadatas", "distances"]
             )
-            
+
             # Extract questions with their similarity scores, filtering by relevance threshold
+            # Post-filter to exclude session primers (handles missing field gracefully)
             max_distance = 1.0 - APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE
             if results and results.get("metadatas") and results["metadatas"][0]:
                 for idx, metadata in enumerate(results["metadatas"][0]):
                     if "user_query" in metadata:
+                        # Skip session primers (only if explicitly True; missing field = include)
+                        if metadata.get("is_session_primer") is True:
+                            continue
+
                         distance = results["distances"][0][idx] if results.get("distances") else 0
                         if max_distance < 1.0 and distance > max_distance:
                             continue

@@ -1710,6 +1710,7 @@ class RAGRetriever:
                     "task_id": turn.get("task_id"),
                     "collection_id": collection_id if collection_id is not None else 0,
                     "has_orchestration": has_orchestration,  # Flag for System Orchestration usage
+                    "is_session_primer": turn.get("is_session_primer", False),  # Flag for autocomplete filtering
                     # --- MODIFICATION END ---
                     "had_plan_improvements": had_plan_improvements, "had_tactical_improvements": had_tactical_improvements,
                     "timestamp": turn.get("timestamp"),
@@ -1783,6 +1784,7 @@ class RAGRetriever:
             "mcp_server_id": case_study["metadata"].get("mcp_server_id") or "",  # --- MODIFICATION: Add MCP server ID for filtering ---
             "is_success": case_study["metadata"].get("is_success", False),  # --- MODIFICATION: Add success flag ---
             "is_most_efficient": case_study["metadata"].get("is_most_efficient", False),
+            "is_session_primer": case_study["metadata"].get("is_session_primer", False),  # --- MODIFICATION: Add session primer flag for autocomplete filtering ---
             "had_plan_improvements": case_study["metadata"].get("had_plan_improvements", False),
             "had_tactical_improvements": case_study["metadata"].get("had_tactical_improvements", False),
             "has_orchestration": case_study["metadata"].get("has_orchestration", False),  # --- MODIFICATION: Add orchestration flag ---

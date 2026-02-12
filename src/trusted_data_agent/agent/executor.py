@@ -1586,6 +1586,7 @@ class PlanExecutor:
                 "final_summary_text": response_text,  # Clean text for LLM context
                 "final_summary_html": final_html,  # Formatted HTML for session reload
                 "status": "success" if success else "failed",
+                "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                 "execution_trace": [],
                 "tools_used": tools_used,
                 "conversation_agent_events": result.get("collected_events", []),
@@ -1623,6 +1624,7 @@ class PlanExecutor:
                 "user_query": self.original_user_input,
                 "final_summary_text": error_msg,
                 "status": "failed",
+                "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                 "error": str(e),
                 "profile_tag": profile_config.get("tag", "CONV"),
                 "profile_type": "conversation_with_tools",
@@ -2501,6 +2503,7 @@ The following domain knowledge may be relevant to this conversation:
                 "user_query": self.original_user_input,
                 "final_summary_text": response_text,
                 "status": "success",
+                "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                 "execution_trace": [],  # No tool executions for llm_only
                 "raw_llm_plan": None,  # No plan for llm_only
                 "original_plan": None,  # No plan for llm_only
@@ -2839,6 +2842,7 @@ The following domain knowledge may be relevant to this conversation:
                     "user_query": self.original_user_input,
                     "final_summary_text": no_results_text,
                     "status": "success",  # NOT "error"
+                    "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                     "no_knowledge_found": True,  # Flag for UI indication
                     "execution_trace": [],
                     "raw_llm_plan": None,
@@ -3265,6 +3269,7 @@ The following domain knowledge may be relevant to this conversation:
                 "user_query": self.original_user_input,
                 "final_summary_text": response_text,
                 "status": "success",
+                "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                 "execution_trace": [],  # No tool executions for rag_focused
                 "raw_llm_plan": None,  # No plan for rag_focused
                 "original_plan": None,  # No plan for rag_focused
@@ -4297,6 +4302,7 @@ The following domain knowledge may be relevant to this conversation:
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
                     "user_query": self.original_user_input, # Store the original query
+                    "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                     "raw_llm_plan": self.raw_llm_plan,  # LLM's raw output before preprocessing/rewrites
                     "original_plan": self.original_plan_for_history, # Plan after all rewrite passes (what was actually executed)
                     "execution_trace": self.turn_action_history,
@@ -4395,6 +4401,7 @@ The following domain knowledge may be relevant to this conversation:
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
+                "is_session_primer": self.is_session_primer,  # Flag for RAG case filtering
                 "raw_llm_plan": self.raw_llm_plan,  # LLM's raw output (None if error before planning)
                 "original_plan": self.original_plan_for_history,  # May be None if error before planning
                 "execution_trace": self.turn_action_history,  # Partial trace up to failure
