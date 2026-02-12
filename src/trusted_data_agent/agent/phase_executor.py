@@ -1095,16 +1095,10 @@ class PhaseExecutor:
                     async for event in self._execute_action_with_orchestrators(charting_action, phase):
                         yield event
 
-                    # Phase complete — store result and emit phase_end
-                    phase_num = phase.get("phase", self.executor.current_phase_index + 1)
-                    phase_result_key = f"result_of_phase_{phase_num}"
-                    if self.executor.last_tool_output:
-                        self.executor.workflow_state.setdefault(phase_result_key, []).append(
-                            self.executor.last_tool_output
-                        )
-                        self.executor._add_to_structured_data(self.executor.last_tool_output)
-
+                    # Result storage (workflow_state + structured_collected_data) is handled
+                    # by _execute_tool() inside _execute_action_with_orchestrators — no duplicate add here.
                     if not is_loop_iteration:
+                        phase_num = phase.get("phase", self.executor.current_phase_index + 1)
                         event_data = {
                             "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                             "type": "phase_end",

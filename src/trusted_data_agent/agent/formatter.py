@@ -817,6 +817,20 @@ class OutputFormatter:
              # Mark these indices globally as processed
              self.processed_data_indices.add(first_pair[2])
              self.processed_data_indices.add(first_pair[3])
+        else:
+             # No pairs found — promote first standalone chart to primary position
+             # This handles chart-only follow-up turns where raw data came from a previous turn
+             for i, item_i in enumerate(data_source):
+                 if isinstance(item_i, dict) and item_i.get("type") == "chart":
+                     chart_id = f"chart-render-target-{uuid.uuid4()}"
+                     try:
+                         chart_spec_json = json.dumps(item_i.get("spec", {}))
+                     except (TypeError, ValueError):
+                         chart_spec_json = json.dumps({"error": "Could not serialize chart spec"})
+                     primary_chart_html = f"""<div class="response-card mb-4"><div id="{chart_id}" class="chart-render-target" data-spec='{chart_spec_json.replace("'", "&apos;")}'></div></div>"""
+                     paired_indices.add(i)
+                     self.processed_data_indices.add(i)
+                     break
 
 
         # Render remaining collateral (unpaired items and remaining pairs)
@@ -836,6 +850,11 @@ class OutputFormatter:
 
             metadata = tool_result.get("metadata", {})
             tool_name = metadata.get("tool_name")
+
+            # Skip reporting tools — their content is already rendered in the summary card
+            if tool_name in ('TDA_FinalReport', 'TDA_ComplexPromptReport'):
+                self.processed_data_indices.add(i)
+                continue
 
             if tool_name == 'base_tableDDL':
                 collateral_html_content += self._render_ddl(tool_result, i) # Adds mb-4
