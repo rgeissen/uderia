@@ -2712,7 +2712,8 @@ CRITICAL REQUIREMENTS:
             "execution_depth": self.executor.execution_depth,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
+            "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0),
+            "planning_phase": "strategic"
         }
         event_data = {"step": "Calling LLM for Planning", "type": "system_message", "details": details_payload}
         self.executor._log_system_event(event_data)

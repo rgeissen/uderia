@@ -3922,7 +3922,15 @@ export function updateTokenDisplay(data, isHistorical = false) {
             turn: 0,
             session: 0,
             strategic: 0,
-            tactical: 0
+            tactical: 0,
+            // Per-model turn-level tracking
+            strategicTurnIn: 0, strategicTurnOut: 0, strategicTurnCost: 0,
+            tacticalTurnIn: 0,  tacticalTurnOut: 0,  tacticalTurnCost: 0,
+            // Per-model session-level token tracking
+            strategicSessionIn: 0, strategicSessionOut: 0,
+            tacticalSessionIn: 0,  tacticalSessionOut: 0,
+            // Last statement model info
+            lastStmtPhase: null
         };
     }
 
@@ -3933,24 +3941,57 @@ export function updateTokenDisplay(data, isHistorical = false) {
         // Only accumulate costs for live events, NOT historical reloads
         if (!isHistorical) {
             // Live event - accumulate costs
-            // Accumulate turn cost (reset on new turn)
-            if (data.statement_input === 0 && data.statement_output === 0) {
-                // New turn starting, reset turn cost
-                window.sessionCostAccumulator.turn = 0;
-            }
-            window.sessionCostAccumulator.turn += callCost;
-            window.sessionCostAccumulator.session += callCost;
+            const acc = window.sessionCostAccumulator;
+            const stmtIn = data.statement_input || 0;
+            const stmtOut = data.statement_output || 0;
 
-            // Track strategic vs tactical costs
+            // Accumulate turn cost (reset on new turn)
+            // IMPORTANT: Use strict check on raw data fields, NOT the || 0 coerced values.
+            // When statement_input is undefined (e.g. session-level token_update), we must
+            // NOT interpret that as a "new turn" reset signal.
+            if (data.statement_input === 0 && data.statement_output === 0) {
+                // New turn starting, reset turn cost and per-model turn data
+                acc.turn = 0;
+                acc.strategicTurnIn = 0; acc.strategicTurnOut = 0; acc.strategicTurnCost = 0;
+                acc.tacticalTurnIn = 0;  acc.tacticalTurnOut = 0;  acc.tacticalTurnCost = 0;
+            }
+            acc.turn += callCost;
+            acc.session += callCost;
+
+            // Track strategic vs tactical costs and per-model tokens
             const planningPhase = data.planning_phase;
             if (planningPhase === 'strategic') {
-                window.sessionCostAccumulator.strategic += callCost;
-            } else if (planningPhase === 'tactical') {
-                window.sessionCostAccumulator.tactical += callCost;
+                acc.strategic += callCost;
+                acc.strategicTurnIn += stmtIn;  acc.strategicTurnOut += stmtOut;
+                acc.strategicTurnCost += callCost;
+                acc.strategicSessionIn += stmtIn; acc.strategicSessionOut += stmtOut;
+                acc.lastStmtPhase = 'strategic';
+            } else {
+                // Tactical + untagged calls (session name gen, etc.) — all non-strategic
+                acc.tactical += callCost;
+                acc.tacticalTurnIn += stmtIn;  acc.tacticalTurnOut += stmtOut;
+                acc.tacticalTurnCost += callCost;
+                acc.tacticalSessionIn += stmtIn; acc.tacticalSessionOut += stmtOut;
+                acc.lastStmtPhase = planningPhase ? 'tactical' : null;
             }
         } else {
             // Historical reload - set turn cost for display
             window.sessionCostAccumulator.turn = callCost;
+
+            // Populate per-model breakdown if provided
+            if (data.perModelBreakdown) {
+                const pm = data.perModelBreakdown;
+                const acc = window.sessionCostAccumulator;
+                acc.strategicTurnIn = pm.strategicIn; acc.strategicTurnOut = pm.strategicOut;
+                acc.strategicTurnCost = pm.strategicCost;
+                acc.tacticalTurnIn = pm.tacticalIn; acc.tacticalTurnOut = pm.tacticalOut;
+                acc.tacticalTurnCost = pm.tacticalCost;
+                acc.strategic = pm.strategicCost;
+                acc.tactical = pm.tacticalCost;
+                acc.strategicSessionIn = pm.strategicIn; acc.strategicSessionOut = pm.strategicOut;
+                acc.tacticalSessionIn = pm.tacticalIn; acc.tacticalSessionOut = pm.tacticalOut;
+                acc.lastStmtPhase = pm.strategicCost > 0 ? 'strategic' : (pm.tacticalCost > 0 ? 'tactical' : null);
+            }
 
             // Set session cost if provided in data (for historical context)
             if (data.session_cost_usd !== undefined && data.session_cost_usd !== null) {
@@ -3985,6 +4026,102 @@ export function updateTokenDisplay(data, isHistorical = false) {
             } else {
                 dualModelBreakdown.classList.add('hidden');
             }
+        }
+    }
+
+    // ========== DUAL-MODEL TOOLTIPS ==========
+    _updateDualModelTooltips();
+}
+
+/**
+ * Updates dual-model breakdown tooltips on the 5 header metric cards.
+ * Only shows tooltips when dual-model mode is active (state.currentDualModelInfo set).
+ */
+function _updateDualModelTooltips() {
+    const cardIds = ['metric-card-statement', 'metric-card-turn', 'metric-card-session',
+                     'metric-card-turn-cost', 'metric-card-session-cost'];
+
+    if (!state.currentDualModelInfo || !window.sessionCostAccumulator) {
+        // Clear tooltips when not in dual-model mode
+        cardIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.removeAttribute('data-tooltip-html');
+        });
+        return;
+    }
+
+    const dmi = state.currentDualModelInfo;
+    const acc = window.sessionCostAccumulator;
+    const sModel = dmi.strategicModel || 'Strategic';
+    const tModel = dmi.tacticalModel || 'Tactical';
+
+    // Helper: build a tooltip row for one model
+    // showCost=false for token cards, showCost=true for cost cards
+    const row = (label, cssClass, inTk, outTk, cost, showCost) =>
+        `<div class="dm-tooltip-row">` +
+        `<span class="dm-tooltip-label ${cssClass}">${label}</span>` +
+        `<span class="dm-tooltip-values">${inTk.toLocaleString()} in / ${outTk.toLocaleString()} out` +
+        (showCost && cost > 0 ? ` &middot; $${cost.toFixed(6)}` : '') +
+        `</span></div>`;
+
+    // Last Stmt: which model was used for this call
+    const stmtCard = document.getElementById('metric-card-statement');
+    if (stmtCard) {
+        if (acc.lastStmtPhase) {
+            const label = acc.lastStmtPhase === 'strategic' ? sModel : tModel;
+            const cls = acc.lastStmtPhase === 'strategic' ? 'dm-tooltip-strategic' : 'dm-tooltip-tactical';
+            stmtCard.setAttribute('data-tooltip-html',
+                `<span class="${cls}" style="font-weight:600">${label}</span>`);
+        } else {
+            stmtCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Last Turn: strategic + tactical token split (no cost)
+    const turnCard = document.getElementById('metric-card-turn');
+    if (turnCard) {
+        if (acc.strategicTurnIn > 0 || acc.tacticalTurnIn > 0) {
+            turnCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicTurnIn, acc.strategicTurnOut, 0, false) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalTurnIn, acc.tacticalTurnOut, 0, false));
+        } else {
+            turnCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Session Total: strategic + tactical token split (no cost)
+    const sessCard = document.getElementById('metric-card-session');
+    if (sessCard) {
+        if (acc.strategicSessionIn > 0 || acc.tacticalSessionIn > 0) {
+            sessCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicSessionIn, acc.strategicSessionOut, 0, false) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalSessionIn, acc.tacticalSessionOut, 0, false));
+        } else {
+            sessCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Turn Cost: strategic + tactical cost split (with cost)
+    const turnCostCard = document.getElementById('metric-card-turn-cost');
+    if (turnCostCard) {
+        if (acc.strategicTurnCost > 0 || acc.tacticalTurnCost > 0) {
+            turnCostCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicTurnIn, acc.strategicTurnOut, acc.strategicTurnCost, true) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalTurnIn, acc.tacticalTurnOut, acc.tacticalTurnCost, true));
+        } else {
+            turnCostCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Session Cost: strategic + tactical cost split (with cost)
+    const sessCostCard = document.getElementById('metric-card-session-cost');
+    if (sessCostCard) {
+        if (acc.strategic > 0 || acc.tactical > 0) {
+            sessCostCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicSessionIn, acc.strategicSessionOut, acc.strategic, true) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalSessionIn, acc.tacticalSessionOut, acc.tactical, true));
+        } else {
+            sessCostCard.removeAttribute('data-tooltip-html');
         }
     }
 }

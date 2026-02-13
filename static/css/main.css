@@ -1422,6 +1422,22 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
     border-top-color: rgba(15, 23, 42, 0.92);
 }
 
+/* HTML tooltip variant (dual-model breakdowns) */
+.custom-tooltip.tooltip-html {
+    max-width: 380px;
+}
+.dm-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 2px 0;
+}
+.dm-tooltip-label { font-weight: 600; white-space: nowrap; }
+.dm-tooltip-strategic { color: #60a5fa; }
+.dm-tooltip-tactical  { color: #6ee7b7; }
+.dm-tooltip-values { font-family: ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+
 /* =========================================================================
    APP BANNER TOAST — floating notification above modals
    Used by showAppBanner() when a modal overlay is open.

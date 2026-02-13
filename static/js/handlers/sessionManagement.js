@@ -36,6 +36,17 @@ export async function handleStartNewSession() {
         window.sessionCostAccumulator.session = 0;
         window.sessionCostAccumulator.strategic = 0;
         window.sessionCostAccumulator.tactical = 0;
+        window.sessionCostAccumulator.strategicTurnIn = 0;
+        window.sessionCostAccumulator.strategicTurnOut = 0;
+        window.sessionCostAccumulator.strategicTurnCost = 0;
+        window.sessionCostAccumulator.tacticalTurnIn = 0;
+        window.sessionCostAccumulator.tacticalTurnOut = 0;
+        window.sessionCostAccumulator.tacticalTurnCost = 0;
+        window.sessionCostAccumulator.strategicSessionIn = 0;
+        window.sessionCostAccumulator.strategicSessionOut = 0;
+        window.sessionCostAccumulator.tacticalSessionIn = 0;
+        window.sessionCostAccumulator.tacticalSessionOut = 0;
+        window.sessionCostAccumulator.lastStmtPhase = null;
     }
     // Update cost display to reflect reset
     const turnCostElNew = document.getElementById('turn-cost-value');
@@ -44,6 +55,12 @@ export async function handleStartNewSession() {
     if (turnCostElNew) turnCostElNew.textContent = '$0.000000';
     if (sessionCostElNew) sessionCostElNew.textContent = '$0.000000';
     if (dualModelBreakdownNew) dualModelBreakdownNew.classList.add('hidden');
+    // Clear dual-model tooltips
+    ['metric-card-statement','metric-card-turn','metric-card-session',
+     'metric-card-turn-cost','metric-card-session-cost'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.removeAttribute('data-tooltip-html');
+    });
 
     UI.updateTokenDisplay({ statement_input: 0, statement_output: 0, total_input: 0, total_output: 0 });
     UI.addMessage('assistant', "Starting a new conversation... Please wait.");
@@ -618,6 +635,17 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             window.sessionCostAccumulator.session = 0;
             window.sessionCostAccumulator.strategic = 0;
             window.sessionCostAccumulator.tactical = 0;
+            window.sessionCostAccumulator.strategicTurnIn = 0;
+            window.sessionCostAccumulator.strategicTurnOut = 0;
+            window.sessionCostAccumulator.strategicTurnCost = 0;
+            window.sessionCostAccumulator.tacticalTurnIn = 0;
+            window.sessionCostAccumulator.tacticalTurnOut = 0;
+            window.sessionCostAccumulator.tacticalTurnCost = 0;
+            window.sessionCostAccumulator.strategicSessionIn = 0;
+            window.sessionCostAccumulator.strategicSessionOut = 0;
+            window.sessionCostAccumulator.tacticalSessionIn = 0;
+            window.sessionCostAccumulator.tacticalSessionOut = 0;
+            window.sessionCostAccumulator.lastStmtPhase = null;
         }
         // Update cost display to reflect reset
         const turnCostEl = document.getElementById('turn-cost-value');
@@ -626,6 +654,12 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         if (turnCostEl) turnCostEl.textContent = '$0.000000';
         if (sessionCostEl) sessionCostEl.textContent = '$0.000000';
         if (dualModelBreakdown) dualModelBreakdown.classList.add('hidden');
+        // Clear dual-model tooltips
+        ['metric-card-statement','metric-card-turn','metric-card-session',
+         'metric-card-turn-cost','metric-card-session-cost'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.removeAttribute('data-tooltip-html');
+        });
 
         DOM.chatLog.innerHTML = '';
         if (data.history && data.history.length > 0) {

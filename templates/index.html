@@ -1252,7 +1252,7 @@
                                     <!-- Token Metrics Grid -->
                                     <div class="grid grid-cols-3 gap-2">
                                         <!-- Last Statement -->
-                                        <div class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
+                                        <div id="metric-card-statement" class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
                                             <div class="text-[10px] uppercase tracking-wider font-semibold mb-1" style="color: var(--text-muted);">Last Stmt</div>
                                             <div class="flex items-baseline gap-x-1.5 text-xs">
                                                 <span style="color: var(--text-tertiary);">In:</span>
@@ -1265,7 +1265,7 @@
                                         </div>
 
                                         <!-- Last Turn -->
-                                        <div class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
+                                        <div id="metric-card-turn" class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
                                             <div id="turn-token-label" class="text-[10px] uppercase tracking-wider font-semibold mb-1" style="color: var(--text-muted);">Last Turn</div>
                                             <div class="flex items-baseline gap-x-1.5 text-xs">
                                                 <span style="color: var(--text-tertiary);">In:</span>
@@ -1278,7 +1278,7 @@
                                         </div>
 
                                         <!-- Session Total -->
-                                        <div class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
+                                        <div id="metric-card-session" class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
                                             <div class="text-[10px] uppercase tracking-wider font-semibold mb-1" style="color: var(--text-muted);">Session Total</div>
                                             <div class="flex items-baseline gap-x-1.5 text-xs">
                                                 <span style="color: var(--text-tertiary);">In:</span>
@@ -1295,13 +1295,13 @@
                                     <div id="cost-display-section" class="mt-2 hidden">
                                         <div class="grid grid-cols-2 gap-2">
                                             <!-- Turn Cost -->
-                                            <div class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
+                                            <div id="metric-card-turn-cost" class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
                                                 <div class="text-[10px] uppercase tracking-wider font-semibold mb-1" style="color: var(--text-muted);">Turn Cost</div>
                                                 <div id="turn-cost-value" class="font-mono text-sm font-semibold" style="color: var(--text-primary);">$0.000000</div>
                                             </div>
 
                                             <!-- Session Cost -->
-                                            <div class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
+                                            <div id="metric-card-session-cost" class="rounded p-2" style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
                                                 <div class="text-[10px] uppercase tracking-wider font-semibold mb-1" style="color: var(--text-muted);">Session Cost</div>
                                                 <div id="session-cost-value" class="font-mono text-sm font-semibold" style="color: var(--text-primary);">$0.000000</div>
                                             </div>
@@ -8679,13 +8679,19 @@
         let currentEl = null;
 
         function show(el) {
+            const htmlContent = el.getAttribute('data-tooltip-html');
             const text = el.getAttribute('data-tooltip');
-            if (!text) return;
+            if (!htmlContent && !text) return;
 
             currentEl = el;
             tip = document.createElement('div');
             tip.className = 'custom-tooltip';
-            tip.textContent = text;
+            if (htmlContent) {
+                tip.innerHTML = htmlContent;
+                tip.classList.add('tooltip-html');
+            } else {
+                tip.textContent = text;
+            }
             document.body.appendChild(tip);
 
             // Measure
@@ -8725,14 +8731,14 @@
         }
 
         document.addEventListener('mouseover', function(e) {
-            var el = e.target.closest('[data-tooltip]');
+            var el = e.target.closest('[data-tooltip-html], [data-tooltip]');
             if (!el || el === currentEl) return;
             hide();
             show(el);
         });
 
         document.addEventListener('mouseout', function(e) {
-            var el = e.target.closest('[data-tooltip]');
+            var el = e.target.closest('[data-tooltip-html], [data-tooltip]');
             if (!el) return;
             // Only hide if we're actually leaving the tooltip-bearing element
             var related = e.relatedTarget;

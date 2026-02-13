@@ -162,6 +162,60 @@ function _getTurnCost(turnData) {
 }
 
 /**
+ * Extract per-model (strategic vs tactical) token/cost breakdown from turn data.
+ * Used for dual-model tooltip display on historical reload.
+ *
+ * @param {Object} turnData - Turn data containing execution_trace and system_events
+ * @returns {Object} { strategicIn, strategicOut, strategicCost, tacticalIn, tacticalOut, tacticalCost }
+ */
+function _getPerModelBreakdown(turnData) {
+    const result = {
+        strategicIn: 0, strategicOut: 0, strategicCost: 0,
+        tacticalIn: 0, tacticalOut: 0, tacticalCost: 0
+    };
+
+    // Walk execution_trace for TDA_SystemLog entries with token/cost data
+    if (turnData.execution_trace && Array.isArray(turnData.execution_trace)) {
+        turnData.execution_trace.forEach(step => {
+            if (step.action && step.action.tool_name === 'TDA_SystemLog') {
+                const details = step.action.arguments?.details || {};
+                const inTk = details.input_tokens || 0;
+                const outTk = details.output_tokens || 0;
+                const cost = parseFloat(details.cost_usd || 0);
+                if (details.planning_phase === 'strategic') {
+                    result.strategicIn += inTk;
+                    result.strategicOut += outTk;
+                    result.strategicCost += cost;
+                } else if (inTk > 0 || cost > 0) {
+                    result.tacticalIn += inTk;
+                    result.tacticalOut += outTk;
+                    result.tacticalCost += cost;
+                }
+            }
+        });
+    }
+
+    // Also sum from system_events (session name gen, etc.)
+    const systemEvents = turnData.system_events || [];
+    if (Array.isArray(systemEvents)) {
+        systemEvents.forEach(evt => {
+            const payload = evt.payload || {};
+            const details = payload.details || payload;
+            const cost = parseFloat(details.cost_usd || 0);
+            const inTk = details.input_tokens || 0;
+            const outTk = details.output_tokens || 0;
+            if (cost > 0 || inTk > 0) {
+                result.tacticalIn += inTk;
+                result.tacticalOut += outTk;
+                result.tacticalCost += cost;
+            }
+        });
+    }
+
+    return result;
+}
+
+/**
  * Extract the last statement token counts from turnData for reload display.
  * The "Last Statement" should show the most recent individual LLM call, not turn totals.
  *
@@ -2000,6 +2054,7 @@ export async function handleReloadPlanClick(element) {
         const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
         const lastStatement = _getLastStatementTokens(turnData);
         const turnCost = _getTurnCost(turnData);
+        const perModelBreakdown = _getPerModelBreakdown(turnData);
         UI.updateTokenDisplay({
             statement_input: lastStatement.input,
             statement_output: lastStatement.output,
@@ -2008,7 +2063,8 @@ export async function handleReloadPlanClick(element) {
             total_input: turnData.session_input_tokens || 0,
             total_output: turnData.session_output_tokens || 0,
             cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,  // Use _getTurnCost() with fallback
-            planning_phase: turnData.planning_phase  // Add planning phase for dual-model cost tracking
+            planning_phase: turnData.planning_phase,  // Add planning phase for dual-model cost tracking
+            perModelBreakdown: perModelBreakdown  // Per-model token/cost split for dual-model tooltips
         }, true);
 
         // --- MODIFICATION START: Synchronize header buttons ---
