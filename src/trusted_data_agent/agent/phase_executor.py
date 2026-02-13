@@ -1359,7 +1359,8 @@ class PhaseExecutor:
                     "call_id": tactical_call_id,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
-                    "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
+                    "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0),
+                    "planning_phase": "tactical"
                 }
             }
             self.executor._log_system_event(tactical_log_event)

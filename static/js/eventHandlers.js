@@ -1984,6 +1984,7 @@ export async function handleReloadPlanClick(element) {
             // Update token display
             const lastStatement = _getLastStatementTokens(turnData);
             const turnCost = _getTurnCost(turnData);
+            const perModelBreakdown = _getPerModelBreakdown(turnData);
             UI.updateTokenDisplay({
                 statement_input: lastStatement.input,
                 statement_output: lastStatement.output,
@@ -1991,7 +1992,9 @@ export async function handleReloadPlanClick(element) {
                 turn_output: turnData.turn_output_tokens || 0,
                 total_input: turnData.session_input_tokens || 0,
                 total_output: turnData.session_output_tokens || 0,
-                cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0  // Add fallback to turn_cost field
+                cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,  // Add fallback to turn_cost field
+                planning_phase: turnData.planning_phase,
+                perModelBreakdown: perModelBreakdown
             }, true);
 
             // Update model display
