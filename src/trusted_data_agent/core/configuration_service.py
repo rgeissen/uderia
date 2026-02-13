@@ -761,16 +761,23 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
         has_mcp_config = bool(server_name and server_id)
 
         # Check if already configured (skip MCP check if no MCP config provided)
+        # Also verify MCP client still exists - it may have been cleared during profile/mode changes
+        mcp_client_missing = has_mcp_config and not APP_STATE.get("mcp_client")
+
         is_already_configured = (
             APP_CONFIG.SERVICES_CONFIGURED and
             provider == APP_CONFIG.ACTIVE_PROVIDER and
             model == APP_CONFIG.ACTIVE_MODEL and
-            (not has_mcp_config or server_id == APP_CONFIG.CURRENT_MCP_SERVER_ID)
+            (not has_mcp_config or server_id == APP_CONFIG.CURRENT_MCP_SERVER_ID) and
+            not mcp_client_missing
         )
 
         if is_already_configured:
             app_logger.info("Bypassing configuration: The requested configuration is already active.")
             return {"status": "success", "message": f"Services are already configured with the requested settings."}
+
+        if mcp_client_missing:
+            app_logger.warning("Configuration matches but MCP client is missing - re-initializing")
 
         temp_llm_instance = None
         temp_mcp_client = None

@@ -342,37 +342,21 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         }
     }
 
-    // Load resources based on default profile type
-    // For Genie and RAG profiles, use profile-specific resource panel
-    // For other profiles, load generic MCP resources
+    // Load resources using profile-specific endpoint for ALL profile types
+    // This avoids reliance on active_for_consumption_profile_ids which can contain stale IDs
     const defaultProfileId = window.configState?.defaultProfileId;
-    if (defaultProfileId) {
+    if (defaultProfileId && typeof window.updateResourcePanelForProfile === 'function') {
+        await window.updateResourcePanelForProfile(defaultProfileId);
         const defaultProfile = window.configState?.profiles?.find(p => p.id === defaultProfileId);
-        const profileType = defaultProfile?.profile_type;
-
-        if (profileType === 'genie' || profileType === 'rag_focused') {
-            // Load profile-specific resources for special profile types
-            if (typeof window.updateResourcePanelForProfile === 'function') {
-                await window.updateResourcePanelForProfile(defaultProfileId);
-                console.log('[FinalizeConfig] Loaded profile-specific resources for', profileType, 'profile:', defaultProfileId);
-            }
-        } else {
-            // Load generic MCP resources for standard profiles
-            await Promise.all([
-                handleLoadResources('tools'),
-                handleLoadResources('prompts'),
-                handleLoadResources('resources')
-            ]);
-            console.log('[FinalizeConfig] Loaded generic MCP resources for', profileType || 'unknown', 'profile');
-        }
+        console.log('[FinalizeConfig] Loaded resources for', defaultProfile?.profile_type || 'unknown', 'profile:', defaultProfileId);
     } else {
-        // Fallback: load generic resources if no default profile
+        // Fallback to legacy loading if no default profile or updateResourcePanelForProfile not available
         await Promise.all([
             handleLoadResources('tools'),
             handleLoadResources('prompts'),
             handleLoadResources('resources')
         ]);
-        console.log('[FinalizeConfig] Loaded generic MCP resources (no default profile)');
+        console.log('[FinalizeConfig] Loaded resources via legacy path (no default profile or function unavailable)');
     }
 
     const currentSessionId = state.currentSessionId;

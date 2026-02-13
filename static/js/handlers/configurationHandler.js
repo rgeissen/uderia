@@ -2598,23 +2598,42 @@ export async function reconnectAndLoad() {
                 topButtonsContainer.classList.remove('hidden');
             }
 
-            // Load resources based on profile type
-            // For Genie and RAG profiles, use profile-specific resource panel
-            // For other profiles (tool_enabled, llm_only, conversation_with_tools), load generic MCP resources
-            if (profileType === 'genie' || profileType === 'rag_focused') {
-                // Load profile-specific resources for special profile types
-                if (typeof window.updateResourcePanelForProfile === 'function') {
-                    await window.updateResourcePanelForProfile(defaultProfile.id);
-                    console.log('[Initialization] Loaded profile-specific resources for', profileType, 'profile:', defaultProfile.id);
+            // Load resources using profile-specific endpoint for ALL profile types
+            // This avoids reliance on active_for_consumption_profile_ids which can contain stale IDs
+            // (e.g., after toggling model mode with a profile override active)
+            //
+            // If a @TAG profile override is active (badge visible or window.activeProfileOverrideId set),
+            // load that override's resources instead of the default profile's.
+            let resourceProfileId = defaultProfile.id;
+            const tagBadge = document.getElementById('active-profile-tag');
+            const isTagBadgeVisible = tagBadge && !tagBadge.classList.contains('hidden');
+            if (isTagBadgeVisible && window.configState?.profiles) {
+                const tagSpan = tagBadge.querySelector('span:first-child');
+                const badgeText = (tagSpan?.textContent || window.activeTagPrefix || '').trim();
+                const tag = badgeText.replace('@', '').trim().toUpperCase();
+                if (tag) {
+                    const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
+                    if (overrideProfile) {
+                        resourceProfileId = overrideProfile.id;
+                        console.log(`[Initialization] Active @${tag} override detected, loading its resources`);
+                    }
                 }
+            } else if (window.activeProfileOverrideId) {
+                resourceProfileId = window.activeProfileOverrideId;
+                console.log('[Initialization] Active profile override detected:', resourceProfileId);
+            }
+
+            if (typeof window.updateResourcePanelForProfile === 'function') {
+                await window.updateResourcePanelForProfile(resourceProfileId);
+                console.log('[Initialization] Loaded resources for profile:', resourceProfileId);
             } else {
-                // Load generic MCP resources for standard profiles
+                // Fallback to legacy loading if updateResourcePanelForProfile not yet available
+                console.warn('[Initialization] updateResourcePanelForProfile not available, falling back to legacy loading');
                 await Promise.all([
                     handleLoadResources('tools'),
                     handleLoadResources('prompts'),
                     handleLoadResources('resources')
                 ]);
-                console.log('[Initialization] Loaded generic MCP resources for', profileType, 'profile');
             }
             
             // Enable chat input

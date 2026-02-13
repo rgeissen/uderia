@@ -607,6 +607,14 @@ async function initializeRAGAutoCompletion() {
                 window.capabilitiesModule.renderResourcePanel('prompts');
             }
 
+            // Hide Resources tab - profile resources endpoint doesn't serve MCP resources,
+            // and renderResourcePanel for special profiles (genie/rag/llm_only) already hides it.
+            // For tool_enabled profiles we must hide it explicitly since it has no data.
+            const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
+            if (resourcesTab) {
+                resourcesTab.style.display = 'none';
+            }
+
         } catch (error) {
             console.error('Error updating resource panel:', error);
         }
