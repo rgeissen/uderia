@@ -7,8 +7,8 @@
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import * as API from './api.js';
-import * as UI from './ui.js';
-import { handleViewSwitch, toggleSideNav } from './ui.js';
+import * as UI from './ui.js?v=1.3';
+import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.3';
 import * as Utils from './utils.js';
 import { copyToClipboard, copyTableToClipboard, classifyConfirmation } from './utils.js';
 import { renameSession, deleteSession } from './api.js'; // Import the rename/delete API functions
@@ -18,7 +18,7 @@ import {
     handleLoadSession,
     handleDeleteSessionClick,
     renameActiveSession
-} from './handlers/sessionManagement.js?v=3.2';
+} from './handlers/sessionManagement.js?v=3.6';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
 import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
@@ -156,6 +156,21 @@ function _getTurnCost(turnData) {
                 totalCost += parseFloat(step.action.arguments.details.cost_usd);
             }
         });
+    }
+
+    // Compare with backend-provided cost if available (for verification)
+    if (turnData.turn_cost !== undefined) {
+        const backendCost = parseFloat(turnData.turn_cost);
+        const diff = Math.abs(totalCost - backendCost);
+
+        if (diff > 0.000001) {  // Allow for floating-point rounding
+            console.warn(`[Cost Verification] Discrepancy detected:
+                Backend turn_cost: $${backendCost.toFixed(6)}
+                Event sum: $${totalCost.toFixed(6)}
+                Difference: $${diff.toFixed(6)}`);
+        } else {
+            console.log(`[Cost Verification] Backend and event costs match: $${backendCost.toFixed(6)}`);
+        }
     }
 
     return totalCost;
@@ -1575,7 +1590,26 @@ export async function handleReloadPlanClick(element) {
 
             // Update token display with partial data (isHistorical = true for plan reloads)
             const lastStatement = _getLastStatementTokens(turnData);
-            const turnCost = _getTurnCost(turnData);
+
+            // Get turn cost from backend (preferred) or calculate from events (fallback)
+            let turnCost = 0;
+            if (turnData.turn_cost !== undefined) {
+                turnCost = parseFloat(turnData.turn_cost);
+                console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+            } else {
+                turnCost = _getTurnCost(turnData);
+                console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+            }
+
+            // Get session cost from backend (preferred)
+            let sessionCost = 0;
+            if (turnData.session_cost_usd !== undefined) {
+                sessionCost = parseFloat(turnData.session_cost_usd);
+                console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+            } else {
+                console.warn('[Reload] Backend session_cost_usd missing');
+            }
+
             UI.updateTokenDisplay({
                 statement_input: lastStatement.input,
                 statement_output: lastStatement.output,
@@ -1583,7 +1617,8 @@ export async function handleReloadPlanClick(element) {
                 turn_output: turnData.turn_output_tokens || turnData.output_tokens || 0,
                 total_input: turnData.session_input_tokens || 0,
                 total_output: turnData.session_output_tokens || 0,
-                cost_usd: turnCost
+                turn_cost: turnCost,           // NEW - authoritative turn cost
+                session_cost_usd: sessionCost  // NEW - authoritative session cost
             }, true);
 
             // Hide replay buttons for partial turns
@@ -1642,7 +1677,26 @@ export async function handleReloadPlanClick(element) {
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
                 const lastStatement = _getLastStatementTokens(turnData);
-                const turnCost = _getTurnCost(turnData);
+
+                // Get turn cost from backend (preferred) or calculate from events (fallback)
+                let turnCost = 0;
+                if (turnData.turn_cost !== undefined) {
+                    turnCost = parseFloat(turnData.turn_cost);
+                    console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+                } else {
+                    turnCost = _getTurnCost(turnData);
+                    console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+                }
+
+                // Get session cost from backend (preferred)
+                let sessionCost = 0;
+                if (turnData.session_cost_usd !== undefined) {
+                    sessionCost = parseFloat(turnData.session_cost_usd);
+                    console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+                } else {
+                    console.warn('[Reload] Backend session_cost_usd missing');
+                }
+
                 UI.updateTokenDisplay({
                     statement_input: lastStatement.input,
                     statement_output: lastStatement.output,
@@ -1650,7 +1704,8 @@ export async function handleReloadPlanClick(element) {
                     turn_output: outputTokens,
                     total_input: turnData.session_input_tokens || 0,
                     total_output: turnData.session_output_tokens || 0,
-                    cost_usd: turnCost
+                    turn_cost: turnCost,           // NEW - authoritative turn cost
+                    session_cost_usd: sessionCost  // NEW - authoritative session cost
                 }, true);
             } else {
                 // Fallback: Show simple summary if no detailed events available
@@ -1774,7 +1829,26 @@ export async function handleReloadPlanClick(element) {
                 const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
                 const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
                 const lastStatement = _getLastStatementTokens(turnData);
-                const turnCost = _getTurnCost(turnData);
+
+                // Get turn cost from backend (preferred) or calculate from events (fallback)
+                let turnCost = 0;
+                if (turnData.turn_cost !== undefined) {
+                    turnCost = parseFloat(turnData.turn_cost);
+                    console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+                } else {
+                    turnCost = _getTurnCost(turnData);
+                    console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+                }
+
+                // Get session cost from backend (preferred)
+                let sessionCost = 0;
+                if (turnData.session_cost_usd !== undefined) {
+                    sessionCost = parseFloat(turnData.session_cost_usd);
+                    console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+                } else {
+                    console.warn('[Reload] Backend session_cost_usd missing');
+                }
+
                 UI.updateTokenDisplay({
                     statement_input: lastStatement.input,
                     statement_output: lastStatement.output,
@@ -1782,7 +1856,8 @@ export async function handleReloadPlanClick(element) {
                     turn_output: outputTokens,
                     total_input: turnData.session_input_tokens || 0,
                     total_output: turnData.session_output_tokens || 0,
-                    cost_usd: turnCost
+                    turn_cost: turnCost,           // NEW - authoritative turn cost
+                    session_cost_usd: sessionCost  // NEW - authoritative session cost
                 }, true);
             } else {
                 // Fallback: Show simple summary if no detailed events available
@@ -1930,7 +2005,26 @@ export async function handleReloadPlanClick(element) {
             const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
             const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
             const lastStatement = _getLastStatementTokens(turnData);
-            const turnCost = _getTurnCost(turnData);
+
+            // Get turn cost from backend (preferred) or calculate from events (fallback)
+            let turnCost = 0;
+            if (turnData.turn_cost !== undefined) {
+                turnCost = parseFloat(turnData.turn_cost);
+                console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+            } else {
+                turnCost = _getTurnCost(turnData);
+                console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+            }
+
+            // Get session cost from backend (preferred)
+            let sessionCost = 0;
+            if (turnData.session_cost_usd !== undefined) {
+                sessionCost = parseFloat(turnData.session_cost_usd);
+                console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+            } else {
+                console.warn('[Reload] Backend session_cost_usd missing');
+            }
+
             UI.updateTokenDisplay({
                 statement_input: lastStatement.input,
                 statement_output: lastStatement.output,
@@ -1938,7 +2032,8 @@ export async function handleReloadPlanClick(element) {
                 turn_output: outputTokens,
                 total_input: turnData.session_input_tokens || 0,
                 total_output: turnData.session_output_tokens || 0,
-                cost_usd: turnCost
+                turn_cost: turnCost,           // NEW - authoritative turn cost
+                session_cost_usd: sessionCost  // NEW - authoritative session cost
             }, true);
 
             // Hide replay buttons for non-tool profiles (no plan to replay)
@@ -1999,7 +2094,26 @@ export async function handleReloadPlanClick(element) {
         const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
         const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
         const lastStatement = _getLastStatementTokens(turnData);
-        const turnCost = _getTurnCost(turnData);
+
+        // Get turn cost from backend (preferred) or calculate from events (fallback)
+        let turnCost = 0;
+        if (turnData.turn_cost !== undefined) {
+            turnCost = parseFloat(turnData.turn_cost);
+            console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+        } else {
+            turnCost = _getTurnCost(turnData);
+            console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+        }
+
+        // Get session cost from backend (preferred)
+        let sessionCost = 0;
+        if (turnData.session_cost_usd !== undefined) {
+            sessionCost = parseFloat(turnData.session_cost_usd);
+            console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+        } else {
+            console.warn('[Reload] Backend session_cost_usd missing');
+        }
+
         const perModelBreakdown = _getPerModelBreakdown(turnData);
         UI.updateTokenDisplay({
             statement_input: lastStatement.input,
@@ -2008,7 +2122,8 @@ export async function handleReloadPlanClick(element) {
             turn_output: outputTokens,
             total_input: turnData.session_input_tokens || 0,
             total_output: turnData.session_output_tokens || 0,
-            cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,
+            turn_cost: turnCost,           // NEW - authoritative turn cost
+            session_cost_usd: sessionCost, // NEW - authoritative session cost
             planning_phase: turnData.planning_phase,
             perModelBreakdown: perModelBreakdown
         }, true);
@@ -3249,7 +3364,7 @@ export function initializeEventListeners() {
                     const newScore = newVote === 'up' ? 1 : newVote === 'down' ? -1 : 0;
                     
                     // Immediately update table row feedback badge (before server refresh)
-                    const { updateTableRowFeedback } = await import('./ui.js');
+                    const { updateTableRowFeedback } = await import('./ui.js?v=1.3');
                     updateTableRowFeedback(caseId, newScore);
                     console.log('[CaseFeedback] Updated table row feedback immediately for', caseId);
                     
@@ -3272,7 +3387,7 @@ export function initializeEventListeners() {
                     // Update the case details panel to show updated feedback score
                     // (Don't refresh entire table - we already updated the row immediately above)
                     console.log('[CaseFeedback] Refreshing case details panel for case', caseId);
-                    const { selectCaseRow } = await import('./ui.js');
+                    const { selectCaseRow } = await import('./ui.js?v=1.3');
                     await selectCaseRow(caseId);
                 } else if (sessionId && !isNaN(turnId)) {
                     // Session-based feedback

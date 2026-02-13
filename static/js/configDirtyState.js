@@ -207,7 +207,7 @@ export function markConfigClean() {
         
         // Execute navigation after a brief delay to ensure state is clean
         setTimeout(async () => {
-            const { handleViewSwitch } = await import('./ui.js');
+            const { handleViewSwitch } = await import('./ui.js?v=1.3');
             handleViewSwitch(targetView);
         }, 100);
     }
@@ -446,7 +446,7 @@ function executeDiscardChanges() {
         dirtyState.pendingNavigation = null;
         
         setTimeout(async () => {
-            const { handleViewSwitch } = await import('./ui.js');
+            const { handleViewSwitch } = await import('./ui.js?v=1.3');
             handleViewSwitch(targetView);
         }, 100);
     }

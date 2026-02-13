@@ -7,7 +7,7 @@
 
 import * as DOM from './domElements.js';
 import { state } from './state.js';
-import * as UI from './ui.js';
+import * as UI from './ui.js?v=1.3';
 import { handleChatSubmit } from './eventHandlers.js?v=3.4';
 import { classifyConfirmation } from './utils.js';
 

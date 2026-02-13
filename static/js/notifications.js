@@ -1,8 +1,8 @@
 import { state } from './state.js';
-import * as UI from './ui.js';
+import * as UI from './ui.js?v=1.3';
 import * as DOM from './domElements.js';
 import * as API from './api.js';
-import { handleLoadSession } from './handlers/sessionManagement.js?v=3.2';
+import { handleLoadSession } from './handlers/sessionManagement.js?v=3.6';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
 

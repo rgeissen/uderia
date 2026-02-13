@@ -17,7 +17,7 @@
  */
 
 import { state } from '../state.js';
-import * as UI from '../ui.js';
+import * as UI from '../ui.js?v=1.3';
 
 // ============================================================================
 // Genie Coordination State
@@ -195,7 +195,7 @@ async function addChildSessionToList(childSessionId, parentSessionId) {
         });
 
         // Import UI helpers dynamically
-        const { addSessionToList } = await import('../ui.js');
+        const { addSessionToList } = await import('../ui.js?v=1.3');
         const { updateGenieMasterBadges } = await import('./configurationHandler.js');
 
         // Create session item with tree structure

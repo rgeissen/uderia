@@ -8,15 +8,15 @@
 
 import * as DOM from '../domElements.js';
 import * as API from '../api.js';
-import * as UI from '../ui.js';
+import * as UI from '../ui.js?v=1.3';
 import { state } from '../state.js';
 import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import * as Utils from '../utils.js';
-import { handleLoadSession, handleStartNewSession } from './sessionManagement.js?v=3.2';
+import { handleLoadSession, handleStartNewSession } from './sessionManagement.js?v=3.6';
 // We need to import from eventHandlers for functions not yet moved
 import { handleLoadResources } from '../eventHandlers.js?v=3.4';
 // Note: openSystemPromptPopup is deprecated - welcome screen is now the unified interface
-import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js';
+import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js?v=1.3';
 
 // ============================================================================
 // SESSION PAGINATION
@@ -154,13 +154,13 @@ export async function refreshSessionsList(resetPagination = true) {
             // Current session was archived and no active sessions remain
             // Automatically create a new session
             console.log('[refreshSessionsList] No active sessions remain, creating new session');
-            const { handleStartNewSession } = await import('./sessionManagement.js');
+            const { handleStartNewSession } = await import('./sessionManagement.js?v=3.6');
             await handleStartNewSession();
         } else if (!currentSessionStillActive && activeSessions.length > 0) {
             // Current session was archived but other active sessions exist
             // Switch to the most recent active session
             console.log('[refreshSessionsList] Current session archived, switching to most recent active session');
-            const { handleLoadSession } = await import('./sessionManagement.js');
+            const { handleLoadSession } = await import('./sessionManagement.js?v=3.6');
             await handleLoadSession(activeSessions[0].id);
         }
     } catch (error) {

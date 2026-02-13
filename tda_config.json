@@ -2183,11 +2183,7 @@
         ]
       },
       "needs_reclassification": true,
-      "agent_packs": [],
-      "dualModelConfig": {
-        "strategicModelId": "1763819257483-fluhef2vk",
-        "tacticalModelId": "1770912188373-ahlaint7f"
-      }
+      "agent_packs": []
     },
     {
       "id": "profile-default-rag",
@@ -2307,11 +2303,8 @@
   ],
   "active_profile_id": null,
   "default_profile_id": null,
-  "master_classification_profile_id": "profile-1764006444002-z0hdduce9",
-  "active_for_consumption_profile_ids": [
-    "profile-b31df284-d35c-4e63-b74b-ccb2ecc6f22b",
-    "profile-default-chat"
-  ],
+  "master_classification_profile_id": null,
+  "active_for_consumption_profile_ids": [],
   "rate_limit_enabled": "on",
   "rate_limit_global_override": "off",
   "window_defaults": {

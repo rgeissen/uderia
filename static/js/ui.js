@@ -8,12 +8,14 @@ import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedModelId } from './utils.js';
 // We need access to the functions that will handle save/cancel from the input
-import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.2';
+import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.6';
 import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
 import { checkServerStatus, loadSessions } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
 import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './handlers/agentPackGrouping.js';
 
+// 🔥 DEBUG: Module load detection (v1.0 - Feb 13, 2026)
+console.log('%c🔥 UI.JS LOADED - VERSION 1.0 (NEW CODE)', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 5px;');
 
 // NOTE: This module no longer imports from eventHandlers.js, breaking a circular dependency.
 // Instead, eventHandlers.js will import these UI functions.
@@ -3907,13 +3909,71 @@ export function updateTokenDisplay(data, isHistorical = false) {
     normalDisplay.classList.remove('hidden');
     awsMessage.classList.add('hidden');
 
-    // Update all six token display elements (statement, turn, and session total)
-    document.getElementById('statement-input-tokens').textContent = (data.statement_input || 0).toLocaleString();
-    document.getElementById('statement-output-tokens').textContent = (data.statement_output || 0).toLocaleString();
-    document.getElementById('turn-input-tokens').textContent = (data.turn_input || 0).toLocaleString();
-    document.getElementById('turn-output-tokens').textContent = (data.turn_output || 0).toLocaleString();
-    document.getElementById('total-input-tokens').textContent = (data.total_input || 0).toLocaleString();
-    document.getElementById('total-output-tokens').textContent = (data.total_output || 0).toLocaleString();
+    // ========== TOKEN DISPLAY LOGIC WITH TERMINAL EVENT PROTECTION ==========
+    // Get token display elements
+    const stmtInEl = document.getElementById('statement-input-tokens');
+    const stmtOutEl = document.getElementById('statement-output-tokens');
+    const turnInEl = document.getElementById('turn-input-tokens');
+    const turnOutEl = document.getElementById('turn-output-tokens');
+    const totalInEl = document.getElementById('total-input-tokens');
+    const totalOutEl = document.getElementById('total-output-tokens');
+
+    // CRITICAL: Detect terminal token_update events (statement tokens are 0 but turn/total tokens present)
+    // These events are sent by the backend to update cumulative turn/total tokens without new statement data
+    // If we overwrite statement tokens with 0, users see blank counters even though LLM calls happened
+    const isTerminalEvent = (
+        !isHistorical &&  // Only applies to live execution
+        (data.statement_input === 0 || data.statement_input === undefined) &&
+        (data.statement_output === 0 || data.statement_output === undefined) &&
+        (data.turn_input !== undefined || data.total_input !== undefined)  // Has turn/total data
+    );
+
+    // Debug logging for ALL token updates (live and historical)
+    console.log(`%c[Token Display] 🎯 updateTokenDisplay called`, 'background: #00ffff; color: #000; font-weight: bold;');
+    console.log(`  isHistorical: ${isHistorical}`);
+    console.log(`  isTerminalEvent: ${isTerminalEvent}`);
+    console.log(`  data:`, {
+        statement: `${data.statement_input} in / ${data.statement_output} out`,
+        turn: `${data.turn_input} in / ${data.turn_output} out`,
+        total: `${data.total_input} in / ${data.total_output} out`,
+        cost: data.cost_usd || 0
+    });
+
+    if (isTerminalEvent) {
+        console.log('%c[Token Display] ⚠️ TERMINAL EVENT - Will preserve statement tokens, only update turn/total if > 0', 'background: #ffff00; color: #000;');
+
+        // Preserve statement tokens (don't overwrite with 0)
+        // Only update turn and total tokens if they're NON-ZERO (preserve existing display if 0)
+        // This prevents terminal events with all zeros (e.g., session load initialization) from resetting display to 0
+        if (data.turn_input !== undefined && data.turn_input > 0 && turnInEl) {
+            turnInEl.textContent = data.turn_input.toLocaleString();
+        }
+        if (data.turn_output !== undefined && data.turn_output > 0 && turnOutEl) {
+            turnOutEl.textContent = data.turn_output.toLocaleString();
+        }
+        if (data.total_input !== undefined && data.total_input > 0 && totalInEl) {
+            totalInEl.textContent = data.total_input.toLocaleString();
+        }
+        if (data.total_output !== undefined && data.total_output > 0 && totalOutEl) {
+            totalOutEl.textContent = data.total_output.toLocaleString();
+        }
+
+        // Skip statement token update - preserve existing display
+        // Continue with cost updates below...
+    } else {
+        // Normal update - set all token fields
+        console.log('%c[Token Display] ✅ NORMAL UPDATE - Setting all token displays', 'background: #00ff00; color: #000;');
+        console.log(`  Setting STMT: ${data.statement_input || 0} in / ${data.statement_output || 0} out`);
+        console.log(`  Setting TURN: ${data.turn_input || 0} in / ${data.turn_output || 0} out`);
+        console.log(`  Setting TOTAL: ${data.total_input || 0} in / ${data.total_output || 0} out`);
+
+        if (stmtInEl) stmtInEl.textContent = (data.statement_input || 0).toLocaleString();
+        if (stmtOutEl) stmtOutEl.textContent = (data.statement_output || 0).toLocaleString();
+        if (turnInEl) turnInEl.textContent = (data.turn_input || 0).toLocaleString();
+        if (turnOutEl) turnOutEl.textContent = (data.turn_output || 0).toLocaleString();
+        if (totalInEl) totalInEl.textContent = (data.total_input || 0).toLocaleString();
+        if (totalOutEl) totalOutEl.textContent = (data.total_output || 0).toLocaleString();
+    }
 
     // ========== COST TRACKING (Dual-Model Feature) ==========
     // Initialize cost accumulator if not exists
@@ -3930,107 +3990,170 @@ export function updateTokenDisplay(data, isHistorical = false) {
             strategicSessionIn: 0, strategicSessionOut: 0,
             tacticalSessionIn: 0,  tacticalSessionOut: 0,
             // Last statement model info
-            lastStmtPhase: null
+            lastStmtPhase: null,
+            // Turn/session tracking for proper reset detection
+            lastTurnNumber: null,     // Track last turn number to detect new turns
+            sessionId: null,           // Track session ID to validate accumulator
         };
     }
 
-    // Update costs if provided in event data
-    if (data.cost_usd !== undefined && data.cost_usd !== null) {
-        const callCost = parseFloat(data.cost_usd) || 0;
+    // ========== COST DISPLAY LOGIC ==========
+    const acc = window.sessionCostAccumulator;
 
-        // Only accumulate costs for live events, NOT historical reloads
-        if (!isHistorical) {
-            // Live event - accumulate costs
-            const acc = window.sessionCostAccumulator;
+    if (isHistorical) {
+        // Historical reload - use backend-provided costs (authoritative)
+        if (data.turn_cost !== undefined && data.turn_cost !== null) {
+            acc.turn = parseFloat(data.turn_cost);
+            console.log(`[Historical] Turn cost from backend: $${acc.turn.toFixed(6)}`);
+        } else if (data.cost_usd !== undefined && data.cost_usd !== null) {
+            // Fallback: old field name (for backwards compatibility)
+            acc.turn = parseFloat(data.cost_usd);
+            console.warn('[Historical] Using legacy cost_usd field for turn cost');
+        } else {
+            // Fallback: Calculate from tokens (should rarely happen if backend works correctly)
+            console.warn('[Historical] Backend did not provide turn_cost, estimating from tokens');
+            acc.turn = _estimateCostFromTokens(data.turn_input || 0, data.turn_output || 0);
+        }
+
+        if (data.session_cost_usd !== undefined && data.session_cost_usd !== null) {
+            acc.session = parseFloat(data.session_cost_usd);
+            console.log(`[Historical] Session cost from backend: $${acc.session.toFixed(6)}`);
+        } else {
+            // Fallback: Calculate from session token totals
+            console.warn('[Historical] Backend did not provide session_cost_usd, estimating from tokens');
+            acc.session = _estimateCostFromTokens(data.total_input || 0, data.total_output || 0);
+        }
+
+        // Populate per-model breakdown if provided
+        if (data.perModelBreakdown) {
+            const pm = data.perModelBreakdown;
+            acc.strategicTurnIn = pm.strategicIn || 0;
+            acc.strategicTurnOut = pm.strategicOut || 0;
+            acc.strategicTurnCost = pm.strategicCost || 0;
+            acc.tacticalTurnIn = pm.tacticalIn || 0;
+            acc.tacticalTurnOut = pm.tacticalOut || 0;
+            acc.tacticalTurnCost = pm.tacticalCost || 0;
+            acc.strategic = pm.strategicCost || 0;
+            acc.tactical = pm.tacticalCost || 0;
+            acc.strategicSessionIn = pm.strategicIn || 0;
+            acc.strategicSessionOut = pm.strategicOut || 0;
+            acc.tacticalSessionIn = pm.tacticalIn || 0;
+            acc.tacticalSessionOut = pm.tacticalOut || 0;
+            acc.lastStmtPhase = pm.strategicCost > 0 ? 'strategic' : (pm.tacticalCost > 0 ? 'tactical' : null);
+        }
+
+    } else {
+        // Live execution - accumulate costs as events arrive
+        if (data.cost_usd !== undefined && data.cost_usd !== null) {
+            const callCost = parseFloat(data.cost_usd) || 0;
             const stmtIn = data.statement_input || 0;
             const stmtOut = data.statement_output || 0;
 
-            // Accumulate turn cost (reset on new turn)
-            // IMPORTANT: Use strict check on raw data fields, NOT the || 0 coerced values.
-            // When statement_input is undefined (e.g. session-level token_update), we must
-            // NOT interpret that as a "new turn" reset signal.
-            if (data.statement_input === 0 && data.statement_output === 0) {
-                // New turn starting, reset turn cost and per-model turn data
+            // CRITICAL: Detect new turn by turn_id change (reliable method)
+            // Backend sends 'turn_id' in execution_start, stored in state.currentTurnNumber
+            // Cost events don't have turn_id, so we use the captured state value
+
+            // UNCONDITIONAL DEBUG - ALWAYS log to diagnose turn tracking issue
+            console.log(`%c[DEBUG TURN] 🔍 COST EVENT RECEIVED`, 'background: #ffff00; color: #000; font-weight: bold;');
+            console.log(`  data.turn_id: ${data.turn_id}`);
+            console.log(`  data.turn_number: ${data.turn_number}`);
+            console.log(`  data.turn: ${data.turn}`);
+            console.log(`  state object exists: ${typeof state !== 'undefined'}`);
+            if (typeof state !== 'undefined') {
+                console.log(`  state.currentTurnNumber: ${state.currentTurnNumber}`);
+            }
+            console.log(`  acc.lastTurnNumber: ${acc.lastTurnNumber}`);
+            console.log(`  event_type: ${data.type || 'unknown'}`);
+            console.log(`  planning_phase: ${data.planning_phase || 'none'}`);
+
+            const currentTurnNumber = data.turn_id || data.turn_number || data.turn || state.currentTurnNumber || null;
+            const isNewTurn = (
+                currentTurnNumber !== null &&
+                acc.lastTurnNumber !== null &&
+                currentTurnNumber > acc.lastTurnNumber
+            );
+
+            console.log(`  → currentTurnNumber resolved to: ${currentTurnNumber}`);
+            console.log(`  → isNewTurn: ${isNewTurn}`);
+            console.log(`%c────────────────────────────────────────`, 'color: #888;');
+
+            // Reset turn cost on new turn start
+            if (isNewTurn) {
+                console.log(`%c[Live] 🔄 NEW TURN DETECTED: Turn ${acc.lastTurnNumber} → Turn ${currentTurnNumber} - RESETTING TURN COST`, 'background: #ff0000; color: #fff; font-weight: bold; padding: 2px 5px;');
                 acc.turn = 0;
                 acc.strategicTurnIn = 0; acc.strategicTurnOut = 0; acc.strategicTurnCost = 0;
                 acc.tacticalTurnIn = 0;  acc.tacticalTurnOut = 0;  acc.tacticalTurnCost = 0;
             }
+
+            // Update last turn number
+            if (currentTurnNumber !== null) {
+                acc.lastTurnNumber = currentTurnNumber;
+            }
+
+            // Accumulate costs
             acc.turn += callCost;
             acc.session += callCost;
+            console.log(`[Live] Accumulated cost: +$${callCost.toFixed(6)} → Turn: $${acc.turn.toFixed(6)}, Session: $${acc.session.toFixed(6)}`);
 
-            // Track strategic vs tactical costs and per-model tokens
+            // Track strategic vs tactical
             const planningPhase = data.planning_phase;
             if (planningPhase === 'strategic') {
                 acc.strategic += callCost;
-                acc.strategicTurnIn += stmtIn;  acc.strategicTurnOut += stmtOut;
+                acc.strategicTurnIn += stmtIn;
+                acc.strategicTurnOut += stmtOut;
                 acc.strategicTurnCost += callCost;
-                acc.strategicSessionIn += stmtIn; acc.strategicSessionOut += stmtOut;
+                acc.strategicSessionIn += stmtIn;
+                acc.strategicSessionOut += stmtOut;
                 acc.lastStmtPhase = 'strategic';
             } else {
                 // Tactical + untagged calls (session name gen, etc.) — all non-strategic
                 acc.tactical += callCost;
-                acc.tacticalTurnIn += stmtIn;  acc.tacticalTurnOut += stmtOut;
+                acc.tacticalTurnIn += stmtIn;
+                acc.tacticalTurnOut += stmtOut;
                 acc.tacticalTurnCost += callCost;
-                acc.tacticalSessionIn += stmtIn; acc.tacticalSessionOut += stmtOut;
+                acc.tacticalSessionIn += stmtIn;
+                acc.tacticalSessionOut += stmtOut;
                 acc.lastStmtPhase = planningPhase ? 'tactical' : null;
-            }
-        } else {
-            // Historical reload - set turn cost for display
-            window.sessionCostAccumulator.turn = callCost;
-
-            // Populate per-model breakdown if provided
-            if (data.perModelBreakdown) {
-                const pm = data.perModelBreakdown;
-                const acc = window.sessionCostAccumulator;
-                acc.strategicTurnIn = pm.strategicIn; acc.strategicTurnOut = pm.strategicOut;
-                acc.strategicTurnCost = pm.strategicCost;
-                acc.tacticalTurnIn = pm.tacticalIn; acc.tacticalTurnOut = pm.tacticalOut;
-                acc.tacticalTurnCost = pm.tacticalCost;
-                acc.strategic = pm.strategicCost;
-                acc.tactical = pm.tacticalCost;
-                acc.strategicSessionIn = pm.strategicIn; acc.strategicSessionOut = pm.strategicOut;
-                acc.tacticalSessionIn = pm.tacticalIn; acc.tacticalSessionOut = pm.tacticalOut;
-                acc.lastStmtPhase = pm.strategicCost > 0 ? 'strategic' : (pm.tacticalCost > 0 ? 'tactical' : null);
-            }
-
-            // Set session cost if provided in data (for historical context)
-            if (data.session_cost_usd !== undefined && data.session_cost_usd !== null) {
-                window.sessionCostAccumulator.session = parseFloat(data.session_cost_usd) || 0;
-            } else if (window.sessionCostAccumulator.session === 0) {
-                // If session cost is 0 (no live queries yet), show turn cost as minimum estimate
-                // This prevents showing $0.00000 when viewing historical turns
-                // Note: This is an approximation until backend provides cumulative session_cost_usd
-                window.sessionCostAccumulator.session = callCost;
-            }
-            // Otherwise keep current session cost value
-        }
-
-        // Display costs (always show current accumulator values)
-        const costSection = document.getElementById('cost-display-section');
-        const turnCostEl = document.getElementById('turn-cost-value');
-        const sessionCostEl = document.getElementById('session-cost-value');
-        const dualModelBreakdown = document.getElementById('dual-model-cost-breakdown');
-        const strategicCostEl = document.getElementById('strategic-cost');
-        const tacticalCostEl = document.getElementById('tactical-cost');
-
-        if (costSection && turnCostEl && sessionCostEl) {
-            costSection.classList.remove('hidden');
-            turnCostEl.textContent = `$${window.sessionCostAccumulator.turn.toFixed(6)}`;
-            sessionCostEl.textContent = `$${window.sessionCostAccumulator.session.toFixed(6)}`;
-
-            // Show dual-model breakdown if both strategic and tactical costs exist
-            if (window.sessionCostAccumulator.strategic > 0 && window.sessionCostAccumulator.tactical > 0) {
-                dualModelBreakdown.classList.remove('hidden');
-                strategicCostEl.textContent = `$${window.sessionCostAccumulator.strategic.toFixed(4)}`;
-                tacticalCostEl.textContent = `$${window.sessionCostAccumulator.tactical.toFixed(4)}`;
-            } else {
-                dualModelBreakdown.classList.add('hidden');
             }
         }
     }
 
+    // Display costs (always show current accumulator values)
+    const costSection = document.getElementById('cost-display-section');
+    const turnCostEl = document.getElementById('turn-cost-value');
+    const sessionCostEl = document.getElementById('session-cost-value');
+
+    if (costSection && turnCostEl && sessionCostEl) {
+        costSection.classList.remove('hidden');
+        turnCostEl.textContent = `$${acc.turn.toFixed(6)}`;
+        sessionCostEl.textContent = `$${acc.session.toFixed(6)}`;
+    }
+
     // ========== DUAL-MODEL TOOLTIPS ==========
     _updateDualModelTooltips();
+}
+
+/**
+ * Estimates cost from token counts using fallback default pricing.
+ * This is only used as fallback when backend doesn't provide costs.
+ * Actual pricing varies by provider/model - this is a rough estimate.
+ *
+ * @param {number} inputTokens - Number of input tokens
+ * @param {number} outputTokens - Number of output tokens
+ * @returns {number} Estimated cost in USD
+ */
+function _estimateCostFromTokens(inputTokens, outputTokens) {
+    // Fallback default pricing (rough average across providers)
+    // Only used when backend doesn't provide costs
+    const INPUT_COST_PER_1M = 0.10;   // $0.10 per 1M input tokens
+    const OUTPUT_COST_PER_1M = 0.40;  // $0.40 per 1M output tokens
+
+    const inputCost = (inputTokens / 1_000_000) * INPUT_COST_PER_1M;
+    const outputCost = (outputTokens / 1_000_000) * OUTPUT_COST_PER_1M;
+    const totalCost = inputCost + outputCost;
+
+    console.warn(`[Fallback] Estimated cost from ${inputTokens} in / ${outputTokens} out: $${totalCost.toFixed(6)}`);
+    return totalCost;
 }
 
 /**
@@ -5459,7 +5582,7 @@ function performViewSwitch(viewId) {
             console.log('[handleViewSwitch] Application configured and initialized, no session loaded, checking for session to load');
             
             // Dynamically import sessionManagement to load session
-            const { handleLoadSession } = await import('./handlers/sessionManagement.js?v=3.2');
+            const { handleLoadSession } = await import('./handlers/sessionManagement.js?v=3.6');
             try {
                 // If we have a session ID in state (restored from localStorage), load it
                 if (state.currentSessionId) {

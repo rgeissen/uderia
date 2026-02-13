@@ -1633,6 +1633,19 @@ async def update_turn_token_counts(user_uuid: str, session_id: str, turn_number:
                 except Exception as e:
                     app_logger.warning(f"Failed to calculate turn cost: {e}")
 
+                # Recalculate session_cost_usd (cumulative cost up to and including this turn)
+                # This is necessary when session naming adds tokens AFTER turn_summary is saved
+                try:
+                    session_cost = 0.0
+                    for i, t in enumerate(workflow_history):
+                        if i + 1 <= turn_number:  # Sum all turns up to and including current turn
+                            if "turn_cost" in t:
+                                session_cost += float(t["turn_cost"])
+                    turn["session_cost_usd"] = session_cost
+                    app_logger.debug(f"Recalculated session_cost_usd for turn {turn_number}: ${session_cost:.6f}")
+                except Exception as e:
+                    app_logger.warning(f"Failed to recalculate session_cost_usd: {e}")
+
                 turn_found = True
                 app_logger.debug(f"Updated turn {turn_number} token counts: {input_tokens} in / {output_tokens} out")
                 break

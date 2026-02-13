@@ -834,6 +834,46 @@ class PlanExecutor:
         
         return "DEFAULT"
 
+    def _calculate_session_cost_at_turn(self, session_data: dict) -> float:
+        """
+        Calculate cumulative session cost up to (but not including) current turn.
+        Iterates workflow_history and sums turn_cost for all previous turns.
+        Falls back to token-based calculation for legacy sessions missing turn_cost.
+
+        Args:
+            session_data: Session dictionary containing workflow_history
+
+        Returns:
+            float: Cumulative cost of all previous turns in USD
+        """
+        session_cost = 0.0
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+
+        for past_turn in workflow_history:
+            if "turn_cost" in past_turn:
+                # Use stored turn cost (preferred - accurate historical cost)
+                session_cost += float(past_turn["turn_cost"])
+                app_logger.debug(f"[Session Cost] Turn {past_turn.get('turn', '?')}: ${past_turn['turn_cost']:.6f} (from stored)")
+            else:
+                # Legacy fallback: calculate from tokens using current pricing
+                # Note: This may not reflect historical pricing, but is best effort
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    cost_manager = CostManager()
+                    turn_cost = cost_manager.calculate_cost(
+                        provider=past_turn.get("provider", self.current_provider),
+                        model=past_turn.get("model", self.current_model),
+                        input_tokens=past_turn.get("turn_input_tokens", 0),
+                        output_tokens=past_turn.get("turn_output_tokens", 0)
+                    )
+                    session_cost += turn_cost
+                    app_logger.debug(f"[Session Cost] Turn {past_turn.get('turn', '?')}: ${turn_cost:.6f} (calculated from tokens - legacy)")
+                except Exception as e:
+                    app_logger.warning(f"Failed to calculate legacy turn cost for turn {past_turn.get('turn', '?')}: {e}")
+
+        app_logger.debug(f"[Session Cost] Cumulative up to turn {self.current_turn_number}: ${session_cost:.6f}")
+        return session_cost
+
     async def _get_tool_constraints(self, tool_name: str) -> Tuple[dict, list]:
         """
         Uses an LLM to determine if a tool requires numeric or character columns.
@@ -1767,6 +1807,30 @@ class PlanExecutor:
             session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
             session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
 
+            # Calculate turn cost for persistence
+            turn_cost = 0.0
+            try:
+                from trusted_data_agent.core.cost_manager import CostManager
+                cost_manager = CostManager()
+                turn_cost = cost_manager.calculate_cost(
+                    provider=self.current_provider,
+                    model=self.current_model,
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
+                app_logger.debug(f"[conversation_with_tools] Turn {self.current_turn_number} cost: ${turn_cost:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate turn cost: {e}", exc_info=True)
+
+            # Calculate session cost (cumulative up to and including this turn)
+            session_cost_usd = 0.0
+            try:
+                previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                session_cost_usd = previous_session_cost + turn_cost  # Add current turn
+                app_logger.debug(f"[conversation_with_tools] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
+
             # Save turn data to workflow_history for session reload
             turn_summary = {
                 "turn": self.current_turn_number,
@@ -1788,6 +1852,8 @@ class PlanExecutor:
                 "session_id": self.session_id,
                 "turn_input_tokens": self.turn_input_tokens,  # Cumulative turn total (includes all LLM calls like reranking)
                 "turn_output_tokens": self.turn_output_tokens,  # Cumulative turn total
+                "turn_cost": turn_cost,  # NEW - Cost at time of execution
+                "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                 # Session totals at the time of this turn (for plan reload)
                 "session_input_tokens": session_input_tokens,
                 "session_output_tokens": session_output_tokens,
@@ -1806,6 +1872,33 @@ class PlanExecutor:
             error_msg = f"Agent execution failed: {str(e)}"
             yield self._format_sse_with_depth({"step": "Error", "error": error_msg}, "error")
 
+            # Get session data for session cost calculation
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+
+            # Calculate turn cost for error case
+            turn_cost = 0.0
+            try:
+                from trusted_data_agent.core.cost_manager import CostManager
+                cost_manager = CostManager()
+                turn_cost = cost_manager.calculate_cost(
+                    provider=self.current_provider,
+                    model=self.current_model,
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
+                app_logger.debug(f"[conversation_with_tools-error] Turn {self.current_turn_number} cost: ${turn_cost:.6f}")
+            except Exception as cost_err:
+                app_logger.warning(f"Failed to calculate turn cost for error case: {cost_err}")
+
+            # Calculate session cost (cumulative up to and including this turn)
+            session_cost_usd = 0.0
+            try:
+                previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                session_cost_usd = previous_session_cost + turn_cost
+                app_logger.debug(f"[conversation_with_tools-error] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate session cost for error case: {e}")
+
             # Save error turn data
             turn_summary = {
                 "turn": self.current_turn_number,
@@ -1816,6 +1909,10 @@ class PlanExecutor:
                 "error": str(e),
                 "profile_tag": profile_config.get("tag", "CONV"),
                 "profile_type": "conversation_with_tools",
+                "turn_input_tokens": self.turn_input_tokens,  # Accumulated tokens up to failure
+                "turn_output_tokens": self.turn_output_tokens,
+                "turn_cost": turn_cost,  # NEW - Cost at time of error
+                "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -2783,6 +2880,30 @@ The following domain knowledge may be relevant to this conversation:
             session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
             session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
 
+            # Calculate turn cost for persistence
+            turn_cost = 0.0
+            try:
+                from trusted_data_agent.core.cost_manager import CostManager
+                cost_manager = CostManager()
+                turn_cost = cost_manager.calculate_cost(
+                    provider=self.current_provider,
+                    model=self.current_model,
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
+                app_logger.debug(f"[llm_only] Turn {self.current_turn_number} cost: ${turn_cost:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate turn cost: {e}", exc_info=True)
+
+            # Calculate session cost (cumulative up to and including this turn)
+            session_cost_usd = 0.0
+            try:
+                previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                session_cost_usd = previous_session_cost + turn_cost
+                app_logger.debug(f"[llm_only] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -2802,6 +2923,8 @@ The following domain knowledge may be relevant to this conversation:
                 "task_id": self.task_id if hasattr(self, 'task_id') else None,
                 "turn_input_tokens": self.turn_input_tokens,  # Cumulative turn total (includes all LLM calls like reranking)
                 "turn_output_tokens": self.turn_output_tokens,  # Cumulative turn total
+                "turn_cost": turn_cost,  # NEW - Cost at time of execution
+                "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                 "session_id": self.session_id,
                 # Session totals at the time of this turn (for plan reload)
                 "session_input_tokens": session_input_tokens,
@@ -3149,6 +3272,15 @@ The following domain knowledge may be relevant to this conversation:
                     "payload": execution_complete_payload
                 })
 
+                # Calculate session cost (cumulative up to and including this turn)
+                session_cost_usd = 0.0
+                try:
+                    previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                    session_cost_usd = previous_session_cost + _turn_cost
+                    app_logger.debug(f"[rag_focused-no-results] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+                except Exception as e:
+                    app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
+
                 # Build turn summary for workflow_history
                 turn_summary = {
                     "turn": self.current_turn_number,
@@ -3168,6 +3300,8 @@ The following domain knowledge may be relevant to this conversation:
                     "task_id": self.task_id if hasattr(self, 'task_id') else None,
                     "turn_input_tokens": self.turn_input_tokens,
                     "turn_output_tokens": self.turn_output_tokens,
+                    "turn_cost": _turn_cost,  # NEW - Cost at time of execution (already calculated above)
+                    "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                     "session_id": self.session_id,
                     "session_input_tokens": session_input_tokens,
                     "session_output_tokens": session_output_tokens,
@@ -3610,6 +3744,15 @@ The following domain knowledge may be relevant to this conversation:
                 "payload": execution_complete_payload
             })
 
+            # Calculate session cost (cumulative up to and including this turn)
+            session_cost_usd = 0.0
+            try:
+                previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                session_cost_usd = previous_session_cost + _turn_cost
+                app_logger.debug(f"[rag_focused] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -3627,6 +3770,8 @@ The following domain knowledge may be relevant to this conversation:
                 "task_id": self.task_id if hasattr(self, 'task_id') else None,
                 "turn_input_tokens": self.turn_input_tokens,  # Cumulative turn total (includes all LLM calls like reranking)
                 "turn_output_tokens": self.turn_output_tokens,  # Cumulative turn total
+                "turn_cost": _turn_cost,  # NEW - Cost at time of execution (already calculated above)
+                "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                 "session_id": self.session_id,
                 # Session totals at the time of this turn (for plan reload)
                 "session_input_tokens": session_input_tokens,
@@ -4691,6 +4836,15 @@ The following domain knowledge may be relevant to this conversation:
                 except Exception as e:
                     app_logger.warning(f"Failed to calculate turn cost for persistence: {e}")
 
+                # Calculate session cost (cumulative up to and including this turn)
+                session_cost_usd = 0.0
+                try:
+                    previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                    session_cost_usd = previous_session_cost + turn_cost
+                    app_logger.debug(f"[tool_enabled] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+                except Exception as e:
+                    app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
+
                 turn_summary = {
                     "turn": self.current_turn_number, # Use the authoritative instance variable
                     "user_query": self.original_user_input, # Store the original query
@@ -4709,6 +4863,7 @@ The following domain knowledge may be relevant to this conversation:
                     "turn_input_tokens": self.turn_input_tokens,
                     "turn_output_tokens": self.turn_output_tokens,
                     "turn_cost": turn_cost,  # Add turn cost for historical reload (fixes $0 cost bug)
+                    "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                     # Session totals at the time of this turn (for plan reload)
                     "session_input_tokens": session_input_tokens,
                     "session_output_tokens": session_output_tokens,
@@ -4791,6 +4946,30 @@ The following domain knowledge may be relevant to this conversation:
             session_input_tokens = session_data.get("input_tokens", 0) if session_data else 0
             session_output_tokens = session_data.get("output_tokens", 0) if session_data else 0
 
+            # Calculate turn cost for partial/error turn
+            turn_cost = 0.0
+            try:
+                from trusted_data_agent.core.cost_manager import CostManager
+                cost_manager = CostManager()
+                turn_cost = cost_manager.calculate_cost(
+                    provider=self.current_provider,
+                    model=self.current_model,
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
+                app_logger.debug(f"[tool_enabled-partial] Turn {self.current_turn_number} cost: ${turn_cost:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate turn cost for partial turn: {e}")
+
+            # Calculate session cost (cumulative up to and including this turn)
+            session_cost_usd = 0.0
+            try:
+                previous_session_cost = self._calculate_session_cost_at_turn(session_data)
+                session_cost_usd = previous_session_cost + turn_cost
+                app_logger.debug(f"[tool_enabled-partial] Session cost at turn {self.current_turn_number}: ${session_cost_usd:.6f}")
+            except Exception as e:
+                app_logger.warning(f"Failed to calculate session cost for partial turn: {e}")
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -4806,6 +4985,8 @@ The following domain knowledge may be relevant to this conversation:
                 "task_id": self.task_id,
                 "turn_input_tokens": self.turn_input_tokens,  # Accumulated tokens up to failure
                 "turn_output_tokens": self.turn_output_tokens,
+                "turn_cost": turn_cost,  # NEW - Cost at time of error/cancellation
+                "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
                 # Session totals at the time of this turn (for plan reload)
                 "session_input_tokens": session_input_tokens,
                 "session_output_tokens": session_output_tokens,

@@ -13,6 +13,10 @@ import { updateActiveSessionTitle } from '../ui.js';
 import { renderAttachmentChips, initializeUploadCapabilities } from './chatDocumentUpload.js';
 import { genieState, cleanupCoordination } from './genieHandler.js?v=3.4';
 import { conversationAgentState, cleanupExecution } from './conversationAgentHandler.js?v=1.0';
+
+// 🔥 DEBUG: Module load detection (v3.3 - Feb 13, 2026)
+console.log('%c🔥 SESSION MANAGEMENT LOADED - VERSION 3.3 (NEW CODE)', 'background: #ff00ff; color: #fff; font-size: 16px; font-weight: bold; padding: 5px;');
+
 // NOTE: createHistoricalGenieCard import removed - genie coordination cards
 // are no longer rendered inline. Coordination details shown in Live Status window only.
 // NOTE: createHistoricalAgentCard import removed - conversation agent cards
@@ -51,10 +55,8 @@ export async function handleStartNewSession() {
     // Update cost display to reflect reset
     const turnCostElNew = document.getElementById('turn-cost-value');
     const sessionCostElNew = document.getElementById('session-cost-value');
-    const dualModelBreakdownNew = document.getElementById('dual-model-cost-breakdown');
     if (turnCostElNew) turnCostElNew.textContent = '$0.000000';
     if (sessionCostElNew) sessionCostElNew.textContent = '$0.000000';
-    if (dualModelBreakdownNew) dualModelBreakdownNew.classList.add('hidden');
     // Clear dual-model tooltips
     ['metric-card-statement','metric-card-turn','metric-card-session',
      'metric-card-turn-cost','metric-card-session-cost'].forEach(id => {
@@ -247,6 +249,26 @@ function _captureHeaderState() {
             normalVisible: !document.getElementById('token-normal-display')?.classList.contains('hidden'),
             awsVisible: !document.getElementById('token-aws-message')?.classList.contains('hidden'),
         },
+        // Capture cost accumulator state for session switching isolation
+        costAccumulator: window.sessionCostAccumulator ? {
+            turn: window.sessionCostAccumulator.turn,
+            session: window.sessionCostAccumulator.session,
+            strategic: window.sessionCostAccumulator.strategic,
+            tactical: window.sessionCostAccumulator.tactical,
+            strategicTurnIn: window.sessionCostAccumulator.strategicTurnIn,
+            strategicTurnOut: window.sessionCostAccumulator.strategicTurnOut,
+            strategicTurnCost: window.sessionCostAccumulator.strategicTurnCost,
+            tacticalTurnIn: window.sessionCostAccumulator.tacticalTurnIn,
+            tacticalTurnOut: window.sessionCostAccumulator.tacticalTurnOut,
+            tacticalTurnCost: window.sessionCostAccumulator.tacticalTurnCost,
+            strategicSessionIn: window.sessionCostAccumulator.strategicSessionIn,
+            strategicSessionOut: window.sessionCostAccumulator.strategicSessionOut,
+            tacticalSessionIn: window.sessionCostAccumulator.tacticalSessionIn,
+            tacticalSessionOut: window.sessionCostAccumulator.tacticalSessionOut,
+            lastStmtPhase: window.sessionCostAccumulator.lastStmtPhase,
+            lastTurnNumber: window.sessionCostAccumulator.lastTurnNumber,
+            sessionId: window.sessionCostAccumulator.sessionId,
+        } : null,
     };
 }
 
@@ -344,6 +366,18 @@ function _restoreHeaderState(h) {
         if (turnLabel) turnLabel.textContent = t.turnLabel;
         el('token-normal-display')?.classList.toggle('hidden', !t.normalVisible);
         el('token-aws-message')?.classList.toggle('hidden', !t.awsVisible);
+    }
+
+    // Restore cost accumulator (critical for session switching isolation)
+    if (h.costAccumulator && window.sessionCostAccumulator) {
+        Object.assign(window.sessionCostAccumulator, h.costAccumulator);
+        console.log(`[Cached Restore] Restored cost accumulator: Turn=$${h.costAccumulator.turn.toFixed(6)}, Session=$${h.costAccumulator.session.toFixed(6)}`);
+
+        // Update cost display immediately
+        const turnCostEl = document.getElementById('turn-cost-value');
+        const sessionCostEl = document.getElementById('session-cost-value');
+        if (turnCostEl) turnCostEl.textContent = `$${h.costAccumulator.turn.toFixed(6)}`;
+        if (sessionCostEl) sessionCostEl.textContent = `$${h.costAccumulator.session.toFixed(6)}`;
     }
 }
 
@@ -629,7 +663,8 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             window.hideWelcomeScreen();
         }
 
-        // Reset cost accumulator when loading a different session
+        // Initialize cost accumulator and fetch last turn costs
+        // This ensures costs display correctly immediately when switching between sessions
         if (window.sessionCostAccumulator) {
             window.sessionCostAccumulator.turn = 0;
             window.sessionCostAccumulator.session = 0;
@@ -647,13 +682,34 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             window.sessionCostAccumulator.tacticalSessionOut = 0;
             window.sessionCostAccumulator.lastStmtPhase = null;
         }
-        // Update cost display to reflect reset
+
+        // Fetch last turn's cost data to initialize display
+        // This provides immediate accurate costs when switching sessions
+        const workflowHistory = data.last_turn_data?.workflow_history || [];
+        const lastTurn = workflowHistory.length > 0 ? workflowHistory[workflowHistory.length - 1] : null;
+
+        if (lastTurn) {
+            // Use backend-provided costs if available (for sessions created after the fix)
+            const lastTurnCost = lastTurn.turn_cost || 0;
+            const sessionCost = lastTurn.session_cost_usd || 0;
+
+            if (window.sessionCostAccumulator) {
+                window.sessionCostAccumulator.turn = lastTurnCost;
+                window.sessionCostAccumulator.session = sessionCost;
+            }
+
+            console.log(`[Session Load] Initialized costs from last turn: Turn=$${lastTurnCost.toFixed(6)}, Session=$${sessionCost.toFixed(6)}`);
+        }
+
+        // Update cost display immediately
         const turnCostEl = document.getElementById('turn-cost-value');
         const sessionCostEl = document.getElementById('session-cost-value');
-        const dualModelBreakdown = document.getElementById('dual-model-cost-breakdown');
-        if (turnCostEl) turnCostEl.textContent = '$0.000000';
-        if (sessionCostEl) sessionCostEl.textContent = '$0.000000';
-        if (dualModelBreakdown) dualModelBreakdown.classList.add('hidden');
+        const displayTurnCost = window.sessionCostAccumulator?.turn || 0;
+        const displaySessionCost = window.sessionCostAccumulator?.session || 0;
+
+        if (turnCostEl) turnCostEl.textContent = `$${displayTurnCost.toFixed(6)}`;
+        if (sessionCostEl) sessionCostEl.textContent = `$${displaySessionCost.toFixed(6)}`;
+
         // Clear dual-model tooltips
         ['metric-card-statement','metric-card-turn','metric-card-session',
          'metric-card-turn-cost','metric-card-session-cost'].forEach(id => {
@@ -707,7 +763,21 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             lastAssistant.scrollIntoView({ behavior: 'instant', block: 'start' });
         }
 
-        UI.updateTokenDisplay({ total_input: data.input_tokens, total_output: data.output_tokens });
+        // Explicitly pass all token fields as 0 for empty sessions to prevent stale values from previous session
+        // Pass isHistorical=true to bypass terminal event detection and force normal update (reset to 0)
+        console.log(`%c[Session Load] 🔍 Calling updateTokenDisplay for session ${sessionId}`, 'background: #ff00ff; color: #fff; font-weight: bold;');
+        console.log(`  data.input_tokens: ${data.input_tokens}`);
+        console.log(`  data.output_tokens: ${data.output_tokens}`);
+        console.log(`  Passing isHistorical=true to bypass terminal event detection`);
+
+        UI.updateTokenDisplay({
+            statement_input: 0,           // Reset statement tokens (prevents stale values)
+            statement_output: 0,
+            turn_input: 0,                // Reset turn tokens
+            turn_output: 0,
+            total_input: data.input_tokens,   // Use backend data for session totals
+            total_output: data.output_tokens
+        }, true);  // isHistorical=true bypasses terminal event detection, forces normal update
 
         // --- MODIFICATION START: Refresh feedback button states after loading history ---
         UI.refreshFeedbackButtons();

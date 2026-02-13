@@ -11,8 +11,8 @@ import * as API from './api.js';
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { setupPanelToggle } from './utils.js';
-import * as UI from './ui.js';
-import { handleViewSwitch } from './ui.js';
+import * as UI from './ui.js?v=1.3';
+import { handleViewSwitch } from './ui.js?v=1.3';
 import { initializeVoiceRecognition } from './voice.js';
 import { subscribeToNotifications } from './notifications.js?v=3.4';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
@@ -1325,7 +1325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     wireRepositoryTabs();
     
     // Initialize utility sessions filter for sidebar
-    const { initializeUtilitySessionsFilter, initializeArchivedSessionsFilter } = await import('./handlers/sessionManagement.js?v=3.2');
+    const { initializeUtilitySessionsFilter, initializeArchivedSessionsFilter } = await import('./handlers/sessionManagement.js?v=3.6');
     initializeUtilitySessionsFilter();
     initializeArchivedSessionsFilter();
     

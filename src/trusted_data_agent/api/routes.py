@@ -1772,6 +1772,51 @@ async def get_turn_details(current_user, session_id: str, turn_id: int):
     turn_data_copy["session_input_tokens"] = session_data.get("input_tokens", 0)
     turn_data_copy["session_output_tokens"] = session_data.get("output_tokens", 0)
 
+    # NEW: Ensure turn_cost is present (calculate if missing for legacy sessions)
+    if "turn_cost" not in turn_data_copy:
+        try:
+            from trusted_data_agent.core.cost_manager import CostManager
+            cost_manager = CostManager()
+            turn_cost = cost_manager.calculate_cost(
+                provider=turn_data_copy.get("provider"),
+                model=turn_data_copy.get("model"),
+                input_tokens=turn_data_copy.get("turn_input_tokens", 0),
+                output_tokens=turn_data_copy.get("turn_output_tokens", 0)
+            )
+            turn_data_copy["turn_cost"] = turn_cost
+            app_logger.debug(f"Calculated legacy turn cost for turn {turn_id}: ${turn_cost:.6f}")
+        except Exception as e:
+            app_logger.warning(f"Failed to calculate legacy turn cost: {e}")
+            turn_data_copy["turn_cost"] = 0.0
+
+    # NEW: Ensure session_cost_usd is present (calculate if missing for legacy sessions)
+    if "session_cost_usd" not in turn_data_copy:
+        try:
+            from trusted_data_agent.core.cost_manager import CostManager
+            cost_manager = CostManager()
+            session_cost = 0.0
+
+            # Sum all turn costs up to and including this turn
+            for i in range(turn_id):
+                turn = workflow_history[i]
+                if "turn_cost" in turn:
+                    session_cost += float(turn["turn_cost"])
+                else:
+                    # Calculate from tokens for legacy turns
+                    turn_cost = cost_manager.calculate_cost(
+                        provider=turn.get("provider", session_data.get("provider")),
+                        model=turn.get("model", session_data.get("model")),
+                        input_tokens=turn.get("turn_input_tokens", 0),
+                        output_tokens=turn.get("turn_output_tokens", 0)
+                    )
+                    session_cost += turn_cost
+
+            turn_data_copy["session_cost_usd"] = session_cost
+            app_logger.debug(f"Calculated legacy session cost for turn {turn_id}: ${session_cost:.6f}")
+        except Exception as e:
+            app_logger.warning(f"Failed to calculate legacy session cost: {e}")
+            turn_data_copy["session_cost_usd"] = 0.0
+
     # Add dual-model information if available
     if session_data.get("is_dual_model_active"):
         turn_data_copy["dual_model_info"] = {
