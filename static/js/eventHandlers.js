@@ -1952,107 +1952,50 @@ export async function handleReloadPlanClick(element) {
             return; // Exit early
         }
 
-        // Handle tool_enabled profiles with lifecycle events (execution_start, execution_complete)
-        // Check for tool_enabled_events directly (profile_type may not be in turn data)
-        if (turnData && turnData.tool_enabled_events && turnData.tool_enabled_events.length > 0) {
+        // === Unified tool_enabled reload (handles both modern sessions with
+        //     tool_enabled_events and legacy sessions without them) ===
 
-            // Update status title
-            const statusTitle = DOM.statusTitle || document.getElementById('status-title');
-            if (statusTitle) {
-                const brandedName = getBrandedAgentName('tool_enabled');
-                statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
-            }
-
-            // Pass lifecycle events TO renderHistoricalTrace for integrated rendering.
-            // renderHistoricalTrace renders execution_start at the top and execution_complete
-            // at the bottom, so lifecycle events are not wiped by innerHTML clearing.
-            UI.renderHistoricalTrace(
-                turnData.original_plan || [],
-                turnData.execution_trace || [],
-                turnId,
-                turnData.user_query,
-                turnData.knowledge_retrieval_event || null,
-                {
-                    turn_input_tokens: turnData.turn_input_tokens || 0,
-                    turn_output_tokens: turnData.turn_output_tokens || 0
-                },
-                turnData.system_events || [],
-                turnData.duration_ms || 0,
-                turnData.tool_enabled_events || []
-            );
-
-            // Update token display
-            const lastStatement = _getLastStatementTokens(turnData);
-            const turnCost = _getTurnCost(turnData);
-            const perModelBreakdown = _getPerModelBreakdown(turnData);
-            UI.updateTokenDisplay({
-                statement_input: lastStatement.input,
-                statement_output: lastStatement.output,
-                turn_input: turnData.turn_input_tokens || 0,
-                turn_output: turnData.turn_output_tokens || 0,
-                total_input: turnData.session_input_tokens || 0,
-                total_output: turnData.session_output_tokens || 0,
-                cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,  // Add fallback to turn_cost field
-                planning_phase: turnData.planning_phase,
-                perModelBreakdown: perModelBreakdown
-            }, true);
-
-            // Update model display
-            if (turnData.provider && turnData.model) {
-                UI.updateStatusPromptName(turnData.provider, turnData.model, true, turnData.dual_model_info);
-            }
-
-            // Show replay buttons
-            if (DOM.headerReplayPlannedButton) {
-                DOM.headerReplayPlannedButton.classList.remove('hidden');
-                DOM.headerReplayPlannedButton.disabled = false;
-                DOM.headerReplayPlannedButton.dataset.turnId = turnId;
-            }
-            if (DOM.headerReplayOptimizedButton) {
-                DOM.headerReplayOptimizedButton.classList.remove('hidden');
-                DOM.headerReplayOptimizedButton.disabled = false;
-                DOM.headerReplayOptimizedButton.dataset.turnId = turnId;
-            }
-
-            return; // Exit early - don't fall through to default rendering
+        // Update status title with branded agent name
+        const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+        if (statusTitle) {
+            const brandedName = getBrandedAgentName('tool_enabled');
+            statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
         }
 
-        // Check if data is valid for tool-enabled profiles (fallback for old sessions without tool_enabled_events)
-        if (!turnData || (!turnData.original_plan && !turnData.execution_trace)) {
+        // Validate: need at least plan, trace, or lifecycle events
+        if (!turnData || (!turnData.original_plan && !turnData.execution_trace
+            && (!turnData.tool_enabled_events || turnData.tool_enabled_events.length === 0))) {
             throw new Error("Received empty or invalid turn details from the server.");
         }
 
-        // Render the historical trace using the new UI function
-        // Pass knowledge_retrieval_event so it renders FIRST (before execution trace)
+        // Render historical trace with all available data
+        // renderHistoricalTrace renders execution_start at top and execution_complete
+        // at bottom when tool_enabled_events are provided
         UI.renderHistoricalTrace(
             turnData.original_plan || [],
             turnData.execution_trace || [],
             turnId,
             turnData.user_query,
-            turnData.knowledge_retrieval_event || null,  // Pass knowledge event for proper ordering
-            {  // Pass turn tokens for display
+            turnData.knowledge_retrieval_event || null,
+            {
                 turn_input_tokens: turnData.turn_input_tokens || 0,
                 turn_output_tokens: turnData.turn_output_tokens || 0
             },
-            turnData.system_events || [],  // Pass system events (session name generation, etc.)
-            turnData.duration_ms || 0  // Pass duration for execution summary card
+            turnData.system_events || [],
+            turnData.duration_ms || 0,
+            turnData.tool_enabled_events || []
         );
 
-        // --- MODIFICATION START: Update task ID display for reloaded turn ---
-        // Prioritize task_id if available in turnData, otherwise use turnId as fallback
+        // Update task ID display
         const taskIdToDisplay = turnData.task_id || turnId;
         UI.updateTaskIdDisplay(taskIdToDisplay);
-        // --- MODIFICATION END ---
 
-        // --- MODIFICATION START: Update model display for reloaded turn ---
-        // After rendering, update the model display to reflect the turn's actual model
+        // Update model display to reflect the turn's actual model
         if (turnData.provider && turnData.model) {
-            // --- MODIFICATION: Pass historical data and dual-model info directly to UI function ---
             UI.updateStatusPromptName(turnData.provider, turnData.model, true, turnData.dual_model_info);
         }
-        // --- MODIFICATION END ---
 
-        // Update token counts for tool-enabled profile reloads (isHistorical = true)
+        // Update token display with dual-model breakdown for cost tooltips
         const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
         const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
         const lastStatement = _getLastStatementTokens(turnData);
@@ -2065,13 +2008,12 @@ export async function handleReloadPlanClick(element) {
             turn_output: outputTokens,
             total_input: turnData.session_input_tokens || 0,
             total_output: turnData.session_output_tokens || 0,
-            cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,  // Use _getTurnCost() with fallback
-            planning_phase: turnData.planning_phase,  // Add planning phase for dual-model cost tracking
-            perModelBreakdown: perModelBreakdown  // Per-model token/cost split for dual-model tooltips
+            cost_usd: turnCost || parseFloat(turnData.turn_cost) || 0,
+            planning_phase: turnData.planning_phase,
+            perModelBreakdown: perModelBreakdown
         }, true);
 
-        // --- MODIFICATION START: Synchronize header buttons ---
-        // After successfully rendering the trace, update the header buttons
+        // Show replay buttons
         if (DOM.headerReplayPlannedButton) {
             DOM.headerReplayPlannedButton.classList.remove('hidden');
             DOM.headerReplayPlannedButton.disabled = false;
@@ -2082,7 +2024,6 @@ export async function handleReloadPlanClick(element) {
             DOM.headerReplayOptimizedButton.disabled = false;
             DOM.headerReplayOptimizedButton.dataset.turnId = turnId;
         }
-        // --- MODIFICATION END ---
 
     } catch (error) {
         console.error(`Error loading details for turn ${turnId}:`, error);
