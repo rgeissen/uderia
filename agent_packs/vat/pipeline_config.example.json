@@ -7,7 +7,8 @@
     "corpus_python": "/path/to/TheVirtualAccountTeam/venv/bin/python",
     "deploy_ssh_host": "",
     "deploy_ssh_path": "",
-    "deploy_docker_container": "",
+    "deploy_docker_container": ["tool_server", "agent_app"],
+    "_deploy_docker_container_note": "Can be a single string or array of docker-compose service names to restart",
     "uderia_base_url": "http://localhost:5050",
     "poll_interval_seconds": 3600
 }

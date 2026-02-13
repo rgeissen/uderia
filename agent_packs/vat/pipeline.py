@@ -387,23 +387,28 @@ def deploy_vat_corpus(config: dict, changed_categories: list[str]) -> None:
         return
     logger.info(f"Remote pull completed: {result.stdout.strip()}")
 
-    # Step 6: Restart Docker container on remote server
-    container = config.get("deploy_docker_container")
-    if not container:
+    # Step 6: Restart Docker container(s) on remote server
+    containers_config = config.get("deploy_docker_container")
+    if not containers_config:
         logger.info("deploy_docker_container not set — skipping container restart")
         return
 
-    logger.info(f"Restarting Docker container '{container}' on {deploy_ssh}...")
-    result = subprocess.run(
-        ["ssh", deploy_ssh,
-         f"cd {deploy_path} && docker compose restart {container}"],
-        capture_output=True, text=True, timeout=120,
-    )
-    if result.returncode != 0:
-        logger.error(f"Docker restart failed: {result.stderr}")
-        logger.info("Hint: ensure user is in the 'docker' group on the remote server")
-        return
-    logger.info(f"Container '{container}' restarted")
+    # Support both single string and list of containers
+    containers = containers_config if isinstance(containers_config, list) else [containers_config]
+
+    for container in containers:
+        logger.info(f"Restarting Docker container '{container}' on {deploy_ssh}...")
+        result = subprocess.run(
+            ["ssh", deploy_ssh,
+             f"cd {deploy_path} && docker compose restart {container}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            logger.error(f"Docker restart failed for '{container}': {result.stderr}")
+            logger.info("Hint: ensure user is in the 'docker' group on the remote server")
+            # Continue with other containers even if one fails
+            continue
+        logger.info(f"Container '{container}' restarted")
 
 
 # ── Phase 5: Build Agent Pack ─────────────────────────────────────────────────
