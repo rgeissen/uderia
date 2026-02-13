@@ -37,6 +37,13 @@ export async function handleStartNewSession() {
         window.sessionCostAccumulator.strategic = 0;
         window.sessionCostAccumulator.tactical = 0;
     }
+    // Update cost display to reflect reset
+    const turnCostElNew = document.getElementById('turn-cost-value');
+    const sessionCostElNew = document.getElementById('session-cost-value');
+    const dualModelBreakdownNew = document.getElementById('dual-model-cost-breakdown');
+    if (turnCostElNew) turnCostElNew.textContent = '$0.000000';
+    if (sessionCostElNew) sessionCostElNew.textContent = '$0.000000';
+    if (dualModelBreakdownNew) dualModelBreakdownNew.classList.add('hidden');
 
     UI.updateTokenDisplay({ statement_input: 0, statement_output: 0, total_input: 0, total_output: 0 });
     UI.addMessage('assistant', "Starting a new conversation... Please wait.");
@@ -612,6 +619,13 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             window.sessionCostAccumulator.strategic = 0;
             window.sessionCostAccumulator.tactical = 0;
         }
+        // Update cost display to reflect reset
+        const turnCostEl = document.getElementById('turn-cost-value');
+        const sessionCostEl = document.getElementById('session-cost-value');
+        const dualModelBreakdown = document.getElementById('dual-model-cost-breakdown');
+        if (turnCostEl) turnCostEl.textContent = '$0.000000';
+        if (sessionCostEl) sessionCostEl.textContent = '$0.000000';
+        if (dualModelBreakdown) dualModelBreakdown.classList.add('hidden');
 
         DOM.chatLog.innerHTML = '';
         if (data.history && data.history.length > 0) {

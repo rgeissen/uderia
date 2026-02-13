@@ -740,12 +740,23 @@ class PlanExecutor:
 
         # Store planning phase and model info for potential event emission
         # (actual event emission happens in callers that have access to event handlers)
+        # Calculate per-call cost for centralized access by all callers
+        from trusted_data_agent.core.cost_manager import CostManager
+        cost_manager = CostManager()
+        call_cost_usd = cost_manager.calculate_cost(
+            provider=actual_provider or "Unknown",
+            model=actual_model or "Unknown",
+            input_tokens=statement_input_tokens,
+            output_tokens=statement_output_tokens
+        )
+
         self._last_call_metadata = {
             "planning_phase": planning_phase,
             "provider": actual_provider,
             "model": actual_model,
             "input_tokens": statement_input_tokens,
-            "output_tokens": statement_output_tokens
+            "output_tokens": statement_output_tokens,
+            "cost_usd": call_cost_usd
         }
 
         # **NEW: Track model usage with planning_phase for dual-model visibility**
@@ -859,6 +870,20 @@ class PlanExecutor:
                 source=self.source
             )
 
+            # Log post-LLM system_message with tokens + cost for historical replay
+            constraint_log_event = {
+                "step": "Calling LLM",
+                "type": "system_message",
+                "details": {
+                    "summary": reason,
+                    "call_id": call_id,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cost_usd": self._last_call_metadata.get("cost_usd", 0)
+                }
+            }
+            self._log_system_event(constraint_log_event)
+
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
                 events.append(self._format_sse_with_depth({
@@ -868,7 +893,8 @@ class PlanExecutor:
                     "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
                     "total_output": updated_session.get("output_tokens", 0),
-                    "call_id": call_id
+                    "call_id": call_id,
+                    "cost_usd": self._last_call_metadata.get("cost_usd", 0)
                 }, "token_update"))
 
             try:
@@ -1621,6 +1647,18 @@ class PlanExecutor:
             # Emit token update event with updated session totals
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
+                # Calculate cost (LangChain path, not _call_llm_and_update_tokens)
+                _conv_cost = 0
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    _conv_cost = CostManager().calculate_cost(
+                        provider=self.current_provider or "Unknown",
+                        model=self.current_model or "Unknown",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+                except Exception:
+                    pass
                 yield self._format_sse_with_depth({
                     "statement_input": input_tokens,
                     "statement_output": output_tokens,
@@ -1628,7 +1666,8 @@ class PlanExecutor:
                     "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
                     "total_output": updated_session.get("output_tokens", 0),
-                    "call_id": str(uuid.uuid4())
+                    "call_id": str(uuid.uuid4()),
+                    "cost_usd": _conv_cost
                 }, "token_update")
 
             # Format the response using OutputFormatter's markdown renderer
@@ -1686,6 +1725,13 @@ class PlanExecutor:
                             # Emit token_update event so UI reflects updated session totals
                             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                             if updated_session:
+                                from trusted_data_agent.core.cost_manager import CostManager as _CM1
+                                _name_cost = _CM1().calculate_cost(
+                                    provider=self.current_provider or "Unknown",
+                                    model=self.current_model or "Unknown",
+                                    input_tokens=name_input_tokens,
+                                    output_tokens=name_output_tokens
+                                )
                                 yield self._format_sse_with_depth({
                                     "statement_input": name_input_tokens,
                                     "statement_output": name_output_tokens,
@@ -1693,7 +1739,8 @@ class PlanExecutor:
                                     "turn_output": self.turn_output_tokens,
                                     "total_input": updated_session.get("input_tokens", 0),
                                     "total_output": updated_session.get("output_tokens", 0),
-                                    "call_id": "session_name_generation"
+                                    "call_id": "session_name_generation",
+                                    "cost_usd": _name_cost
                                 }, "token_update")
 
                         if new_name and new_name != "New Chat":
@@ -2547,7 +2594,8 @@ The following domain knowledge may be relevant to this conversation:
                     "response_length": len(response_text),
                     "knowledge_used": len(knowledge_accessed) if knowledge_accessed else 0,
                     "session_id": self.session_id,
-                    "response_text": response_text  # Include actual response for expandable view
+                    "response_text": response_text,  # Include actual response for expandable view
+                    "cost_usd": self._last_call_metadata.get("cost_usd", 0)
                 }
             }
             self._log_system_event(llm_complete_event)
@@ -2566,7 +2614,8 @@ The following domain knowledge may be relevant to this conversation:
                     "response_length": len(response_text),
                     "knowledge_used": len(knowledge_accessed) if knowledge_accessed else 0,
                     "session_id": self.session_id,
-                    "response_text": response_text  # Include actual response for expandable view
+                    "response_text": response_text,  # Include actual response for expandable view
+                    "cost_usd": self._last_call_metadata.get("cost_usd", 0)
                 }
             })
 
@@ -2580,7 +2629,8 @@ The following domain knowledge may be relevant to this conversation:
                     "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
                     "total_output": updated_session.get("output_tokens", 0),
-                    "call_id": str(uuid.uuid4())
+                    "call_id": str(uuid.uuid4()),
+                    "cost_usd": self._last_call_metadata.get("cost_usd", 0)
                 }, "token_update")
 
             # Store as final answer
@@ -2656,6 +2706,13 @@ The following domain knowledge may be relevant to this conversation:
                                 # Emit token_update event so UI reflects updated session totals
                                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                 if updated_session:
+                                    from trusted_data_agent.core.cost_manager import CostManager as _CM2
+                                    _name_cost = _CM2().calculate_cost(
+                                        provider=self.current_provider or "Unknown",
+                                        model=self.current_model or "Unknown",
+                                        input_tokens=name_input_tokens,
+                                        output_tokens=name_output_tokens
+                                    )
                                     yield self._format_sse_with_depth({
                                         "statement_input": name_input_tokens,
                                         "statement_output": name_output_tokens,
@@ -2663,7 +2720,8 @@ The following domain knowledge may be relevant to this conversation:
                                         "turn_output": self.turn_output_tokens,
                                         "total_input": updated_session.get("input_tokens", 0),
                                         "total_output": updated_session.get("output_tokens", 0),
-                                        "call_id": "session_name_generation"
+                                        "call_id": "session_name_generation",
+                                        "cost_usd": _name_cost
                                     }, "token_update")
                                 # Update turn token counts in workflow_history for reload
                                 await session_manager.update_turn_token_counts(
@@ -2763,12 +2821,22 @@ The following domain knowledge may be relevant to this conversation:
 
             # --- PHASE 2: Emit execution_complete lifecycle event for llm_only ---
             try:
+                # Calculate turn cost for completion card
+                from trusted_data_agent.core.cost_manager import CostManager
+                _cost_mgr = CostManager()
+                _turn_cost = _cost_mgr.calculate_cost(
+                    provider=self.current_provider or "Unknown",
+                    model=self.current_model or "Unknown",
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
                 complete_event = self._emit_lifecycle_event("execution_complete", {
                     "profile_type": "llm_only",
                     "profile_tag": profile_tag,
                     "total_input_tokens": self.turn_input_tokens,
                     "total_output_tokens": self.turn_output_tokens,
                     "knowledge_accessed": len(knowledge_accessed) > 0,
+                    "cost_usd": _turn_cost,
                     "success": True
                 })
                 yield complete_event
@@ -3002,6 +3070,13 @@ The following domain knowledge may be relevant to this conversation:
                                     # Emit token_update event so UI reflects updated session totals
                                     updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                     if updated_session:
+                                        from trusted_data_agent.core.cost_manager import CostManager as _CM
+                                        _name_cost = _CM().calculate_cost(
+                                            provider=self.current_provider or "Unknown",
+                                            model=self.current_model or "Unknown",
+                                            input_tokens=name_input_tokens,
+                                            output_tokens=name_output_tokens
+                                        )
                                         yield self._format_sse_with_depth({
                                             "statement_input": name_input_tokens,
                                             "statement_output": name_output_tokens,
@@ -3009,7 +3084,8 @@ The following domain knowledge may be relevant to this conversation:
                                             "turn_output": self.turn_output_tokens,
                                             "total_input": updated_session.get("input_tokens", 0),
                                             "total_output": updated_session.get("output_tokens", 0),
-                                            "call_id": "session_name_generation"
+                                            "call_id": "session_name_generation",
+                                            "cost_usd": _name_cost
                                         }, "token_update")
                                     # Update turn token counts in workflow_history for reload
                                     await session_manager.update_turn_token_counts(
@@ -3045,6 +3121,15 @@ The following domain knowledge may be relevant to this conversation:
 
                 # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
                 # No LLM synthesis for no-results case, so synthesis_duration_ms is 0
+                # Calculate turn cost for completion card
+                from trusted_data_agent.core.cost_manager import CostManager
+                _cost_mgr = CostManager()
+                _turn_cost = _cost_mgr.calculate_cost(
+                    provider=self.current_provider or "Unknown",
+                    model=self.current_model or "Unknown",
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
                 execution_complete_payload = {
                     "profile_type": "rag_focused",
                     "profile_tag": profile_tag,
@@ -3056,6 +3141,7 @@ The following domain knowledge may be relevant to this conversation:
                     "retrieval_duration_ms": retrieval_duration_ms,
                     "synthesis_duration_ms": 0,
                     "total_duration_ms": retrieval_duration_ms,  # Only retrieval, no synthesis
+                    "cost_usd": _turn_cost,
                     "success": True
                 }
                 knowledge_events.append({
@@ -3310,6 +3396,16 @@ The following domain knowledge may be relevant to this conversation:
             # This ensures the status window shows correct session totals during live execution
             # Note: _call_llm_and_update_tokens already calls update_token_count internally via handler.py,
             # but we need to ensure it completes and fetch updated session data before emitting the event
+            # Calculate cost for RAG LLM synthesis call (before token_update so it's included)
+            from trusted_data_agent.core.cost_manager import CostManager
+            cost_manager = CostManager()
+            call_cost = cost_manager.calculate_cost(
+                provider=self.current_provider if hasattr(self, 'current_provider') else "Unknown",
+                model=self.current_model if hasattr(self, 'current_model') else "Unknown",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+
             if input_tokens > 0 or output_tokens > 0:
                 # Re-fetch session to ensure token counts are current
                 # The handler already updated tokens, but we need the latest persisted values
@@ -3323,18 +3419,9 @@ The following domain knowledge may be relevant to this conversation:
                         "turn_output": self.turn_output_tokens,
                         "total_input": session_data.get("input_tokens", 0),
                         "total_output": session_data.get("output_tokens", 0),
-                        "call_id": call_id
+                        "call_id": call_id,
+                        "cost_usd": call_cost
                     }, "token_update")
-
-            # Calculate cost for RAG LLM synthesis call
-            from trusted_data_agent.core.cost_manager import CostManager
-            cost_manager = CostManager()
-            call_cost = cost_manager.calculate_cost(
-                provider=self.current_provider if hasattr(self, 'current_provider') else "Unknown",
-                model=self.current_model if hasattr(self, 'current_model') else "Unknown",
-                input_tokens=input_tokens,
-                output_tokens=output_tokens
-            )
 
             # Emit RAG LLM step event for plan reload (similar to conversation_llm_step)
             rag_llm_step_payload = {
@@ -3496,6 +3583,15 @@ The following domain knowledge may be relevant to this conversation:
             total_duration_ms = retrieval_duration_ms + llm_duration_ms
 
             # Store execution_complete in knowledge_events for reload (BEFORE turn_summary)
+            # Calculate turn cost for completion card
+            from trusted_data_agent.core.cost_manager import CostManager
+            _cost_mgr = CostManager()
+            _turn_cost = _cost_mgr.calculate_cost(
+                provider=self.current_provider or "Unknown",
+                model=self.current_model or "Unknown",
+                input_tokens=self.turn_input_tokens,
+                output_tokens=self.turn_output_tokens
+            )
             execution_complete_payload = {
                 "profile_type": "rag_focused",
                 "profile_tag": profile_tag,
@@ -3506,6 +3602,7 @@ The following domain knowledge may be relevant to this conversation:
                 "retrieval_duration_ms": retrieval_duration_ms,
                 "synthesis_duration_ms": llm_duration_ms,
                 "total_duration_ms": total_duration_ms,
+                "cost_usd": _turn_cost,
                 "success": True
             }
             knowledge_events.append({
@@ -3591,6 +3688,12 @@ The following domain knowledge may be relevant to this conversation:
                                 # Emit token_update event so UI reflects updated session totals
                                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                 if updated_session:
+                                    _name_cost = CostManager().calculate_cost(
+                                        provider=self.current_provider or "Unknown",
+                                        model=self.current_model or "Unknown",
+                                        input_tokens=name_input_tokens,
+                                        output_tokens=name_output_tokens
+                                    )
                                     yield self._format_sse_with_depth({
                                         "statement_input": name_input_tokens,
                                         "statement_output": name_output_tokens,
@@ -3598,7 +3701,8 @@ The following domain knowledge may be relevant to this conversation:
                                         "turn_output": self.turn_output_tokens,
                                         "total_input": updated_session.get("input_tokens", 0),
                                         "total_output": updated_session.get("output_tokens", 0),
-                                        "call_id": "session_name_generation"
+                                        "call_id": "session_name_generation",
+                                        "cost_usd": _name_cost
                                     }, "token_update")
                                 # Update turn token counts in workflow_history for reload
                                 # (turn_summary was saved before session name generation in rag_focused path)
@@ -4545,6 +4649,18 @@ The following domain knowledge may be relevant to this conversation:
                 # the event data stored in tool_enabled_events now so it's included in the saved turn.
                 if hasattr(self, 'tool_enabled_events') and hasattr(self, 'tool_enabled_start_time'):
                     duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000)
+                    # Calculate cost for persisted execution_complete (used by historical reload)
+                    _pre_cost = 0
+                    try:
+                        from trusted_data_agent.core.cost_manager import CostManager
+                        _pre_cost = CostManager().calculate_cost(
+                            provider=self.current_provider or "Unknown",
+                            model=self.current_model or "Unknown",
+                            input_tokens=self.turn_input_tokens,
+                            output_tokens=self.turn_output_tokens
+                        )
+                    except Exception:
+                        pass
                     self.tool_enabled_events.append({
                         "type": "execution_complete",
                         "payload": {
@@ -4554,6 +4670,7 @@ The following domain knowledge may be relevant to this conversation:
                             "total_input_tokens": self.turn_input_tokens,
                             "total_output_tokens": self.turn_output_tokens,
                             "duration_ms": duration_ms,
+                            "cost_usd": _pre_cost,
                             "success": True
                         },
                         "metadata": {"execution_depth": self.execution_depth}
@@ -4791,6 +4908,20 @@ The following domain knowledge may be relevant to this conversation:
                     source=self.source
                 )
 
+                # Log post-LLM system_message with tokens + cost for historical replay
+                enrichment_log_event = {
+                    "step": "Calling LLM for Argument Enrichment",
+                    "type": "system_message",
+                    "details": {
+                        "summary": reason,
+                        "call_id": call_id,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cost_usd": self._last_call_metadata.get("cost_usd", 0)
+                    }
+                }
+                self._log_system_event(enrichment_log_event)
+
                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                 if updated_session:
                     yield self._format_sse_with_depth({
@@ -4799,7 +4930,8 @@ The following domain knowledge may be relevant to this conversation:
                         "turn_output": self.turn_output_tokens,
                         "total_input": updated_session.get("input_tokens", 0),
                         "total_output": updated_session.get("output_tokens", 0),
-                        "call_id": call_id
+                        "call_id": call_id,
+                        "cost_usd": self._last_call_metadata.get("cost_usd", 0)
                     }, "token_update")
 
                 yield self._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
@@ -5059,6 +5191,15 @@ The following domain knowledge may be relevant to this conversation:
             # Emit execution_complete lifecycle event for sub-executor
             try:
                 duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0
+                # Calculate turn cost for completion card
+                from trusted_data_agent.core.cost_manager import CostManager
+                _cost_mgr = CostManager()
+                _turn_cost = _cost_mgr.calculate_cost(
+                    provider=self.current_provider or "Unknown",
+                    model=self.current_model or "Unknown",
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
                 complete_payload = {
                     "profile_type": "tool_enabled",
                     "profile_tag": self._get_current_profile_tag(),
@@ -5066,6 +5207,7 @@ The following domain knowledge may be relevant to this conversation:
                     "total_input_tokens": self.turn_input_tokens,
                     "total_output_tokens": self.turn_output_tokens,
                     "duration_ms": duration_ms,
+                    "cost_usd": _turn_cost,
                     "success": True
                 }
 
@@ -5179,6 +5321,16 @@ The following domain knowledge may be relevant to this conversation:
                 # Calculate duration from tracked start time
                 duration_ms = int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0
 
+                # Calculate turn cost for completion card
+                from trusted_data_agent.core.cost_manager import CostManager
+                _cost_mgr = CostManager()
+                _turn_cost = _cost_mgr.calculate_cost(
+                    provider=self.current_provider or "Unknown",
+                    model=self.current_model or "Unknown",
+                    input_tokens=self.turn_input_tokens,
+                    output_tokens=self.turn_output_tokens
+                )
+
                 complete_event_payload = {
                     "profile_type": "tool_enabled",
                     "profile_tag": self._get_current_profile_tag(),
@@ -5186,6 +5338,7 @@ The following domain knowledge may be relevant to this conversation:
                     "total_input_tokens": self.turn_input_tokens,
                     "total_output_tokens": self.turn_output_tokens,
                     "duration_ms": duration_ms,
+                    "cost_usd": _turn_cost,
                     "success": True
                 }
 
@@ -5258,6 +5411,12 @@ The following domain knowledge may be relevant to this conversation:
                                 # Emit token_update event so UI reflects updated session totals
                                 updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
                                 if updated_session:
+                                    _name_cost = CostManager().calculate_cost(
+                                        provider=self.current_provider or "Unknown",
+                                        model=self.current_model or "Unknown",
+                                        input_tokens=in_tok,
+                                        output_tokens=out_tok
+                                    )
                                     yield self._format_sse_with_depth({
                                         "statement_input": in_tok,
                                         "statement_output": out_tok,
@@ -5265,7 +5424,8 @@ The following domain knowledge may be relevant to this conversation:
                                         "turn_output": self.turn_output_tokens,
                                         "total_input": updated_session.get("input_tokens", 0),
                                         "total_output": updated_session.get("output_tokens", 0),
-                                        "call_id": "session_name_generation"
+                                        "call_id": "session_name_generation",
+                                        "cost_usd": _name_cost
                                     }, "token_update")
                                 # Update turn token counts in workflow_history for reload
                                 await session_manager.update_turn_token_counts(

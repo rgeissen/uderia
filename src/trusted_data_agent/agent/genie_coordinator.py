@@ -862,13 +862,23 @@ After gathering information from profiles, provide a synthesized answer that:
             })
 
             # Emit coordination complete event (without response - it's in genie_synthesis_complete)
+            # Calculate turn cost for completion card
+            from trusted_data_agent.core.cost_manager import CostManager
+            _cost_mgr = CostManager()
+            _turn_cost = _cost_mgr.calculate_cost(
+                provider=self.provider,
+                model=self.model,
+                input_tokens=self.total_input_tokens,
+                output_tokens=self.total_output_tokens
+            )
             self._emit_event("genie_coordination_complete", {
                 "total_duration_ms": total_duration_ms,
                 "profiles_used": self.invoked_profiles,  # Use tracked invoked profiles
                 "success": True,
                 "session_id": self.parent_session_id,
                 "input_tokens": self.total_input_tokens,
-                "output_tokens": self.total_output_tokens
+                "output_tokens": self.total_output_tokens,
+                "cost_usd": _turn_cost
             })
 
             # --- PHASE 2: Emit execution_complete lifecycle event for genie ---
@@ -932,7 +942,8 @@ After gathering information from profiles, provide a synthesized answer that:
                 "profiles_used": [],
                 "success": False,
                 "error": str(e),
-                "session_id": self.parent_session_id
+                "session_id": self.parent_session_id,
+                "cost_usd": 0.0
             })
 
             # --- PHASE 2: Emit execution_error lifecycle event for genie ---

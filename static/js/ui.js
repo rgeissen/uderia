@@ -1566,6 +1566,7 @@ function _renderExecutionCompleteDetails(details) {
     const outputTokens = details.total_output_tokens || 0;
     const durationMs = details.duration_ms || 0;
     const durationSec = (durationMs / 1000).toFixed(1);
+    const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
 
     return `
         <div class="status-kv-grid">
@@ -1575,6 +1576,10 @@ function _renderExecutionCompleteDetails(details) {
             <div class="status-kv-value">${phasesExecuted} executed</div>
             <div class="status-kv-key">Tokens</div>
             <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+            ${costUsd !== null ? `
+            <div class="status-kv-key">Cost</div>
+            <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+            ` : ''}
             <div class="status-kv-key">Duration</div>
             <div class="status-kv-value">${durationSec}s</div>
         </div>
@@ -1785,6 +1790,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 const stepName = details.step_name || `Step ${stepNumber}`;
                 const inputTokens = details.input_tokens || 0;
                 const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
@@ -1794,6 +1800,10 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="status-kv-value text-emerald-400">✓ Complete</div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costUsd !== null ? `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                        ` : ''}
                     </div>
                 `;
                 break;
@@ -1987,6 +1997,16 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                     `;
                 }
 
+                // Cost (if available)
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+                let costHtml = '';
+                if (costUsd !== null) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
                 let profilesHtml = '';
                 if (details.profiles_used && details.profiles_used.length > 0) {
                     profilesHtml = `
@@ -2016,6 +2036,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                         <div class="status-kv-key">Total Time</div>
                         <div class="status-kv-value">${totalDuration}</div>
                         ${tokensHtml}
+                        ${costHtml}
                     </div>
                     ${profilesHtml}
                     ${errorHtml}
@@ -2038,12 +2059,23 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 const sessionName = details.session_name || 'Unknown';
                 const inputTokens = details.input_tokens || 0;
                 const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd || null;
+
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Name</div>
                         <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                        ${costHtml}
                     </div>
                 `;
                 break;
@@ -2480,6 +2512,16 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                     `;
                 }
 
+                // Cost (if available)
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+                let costHtml = '';
+                if (costUsd !== null) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
                 let toolsHtml = '';
                 if (details.tools_used && details.tools_used.length > 0) {
                     toolsHtml = `
@@ -2508,6 +2550,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-key">Total Time</div>
                         <div class="status-kv-value">${totalDuration}</div>
                         ${tokensHtml}
+                        ${costHtml}
                     </div>
                     ${toolsHtml}
                     ${errorHtml}
@@ -2691,6 +2734,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const outputTokens = details.output_tokens || 0;
                 const durationMs = details.duration_ms || 0;
                 const model = details.model || 'Unknown';
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
@@ -2700,6 +2744,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         <div class="status-kv-value">${model}</div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costUsd !== null ? `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                        ` : ''}
                         <div class="status-kv-key">Duration</div>
                         <div class="status-kv-value">${durationMs}ms</div>
                     </div>
@@ -2761,12 +2809,23 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const sessionName = details.session_name || 'Unknown';
                 const inputTokens = details.input_tokens || 0;
                 const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd || null;
+
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Name</div>
                         <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                        ${costHtml}
                     </div>
                 `;
                 break;
@@ -2831,6 +2890,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const responseLength = details.response_length || 0;
                 const knowledgeUsed = details.knowledge_used || 0;
                 const responseText = details.response_text || '';
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
 
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
@@ -2845,6 +2905,11 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
                         <div class="status-kv-key">Output Tokens</div>
                         <div class="status-kv-value">${outputTokens.toLocaleString()}</div>
+
+                        ${costUsd !== null ? `
+                            <div class="status-kv-key">Cost</div>
+                            <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                        ` : ''}
 
                         <div class="status-kv-key">Response</div>
                         <div class="status-kv-value">${responseLength} characters</div>
@@ -2945,6 +3010,16 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                 const inputTokens = details.total_input_tokens || 0;
                 const outputTokens = details.total_output_tokens || 0;
 
+                // Cost (if available)
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+                let costHtml = '';
+                if (costUsd !== null) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
                 detailsEl.innerHTML = `
                     <div class="status-kv-grid">
                         <div class="status-kv-key">Status</div>
@@ -2954,6 +3029,7 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                         ${profileDetailsHtml}
                         <div class="status-kv-key">Tokens</div>
                         <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costHtml}
                     </div>
                 `;
                 break;
@@ -3155,10 +3231,21 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
         const tool_output = details.metadata?.output_tokens;
 
         if (planner_input !== undefined && planner_output !== undefined) {
-            metricsEl.innerHTML = `(LLM Call: ${planner_input.toLocaleString()} in / ${planner_output.toLocaleString()} out)`;
+            let metricsText = `(LLM Call: ${planner_input.toLocaleString()} in / ${planner_output.toLocaleString()} out`;
+            if (details.cost_usd !== undefined && details.cost_usd !== null) {
+                metricsText += ` · $${parseFloat(details.cost_usd).toFixed(6)}`;
+            }
+            metricsText += ')';
+            metricsEl.innerHTML = metricsText;
             metricsEl.classList.remove('hidden');
         } else if (tool_input !== undefined && tool_output !== undefined) {
-            metricsEl.innerHTML = `(LLM Call: ${tool_input.toLocaleString()} in / ${tool_output.toLocaleString()} out)`;
+            let metricsText = `(LLM Call: ${tool_input.toLocaleString()} in / ${tool_output.toLocaleString()} out`;
+            const toolCost = details.metadata?.cost_usd;
+            if (toolCost !== undefined && toolCost !== null) {
+                metricsText += ` · $${parseFloat(toolCost).toFixed(6)}`;
+            }
+            metricsText += ')';
+            metricsEl.innerHTML = metricsText;
             metricsEl.classList.remove('hidden');
         }
     }

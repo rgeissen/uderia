@@ -468,6 +468,19 @@ async def _run_genie_execution(
                 session_input_tokens = current_session.get("input_tokens", 0)
                 session_output_tokens = current_session.get("output_tokens", 0)
 
+                # Calculate cost for genie coordinator LLM call
+                _genie_cost = 0
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    _genie_cost = CostManager().calculate_cost(
+                        provider=provider or "Unknown",
+                        model=model or "Unknown",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+                except Exception:
+                    pass
+
                 # Emit token_update event IMMEDIATELY (before session name generation)
                 # For genie, turn tokens = statement tokens (single coordination per turn)
                 await event_handler({
@@ -477,7 +490,8 @@ async def _run_genie_execution(
                     "turn_output": output_tokens,
                     "total_input": session_input_tokens,
                     "total_output": session_output_tokens,
-                    "call_id": f"genie_{turn_number}"
+                    "call_id": f"genie_{turn_number}",
+                    "cost_usd": _genie_cost
                 }, "token_update")
 
                 app_logger.info(f"[Genie] Token update emitted: {input_tokens} in / {output_tokens} out "

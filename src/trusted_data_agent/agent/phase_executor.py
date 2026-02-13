@@ -72,6 +72,9 @@ class CorrectionStrategy(ABC):
         )
         events.append( ({"target": "llm", "state": "idle"}, "status_indicator_update") )
 
+        # Log self-correction LLM call with tokens + cost for historical replay
+        events.append( ({"step": "Calling LLM for Self-Correction", "type": "system_message", "details": {"summary": reason, "call_id": call_id, "input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)}}, None) )
+
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
@@ -80,7 +83,8 @@ class CorrectionStrategy(ABC):
                 "statement_input": input_tokens, "statement_output": output_tokens,
                 "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens,
                 "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0),
-                "call_id": call_id
+                "call_id": call_id,
+                "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
             }, "token_update") )
 
         if "FINAL_ANSWER:" in response_str:
@@ -1354,7 +1358,8 @@ class PhaseExecutor:
                     "summary": f"Deciding next action for phase goal: '{phase_goal}'",
                     "call_id": tactical_call_id,
                     "input_tokens": input_tokens,
-                    "output_tokens": output_tokens
+                    "output_tokens": output_tokens,
+                    "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
                 }
             }
             self.executor._log_system_event(tactical_log_event)
@@ -1378,7 +1383,7 @@ class PhaseExecutor:
             updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
             # --- MODIFICATION END ---
             if updated_session:
-                yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id }, "token_update")
+                yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": tactical_call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0), "planning_phase": "tactical" }, "token_update")
 
             if isinstance(next_action, str) and next_action == "SYSTEM_ACTION_COMPLETE":
                 app_logger.info("Tactical LLM decided phase is complete.")
@@ -1713,7 +1718,8 @@ class PhaseExecutor:
                 "summary": reason,
                 "call_id": call_id,
                 "input_tokens": input_tokens,
-                "output_tokens": output_tokens
+                "output_tokens": output_tokens,
+                "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
             }
         }
         self.executor._log_system_event(refinement_log_event)
@@ -1723,7 +1729,7 @@ class PhaseExecutor:
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0) }, "token_update")
 
         try:
             json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_text, re.DOTALL)
@@ -1888,6 +1894,20 @@ class PhaseExecutor:
             )
             # --- MODIFICATION END ---
 
+            # --- Calculate cost for client-side LLM evaluation of MCP server feedback ---
+            _tool_llm_cost = 0
+            if input_tokens > 0 or output_tokens > 0:
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    _tool_llm_cost = CostManager().calculate_cost(
+                        provider=self.executor.current_provider or "Unknown",
+                        model=self.executor.current_model or "Unknown",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+                except Exception:
+                    pass
+
             # --- Log client-side LLM call to execution trace for reload consistency ---
             if call_id_for_tool and (input_tokens > 0 or output_tokens > 0):
                 tool_llm_log_event = {
@@ -1897,10 +1917,15 @@ class PhaseExecutor:
                         "summary": reason,
                         "call_id": call_id_for_tool,
                         "input_tokens": input_tokens,
-                        "output_tokens": output_tokens
+                        "output_tokens": output_tokens,
+                        "cost_usd": _tool_llm_cost
                     }
                 }
                 self.executor._log_system_event(tool_llm_log_event)
+
+            # --- Inject cost into tool_result metadata for "Tool Execution Result" card ---
+            if _tool_llm_cost > 0 and isinstance(tool_result, dict) and "metadata" in tool_result:
+                tool_result["metadata"]["cost_usd"] = _tool_llm_cost
 
             yield self.executor._format_sse_with_depth({"target": status_target, "state": "idle"}, "status_indicator_update")
 
@@ -1921,7 +1946,8 @@ class PhaseExecutor:
                         "turn_output": self.executor.turn_output_tokens,
                         "total_input": updated_session.get("input_tokens", 0),
                         "total_output": updated_session.get("output_tokens", 0),
-                        "call_id": final_call_id
+                        "call_id": final_call_id,
+                        "cost_usd": _tool_llm_cost
                     }, "token_update")
 
             self.executor.last_tool_output = tool_result
@@ -2328,11 +2354,25 @@ class PhaseExecutor:
             source=self.executor.source
             # user_uuid implicitly passed
         )
+        # Log date classification LLM call with tokens + cost for history
+        date_class_log_event = {
+            "step": "Calling LLM",
+            "type": "system_message",
+            "details": {
+                "summary": reason,
+                "call_id": call_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
+            }
+        }
+        self.executor._log_system_event(date_class_log_event)
+
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id }, "token_update")
+            yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0) }, "token_update")
         try:
             json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_str, re.DOTALL)
             if not json_match: raise json.JSONDecodeError("No JSON found in LLM response", response_str, 0)
@@ -2388,11 +2428,25 @@ class PhaseExecutor:
         )
         yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
+        # Log recovery LLM call with tokens + cost for history
+        recovery_log_event = {
+            "step": "Attempting LLM-based Recovery",
+            "type": "system_message",
+            "details": {
+                "summary": "The current plan is stuck. Asking LLM to generate a new plan.",
+                "call_id": call_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)
+            }
+        }
+        self.executor._log_system_event(recovery_log_event)
+
         # --- MODIFICATION START: Pass user_uuid to get_session ---
         updated_session = await session_manager.get_session(self.executor.user_uuid, self.executor.session_id)
         # --- MODIFICATION END ---
         if updated_session:
-            yield self.executor._format_sse_with_depth({"statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id}, "token_update")
+            yield self.executor._format_sse_with_depth({"statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)}, "token_update")
 
         try:
             json_match = re.search(r"```json\s*\n(.*?)```|(\[.*?\]|\{.*?\})", response_text, re.DOTALL)

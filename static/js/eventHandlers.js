@@ -151,6 +151,10 @@ function _getTurnCost(turnData) {
             if (step.action && step.action.cost_usd) {
                 totalCost += parseFloat(step.action.cost_usd);
             }
+            // Check for cost in TDA_SystemLog event details (LLM call events)
+            if (step.action && step.action.tool_name === 'TDA_SystemLog' && step.action.arguments?.details?.cost_usd) {
+                totalCost += parseFloat(step.action.arguments.details.cost_usd);
+            }
         });
     }
 
@@ -700,7 +704,12 @@ async function processStream(responseBody, originSessionId) {
                         if (eventData.call_id && state.currentProvider !== 'Amazon') {
                             const metricsEl = document.querySelector(`.per-call-metrics[data-call-id="${eventData.call_id}"]`);
                             if (metricsEl) {
-                                metricsEl.innerHTML = `(LLM Call: ${eventData.statement_input.toLocaleString()} in / ${eventData.statement_output.toLocaleString()} out)`;
+                                let metricsText = `(LLM Call: ${eventData.statement_input.toLocaleString()} in / ${eventData.statement_output.toLocaleString()} out`;
+                                if (eventData.cost_usd !== undefined && eventData.cost_usd !== null) {
+                                    metricsText += ` · $${parseFloat(eventData.cost_usd).toFixed(6)}`;
+                                }
+                                metricsText += ')';
+                                metricsEl.innerHTML = metricsText;
                                 metricsEl.classList.remove('hidden');
                             }
                         }
