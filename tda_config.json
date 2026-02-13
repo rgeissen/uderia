@@ -101,13 +101,6 @@
       "model": "amazon.nova-lite-v1:0",
       "credentials": {},
       "id": "1763892251792-fvxyy5msd"
-    },
-    {
-      "name": "Friendli - Tactical",
-      "provider": "Friendli",
-      "model": "MiniMaxAI/MiniMax-M2.1",
-      "id": "1770912188373-ahlaint7f",
-      "credentials": {}
     }
   ],
   "active_llm_configuration_id": "1770912188373-ahlaint7f",
@@ -118,7 +111,7 @@
       "tag": "IDEAT",
       "description": "Has general knowledge about the Fitness World and beyond",
       "profile_type": "llm_only",
-      "llmConfigurationId": "1770912188373-ahlaint7f",
+      "llmConfigurationId": "1763819257483-fluhef2vk",
       "mcpServerId": "1763483266562-a6kulj4xc",
       "classification_mode": "light",
       "tools": [
@@ -2191,7 +2184,7 @@
       "tag": "FOCUS",
       "description": "Is an expert in fitness specific topics",
       "profile_type": "rag_focused",
-      "llmConfigurationId": "1770912188373-ahlaint7f",
+      "llmConfigurationId": "1763819257483-fluhef2vk",
       "mcpServerId": "1763483266562-a6kulj4xc",
       "knowledgeConfig": {
         "enabled": true,
