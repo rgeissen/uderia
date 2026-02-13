@@ -68,7 +68,7 @@
       "id": "1763819257473-ivpnukbbe"
     },
     {
-      "name": "Friendli - Strategic",
+      "name": "Friendli - Llama",
       "provider": "Friendli",
       "model": "meta-llama/Llama-3.3-70B-Instruct",
       "credentials": {},
@@ -2283,7 +2283,7 @@
       "useMcpTools": false,
       "useKnowledgeCollections": false,
       "session_primer": {
-        "enabled": true,
+        "enabled": false,
         "mode": "combined",
         "statements": [
           "If you get a request don't create sql, leave this up to the experts"

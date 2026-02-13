@@ -5,7 +5,7 @@
 
 import { state } from '../state.js';
 import { populateMcpServerDropdown } from './rag/utils.js';
-import { openCollectionInspection, loadRagCollections } from '../ui.js?v=1.3';
+import { openCollectionInspection, loadRagCollections } from '../ui.js?v=1.5';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers, updatePackContainerDocCounts } from './agentPackGrouping.js';
 
 /**

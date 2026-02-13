@@ -11,10 +11,10 @@ import * as API from './api.js';
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { setupPanelToggle } from './utils.js';
-import * as UI from './ui.js?v=1.3';
-import { handleViewSwitch } from './ui.js?v=1.3';
+import * as UI from './ui.js?v=1.5';
+import { handleViewSwitch } from './ui.js?v=1.5';
 import { initializeVoiceRecognition } from './voice.js';
-import { subscribeToNotifications } from './notifications.js?v=3.4';
+import { subscribeToNotifications } from './notifications.js?v=3.7';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
 import * as capabilitiesModule from './handlers/capabilitiesManagement.js';
 // Import hierarchy helpers for industrial blueprint session tree visualization

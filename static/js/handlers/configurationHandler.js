@@ -1,11 +1,11 @@
 // static/js/handlers/configurationHandler.js
 // Manages the new modular configuration system with MCP servers, LLM providers, and localStorage
 
-import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js?v=1.3';
+import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js?v=1.5';
 import { handleStartNewSession, handleLoadSession } from './sessionManagement.js?v=3.6';
 import { handleLoadResources } from '../eventHandlers.js?v=3.4';
 import * as API from '../api.js';
-import * as UI from '../ui.js?v=1.3';
+import * as UI from '../ui.js?v=1.5';
 import * as DOM from '../domElements.js';
 import * as Utils from '../utils.js';
 import { state } from '../state.js';

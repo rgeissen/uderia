@@ -7,7 +7,7 @@
 import * as DOM from '../domElements.js';
 import { state } from '../state.js';
 import * as API from '../api.js';
-import * as UI from '../ui.js?v=1.3';
+import * as UI from '../ui.js?v=1.5';
 // We need to import from eventHandlers for functions not yet moved
 // This creates a temporary, manageable circular dependency
 import { handleStreamRequest } from '../eventHandlers.js?v=3.4';

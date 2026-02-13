@@ -3918,26 +3918,45 @@ export function updateTokenDisplay(data, isHistorical = false) {
     const totalInEl = document.getElementById('total-input-tokens');
     const totalOutEl = document.getElementById('total-output-tokens');
 
-    // CRITICAL: Detect terminal token_update events (statement tokens are 0 but turn/total tokens present)
-    // These events are sent by the backend to update cumulative turn/total tokens without new statement data
-    // If we overwrite statement tokens with 0, users see blank counters even though LLM calls happened
-    const isTerminalEvent = (
-        !isHistorical &&  // Only applies to live execution
-        (data.statement_input === 0 || data.statement_input === undefined) &&
-        (data.statement_output === 0 || data.statement_output === undefined) &&
-        (data.turn_input !== undefined || data.total_input !== undefined)  // Has turn/total data
+    // CRITICAL FIX: Skip token updates if ALL token fields are undefined
+    // Events like genie_llm_step and session_name_generation_complete only have cost data, no tokens
+    // If we process these with undefined tokens, they get converted to 0 and reset the display
+    const allTokenFieldsUndefined = (
+        data.statement_input === undefined &&
+        data.statement_output === undefined &&
+        data.turn_input === undefined &&
+        data.turn_output === undefined &&
+        data.total_input === undefined &&
+        data.total_output === undefined
     );
 
     // Debug logging for ALL token updates (live and historical)
     console.log(`%c[Token Display] 🎯 updateTokenDisplay called`, 'background: #00ffff; color: #000; font-weight: bold;');
     console.log(`  isHistorical: ${isHistorical}`);
-    console.log(`  isTerminalEvent: ${isTerminalEvent}`);
+    console.log(`  allTokenFieldsUndefined: ${allTokenFieldsUndefined}`);
     console.log(`  data:`, {
         statement: `${data.statement_input} in / ${data.statement_output} out`,
         turn: `${data.turn_input} in / ${data.turn_output} out`,
         total: `${data.total_input} in / ${data.total_output} out`,
         cost: data.cost_usd || 0
     });
+
+    if (allTokenFieldsUndefined && !isHistorical) {
+        console.log('%c[Token Display] ⚠️ SKIPPING TOKEN UPDATE - All token fields undefined (cost-only event)', 'background: #ff6600; color: #fff; font-weight: bold;');
+        // Skip to cost processing only (don't reset tokens to 0)
+        // Fall through to cost updates below line 3978
+    } else {
+        // CRITICAL: Detect terminal token_update events (statement tokens are 0 but turn/total tokens present)
+        // These events are sent by the backend to update cumulative turn/total tokens without new statement data
+        // If we overwrite statement tokens with 0, users see blank counters even though LLM calls happened
+        const isTerminalEvent = (
+            !isHistorical &&  // Only applies to live execution
+            (data.statement_input === 0 || data.statement_input === undefined) &&
+            (data.statement_output === 0 || data.statement_output === undefined) &&
+            (data.turn_input !== undefined || data.total_input !== undefined)  // Has turn/total data
+        );
+
+        console.log(`  isTerminalEvent: ${isTerminalEvent}`);
 
     if (isTerminalEvent) {
         console.log('%c[Token Display] ⚠️ TERMINAL EVENT - Will preserve statement tokens, only update turn/total if > 0', 'background: #ffff00; color: #000;');
@@ -3974,6 +3993,7 @@ export function updateTokenDisplay(data, isHistorical = false) {
         if (totalInEl) totalInEl.textContent = (data.total_input || 0).toLocaleString();
         if (totalOutEl) totalOutEl.textContent = (data.total_output || 0).toLocaleString();
     }
+    }  // Close outer else block (allTokenFieldsUndefined check)
 
     // ========== COST TRACKING (Dual-Model Feature) ==========
     // Initialize cost accumulator if not exists

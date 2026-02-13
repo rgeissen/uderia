@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import * as UI from './ui.js?v=1.3';
+import * as UI from './ui.js?v=1.5';
 import * as DOM from './domElements.js';
 import * as API from './api.js';
 import { handleLoadSession } from './handlers/sessionManagement.js?v=3.6';
@@ -357,7 +357,7 @@ export function subscribeToNotifications() {
                         UI.updateGenieMasterBadges();
 
                         // Sync wrapper collapsed states for new child sessions
-                        import('../hierarchyHelpers.js').then(module => {
+                        import('./hierarchyHelpers.js').then(module => {
                             module.syncWrapperStates();
                         });
                     } else {
@@ -441,6 +441,35 @@ export function subscribeToNotifications() {
                 // The Genie renderer handles child progress via genie_slave_* events.
                 if (state.isGenieCoordinationActive && session_id !== state.currentSessionId) {
                     break;
+                }
+
+                // --- CRITICAL FIX: Block token_update events from non-current sessions ---
+                // Child sessions (Genie slaves) emit their own token_update events during execution.
+                // These must NEVER update the parent Genie session's token display, even if they
+                // arrive after isGenieCoordinationActive is cleared (race condition).
+                // Only the parent session's token_update (from execution_service.py:495) should update the display.
+                if (event.type === 'token_update') {
+                    console.log(`%c[Notifications] 🔍 token_update received:`, 'background: #ff00ff; color: #fff; font-weight: bold;');
+                    console.log(`  Event session_id: ${session_id}`);
+                    console.log(`  Current session_id: ${state.currentSessionId}`);
+                    console.log(`  Match: ${session_id === state.currentSessionId}`);
+                    console.log(`  Genie active: ${state.isGenieCoordinationActive}`);
+                    console.log(`  Token data:`, {
+                        stmt_in: event.statement_input,
+                        stmt_out: event.statement_output,
+                        turn_in: event.turn_input,
+                        turn_out: event.turn_output,
+                        total_in: event.total_input,
+                        total_out: event.total_output,
+                        cost: event.cost_usd
+                    });
+
+                    if (session_id !== state.currentSessionId) {
+                        console.log(`%c[Notifications] 🚫 BLOCKED - child session event`, 'background: #ff0000; color: #fff; font-weight: bold;');
+                        break;
+                    } else {
+                        console.log(`%c[Notifications] ✅ ALLOWED - current session event`, 'background: #00ff00; color: #000; font-weight: bold;');
+                    }
                 }
 
                 // --- Route to profile-specific renderer ---

@@ -7,8 +7,8 @@
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import * as API from './api.js';
-import * as UI from './ui.js?v=1.3';
-import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.3';
+import * as UI from './ui.js?v=1.5';
+import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.5';
 import * as Utils from './utils.js';
 import { copyToClipboard, copyTableToClipboard, classifyConfirmation } from './utils.js';
 import { renameSession, deleteSession } from './api.js'; // Import the rename/delete API functions
@@ -3364,7 +3364,7 @@ export function initializeEventListeners() {
                     const newScore = newVote === 'up' ? 1 : newVote === 'down' ? -1 : 0;
                     
                     // Immediately update table row feedback badge (before server refresh)
-                    const { updateTableRowFeedback } = await import('./ui.js?v=1.3');
+                    const { updateTableRowFeedback } = await import('./ui.js?v=1.5');
                     updateTableRowFeedback(caseId, newScore);
                     console.log('[CaseFeedback] Updated table row feedback immediately for', caseId);
                     
@@ -3387,7 +3387,7 @@ export function initializeEventListeners() {
                     // Update the case details panel to show updated feedback score
                     // (Don't refresh entire table - we already updated the row immediately above)
                     console.log('[CaseFeedback] Refreshing case details panel for case', caseId);
-                    const { selectCaseRow } = await import('./ui.js?v=1.3');
+                    const { selectCaseRow } = await import('./ui.js?v=1.5');
                     await selectCaseRow(caseId);
                 } else if (sessionId && !isNaN(turnId)) {
                     // Session-based feedback

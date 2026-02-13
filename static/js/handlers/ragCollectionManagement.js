@@ -4,7 +4,7 @@
  */
 
 import { state } from '../state.js';
-import { loadRagCollections } from '../ui.js?v=1.3';
+import { loadRagCollections } from '../ui.js?v=1.5';
 import * as DOM from '../domElements.js';
 // Note: configState is accessed via window.configState to avoid circular imports
 

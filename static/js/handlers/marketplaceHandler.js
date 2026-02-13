@@ -5,7 +5,7 @@
 
 // Import utility functions
 import { showNotification } from './rag/utils.js';
-import { escapeHtml } from '../ui.js?v=1.3';
+import { escapeHtml } from '../ui.js?v=1.5';
 import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './agentPackGrouping.js';
 
 // Marketplace state
