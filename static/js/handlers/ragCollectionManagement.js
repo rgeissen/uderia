@@ -4185,6 +4185,10 @@ let isIntelligenceAdmin = false;
  */
 async function initIntelligenceTabs() {
     try {
+        // Skip if not authenticated yet (this runs at module load, before login)
+        const authToken = window.authClient?.getToken() || localStorage.getItem('tda_auth_token');
+        if (!authToken) return;
+
         // Check if user has VIEW_ALL_SESSIONS feature (same approach as Execution Dashboard)
         const response = await fetch('/api/v1/auth/me/features', {
             headers: {

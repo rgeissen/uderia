@@ -451,16 +451,22 @@ class ConfigurationState {
             this.defaultProfileId = default_profile_id;
             this.activeForConsumptionProfileIds = active_for_consumption_profile_ids || [];
 
-            // Load master classification profile ID
-            try {
-                const response = await API.getMasterClassificationProfile();
-                // NEW: Per-server masters dict
-                this.masterClassificationProfileIds = response.master_classification_profile_ids || {};
-                // DEPRECATED: Legacy single master (for backwards compatibility)
-                this.masterClassificationProfileId = response.master_classification_profile_id;
-                console.log('[ConfigState] Loaded master classification profiles:', this.masterClassificationProfileIds);
-            } catch (error) {
-                console.error('Failed to load master classification profile:', error);
+            // Load master classification profile ID (skip if not authenticated yet)
+            const authToken = localStorage.getItem('tda_auth_token');
+            if (authToken) {
+                try {
+                    const response = await API.getMasterClassificationProfile();
+                    // NEW: Per-server masters dict
+                    this.masterClassificationProfileIds = response.master_classification_profile_ids || {};
+                    // DEPRECATED: Legacy single master (for backwards compatibility)
+                    this.masterClassificationProfileId = response.master_classification_profile_id;
+                    console.log('[ConfigState] Loaded master classification profiles:', this.masterClassificationProfileIds);
+                } catch (error) {
+                    console.error('Failed to load master classification profile:', error);
+                    this.masterClassificationProfileIds = {};
+                    this.masterClassificationProfileId = null;
+                }
+            } else {
                 this.masterClassificationProfileIds = {};
                 this.masterClassificationProfileId = null;
             }

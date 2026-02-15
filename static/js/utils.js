@@ -298,8 +298,8 @@ export function setupPanelToggle(button, panel, checkbox, collapseIcon, expandIc
         return; // Exit early
     }
     
-    // Panel is visible - ensure it's shown (remove inline display:none)
-    panel.style.display = 'block';
+    // Panel is visible - remove inline display:none (let CSS display:flex take effect)
+    panel.style.display = '';
 
     // Determine icon behavior based on panel location
     // Status panel (right side): swapped icons (collapsed shows <<, expanded shows >>)
