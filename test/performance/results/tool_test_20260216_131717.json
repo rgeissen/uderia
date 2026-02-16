@@ -1,0 +1,73 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T13:17:17.570882",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": "dba_featureUsage",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 15639,
+    "total_duration_ms": 8218,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 15639.0,
+    "avg_duration_ms": 8218.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_featureUsage",
+      "prompt_name": "dba_featureUsage",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Expected tool 'dba_featureUsage' not invoked. Got: ['TDA_CurrentDate', 'TDA_DateRange', 'TDA_FinalReport']"
+      ],
+      "status": "complete",
+      "task_id": "task-be436ffb-0ca8-4717-ac10-53f4a361b1db",
+      "session_id": "4d4859b1-4e2c-40a4-82ec-22950a08ca9d",
+      "duration_ms": 8218,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 15078,
+        "output": 561,
+        "total": 15639
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

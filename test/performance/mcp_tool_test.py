@@ -172,6 +172,13 @@ Examples:
                     f" | Duration: {result.duration_ms / 1000:.1f}s"
                 )
 
+                # Enrich result with session execution trace (captures orchestrator-wrapped tools)
+                try:
+                    session_data = client.get_session(session_id)
+                    result.session_data = session_data
+                except Exception:
+                    result.session_data = None
+
                 # Analyze result
                 analysis = analyzer.analyze(fixture, result)
 
