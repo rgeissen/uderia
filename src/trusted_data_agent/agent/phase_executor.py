@@ -1564,7 +1564,15 @@ class PhaseExecutor:
             async for event in self._classify_date_query_type(): yield event
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
-            if self.executor.temp_data_holder and self.executor.temp_data_holder.get('type') == 'range':
+            # For range tools (start_date + end_date), accept both 'range' and 'single' classifications.
+            # "today" is often classified as 'single', but the orchestrator can still resolve it
+            # to start_date=end_date=same_date. For single-date tools, only 'range' is needed.
+            classified_type = self.executor.temp_data_holder.get('type') if self.executor.temp_data_holder else None
+            should_orchestrate = (
+                classified_type == 'range' or
+                (classified_type == 'single' and tool_supports_range)
+            )
+            if should_orchestrate:
                 async for event in orchestrators.execute_date_range_orchestrator(
                     self.executor, action, date_param_name, self.executor.temp_data_holder.get('phrase'), phase,
                     tool_supports_range=tool_supports_range
