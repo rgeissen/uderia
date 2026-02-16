@@ -1526,24 +1526,38 @@ class PhaseExecutor:
                 # Single-date tool — always route to orchestrator (existing behavior)
                 is_date_orchestrator_target = True
             else:
-                # Range tool (start_date + end_date) — route to orchestrator
-                # ONLY if date argument contains an unresolved temporal phrase
-                date_arg_value = action.get("arguments", {}).get(date_param_name, "")
-                if isinstance(date_arg_value, str) and date_arg_value:
-                    temporal_patterns = [
-                        r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
-                        r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
-                        r'(yesterday|today)',
-                        r'in\s+the\s+(last|past)',
-                        r'for\s+the\s+(past|last)',
-                        r'\d+\s+(hours?|days?|weeks?|months?)\s+ago',
-                    ]
-                    if any(re.search(p, date_arg_value.lower()) for p in temporal_patterns):
-                        app_logger.info(
-                            f"ORCHESTRATOR: Range tool '{tool_name}' has temporal phrase "
-                            f"'{date_arg_value}' in '{date_param_name}'. Routing to orchestrator."
-                        )
-                        is_date_orchestrator_target = True
+                # Range tool (start_date + end_date) — route to orchestrator in two cases:
+                args = action.get("arguments", {})
+                start_val = args.get("start_date", "")
+                end_val = args.get("end_date", "")
+
+                if not start_val and not end_val:
+                    # Case 1: Both date args missing — placeholder resolution likely failed.
+                    # The planner wired date refs (e.g., result_of_phase_2.start_date) but
+                    # TDA_DateRange returns {"date": ...}, not {"start_date": ...}.
+                    app_logger.info(
+                        f"ORCHESTRATOR: Range tool '{tool_name}' has MISSING start_date/end_date "
+                        f"(placeholder resolution failed). Routing to orchestrator for date resolution."
+                    )
+                    is_date_orchestrator_target = True
+                else:
+                    # Case 2: Date args present but contain unresolved temporal phrase
+                    date_arg_value = args.get(date_param_name, "")
+                    if isinstance(date_arg_value, str) and date_arg_value:
+                        temporal_patterns = [
+                            r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
+                            r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
+                            r'(yesterday|today)',
+                            r'in\s+the\s+(last|past)',
+                            r'for\s+the\s+(past|last)',
+                            r'\d+\s+(hours?|days?|weeks?|months?)\s+ago',
+                        ]
+                        if any(re.search(p, date_arg_value.lower()) for p in temporal_patterns):
+                            app_logger.info(
+                                f"ORCHESTRATOR: Range tool '{tool_name}' has temporal phrase "
+                                f"'{date_arg_value}' in '{date_param_name}'. Routing to orchestrator."
+                            )
+                            is_date_orchestrator_target = True
 
         if is_date_orchestrator_target:
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
@@ -2353,8 +2367,14 @@ class PhaseExecutor:
         tool_arg_names = set(tool_spec.args.keys())
         tool_supports_range = 'start_date' in tool_arg_names and 'end_date' in tool_arg_names
 
+        # First check action arguments for date params
         args = command.get("arguments", {})
         date_param_name = next((param for param in args if 'date' in param.lower()), None)
+
+        # If action args have no date params but tool spec does, still mark as candidate.
+        # This handles the case where placeholder resolution failed and date args were omitted.
+        if not date_param_name and tool_supports_range:
+            date_param_name = 'start_date'  # Use canonical name for range tools
 
         return bool(date_param_name), date_param_name, tool_supports_range
 
