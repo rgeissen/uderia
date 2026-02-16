@@ -324,7 +324,8 @@ async def execute_prompt(prompt_name: str):
             session_id=temp_session_id,
             user_input=prompt_text,
             event_handler=dummy_event_handler,  # Provide dummy handler instead of None
-            source='prompt_library'  # Indicates this is a prompt execution
+            source='prompt_library',  # Indicates this is a prompt execution
+            active_prompt_name=prompt_name,
         )
         
         # Extract response and tokens from result
@@ -2388,7 +2389,7 @@ async def execute_query(session_id: str):
                 event_handler=event_handler,
                 active_prompt_name=active_prompt_name,  # MCP prompt name (from resource panel)
                 prompt_arguments=prompt_arguments,      # MCP prompt arguments
-                source='rest', # Identify source as REST
+                source='prompt_library' if active_prompt_name else 'rest',
                 task_id=task_id, # Pass the task_id here
                 profile_override_id=profile_id_override, # Pass profile override for per-message tracking
                 is_session_primer=is_session_primer, # Pass session primer flag

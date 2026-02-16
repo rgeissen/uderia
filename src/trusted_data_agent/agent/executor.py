@@ -1205,6 +1205,20 @@ class PlanExecutor:
                 if source_phase_key and source_phase_key.startswith("phase_"):
                     source_phase_key = f"result_of_{source_phase_key}"
 
+                # Normalize tool_<ToolName> references to result_of_phase_N
+                # Some LLMs generate "source": "tool_TDA_CurrentDate" instead of "result_of_phase_5"
+                if source_phase_key and source_phase_key.startswith("tool_") and source_phase_key not in self.workflow_state:
+                    tool_ref_name = source_phase_key[5:]  # Strip "tool_" prefix
+                    if self.meta_plan:
+                        for phase in self.meta_plan:
+                            phase_tools = phase.get("relevant_tools", [])
+                            if tool_ref_name in phase_tools:
+                                resolved_key = f"result_of_phase_{phase.get('phase', '')}"
+                                if resolved_key in self.workflow_state:
+                                    app_logger.info(f"Normalized tool reference '{source_phase_key}' → '{resolved_key}'")
+                                    source_phase_key = resolved_key
+                                    break
+
                 if source_phase_key in self.workflow_state:
                     data_from_phase = self.workflow_state[source_phase_key]
 

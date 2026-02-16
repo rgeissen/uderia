@@ -48,5 +48,36 @@
         "expect_status": "complete"
       }
     }
+    ,
+    {
+      "id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "description": "Comprehensive system health dashboard - uses multiple DBA tools with database scope parameter",
+      "arguments": {
+        "database_scope": "user"
+      },
+      "tags": ["dba", "system-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 2,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_tableDropImpact_products",
+      "prompt_name": "dba_tableDropImpact",
+      "description": "Analyze impact of dropping Products table in fitness_db - uses dba_tableSqlList",
+      "arguments": {
+        "database_name": "fitness_db",
+        "table_name": "Products",
+        "number_days": "30"
+      },
+      "tags": ["dba", "table-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
   ]
 }

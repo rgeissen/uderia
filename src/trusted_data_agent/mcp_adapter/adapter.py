@@ -1119,7 +1119,7 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
         "2.  `executive_summary`: REQUIRED. A concise, high-level summary paragraph explaining the key findings of the analysis.\n"
         "3.  `report_sections`: REQUIRED. A list of objects, where each object represents a logical section of the report. Each section object MUST have:\n"
         "    - `title`: The title for that specific section (e.g., 'Data Quality Analysis', 'Table DDL').\n"
-        "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, and code blocks for clarity."
+        "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, and code blocks for clarity. IMPORTANT: Do NOT start the content with a markdown heading that repeats the section title — the title is already rendered separately by the UI."
     )
 
     reason = f"Client-Side Tool Call: TDA_ComplexPromptReport\nGoal: {prompt_goal}"
@@ -1168,6 +1168,10 @@ async def _invoke_util_calculate_date_range(STATE: dict, command: dict, user_uui
 
     if not start_date_str or not date_phrase:
         return {"status": "error", "error_message": "Missing start_date or date_phrase."}
+
+    # Guard against unresolved placeholder dicts from planner
+    if not isinstance(start_date_str, str):
+        return {"status": "error", "error_message": f"start_date must be a string (got {type(start_date_str).__name__}). Likely an unresolved placeholder from the plan."}
 
     start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
     end_date = None
