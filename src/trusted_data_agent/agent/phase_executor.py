@@ -1520,11 +1520,30 @@ class PhaseExecutor:
         # === End Column Iteration Check ===
 
         is_range_candidate, date_param_name, tool_supports_range = self._is_date_query_candidate(action)
-        is_date_orchestrator_target = (
-            is_range_candidate and
-            not tool_supports_range and
-            tool_name not in ["TDA_DateRange", "TDA_CurrentDate"]
-        )
+        is_date_orchestrator_target = False
+        if is_range_candidate and tool_name not in ["TDA_DateRange", "TDA_CurrentDate"]:
+            if not tool_supports_range:
+                # Single-date tool — always route to orchestrator (existing behavior)
+                is_date_orchestrator_target = True
+            else:
+                # Range tool (start_date + end_date) — route to orchestrator
+                # ONLY if date argument contains an unresolved temporal phrase
+                date_arg_value = action.get("arguments", {}).get(date_param_name, "")
+                if isinstance(date_arg_value, str) and date_arg_value:
+                    temporal_patterns = [
+                        r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
+                        r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
+                        r'(yesterday|today)',
+                        r'in\s+the\s+(last|past)',
+                        r'for\s+the\s+(past|last)',
+                        r'\d+\s+(hours?|days?|weeks?|months?)\s+ago',
+                    ]
+                    if any(re.search(p, date_arg_value.lower()) for p in temporal_patterns):
+                        app_logger.info(
+                            f"ORCHESTRATOR: Range tool '{tool_name}' has temporal phrase "
+                            f"'{date_arg_value}' in '{date_param_name}'. Routing to orchestrator."
+                        )
+                        is_date_orchestrator_target = True
 
         if is_date_orchestrator_target:
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
@@ -1533,7 +1552,8 @@ class PhaseExecutor:
 
             if self.executor.temp_data_holder and self.executor.temp_data_holder.get('type') == 'range':
                 async for event in orchestrators.execute_date_range_orchestrator(
-                    self.executor, action, date_param_name, self.executor.temp_data_holder.get('phrase'), phase
+                    self.executor, action, date_param_name, self.executor.temp_data_holder.get('phrase'), phase,
+                    tool_supports_range=tool_supports_range
                 ):
                     yield event
                 # --- MODIFICATION START: Manually log orchestrator action to history ---

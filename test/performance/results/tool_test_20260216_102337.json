@@ -1,0 +1,165 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T10:23:37.591491",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": "sec",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 3,
+    "passed": 3,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 27412,
+    "total_duration_ms": 108625,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 9137.333333333334,
+    "avg_duration_ms": 36208.333333333336
+  },
+  "results": [
+    {
+      "fixture_id": "sec_rolePermissions",
+      "prompt_name": "sec_rolePermissions",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-fc7ba4b6-e535-4b8c-b591-a00483e0ec86",
+      "session_id": "31e4dddb-ae88-415c-b324-b5d7e18418ef",
+      "duration_ms": 6158,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 10722,
+        "output": 259,
+        "total": 10981
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_rolePermissions",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "role_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "sec_userDbPermissions",
+      "prompt_name": "sec_userDbPermissions",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-1fe897cd-2e04-4c74-b0a5-18a605b58595",
+      "session_id": "7fec14d1-2206-42bf-9b3f-4aff521a36ad",
+      "duration_ms": 98369,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 7720,
+        "output": 104,
+        "total": 7824
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_userDbPermissions"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "user_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "sec_userRoles",
+      "prompt_name": "sec_userRoles",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-7c519e0b-fefd-4e96-9cd6-a7b7e06ede3d",
+      "session_id": "9c4a5179-6ece-4422-8f57-162a04313b38",
+      "duration_ms": 4098,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8387,
+        "output": 220,
+        "total": 8607
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_userRoles",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "user_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

@@ -1,0 +1,1254 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T10:33:58.126553",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": "IDEAT",
+    "profile_id": "profile-default-chat",
+    "profile_type": "llm_only",
+    "execution_mode": "conversation",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 25,
+    "passed": 24,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 430653,
+    "total_duration_ms": 138935,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 17226.12,
+    "avg_duration_ms": 5557.4
+  },
+  "results": [
+    {
+      "fixture_id": "base_databaseList",
+      "prompt_name": "base_databaseList",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-08a06d53-b948-46e9-9a27-6b414fc5284c",
+      "session_id": "42fb21bc-e761-4919-94ac-d2e3de81feb5",
+      "duration_ms": 8145,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 16418,
+        "output": 485,
+        "total": 16903
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_databaseList"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_databaseList"
+      ]
+    },
+    {
+      "fixture_id": "base_tableList",
+      "prompt_name": "base_tableList",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-b6120caf-b0fb-439c-9304-27a8bfcc47f7",
+      "session_id": "bf3f70bc-5202-4a93-ae8c-0dfae67e068f",
+      "duration_ms": 4075,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13850,
+        "output": 87,
+        "total": 13937
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_tableList"
+      ]
+    },
+    {
+      "fixture_id": "base_tableDDL",
+      "prompt_name": "base_tableDDL",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-b59f995a-a44f-4390-a350-c000b7b8ddec",
+      "session_id": "0fe6a570-1638-4786-82ae-a4dc11026401",
+      "duration_ms": 4083,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13913,
+        "output": 255,
+        "total": 14168
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableDDL"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_tableDDL"
+      ]
+    },
+    {
+      "fixture_id": "base_tablePreview",
+      "prompt_name": "base_tablePreview",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "Argument values not confirmed in events: ['table_name']"
+      ],
+      "status": "complete",
+      "task_id": "task-fb99c301-7330-42ec-abe7-8f90094a7e47",
+      "session_id": "9ec3199e-cf82-454a-95e2-ab18c22d52bb",
+      "duration_ms": 4082,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 14236,
+        "output": 246,
+        "total": 14482
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tablePreview"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": false,
+        "resolved": {
+          "database_name": true,
+          "table_name": false
+        },
+        "unresolved": [
+          "table_name"
+        ]
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_tablePreview"
+      ]
+    },
+    {
+      "fixture_id": "base_columnDescription",
+      "prompt_name": "base_columnDescription",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-de0d6a56-6df5-480e-b48c-2acd39f1c6bb",
+      "session_id": "fdbfc579-fc55-40c0-a60e-ec887d01666e",
+      "duration_ms": 4110,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13919,
+        "output": 150,
+        "total": 14069
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_columnDescription"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_columnDescription"
+      ]
+    },
+    {
+      "fixture_id": "base_tableAffinity",
+      "prompt_name": "base_tableAffinity",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-1d139cb9-4e7d-4435-a47a-c627576d06b7",
+      "session_id": "9876bdaa-201a-422d-915f-ae37f21c0bce",
+      "duration_ms": 6146,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 14281,
+        "output": 324,
+        "total": 14605
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableAffinity",
+          "base_columnDescription"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_tableAffinity",
+        "base_columnDescription"
+      ]
+    },
+    {
+      "fixture_id": "base_tableUsage",
+      "prompt_name": "base_tableUsage",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Expected tool 'base_tableUsage' not invoked. Got: ['dba_tableUsageImpact', 'base_tableAffinity', 'dba_tableUsageImpact', 'base_tableAffinity']"
+      ],
+      "status": "complete",
+      "task_id": "task-e039fb2e-b913-4f71-b626-9a289ca971e5",
+      "session_id": "29166ab4-dd51-4329-abf8-c785d396a262",
+      "duration_ms": 4082,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13932,
+        "output": 121,
+        "total": 14053
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableUsageImpact",
+          "base_tableAffinity"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_tableUsageImpact",
+        "base_tableAffinity"
+      ]
+    },
+    {
+      "fixture_id": "base_readQuery",
+      "prompt_name": "base_readQuery",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-175355a5-80f9-4cce-aeff-bfe498a6fc9f",
+      "session_id": "e6daae07-b961-4c80-9878-2d73981db1f6",
+      "duration_ms": 4096,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 14495,
+        "output": 243,
+        "total": 14738
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_readQuery"
+      ]
+    },
+    {
+      "fixture_id": "qlty_columnSummary",
+      "prompt_name": "qlty_columnSummary",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a34f04af-cee6-4582-bb43-086caf13f8c5",
+      "session_id": "c0ef6611-9208-4e7b-9633-07564b932f12",
+      "duration_ms": 6101,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 14316,
+        "output": 425,
+        "total": 14741
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_columnSummary"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_columnSummary"
+      ]
+    },
+    {
+      "fixture_id": "qlty_distinctCategories",
+      "prompt_name": "qlty_distinctCategories",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-9de1b815-5e4d-42af-9f2c-459db2dfda0e",
+      "session_id": "94900f58-f68f-4096-9b56-d2f5f1a717be",
+      "duration_ms": 10230,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 30167,
+        "output": 591,
+        "total": 30758
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_distinctCategories",
+          "base_columnDescription",
+          "qlty_distinctCategories"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 4,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_distinctCategories",
+        "base_columnDescription",
+        "qlty_distinctCategories"
+      ]
+    },
+    {
+      "fixture_id": "qlty_missingValues",
+      "prompt_name": "qlty_missingValues",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-9f84d7c1-97fa-4acb-ba9f-550fde87246d",
+      "session_id": "c48d7d70-f37f-44e5-bded-4fb49c9e4611",
+      "duration_ms": 4094,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13950,
+        "output": 75,
+        "total": 14025
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_missingValues"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_missingValues"
+      ]
+    },
+    {
+      "fixture_id": "qlty_negativeValues",
+      "prompt_name": "qlty_negativeValues",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a70b2728-38ad-43b2-ad26-ed91f19e51fe",
+      "session_id": "04c25acd-508e-4c7f-9e4f-049c65cbb9e1",
+      "duration_ms": 4094,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13885,
+        "output": 96,
+        "total": 13981
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_negativeValues"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_negativeValues"
+      ]
+    },
+    {
+      "fixture_id": "qlty_rowsWithMissingValues",
+      "prompt_name": "qlty_rowsWithMissingValues",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e469209a-4241-4930-976f-6d95c5a0d0cb",
+      "session_id": "75ed691f-d68e-4c35-be62-d0360aa64737",
+      "duration_ms": 4091,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13802,
+        "output": 72,
+        "total": 13874
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_rowsWithMissingValues"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_rowsWithMissingValues"
+      ]
+    },
+    {
+      "fixture_id": "qlty_standardDeviation",
+      "prompt_name": "qlty_standardDeviation",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a88d9b6a-3ebc-4380-a857-24f680c0c430",
+      "session_id": "ffde2db8-0841-473f-b28e-c2abf13e503b",
+      "duration_ms": 4132,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13883,
+        "output": 74,
+        "total": 13957
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_standardDeviation"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_standardDeviation"
+      ]
+    },
+    {
+      "fixture_id": "qlty_univariateStatistics",
+      "prompt_name": "qlty_univariateStatistics",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a3d7c3ef-3f95-4088-8b15-b730e3f2a39f",
+      "session_id": "f957afe8-552f-4cd3-aa90-bdc8968df8f3",
+      "duration_ms": 8154,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 15287,
+        "output": 506,
+        "total": 15793
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_univariateStatistics"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "qlty_univariateStatistics"
+      ]
+    },
+    {
+      "fixture_id": "dba_databaseSpace",
+      "prompt_name": "dba_databaseSpace",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a2005184-754a-4b76-bf90-7890920542e1",
+      "session_id": "633b181d-a5ed-4021-9d4f-f0989a676878",
+      "duration_ms": 4078,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13806,
+        "output": 117,
+        "total": 13923
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_databaseSpace"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_databaseSpace"
+      ]
+    },
+    {
+      "fixture_id": "dba_databaseVersion",
+      "prompt_name": "dba_databaseVersion",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e562f47a-e5a9-47d6-8819-0959106d568f",
+      "session_id": "8058a509-af5c-42e9-9037-c105a2e1a4fc",
+      "duration_ms": 4120,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13873,
+        "output": 49,
+        "total": 13922
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_databaseVersion"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_databaseVersion"
+      ]
+    },
+    {
+      "fixture_id": "dba_resusageSummary",
+      "prompt_name": "dba_resusageSummary",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-8f541398-9bd6-4eba-9535-6cfb20f6c5bf",
+      "session_id": "6aed10fb-bcd6-43ed-8e3f-e5e3e4911b47",
+      "duration_ms": 10281,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 22446,
+        "output": 354,
+        "total": 22800
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_resusageSummary",
+          "dba_resusageSummary",
+          "dba_resusageSummary"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 3,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_resusageSummary",
+        "dba_resusageSummary",
+        "dba_resusageSummary"
+      ]
+    },
+    {
+      "fixture_id": "dba_sessionInfo",
+      "prompt_name": "dba_sessionInfo",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-ec3950fd-a0f7-4e0c-a91b-ca6c13b39a80",
+      "session_id": "f5cffaf5-c6e3-469f-b4e0-6b63aee3d01b",
+      "duration_ms": 6115,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 15531,
+        "output": 442,
+        "total": 15973
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_sessionInfo"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_sessionInfo"
+      ]
+    },
+    {
+      "fixture_id": "dba_systemSpace",
+      "prompt_name": "dba_systemSpace",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-832c4bcc-55ab-4c72-b8f8-dd032603532c",
+      "session_id": "2c871d4a-c03c-4c3f-871c-74c3e7a86fe9",
+      "duration_ms": 4082,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13957,
+        "output": 79,
+        "total": 14036
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_systemSpace"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_systemSpace"
+      ]
+    },
+    {
+      "fixture_id": "dba_tableSpace",
+      "prompt_name": "dba_tableSpace",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-cada1fd9-fce3-48c3-a988-9131a38ee1cb",
+      "session_id": "2f805766-edff-4803-a1b3-b62d7cb636e9",
+      "duration_ms": 4069,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13817,
+        "output": 57,
+        "total": 13874
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableSpace"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_tableSpace"
+      ]
+    },
+    {
+      "fixture_id": "dba_tableSqlList",
+      "prompt_name": "dba_tableSqlList",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e3e08a9d-4740-497f-8657-6e608911fd62",
+      "session_id": "12624b6f-a397-4b46-a0fc-7b6bec66e731",
+      "duration_ms": 12247,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 57283,
+        "output": 502,
+        "total": 57785
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableSqlList",
+          "dba_tableSqlList",
+          "dba_tableSqlList"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 3,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_tableSqlList",
+        "dba_tableSqlList",
+        "dba_tableSqlList"
+      ]
+    },
+    {
+      "fixture_id": "dba_tableUsageImpact",
+      "prompt_name": "dba_tableUsageImpact",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d5614e23-5e77-4486-8882-47ebb21f47dd",
+      "session_id": "f10edb02-78d7-4346-a068-e306f06c69b0",
+      "duration_ms": 4060,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13784,
+        "output": 73,
+        "total": 13857
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableUsageImpact"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "dba_tableUsageImpact"
+      ]
+    },
+    {
+      "fixture_id": "sec_rolePermissions",
+      "prompt_name": "sec_rolePermissions",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-94d3c762-8f14-4997-80db-115641db5488",
+      "session_id": "00135041-e445-482d-8d97-4a0cca862838",
+      "duration_ms": 6099,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 16421,
+        "output": 180,
+        "total": 16601
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_rolePermissions"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "role_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "sec_rolePermissions"
+      ]
+    },
+    {
+      "fixture_id": "sec_userRoles",
+      "prompt_name": "sec_userRoles",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-24406e5f-5a78-49ad-890d-6b3bf71668e8",
+      "session_id": "a0de1461-ac47-4ca2-9d07-1c271fa7eb34",
+      "duration_ms": 4069,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13750,
+        "output": 48,
+        "total": 13798
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_userRoles"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "user_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "sec_userRoles"
+      ]
+    }
+  ]
+}

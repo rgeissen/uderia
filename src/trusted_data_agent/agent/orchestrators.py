@@ -20,13 +20,20 @@ def _format_sse(data: dict, event: str = None) -> str:
     return f"{msg}\n"
 
 # --- MODIFICATION START: Add user_uuid ---
-async def execute_date_range_orchestrator(executor, command: dict, date_param_name: str, date_phrase: str, phase: dict):
+async def execute_date_range_orchestrator(executor, command: dict, date_param_name: str, date_phrase: str, phase: dict, tool_supports_range: bool = False):
 # --- MODIFICATION END ---
     """
-    Executes a tool over a calculated date range when the tool itself
-    only supports a single date parameter. It is now "plan-aware" and will use
-    pre-calculated date lists from previous phases if available, bypassing
-    redundant LLM calls.
+    Executes a tool over a calculated date range. Supports two modes:
+
+    1. **Single-date tools** (tool_supports_range=False): Iterates the tool once
+       per day in the resolved range. Used for tools with a single `date` parameter.
+
+    2. **Range tools** (tool_supports_range=True): Resolves the temporal phrase to
+       start_date and end_date, then calls the tool ONCE with both parameters bound.
+       Used for tools with `start_date` + `end_date` parameters.
+
+    It is now "plan-aware" and will use pre-calculated date lists from previous
+    phases if available, bypassing redundant LLM calls.
     """
     tool_name = command.get("tool_name")
     args = command.get("arguments", {})
@@ -190,6 +197,72 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
     if not date_list or not all(isinstance(d, dict) and 'date' in d for d in date_list):
          raise RuntimeError(f"Orchestrator failed: Date list is empty or malformed. Content: {date_list}")
 
+    # --- Range Tool Mode: call tool ONCE with start_date + end_date ---
+    if tool_supports_range:
+        start_date_str = date_list[0]['date']
+        end_date_str = date_list[-1]['date']
+
+        # Build arguments: remove all date-containing params, then set start_date + end_date
+        range_command_args = {k: v for k, v in args.items() if 'date' not in k.lower()}
+        range_command_args['start_date'] = start_date_str
+        range_command_args['end_date'] = end_date_str
+        range_command = {**command, 'arguments': range_command_args}
+
+        app_logger.info(
+            f"ORCHESTRATOR (Range Mode): Calling '{tool_name}' once with "
+            f"start_date={start_date_str}, end_date={end_date_str} (resolved from '{date_phrase}')"
+        )
+        yield _format_sse({
+            "step": "System Orchestration", "type": "workaround",
+            "details": f"Range tool '{tool_name}': resolved '{date_phrase}' → {start_date_str} to {end_date_str}"
+        })
+        yield _format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
+
+        range_result, _, _ = await mcp_adapter.invoke_mcp_tool(
+            executor.dependencies['STATE'], range_command, user_uuid=user_uuid, session_id=executor.session_id
+        )
+
+        yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
+
+        range_command.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
+        executor.turn_action_history.append({"action": range_command, "result": range_result})
+
+        final_tool_output = {
+            "status": "success",
+            "metadata": {"tool_name": tool_name, "comment": f"Range query: {start_date_str} to {end_date_str}"},
+            "results": range_result.get("results", []) if isinstance(range_result, dict) else []
+        }
+
+        phase_num = phase.get("phase", executor.current_phase_index + 1)
+        phase_result_key = f"result_of_phase_{phase_num}"
+        executor.workflow_state[phase_result_key] = [final_tool_output]
+        executor._add_to_structured_data(final_tool_output)
+        executor.last_tool_output = final_tool_output
+
+        # Log orchestration completion
+        orchestration_complete_event = {
+            "action": {
+                "tool_name": "TDA_SystemOrchestration",
+                "arguments": {
+                    "orchestration_type": "date_range_complete",
+                    "orchestration_mode": "range_resolution",
+                    "target_tool": tool_name,
+                    "start_date": start_date_str,
+                    "end_date": end_date_str
+                },
+                "metadata": {
+                    "phase_number": phase_num,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "is_orchestration": True
+                }
+            },
+            "result": final_tool_output
+        }
+        executor.turn_action_history.append(orchestration_complete_event)
+        return  # Skip the per-day iteration below
+    # --- End Range Tool Mode ---
+
+    # --- Single-Date Iteration Mode: call tool once per day ---
     cleaned_command_args = { k: v for k, v in args.items() if 'date' not in k.lower() }
     cleaned_command = {**command, 'arguments': cleaned_command_args}
 

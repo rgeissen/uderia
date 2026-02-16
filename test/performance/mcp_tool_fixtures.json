@@ -1,15 +1,54 @@
 {
   "$schema_version": "1.0",
-  "description": "MCP tool performance test fixtures for Uderia platform. Update queries and argument values to match your environment. Generate templates with: python mcp_tool_test.py --discover --generate-fixtures",
+  "description": "MCP tool performance test fixtures for Uderia platform. 28 tools (plot_ excluded). Queries target fitness_db and DBC with qualified predicates.",
   "defaults": {
     "timeout_seconds": 180,
     "expect_zero_self_corrections": true
   },
   "fixtures": [
+
     {
-      "id": "base_tableDDL_schema",
-      "description": "Get table DDL using base_tableDDL",
-      "query": "Show me the schema definition for the products table in the fitness_db database",
+      "id": "base_databaseList",
+      "description": "List all databases on the system",
+      "query": "List all databases on the system",
+      "expected_tool": "base_databaseList",
+      "expected_tool_args": {},
+      "tags": ["base", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_tableList",
+      "description": "List tables in fitness_db",
+      "query": "Show me all tables in the fitness_db database",
+      "expected_tool": "base_tableList",
+      "expected_tool_args": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["base", "database-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_tableDDL",
+      "description": "Get DDL for products table",
+      "query": "Show the schema definition for the products table in the fitness_db database",
       "expected_tool": "base_tableDDL",
       "expected_tool_args": {
         "database_name": "fitness_db",
@@ -20,6 +59,557 @@
         "max_self_corrections": 0,
         "expect_status": "complete",
         "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_tablePreview",
+      "description": "Preview first rows of products table",
+      "query": "Show me a preview of the first rows from the products table in fitness_db",
+      "expected_tool": "base_tablePreview",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "members"
+      },
+      "tags": ["base", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_columnDescription",
+      "description": "Describe columns of products table",
+      "query": "Describe the columns of the products table in the fitness_db database",
+      "expected_tool": "base_columnDescription",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["base", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_tableAffinity",
+      "description": "Table affinity for products",
+      "query": "Show table relationships and affinity for the products table in the fitness_db database",
+      "expected_tool": "base_tableAffinity",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["base", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_tableUsage",
+      "description": "Access patterns for members table",
+      "query": "Show access statistics and usage patterns for the members table in the fitness_db database",
+      "expected_tool": "base_tableUsage",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "members"
+      },
+      "tags": ["base", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "base_readQuery",
+      "description": "Execute a bounded SELECT query",
+      "query": "Run this SQL query on the fitness_db database: SELECT TOP 10 * FROM fitness_db.products",
+      "expected_tool": "base_readQuery",
+      "expected_tool_args": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["base", "global-scope", "sql"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "qlty_columnSummary",
+      "description": "Column summary for products table",
+      "query": "Give me a column summary for the products table in the fitness_db database",
+      "expected_tool": "qlty_columnSummary",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["qlty", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 8
+      }
+    },
+
+    {
+      "id": "qlty_distinctCategories",
+      "description": "Distinct values in a specific column",
+      "query": "Show the distinct values in the category column of the products table in the fitness_db database",
+      "expected_tool": "qlty_distinctCategories",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products",
+        "column_name": "category"
+      },
+      "tags": ["qlty", "column-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "qlty_missingValues",
+      "description": "Missing values check on products",
+      "query": "Check for missing or null values in the products table of the fitness_db database",
+      "expected_tool": "qlty_missingValues",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["qlty", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "qlty_negativeValues",
+      "description": "Negative values in products table",
+      "query": "Check for columns with negative values in the products table of the fitness_db database",
+      "expected_tool": "qlty_negativeValues",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["qlty", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "qlty_rowsWithMissingValues",
+      "description": "Rows with missing values in price column",
+      "query": "Show rows that have missing values in the price column of the products table in the fitness_db database",
+      "expected_tool": "qlty_rowsWithMissingValues",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products",
+        "column_name": "price"
+      },
+      "tags": ["qlty", "column-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "qlty_standardDeviation",
+      "description": "Standard deviation of price column",
+      "query": "Calculate the standard deviation of the price column in the products table of the fitness_db database",
+      "expected_tool": "qlty_standardDeviation",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products",
+        "column_name": "price"
+      },
+      "tags": ["qlty", "column-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "qlty_univariateStatistics",
+      "description": "Univariate statistics for price column",
+      "query": "Show univariate statistics for the price column in the products table of the fitness_db database",
+      "expected_tool": "qlty_univariateStatistics",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products",
+        "column_name": "price"
+      },
+      "tags": ["qlty", "column-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_databaseSpace",
+      "description": "Disk space usage for fitness_db",
+      "query": "Show the disk space allocation and usage for the fitness_db database",
+      "expected_tool": "dba_databaseSpace",
+      "expected_tool_args": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["dba", "database-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_databaseVersion",
+      "description": "Database system version",
+      "query": "What version of the Teradata database system is currently running?",
+      "expected_tool": "dba_databaseVersion",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_featureUsage",
+      "description": "Database feature usage for today only (cost-optimized)",
+      "query": "Show which Teradata database features have been used today",
+      "expected_tool": "dba_featureUsage",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope", "temporal"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_flowControl",
+      "description": "Flow control status for today only (cost-optimized)",
+      "query": "Show the flow control metrics on the Teradata system for today",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope", "temporal"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_resusageSummary",
+      "description": "Resource usage summary for today",
+      "query": "Show system resource usage summary for today",
+      "expected_tool": "dba_resusageSummary",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope", "temporal"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_sessionInfo",
+      "description": "Active database sessions",
+      "query": "Show the current active sessions on the Teradata database system",
+      "expected_tool": "dba_sessionInfo",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_systemSpace",
+      "description": "Overall system storage",
+      "query": "Show the overall system storage space usage on the Teradata system",
+      "expected_tool": "dba_systemSpace",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_tableSpace",
+      "description": "Space used by products table",
+      "query": "Show the space used by the products table in the fitness_db database",
+      "expected_tool": "dba_tableSpace",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["dba", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_tableSqlList",
+      "description": "SQL statements accessing products table",
+      "query": "Show the most recent SQL statements that have been run against the products table",
+      "expected_tool": "dba_tableSqlList",
+      "expected_tool_args": {
+        "table_name": "products"
+      },
+      "tags": ["dba", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_tableUsageImpact",
+      "description": "Usage impact for products table",
+      "query": "Show the usage impact analysis for the products table in the fitness_db database",
+      "expected_tool": "dba_tableUsageImpact",
+      "expected_tool_args": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["dba", "table-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_userDelay",
+      "description": "User delay statistics (cost-optimized)",
+      "query": "Show user query delay statistics on the Teradata system for today",
+      "expected_tool": "dba_userDelay",
+      "expected_tool_args": {},
+      "tags": ["dba", "global-scope", "temporal"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "dba_userSqlList",
+      "description": "Recent SQL by DBC user",
+      "query": "Show the most recent SQL statements executed by user DBC on the system",
+      "expected_tool": "dba_userSqlList",
+      "expected_tool_args": {
+        "user_name": "DBC"
+      },
+      "tags": ["dba", "global-scope"],
+      "disabled": true,
+      "_disable_reason": "DBC user has massive SQL history - takes 80+s and high token cost. Re-enable for targeted testing.",
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "sec_rolePermissions",
+      "description": "Permissions for DBC role",
+      "query": "Show the permissions assigned to the DBC role in the Teradata system",
+      "expected_tool": "sec_rolePermissions",
+      "expected_tool_args": {
+        "role_name": "DBC"
+      },
+      "tags": ["sec", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "sec_userDbPermissions",
+      "description": "Database permissions for DBC user",
+      "query": "Show the database-level permissions for user DBC on the system",
+      "expected_tool": "sec_userDbPermissions",
+      "expected_tool_args": {
+        "user_name": "DBC"
+      },
+      "tags": ["sec", "global-scope"],
+      "disabled": true,
+      "_disable_reason": "DBC user has extensive permissions - takes 85+s and high token cost. Re-enable for targeted testing.",
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "sec_userRoles",
+      "description": "Roles assigned to DBC user",
+      "query": "Show which roles are assigned to user DBC on the Teradata system",
+      "expected_tool": "sec_userRoles",
+      "expected_tool_args": {
+        "user_name": "DBC"
+      },
+      "tags": ["sec", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
       }
     }
   ]

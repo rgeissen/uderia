@@ -66,7 +66,7 @@ Examples:
     parser.add_argument("--filter", default=None, help="Substring filter on expected_tool or fixture id")
     parser.add_argument("--tag", action="append", default=None, help="Filter by tag (repeatable)")
     parser.add_argument("--timeout", type=int, default=180, help="Default timeout in seconds")
-    parser.add_argument("--profile-tag", default="OPTIM", help="Profile tag to use (must be tool_enabled type)")
+    parser.add_argument("--profile-tag", default="OPTIM", help="Profile tag (tool_enabled or llm_only with MCP tools)")
     parser.add_argument("--discover", action="store_true", help="List available tools, then exit")
     parser.add_argument("--generate-fixtures", action="store_true", help="Generate fixture templates (use with --discover)")
     parser.add_argument("--verbose", action="store_true", help="Show execution event details")
@@ -90,14 +90,32 @@ Examples:
             else:
                 return run_discover_mode(client)
 
-        # Step 3: Resolve profile (required for tool testing)
+        # Step 3: Resolve profile and detect execution mode
         print(f"[ 2 ] Resolving profile @{args.profile_tag}...", end=" ", flush=True)
-        profile_id = client.find_profile_by_tag(args.profile_tag)
-        if not profile_id:
+        profile_details = client.get_profile_details(args.profile_tag)
+        if not profile_details:
             print(f"FAILED - profile @{args.profile_tag} not found")
-            print("\nERROR: Tool testing requires a tool_enabled profile (e.g., @OPTIM, @IDEAT)")
+            print("\nERROR: Profile not found. Use a tool_enabled or llm_only (with MCP tools) profile.")
             return 1
-        print(f"done ({profile_id[:8]}...)")
+        profile_id = profile_details["id"]
+        profile_type = profile_details.get("profile_type", "tool_enabled")
+        use_mcp_tools = profile_details.get("useMcpTools", False)
+
+        # Determine execution mode
+        if profile_type == "tool_enabled":
+            exec_mode = "tool_enabled"
+        elif profile_type == "llm_only" and use_mcp_tools:
+            exec_mode = "conversation"
+        elif profile_type == "llm_only":
+            print(f"FAILED - @{args.profile_tag} is llm_only without MCP tools")
+            print("\nERROR: Profile must have useMcpTools=true for tool testing.")
+            return 1
+        else:
+            print(f"FAILED - @{args.profile_tag} is {profile_type} (not supported)")
+            print("\nERROR: Use a tool_enabled or llm_only (with MCP tools) profile.")
+            return 1
+
+        print(f"done ({profile_id[:8]}... | mode: {exec_mode})")
 
         # Step 4: Load fixtures
         print(f"[ 3 ] Loading fixtures...", end=" ", flush=True)
@@ -166,6 +184,8 @@ Examples:
                     print()
 
                 # Verbose: show key events
+                if args.verbose:
+                    print(f"       Mode:      {analysis.execution_mode}")
                 if args.verbose and analysis.plan_quality.tools_invoked:
                     print(f"       Tools:     {', '.join(analysis.plan_quality.tools_invoked)}")
                 if args.verbose and analysis.plan_quality.orchestrators_used:
@@ -202,6 +222,8 @@ Examples:
             "tag": args.tag,
             "profile_tag": args.profile_tag,
             "profile_id": profile_id,
+            "profile_type": profile_type,
+            "execution_mode": exec_mode,
             "test_type": "mcp_tool",
         }
 
@@ -416,6 +438,9 @@ def load_fixtures(
 
     fixtures = data.get("fixtures", [])
     defaults = data.get("defaults", {})
+
+    # Filter out disabled fixtures
+    fixtures = [f for f in fixtures if not f.get("disabled", False)]
 
     # Apply defaults
     for fixture in fixtures:
