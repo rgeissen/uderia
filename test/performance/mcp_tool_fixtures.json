@@ -1,6 +1,6 @@
 {
   "$schema_version": "1.0",
-  "description": "MCP tool performance test fixtures for Uderia platform. 28 tools (plot_ excluded). Queries target fitness_db and DBC with qualified predicates.",
+  "description": "MCP tool performance test fixtures for Uderia platform. 31 tools (plot_ excluded). Queries target fitness_db and DBC with qualified predicates.",
   "defaults": {
     "timeout_seconds": 180,
     "expect_zero_self_corrections": true
@@ -602,6 +602,70 @@
         "user_name": "DBC"
       },
       "tags": ["sec", "global-scope"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "sql_Execute_Full_Pipeline",
+      "description": "Run complete SQL clustering pipeline for query optimization",
+      "query": "Run the SQL query clustering pipeline to identify high CPU usage patterns and optimization opportunities",
+      "expected_tool": "sql_Execute_Full_Pipeline",
+      "expected_tool_args": {},
+      "tags": ["sql", "global-scope", "pipeline"],
+      "disabled": true,
+      "_disable_reason": "Requires feature_ext_db which is not installed on the test database.",
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 8
+      }
+    },
+
+    {
+      "id": "sql_Analyze_Cluster_Stats",
+      "description": "Analyze cluster statistics for optimization opportunities",
+      "query": "Analyze the SQL query cluster statistics and show me which clusters consume the most CPU resources",
+      "expected_tool": "sql_Analyze_Cluster_Stats",
+      "expected_tool_args": {
+        "sort_by_metric": "cpu"
+      },
+      "tags": ["sql", "global-scope"],
+      "disabled": true,
+      "_disable_reason": "Requires feature_ext_db which is not installed on the test database.",
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      },
+      "conversation_expectations": {
+        "expect_final_report": false,
+        "max_llm_calls": 5
+      }
+    },
+
+    {
+      "id": "sql_Retrieve_Cluster_Queries",
+      "description": "Retrieve actual SQL queries from specific clusters",
+      "query": "Show me the actual SQL queries from cluster 1 sorted by CPU time so I can identify optimization candidates",
+      "expected_tool": "sql_Retrieve_Cluster_Queries",
+      "expected_tool_args": {
+        "cluster_ids": [1]
+      },
+      "tags": ["sql", "global-scope"],
+      "disabled": true,
+      "_disable_reason": "Requires feature_ext_db which is not installed on the test database.",
       "expectations": {
         "max_self_corrections": 0,
         "expect_status": "complete",

@@ -1,0 +1,1338 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T13:35:37.842365",
+    "server_url": "http://127.0.0.1:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 28,
+    "passed": 27,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 298149,
+    "total_duration_ms": 179232,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 10648.17857142857,
+    "avg_duration_ms": 6401.142857142857
+  },
+  "results": [
+    {
+      "fixture_id": "base_databaseList",
+      "prompt_name": "base_databaseList",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d8f04684-0e7c-4ba7-be30-3468718676a5",
+      "session_id": "4e7367cd-f79a-434c-8279-6cd6aa21e7df",
+      "duration_ms": 6045,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 10771,
+        "output": 315,
+        "total": 11086
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_databaseList",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_tableList",
+      "prompt_name": "base_tableList",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-0a83b968-c36f-4f9c-8b73-03e48c1ef17f",
+      "session_id": "e0402040-450a-436f-9de7-ec922ab71c15",
+      "duration_ms": 4023,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8215,
+        "output": 220,
+        "total": 8435
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_tableDDL",
+      "prompt_name": "base_tableDDL",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e6651487-5fac-4265-bfc9-1b45303823b5",
+      "session_id": "0857fafa-b51b-42b6-b7a9-603ece38da4d",
+      "duration_ms": 4027,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8290,
+        "output": 196,
+        "total": 8486
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableDDL",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_tablePreview",
+      "prompt_name": "base_tablePreview",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "Argument values not confirmed in events: ['table_name']"
+      ],
+      "status": "complete",
+      "task_id": "task-2808d83a-fad2-4339-a063-7862e27969b8",
+      "session_id": "0846c9cd-f2b3-491a-b6b1-08d97af3906e",
+      "duration_ms": 4036,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8616,
+        "output": 298,
+        "total": 8914
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tablePreview",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": false,
+        "resolved": {
+          "database_name": true,
+          "table_name": false
+        },
+        "unresolved": [
+          "table_name"
+        ]
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_columnDescription",
+      "prompt_name": "base_columnDescription",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d7bdf551-15bd-468d-bb12-44a404141347",
+      "session_id": "21dc0d27-581c-4d28-87a0-687cc91b2e0e",
+      "duration_ms": 6038,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8291,
+        "output": 217,
+        "total": 8508
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_columnDescription",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_tableAffinity",
+      "prompt_name": "base_tableAffinity",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d4a89ced-b157-4ce4-8c76-f9a740ece969",
+      "session_id": "1e62f6b7-f5ce-4336-9304-1a42f6d42c2e",
+      "duration_ms": 6046,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8396,
+        "output": 338,
+        "total": 8734
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "handle_base_tableAffinity",
+          "TDA_FinalReport",
+          "base_tableAffinity"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_tableUsage",
+      "prompt_name": "base_tableUsage",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-c99a0064-c5c7-4a23-ad57-99da031d416a",
+      "session_id": "790d3ff3-87cb-4e3e-8cd2-769f53a60999",
+      "duration_ms": 6040,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8536,
+        "output": 259,
+        "total": 8795
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "handle_base_tableUsage",
+          "TDA_FinalReport",
+          "base_tableUsage"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "base_readQuery",
+      "prompt_name": "base_readQuery",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-1cd79c38-21ba-4d5e-b1e2-014aa6e336f0",
+      "session_id": "e27afc33-3d89-48c3-8a2e-2bdbfbd5f40a",
+      "duration_ms": 6051,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8900,
+        "output": 302,
+        "total": 9202
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_columnSummary",
+      "prompt_name": "qlty_columnSummary",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-70f5cc70-3a39-44d0-9782-025db04078e4",
+      "session_id": "06e4f4f3-5468-4285-a3a9-a3cc152b19c7",
+      "duration_ms": 6049,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8699,
+        "output": 329,
+        "total": 9028
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_columnSummary",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_distinctCategories",
+      "prompt_name": "qlty_distinctCategories",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-7ba47995-453b-4872-9441-bbb211542c2a",
+      "session_id": "5dc9f8a6-269f-4968-a1a8-ae8666d2eb1b",
+      "duration_ms": 10066,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 16480,
+        "output": 728,
+        "total": 17208
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_columnDescription",
+          "TDA_FinalReport",
+          "base_readQuery",
+          "qlty_distinctCategories"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_missingValues",
+      "prompt_name": "qlty_missingValues",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-251b8674-2ea8-4f2a-87a1-01980515df33",
+      "session_id": "5216b0d8-ae21-47d8-a8db-f64b252fce04",
+      "duration_ms": 4026,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8336,
+        "output": 223,
+        "total": 8559
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_missingValues",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_negativeValues",
+      "prompt_name": "qlty_negativeValues",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-69bef5d8-6264-4b94-a681-e85b1138b4a7",
+      "session_id": "79c45f7e-28a5-4962-b6a2-9389dcf71674",
+      "duration_ms": 4023,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8276,
+        "output": 245,
+        "total": 8521
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_negativeValues",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_rowsWithMissingValues",
+      "prompt_name": "qlty_rowsWithMissingValues",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-5bb6ea3b-ac9c-4305-8a45-600c611519b9",
+      "session_id": "986069cf-b7b6-4784-a6a2-ba9f4b5728b0",
+      "duration_ms": 4023,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8202,
+        "output": 231,
+        "total": 8433
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_rowsWithMissingValues",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_standardDeviation",
+      "prompt_name": "qlty_standardDeviation",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-0b292061-2298-4ada-a619-3bf736345559",
+      "session_id": "4e84570f-17c1-4bfa-87af-5a8f55108600",
+      "duration_ms": 6040,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8271,
+        "output": 240,
+        "total": 8511
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_standardDeviation",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "qlty_univariateStatistics",
+      "prompt_name": "qlty_univariateStatistics",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-4fb04ee1-16da-48b0-9f0e-efa4306d72cd",
+      "session_id": "7bc19408-29fc-4e49-98cc-f0d81c115f0d",
+      "duration_ms": 6046,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 9679,
+        "output": 363,
+        "total": 10042
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "qlty_univariateStatistics",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "column_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_databaseSpace",
+      "prompt_name": "dba_databaseSpace",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-8f0295b6-8f81-4df4-aa6a-5e0c76ec60b8",
+      "session_id": "062548a9-062e-4e42-9841-429d2d481299",
+      "duration_ms": 6037,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8183,
+        "output": 241,
+        "total": 8424
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_databaseSpace",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_databaseVersion",
+      "prompt_name": "dba_databaseVersion",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-716a7976-2b27-4551-bf39-3e14f785af69",
+      "session_id": "11a21277-7881-4ff7-92d7-fcf18ded785c",
+      "duration_ms": 4030,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8251,
+        "output": 173,
+        "total": 8424
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_databaseVersion"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_featureUsage",
+      "prompt_name": "dba_featureUsage",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-ac9d4508-3dcd-4d48-ac3b-f79feb629a6c",
+      "session_id": "61d99d2f-b381-42f7-8a11-f78ba9494121",
+      "duration_ms": 28176,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 26347,
+        "output": 2869,
+        "total": 29216
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_LLMTask",
+          "TDA_FinalReport",
+          "dba_userSqlList",
+          "dba_featureUsage"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_flowControl",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-8dfe6d2e-d82c-44b2-a2dd-70fc5cba9888",
+      "session_id": "28979cc6-882b-4976-bb99-aa72076c0317",
+      "duration_ms": 10078,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 19090,
+        "output": 587,
+        "total": 19677
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_resusageSummary",
+      "prompt_name": "dba_resusageSummary",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-4ce62af1-00a0-4a34-bec6-152c822269bf",
+      "session_id": "e5b8aa9c-8ffa-481b-b351-19c879df087a",
+      "duration_ms": 6041,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8404,
+        "output": 323,
+        "total": 8727
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "dba_resusageSummary",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_sessionInfo",
+      "prompt_name": "dba_sessionInfo",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Expected tool 'dba_sessionInfo' not invoked. Got: ['base_readQuery', 'TDA_FinalReport']"
+      ],
+      "status": "complete",
+      "task_id": "task-a4d3ccf8-f910-4401-8008-f17bf43c9a56",
+      "session_id": "2dfeef2b-6d63-4765-9fbb-8effcab2d385",
+      "duration_ms": 4030,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 10386,
+        "output": 157,
+        "total": 10543
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_systemSpace",
+      "prompt_name": "dba_systemSpace",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-7f26a94c-9444-45c0-ab58-287b29460d33",
+      "session_id": "464b8fb4-b297-4f01-a083-b343aa26421c",
+      "duration_ms": 4020,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8341,
+        "output": 243,
+        "total": 8584
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_systemSpace"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_tableSpace",
+      "prompt_name": "dba_tableSpace",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d16b51b8-4d00-4411-a339-443f2ecb0d7f",
+      "session_id": "090e1d43-8b23-4875-8b8b-0e783246c6f6",
+      "duration_ms": 6040,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8192,
+        "output": 239,
+        "total": 8431
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableSpace",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_tableSqlList",
+      "prompt_name": "dba_tableSqlList",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-1eb6f30a-347f-4902-8534-3092e0f52614",
+      "session_id": "1e4eb868-37e3-4598-bb3c-b9610ab96e05",
+      "duration_ms": 6042,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 15826,
+        "output": 330,
+        "total": 16156
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "dba_tableSqlList",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_tableUsageImpact",
+      "prompt_name": "dba_tableUsageImpact",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-002aeae9-ac17-42dd-8e63-b13a9598bd49",
+      "session_id": "37e4b95e-96f2-4c41-978e-c626bafe1ef7",
+      "duration_ms": 6037,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8572,
+        "output": 314,
+        "total": 8886
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "handle_dba_tableUsageImpact",
+          "TDA_FinalReport",
+          "dba_tableUsageImpact"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "dba_userDelay",
+      "prompt_name": "dba_userDelay",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e83f0bfe-d01c-4b5b-b910-0d4d2c517c2a",
+      "session_id": "b0b7a00f-1c41-490b-b6a8-a1839f5f03e0",
+      "duration_ms": 6043,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8924,
+        "output": 300,
+        "total": 9224
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_userDelay"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "sec_rolePermissions",
+      "prompt_name": "sec_rolePermissions",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-d0390257-541b-4844-848c-60fc9315dae1",
+      "session_id": "5b537c6e-f775-40d7-b4f6-3f7d22a050aa",
+      "duration_ms": 6051,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 10811,
+        "output": 253,
+        "total": 11064
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_rolePermissions",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "role_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "sec_userRoles",
+      "prompt_name": "sec_userRoles",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-5185339f-ea45-40b8-b916-ebacd6b4c732",
+      "session_id": "737f10f8-9506-4081-8b1f-259fba83338f",
+      "duration_ms": 4028,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8137,
+        "output": 194,
+        "total": 8331
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "sec_userRoles",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "user_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

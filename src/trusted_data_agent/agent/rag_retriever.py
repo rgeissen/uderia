@@ -816,7 +816,57 @@ class RAGRetriever:
         except Exception as e:
             logger.error(f"Failed to remove collection '{collection_id}': {e}", exc_info=True)
             return False
-    
+
+    def reset_collection(self, collection_id: int, user_id: Optional[str] = None) -> dict:
+        """
+        Removes all content from a collection while preserving its structure.
+        For planner collections: deletes ChromaDB documents + disk case files.
+        For knowledge collections: deletes ChromaDB documents only (no disk files).
+
+        Returns:
+            dict with 'success', 'items_deleted', 'message'
+        """
+        if collection_id == 0:
+            return {"success": False, "items_deleted": 0, "message": "Cannot reset default collection"}
+
+        if user_id:
+            default_collection_id = self._get_user_default_collection_id(user_id)
+            if default_collection_id and collection_id == default_collection_id:
+                return {"success": False, "items_deleted": 0, "message": "Cannot reset your default collection"}
+
+        coll_meta = self.get_collection_metadata(collection_id)
+        if not coll_meta:
+            return {"success": False, "items_deleted": 0, "message": f"Collection '{collection_id}' not found"}
+
+        repo_type = coll_meta.get("repository_type", "planner")
+        items_deleted = 0
+
+        try:
+            # 1. Clear ChromaDB documents
+            if collection_id in self.collections:
+                collection = self.collections[collection_id]
+                all_results = collection.get()
+                if all_results and all_results["ids"]:
+                    items_deleted = len(all_results["ids"])
+                    collection.delete(ids=all_results["ids"])
+                    logger.info(f"Deleted {items_deleted} documents from ChromaDB for collection '{collection_id}'")
+
+            # 2. For planner collections, also delete disk case files
+            if repo_type == "planner":
+                collection_dir = self._get_collection_dir(collection_id)
+                if collection_dir.exists():
+                    case_files = list(collection_dir.glob("case_*.json"))
+                    for case_file in case_files:
+                        case_file.unlink()
+                    if case_files:
+                        logger.info(f"Deleted {len(case_files)} case files from disk for collection '{collection_id}'")
+
+            logger.info(f"Reset collection '{collection_id}' ({repo_type}): {items_deleted} items removed")
+            return {"success": True, "items_deleted": items_deleted, "message": f"Collection reset successfully. {items_deleted} items removed."}
+        except Exception as e:
+            logger.error(f"Failed to reset collection '{collection_id}': {e}", exc_info=True)
+            return {"success": False, "items_deleted": 0, "message": f"Failed to reset collection: {str(e)}"}
+
     def toggle_collection(self, collection_id: int, enabled: bool):
         """
         Enables or disables a RAG collection.

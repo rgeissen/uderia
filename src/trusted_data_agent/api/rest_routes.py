@@ -3197,6 +3197,50 @@ async def delete_rag_collection(collection_id: int):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>/reset", methods=["POST"])
+async def reset_rag_collection(collection_id: int):
+    """Reset a RAG collection — removes all content but keeps the structure."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        # Agent pack constraint
+        from trusted_data_agent.core.agent_pack_db import AgentPackDB
+        pack_db = AgentPackDB()
+        packs = pack_db.get_packs_for_resource("collection", str(collection_id))
+        if packs:
+            pack_names = ", ".join(p["name"] for p in packs)
+            return jsonify({
+                "status": "error",
+                "message": f"This collection is managed by agent pack(s): {pack_names}. "
+                           f"Uninstall the pack(s) to reset it."
+            }), 409
+
+        retriever = get_rag_retriever()
+        if not retriever:
+            return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
+
+        if not retriever.is_user_collection_owner(collection_id, user_uuid):
+            return jsonify({"status": "error", "message": "Only collection owners can reset collections"}), 403
+
+        result = retriever.reset_collection(collection_id, user_id=user_uuid)
+
+        if result["success"]:
+            app_logger.info(f"Reset RAG collection {collection_id}: {result['items_deleted']} items removed")
+            return jsonify({
+                "status": "success",
+                "message": result["message"],
+                "items_deleted": result["items_deleted"]
+            }), 200
+        else:
+            return jsonify({"status": "error", "message": result["message"]}), 400
+
+    except Exception as e:
+        app_logger.error(f"Error resetting RAG collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @rest_api_bp.route("/v1/sessions/<session_id>/archive", methods=["PUT"])
 @require_auth
 async def archive_session_manual(current_user: dict, session_id: str):

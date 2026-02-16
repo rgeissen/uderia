@@ -879,6 +879,54 @@ async function deleteRagCollection(collectionId, collectionName) {
 }
 
 /**
+ * Reset a RAG collection — removes all content but keeps the structure.
+ */
+async function resetRagCollection(collectionId, collectionName) {
+    if (!window.showConfirmation) {
+        console.error('Confirmation system not available');
+        return;
+    }
+
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        const el = document.createElement('span');
+        el.textContent = str;
+        return el.innerHTML;
+    };
+
+    const doReset = async () => {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch(`/api/v1/rag/collections/${collectionId}/reset`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const count = data.items_deleted || 0;
+                showNotification('success', `Collection "${collectionName}" reset successfully. ${count} item(s) removed.`);
+                await loadRagCollections();
+            } else {
+                showNotification('error', `Failed to reset collection: ${data.message || data.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error resetting RAG collection:', error);
+            showNotification('error', 'Failed to reset collection. Check console for details.');
+        }
+    };
+
+    window.showConfirmation(
+        'Reset Collection',
+        `Are you sure you want to reset <strong>${escapeHtml(collectionName)}</strong>?<br><br>This will remove all RAG cases but keep the collection structure intact.`,
+        doReset
+    );
+}
+
+/**
  * Open Edit RAG Collection modal
  */
 function openEditCollectionModal(collection) {
@@ -4071,7 +4119,7 @@ function initializeRepositoryTabs() {
  */
 async function initializeKnowledgeRepositoryHandlers() {
     try {
-        const { initializeKnowledgeRepositoryHandlers, loadKnowledgeRepositories, deleteKnowledgeRepository, openUploadDocumentsModal } = await import('./knowledgeRepositoryHandler.js');
+        const { initializeKnowledgeRepositoryHandlers, loadKnowledgeRepositories, deleteKnowledgeRepository, resetKnowledgeRepository, openUploadDocumentsModal } = await import('./knowledgeRepositoryHandler.js');
 
         // Initialize handlers
         initializeKnowledgeRepositoryHandlers();
@@ -4080,6 +4128,7 @@ async function initializeKnowledgeRepositoryHandlers() {
         window.knowledgeRepositoryHandler = {
             loadKnowledgeRepositories,
             deleteKnowledgeRepository,
+            resetKnowledgeRepository,
             openUploadDocumentsModal
         };
 
@@ -4292,6 +4341,7 @@ if (document.readyState === 'loading') {
 window.ragCollectionManagement = {
     toggleRagCollection,
     deleteRagCollection,
+    resetRagCollection,
     refreshRagCollection,
     openEditCollectionModal,
     calculateRagImpactKPIs,

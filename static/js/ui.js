@@ -5942,6 +5942,28 @@ function createKnowledgeRepositoryCard(col) {
         }
     });
 
+    // Reset button (only for owned knowledge repositories)
+    if (col.is_owned) {
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        if (isManaged) {
+            resetBtn.className = 'card-btn';
+            resetBtn.disabled = true;
+            resetBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to reset`;
+        } else {
+            resetBtn.className = 'card-btn card-btn--warning';
+        }
+        resetBtn.textContent = 'Reset';
+        if (!isManaged) {
+            resetBtn.addEventListener('click', () => {
+                if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.resetKnowledgeRepository) {
+                    window.knowledgeRepositoryHandler.resetKnowledgeRepository(col.id, col.name);
+                }
+            });
+        }
+        actions.appendChild(resetBtn);
+    }
+
     // Delete/Unsubscribe button for Knowledge repositories
     if (col.is_subscribed && !col.is_owned) {
         // Subscribed collection - show Unsubscribe button
@@ -6168,6 +6190,33 @@ function createCollectionCard(col) {
                     }
                 });
                 actions.appendChild(exportBtn);
+            }
+
+            // Reset button (only for owned collections)
+            if (col.is_owned) {
+                const isResetPackManaged = col.agent_packs?.length > 0;
+                const resetPackNames = isResetPackManaged ? col.agent_packs.map(p => p.name).join(', ') : '';
+                const resetBtn = document.createElement('button');
+                resetBtn.type = 'button';
+                if (isResetPackManaged) {
+                    resetBtn.className = 'card-btn';
+                    resetBtn.disabled = true;
+                    resetBtn.title = `Managed by: ${resetPackNames} — uninstall the pack(s) to reset`;
+                } else if (col.id === 0) {
+                    resetBtn.className = 'card-btn';
+                    resetBtn.disabled = true;
+                } else {
+                    resetBtn.className = 'card-btn card-btn--warning';
+                }
+                resetBtn.textContent = 'Reset';
+                if (!isResetPackManaged && col.id !== 0) {
+                    resetBtn.addEventListener('click', () => {
+                        if (window.ragCollectionManagement && window.ragCollectionManagement.resetRagCollection) {
+                            window.ragCollectionManagement.resetRagCollection(col.id, col.name);
+                        }
+                    });
+                }
+                actions.appendChild(resetBtn);
             }
 
             // Delete/Unsubscribe button

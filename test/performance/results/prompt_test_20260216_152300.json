@@ -1,0 +1,75 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T15:23:00.807552",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "qlty_databaseQuality",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 126525,
+    "total_duration_ms": 66455,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 126525.0,
+    "avg_duration_ms": 66455.0
+  },
+  "results": [
+    {
+      "fixture_id": "qlty_databaseQuality_fitness",
+      "prompt_name": "qlty_databaseQuality",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-2fff8856-e770-470d-a3ee-75d4e54439ed",
+      "session_id": "2c0f8f19-c300-478e-a13e-c32a9986ed69",
+      "duration_ms": 66455,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 125388,
+        "output": 1137,
+        "total": 126525
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList",
+          "base_tableDDL",
+          "qlty_columnSummary",
+          "qlty_univariateStatistics",
+          "TDA_LLMTask",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

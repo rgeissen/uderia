@@ -1,0 +1,167 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T13:59:04.483251",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": "sql_",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 3,
+    "passed": 3,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 55699,
+    "total_duration_ms": 36250,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 18566.333333333332,
+    "avg_duration_ms": 12083.333333333334
+  },
+  "results": [
+    {
+      "fixture_id": "sql_Execute_Full_Pipeline",
+      "prompt_name": "sql_Execute_Full_Pipeline",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-f9097c6a-fae4-42f3-bc86-703eaa1676aa",
+      "session_id": "c2a8e5df-fb36-4a50-9ab1-a74a34c84b65",
+      "duration_ms": 18127,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 23072,
+        "output": 1287,
+        "total": 24359
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_LLMTask",
+          "TDA_FinalReport",
+          "sql_Execute_Full_Pipeline",
+          "sql_Analyze_Cluster_Stats"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "sql_Analyze_Cluster_Stats",
+      "prompt_name": "sql_Analyze_Cluster_Stats",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-4e3f1c72-9d5e-4061-869d-f6d041c5d247",
+      "session_id": "e3a6ee31-dbd7-4c07-856d-cce43574988f",
+      "duration_ms": 10068,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 17438,
+        "output": 740,
+        "total": 18178
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_FinalReport",
+          "sql_Analyze_Cluster_Stats",
+          "sql_Execute_Full_Pipeline"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "sort_by_metric": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    },
+    {
+      "fixture_id": "sql_Retrieve_Cluster_Queries",
+      "prompt_name": "sql_Retrieve_Cluster_Queries",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-20460e97-a22c-4c35-be1d-60bce57a4858",
+      "session_id": "114289d8-e071-42e4-87ec-f4fe671b0770",
+      "duration_ms": 8055,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 12588,
+        "output": 574,
+        "total": 13162
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_FinalReport",
+          "sql_Retrieve_Cluster_Queries"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "cluster_ids": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

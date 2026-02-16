@@ -20,5 +20,33 @@
         "expect_status": "complete"
       }
     }
+    ,
+    {
+      "id": "base_databaseBusinessDesc_fitness",
+      "prompt_name": "base_databaseBusinessDesc",
+      "description": "Business description for fitness_db database",
+      "arguments": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["base", "database-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "qlty_databaseQuality_fitness",
+      "prompt_name": "qlty_databaseQuality",
+      "description": "Database quality assessment for fitness_db",
+      "arguments": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["qlty", "database-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
   ]
 }

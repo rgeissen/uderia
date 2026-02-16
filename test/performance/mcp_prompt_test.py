@@ -131,6 +131,12 @@ Examples:
                 result = client.poll_task(task_id, timeout=timeout)
                 result.session_id = session_id
 
+                # Fetch session data for execution trace enrichment
+                try:
+                    result.session_data = client.get_session(session_id)
+                except Exception:
+                    result.session_data = None
+
                 # Print progress indicator
                 token_str = ""
                 if result.events:

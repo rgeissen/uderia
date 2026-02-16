@@ -2478,3 +2478,61 @@ export async function deleteKnowledgeRepository(collectionId, collectionName) {
         );
     }
 }
+
+/**
+ * Reset a knowledge repository — removes all documents/chunks but keeps the structure.
+ */
+export async function resetKnowledgeRepository(collectionId, collectionName) {
+    if (!window.showConfirmation) {
+        console.error('Confirmation system not available');
+        return;
+    }
+
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        const el = document.createElement('span');
+        el.textContent = str;
+        return el.innerHTML;
+    };
+
+    const doReset = async () => {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch(`/api/v1/rag/collections/${collectionId}/reset`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const count = data.items_deleted || 0;
+                const message = `Knowledge repository "${collectionName}" reset successfully. ${count} item(s) removed.`;
+                if (window.showAppBanner) {
+                    window.showAppBanner(message, 'success');
+                }
+                if (typeof loadKnowledgeRepositories === 'function') {
+                    await loadKnowledgeRepositories();
+                }
+            } else {
+                const errorMsg = `Failed to reset repository: ${data.message || data.error || 'Unknown error'}`;
+                if (window.showAppBanner) {
+                    window.showAppBanner(errorMsg, 'error');
+                }
+            }
+        } catch (error) {
+            console.error('Error resetting knowledge repository:', error);
+            if (window.showAppBanner) {
+                window.showAppBanner('Failed to reset repository. Check console for details.', 'error');
+            }
+        }
+    };
+
+    window.showConfirmation(
+        'Reset Knowledge Repository',
+        `Are you sure you want to reset <strong>${escapeHtml(collectionName)}</strong>?<br><br>This will remove all documents and chunks but keep the repository structure intact.`,
+        doReset
+    );
+}
