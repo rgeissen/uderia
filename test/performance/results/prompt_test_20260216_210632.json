@@ -1,0 +1,72 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T21:06:32.851386",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_tableArchive",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 83771,
+    "total_duration_ms": 42905,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 83771.0,
+    "avg_duration_ms": 42905.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_tableArchive_system",
+      "prompt_name": "dba_tableArchive",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-7246d016-551c-4f69-9ff6-dd12e8e1184c",
+      "session_id": "4888fdb1-c48b-4d59-8d27-152a6e52f770",
+      "duration_ms": 42905,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 80689,
+        "output": 3082,
+        "total": 83771
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableSpace",
+          "base_databaseList",
+          "TDA_ComplexPromptReport",
+          "base_tableDDL",
+          "TDA_LLMTask"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

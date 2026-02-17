@@ -1,0 +1,71 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T09:21:50.451540",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_userActivityAnalysis",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 51898,
+    "total_duration_ms": 22840,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 51898.0,
+    "avg_duration_ms": 22840.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_userActivityAnalysis_system",
+      "prompt_name": "dba_userActivityAnalysis",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-1cbd4bb2-1ea6-487e-acfa-4983ad831ba7",
+      "session_id": "6babc9a9-8a5c-4923-96e2-9d0f4e90b4dd",
+      "duration_ms": 22840,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 49044,
+        "output": 2854,
+        "total": 51898
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_resusageSummary",
+          "dba_userSqlList",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

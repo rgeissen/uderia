@@ -79,5 +79,47 @@
         "expect_status": "complete"
       }
     }
+    ,
+    {
+      "id": "dba_tableArchive_system",
+      "prompt_name": "dba_tableArchive",
+      "description": "Find archiving opportunities across the 10 largest tables - generates SQL archive script",
+      "arguments": {},
+      "tags": ["dba", "system-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_databaseLineage_fitness",
+      "prompt_name": "dba_databaseLineage",
+      "description": "Analyze table lineage in fitness_db by parsing SQL execution history",
+      "arguments": {
+        "database_name": "fitness_db",
+        "number_days": "30"
+      },
+      "tags": ["dba", "database-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_userActivityAnalysis_system",
+      "prompt_name": "dba_userActivityAnalysis",
+      "description": "Analyze user activity patterns for the past 7 days - resource consumption and query behavior",
+      "arguments": {},
+      "tags": ["dba", "system-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 2,
+        "expect_status": "complete"
+      }
+    }
   ]
 }

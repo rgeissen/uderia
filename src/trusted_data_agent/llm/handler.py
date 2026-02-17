@@ -104,8 +104,14 @@ def parse_and_coerce_llm_response(response_text: str, target_model: BaseModel) -
     try:
         data = json.loads(json_str)
     except JSONDecodeError as e:
-        app_logger.error(f"Initial JSON parsing failed even after extraction and sanitization. Error: {e}. String: {json_str[:500]}...")
-        raise # Re-raise the specific JSONDecodeError
+        app_logger.warning(f"Initial JSON parsing failed: {e}. Attempting string literal repair...")
+        try:
+            repaired = _repair_json_string_literals(json_str)
+            data = json.loads(repaired)
+            app_logger.info("JSON string literal repair successful (fixed unescaped chars in string values).")
+        except JSONDecodeError:
+            app_logger.error(f"JSON parsing failed even after repair. Original error: {e}. String: {json_str[:500]}...")
+            raise e  # Re-raise the original error
 
     # 2. First validation attempt
     try:
@@ -169,6 +175,36 @@ def _sanitize_llm_output(text: str) -> str:
 
     # Basic stripping of leading/trailing whitespace
     return sanitized_text.strip()
+
+
+def _repair_json_string_literals(json_str: str) -> str:
+    """Escape literal newlines/tabs inside JSON string values.
+
+    LLMs sometimes emit actual newline characters inside JSON string
+    values instead of the escaped \\n sequence. This function walks
+    the JSON text, tracks whether we're inside a string region
+    (between unescaped quotes), and escapes any literal newlines,
+    tabs, or carriage returns found within string values.
+    """
+    result = []
+    in_string = False
+    i = 0
+    while i < len(json_str):
+        ch = json_str[i]
+        if ch == '"' and (i == 0 or json_str[i - 1] != '\\'):
+            in_string = not in_string
+            result.append(ch)
+        elif in_string and ch == '\n':
+            result.append('\\n')
+        elif in_string and ch == '\r':
+            result.append('\\r')
+        elif in_string and ch == '\t':
+            result.append('\\t')
+        else:
+            result.append(ch)
+        i += 1
+    return ''.join(result)
+
 
 def _extract_final_answer_from_json(text: str) -> str:
     """

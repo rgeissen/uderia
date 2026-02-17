@@ -1,0 +1,100 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T21:45:13.873844",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_databaseLineage",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 0,
+    "warned": 1,
+    "errored": 0,
+    "total_tokens": 363677,
+    "total_duration_ms": 24180,
+    "total_self_corrections": 5,
+    "avg_tokens_per_prompt": 363677.0,
+    "avg_duration_ms": 24180.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_databaseLineage_fitness",
+      "prompt_name": "dba_databaseLineage",
+      "verdict": "WARN",
+      "verdict_reasons": [
+        "Self-corrections: 5 > max 0"
+      ],
+      "status": "complete",
+      "task_id": "task-487caddd-bd5d-4c61-9b37-73517fa6e802",
+      "session_id": "8a59f3ea-d981-4da4-bb00-f948816a2161",
+      "duration_ms": 24180,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 362615,
+        "output": 1062,
+        "total": 363677
+      },
+      "self_correction": {
+        "count": 5,
+        "types": [
+          "tool_error",
+          "tool_error",
+          "tool_error",
+          "tool_error",
+          "tool_error"
+        ],
+        "none_value_errors": 0,
+        "llm_correction_calls": 5,
+        "details": [
+          {
+            "type": "tool_error",
+            "summary": "Tool failed. Attempting self-correction (1/2)."
+          },
+          {
+            "type": "tool_error",
+            "summary": "Tool failed. Attempting self-correction (1/2)."
+          },
+          {
+            "type": "tool_error",
+            "summary": "Tool failed. Attempting self-correction (1/2)."
+          },
+          {
+            "type": "tool_error",
+            "summary": "Tool failed. Attempting self-correction (1/2)."
+          },
+          {
+            "type": "tool_error",
+            "summary": "Tool failed. Attempting self-correction (1/2)."
+          }
+        ]
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList",
+          "TDA_ComplexPromptReport",
+          "dba_tableSqlList"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "number_days": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

@@ -1233,7 +1233,7 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
         "2.  `executive_summary`: REQUIRED. A concise, high-level summary paragraph explaining the key findings of the analysis.\n"
         "3.  `report_sections`: REQUIRED. A list of objects, where each object represents a logical section of the report. Each section object MUST have:\n"
         "    - `title`: The title for that specific section (e.g., 'Data Quality Analysis', 'Table DDL').\n"
-        "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, and code blocks for clarity. IMPORTANT: Do NOT start the content with a markdown heading that repeats the section title — the title is already rendered separately by the UI."
+        "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, code blocks, and MARKDOWN TABLES for clarity. When the prompt goal asks for tables, heatmaps, or rankings, you MUST include them as markdown tables inside the content string — do not defer rendering to the UI or use placeholders. Compute actual values from the data. IMPORTANT: Do NOT start the content with a markdown heading that repeats the section title — the title is already rendered separately by the UI."
     )
 
     raw_data_chars = len(json.dumps(workflow_state, indent=2))
