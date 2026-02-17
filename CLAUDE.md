@@ -1870,6 +1870,8 @@ npx tailwindcss build
 - Dynamic capability discovery at runtime
 - Credential passthrough (no server-side storage)
 
+**Important — Additive Change Policy**: When modifying MCP server tools or prompts (e.g., in `teradata-mcp-server`), all changes must be **additive**. Existing functional requirements — parameters, SQL queries, prompt instructions — must continue to work as before. Never remove or rename existing parameters; only add new ones alongside them. This ensures backward compatibility for all consumers of the MCP server.
+
 ### LLM Providers Supported
 
 - Google (Gemini 2.0)

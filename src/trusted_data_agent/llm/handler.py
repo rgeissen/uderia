@@ -193,8 +193,14 @@ def _repair_json_string_literals(json_str: str) -> str:
     i = 0
     while i < len(json_str):
         ch = json_str[i]
-        if ch == '"' and (i == 0 or json_str[i - 1] != '\\'):
-            in_string = not in_string
+        if ch == '"':
+            num_preceding_backslashes = 0
+            j = i - 1
+            while j >= 0 and json_str[j] == '\\':
+                num_preceding_backslashes += 1
+                j -= 1
+            if num_preceding_backslashes % 2 == 0:
+                in_string = not in_string
             result.append(ch)
         elif in_string and ch == '\n':
             result.append('\\n')

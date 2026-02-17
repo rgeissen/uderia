@@ -953,7 +953,7 @@ KNOWLEDGE_CHUNK_SIZE = 1_000               # Default chunk size for knowledge re
 KNOWLEDGE_CHUNK_OVERLAP = 200              # Default overlap between chunks
 
 # LLM output
-LLM_MAX_OUTPUT_TOKENS = 8_192             # Max output tokens (all providers)
+LLM_MAX_OUTPUT_TOKENS = 16_384            # Max output tokens (all providers)
 
 # Knowledge context
 KNOWLEDGE_MAX_TOKENS = 2_000               # Knowledge context budget per retrieval

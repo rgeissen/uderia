@@ -1603,6 +1603,45 @@ class Planner:
                          break
 
             if is_date_range_phase and is_missing_loop and uses_date_range_output:
+
+                # Check if the tool has paired start/end date arguments,
+                # indicating it handles date ranges natively (no iteration needed).
+                arg_names = set(next_phase.get("arguments", {}).keys())
+                range_pairs = [("start_date", "end_date"), ("from_date", "to_date"),
+                               ("begin_date", "end_date"), ("start", "end")]
+                has_range_args = any(s in arg_names and e in arg_names for s, e in range_pairs)
+
+                if has_range_args:
+                    # Tool handles date ranges natively — extract boundary date
+                    # from TDA_DateRange output instead of iterating per day.
+                    for arg_name, arg_value in next_phase["arguments"].items():
+                        if (isinstance(arg_value, str) and
+                            arg_value == f"result_of_phase_{current_phase['phase']}"):
+                            next_phase["arguments"][arg_name] = {
+                                "source": f"result_of_phase_{current_phase['phase']}",
+                                "key": "date"
+                            }
+                            break
+
+                    app_logger.info(
+                        f"PLAN REWRITE: Phase {next_phase['phase']} has date range args "
+                        f"({arg_names}). Extracting first date instead of iterating."
+                    )
+                    event_data = {
+                        "step": "System Correction",
+                        "type": "optimization",
+                        "details": {
+                            "summary": "Tool accepts a date range natively. "
+                                       "Extracted boundary date from TDA_DateRange output "
+                                       "instead of iterating per day.",
+                        }
+                    }
+                    self.executor._log_system_event(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
+                    made_change = True
+                    i += 1
+                    continue  # Skip the loop conversion below
+
                 app_logger.warning(
                     f"PLAN REWRITE: Detected TDA_DateRange at phase {current_phase['phase']} "
                     f"not followed by a loop. Rewriting phase {next_phase['phase']}."

@@ -68,7 +68,7 @@ class AppConfig:
     KNOWLEDGE_CHUNK_OVERLAP = 200  # Overlap between consecutive document chunks
 
     # LLM output limits
-    LLM_MAX_OUTPUT_TOKENS = 8_192  # Max output tokens for LLM generation calls
+    LLM_MAX_OUTPUT_TOKENS = 16_384  # Max output tokens for LLM generation calls
 
     SQL_OPTIMIZATION_PROMPTS = []
     SQL_OPTIMIZATION_TOOLS = ["base_readQuery"]
