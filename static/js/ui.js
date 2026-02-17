@@ -81,6 +81,9 @@ const EVENT_CATEGORY_MAP = {
     // Plan Optimization Events (Blue background) - proactive improvements
     'plan_optimization': 'optimization',
 
+    // Context Optimization Events (Blue background) - data reduction for token efficiency
+    'context_optimization': 'optimization',
+
     // Error Events (Red background)
     'execution_error': 'error',
     'tool_error': 'error',
@@ -3149,6 +3152,50 @@ function _renderOptimizationDetails(details) {
     return html || null;
 }
 
+/**
+ * Renders details for context optimization events (document_truncation, context_distillation, report_distillation).
+ */
+function _renderContextOptimizationDetails(details) {
+    if (typeof details === 'string') return `<div class="text-xs text-gray-300 mt-1">${details}</div>`;
+    if (typeof details !== 'object' || details === null) return null;
+
+    const summary = details.summary || '';
+    let html = '';
+    if (summary) html += `<div class="text-xs text-gray-300 mt-1">${summary}</div>`;
+
+    const kvPairs = [];
+    if (details.subtype === 'document_truncation') {
+        if (details.filename) kvPairs.push(['File', `<code class="status-code">${details.filename}</code>`]);
+        if (details.original_chars) kvPairs.push(['Original', `${details.original_chars.toLocaleString()} chars`]);
+        if (details.truncated_to_chars) kvPairs.push(['Truncated to', `${details.truncated_to_chars.toLocaleString()} chars`]);
+        if (details.reason === 'total_context_limit') {
+            kvPairs.push(['Documents', `${details.documents_loaded} of ${details.documents_total} loaded`]);
+            kvPairs.push(['Limit', `${(details.limit_chars || 0).toLocaleString()} chars`]);
+        }
+    } else if (details.subtype === 'context_distillation') {
+        kvPairs.push(['Rows', (details.row_count || 0).toLocaleString()]);
+        kvPairs.push(['Size', `${(details.char_count || 0).toLocaleString()} chars`]);
+        if (details.columns && details.columns.length) {
+            kvPairs.push(['Columns', details.columns.slice(0, 5).map(c => `<code class="status-code">${c}</code>`).join(', ')
+                + (details.columns.length > 5 ? ` +${details.columns.length - 5} more` : '')]);
+        }
+    } else if (details.subtype === 'report_distillation') {
+        kvPairs.push(['Original', `${(details.original_chars || 0).toLocaleString()} chars`]);
+        kvPairs.push(['Distilled', `${(details.distilled_chars || 0).toLocaleString()} chars`]);
+        kvPairs.push(['Reduction', `${details.reduction_pct || 0}%`]);
+        kvPairs.push(['Level', String(details.level || 1)]);
+    }
+
+    if (kvPairs.length > 0) {
+        html += '<div class="status-kv-grid mt-1">';
+        for (const [key, value] of kvPairs) {
+            html += `<div class="status-kv-key">${key}</div><div class="status-kv-value">${value}</div>`;
+        }
+        html += '</div>';
+    }
+    return html || null;
+}
+
 function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
@@ -3285,6 +3332,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderExecutionCompleteDetails(details);
             } else if (type === "workaround" || type === "plan_optimization") {
                 customRenderedHtml = _renderOptimizationDetails(details);
+            } else if (type === "context_optimization") {
+                customRenderedHtml = _renderContextOptimizationDetails(details);
             } else {
                 try {
                     const cache = new Set();

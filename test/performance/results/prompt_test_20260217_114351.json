@@ -1,0 +1,93 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T11:43:51.915545",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_databaseHealthAssessment",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 26580,
+    "total_duration_ms": 14097,
+    "total_self_corrections": 1,
+    "avg_tokens_per_prompt": 26580.0,
+    "avg_duration_ms": 14097.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Execution error (system_error): Date Range Orchestrator failed to parse date range. Error: time data 'N/A' does not match format '%Y-%m-%d' [phases_completed=7, partial_tokens=25,620]"
+      ],
+      "status": "complete",
+      "task_id": "task-fdf2df4f-a231-428d-a115-0a030671254f",
+      "session_id": "27d42d98-16d8-4a66-b037-d188b8a8772b",
+      "duration_ms": 14097,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 25552,
+        "output": 1028,
+        "total": 26580
+      },
+      "self_correction": {
+        "count": 1,
+        "types": [
+          "tool_error"
+        ],
+        "none_value_errors": 0,
+        "llm_correction_calls": 1,
+        "details": [
+          {
+            "type": "tool_error",
+            "summary": "Tool failed. Attempting self-correction (1/2)."
+          }
+        ]
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_databaseList",
+          "dba_resusageSummary",
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "dba_databaseSpace",
+          "TDA_SystemOrchestration"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_scope": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": [
+        {
+          "error_message": "Date Range Orchestrator failed to parse date range. Error: time data 'N/A' does not match format '%Y-%m-%d'",
+          "error_type": "system_error",
+          "phases_completed": 7,
+          "partial_input_tokens": 25620,
+          "partial_output_tokens": 1060
+        }
+      ]
+    }
+  ]
+}

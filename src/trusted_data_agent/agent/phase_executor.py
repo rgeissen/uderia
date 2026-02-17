@@ -1297,7 +1297,12 @@ class PhaseExecutor:
                     focused_data_payload = {}
 
 
-                modified_args["data"] = self.executor._distill_data_for_llm_context(focused_data_payload)
+                distill_events = []
+                modified_args["data"] = self.executor._distill_data_for_llm_context(focused_data_payload, _events=distill_events)
+                for evt in distill_events:
+                    event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
+                    self.executor._log_system_event(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
                 fast_path_action["arguments"] = modified_args
                 app_logger.info(f"Prepared focused data payload for TDA_LLMTask loop item: {json.dumps(modified_args['data'])}")
 
@@ -1349,6 +1354,13 @@ class PhaseExecutor:
             next_action, input_tokens, output_tokens = await self._get_next_tactical_action(
                 phase_goal, relevant_tools, enriched_args, strategic_args, executable_prompt
             )
+
+            # Emit any context distillation events from tactical planning
+            for evt in getattr(self, '_pending_distill_events', []):
+                event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
+                self.executor._log_system_event(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
+            self._pending_distill_events = []
 
             # --- Log tactical LLM call to execution trace for reload consistency ---
             tactical_log_event = {
@@ -1538,6 +1550,19 @@ class PhaseExecutor:
                     app_logger.info(
                         f"ORCHESTRATOR: Range tool '{tool_name}' has MISSING start_date/end_date "
                         f"(placeholder resolution failed). Routing to orchestrator for date resolution."
+                    )
+                    is_date_orchestrator_target = True
+                elif not isinstance(start_val, str) or (end_val and not isinstance(end_val, str)):
+                    # Case 3: Date args resolved to non-string (list/dict from TDA_DateRange result).
+                    # The planner piped a TDA_DateRange result directly as start_date, producing
+                    # a list of date dicts instead of a YYYY-MM-DD string. Clear the invalid
+                    # values and route to orchestrator for proper date resolution.
+                    action["arguments"].pop("start_date", None)
+                    action["arguments"].pop("end_date", None)
+                    app_logger.info(
+                        f"ORCHESTRATOR: Range tool '{tool_name}' has non-string date args "
+                        f"(start_date type={type(start_val).__name__}). "
+                        f"Clearing and routing to orchestrator for date resolution."
                     )
                     is_date_orchestrator_target = True
                 else:
@@ -1937,6 +1962,14 @@ class PhaseExecutor:
             )
             # --- MODIFICATION END ---
 
+            # Check for report distillation metadata piggybacked by adapter
+            if isinstance(tool_result, dict):
+                distill_meta = tool_result.pop("_distillation_meta", None)
+                if distill_meta:
+                    event_data = {"step": "Context Optimization", "type": "context_optimization", "details": distill_meta}
+                    self.executor._log_system_event(event_data)
+                    yield self.executor._format_sse_with_depth(event_data)
+
             # --- Calculate cost for client-side LLM evaluation of MCP server feedback ---
             _tool_llm_cost = 0
             if input_tokens > 0 or output_tokens > 0:
@@ -2248,8 +2281,11 @@ class PhaseExecutor:
         if strategic_args:
             strategic_arguments_section = json.dumps(strategic_args, indent=2)
 
-        distilled_workflow_state = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.workflow_state))
-        distilled_turn_history = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.turn_action_history))
+        distill_events = []
+        distilled_workflow_state = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.workflow_state), _events=distill_events)
+        distilled_turn_history = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.turn_action_history), _events=distill_events)
+        # Store distillation events for caller to emit via SSE
+        self._pending_distill_events = distill_events
 
         tactical_system_prompt = WORKFLOW_TACTICAL_PROMPT.format(
             workflow_goal=self.executor.workflow_goal_prompt,
@@ -2449,7 +2485,12 @@ class PhaseExecutor:
                 self.executor.globally_skipped_tools.add(failed_tool_name)
                 break
 
-        distilled_workflow_state = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.workflow_state))
+        distill_events = []
+        distilled_workflow_state = self.executor._distill_data_for_llm_context(copy.deepcopy(self.executor.workflow_state), _events=distill_events)
+        for evt in distill_events:
+            event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
+            self.executor._log_system_event(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
         # Use profile-aware prompt resolution
         recovery_prompt_content = self.executor.prompt_resolver.get_error_recovery_base_prompt()

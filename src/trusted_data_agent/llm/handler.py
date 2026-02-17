@@ -177,14 +177,16 @@ def _sanitize_llm_output(text: str) -> str:
     return sanitized_text.strip()
 
 
+_VALID_JSON_ESCAPE_CHARS = set('"\\\\/bfnrtu')
+
 def _repair_json_string_literals(json_str: str) -> str:
-    """Escape literal newlines/tabs inside JSON string values.
+    """Escape literal newlines/tabs and invalid escape sequences inside JSON string values.
 
     LLMs sometimes emit actual newline characters inside JSON string
-    values instead of the escaped \\n sequence. This function walks
-    the JSON text, tracks whether we're inside a string region
-    (between unescaped quotes), and escapes any literal newlines,
-    tabs, or carriage returns found within string values.
+    values instead of the escaped \\n sequence, or produce invalid
+    escape sequences like \\e, \\s, \\p in markdown content. This
+    function walks the JSON text, tracks whether we're inside a string
+    region (between unescaped quotes), and fixes these issues.
     """
     result = []
     in_string = False
@@ -200,6 +202,13 @@ def _repair_json_string_literals(json_str: str) -> str:
             result.append('\\r')
         elif in_string and ch == '\t':
             result.append('\\t')
+        elif in_string and ch == '\\':
+            # Check if next character forms a valid JSON escape
+            if i + 1 < len(json_str) and json_str[i + 1] not in _VALID_JSON_ESCAPE_CHARS:
+                # Invalid escape sequence (e.g., \e, \s, \p) — double the backslash
+                result.append('\\\\')
+            else:
+                result.append(ch)
         else:
             result.append(ch)
         i += 1

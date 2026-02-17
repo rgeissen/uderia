@@ -22,13 +22,17 @@ app_logger = logging.getLogger("quart.app")
 # Unlike the executor's _distill_data_for_llm_context (metadata-only),
 # this preserves sample rows so the LLM can generate meaningful analysis.
 
-def _distill_workflow_for_report(workflow_state: dict) -> dict:
+def _distill_workflow_for_report(workflow_state: dict) -> tuple[dict, dict | None]:
     """Create a report-friendly distillation of workflow_state.
 
     Keeps first APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS rows as representative
     samples and adds metadata summary for the full dataset. Applies a total
     budget check and aggressively reduces if needed.
+
+    Returns:
+        Tuple of (distilled dict, distillation metadata dict or None if no meaningful reduction)
     """
+    original_size = len(json.dumps(workflow_state))
     distilled = copy.deepcopy(workflow_state)
 
     for key in list(distilled.keys()):
@@ -39,7 +43,8 @@ def _distill_workflow_for_report(workflow_state: dict) -> dict:
     # Safety check: if total size still exceeds budget, reduce further
     total_json = json.dumps(distilled)
     budget = APP_CONFIG.REPORT_DISTILLATION_TOTAL_BUDGET
-    if len(total_json) > budget:
+    triggered_level2 = len(total_json) > budget
+    if triggered_level2:
         app_logger.warning(
             f"Report distillation: total size {len(total_json):,} chars exceeds "
             f"budget {budget:,}. Applying aggressive reduction."
@@ -48,7 +53,20 @@ def _distill_workflow_for_report(workflow_state: dict) -> dict:
         reduced_json = json.dumps(distilled)
         app_logger.info(f"Report distillation: reduced to {len(reduced_json):,} chars")
 
-    return distilled
+    distilled_size = len(json.dumps(distilled))
+    meta = None
+    if distilled_size < original_size * 0.9:  # only report meaningful reductions (>10%)
+        meta = {
+            "subtype": "report_distillation",
+            "summary": f"Report data distilled: {original_size:,} → {distilled_size:,} chars ({round((1 - distilled_size / original_size) * 100, 1)}% reduction, L{'2' if triggered_level2 else '1'})",
+            "original_chars": original_size,
+            "distilled_chars": distilled_size,
+            "reduction_pct": round((1 - distilled_size / original_size) * 100, 1),
+            "level": 2 if triggered_level2 else 1,
+            "budget_chars": budget
+        }
+
+    return distilled, meta
 
 
 def _distill_value_for_report(data):
@@ -1145,11 +1163,14 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
         workflow_state_for_data = workflow_state
     # --- MODIFICATION END ---
 
+    distilled_data, distill_meta = _distill_workflow_for_report(workflow_state_for_data)
+    distilled_json = json.dumps(distilled_data, indent=2)
+
     final_summary_prompt_text = (
         "You are an expert data analyst. Your task is to create a final report for the user by analyzing the provided data and their original question.\n\n"
         f"--- USER'S ORIGINAL QUESTION ---\n{user_question}\n\n"
         f"{knowledge_section}"
-        f"--- DATA FOR ANALYSIS ---\n{json.dumps(_distill_workflow_for_report(workflow_state_for_data), indent=2)}\n\n"
+        f"--- DATA FOR ANALYSIS ---\n{distilled_json}\n\n"
         "--- INSTRUCTIONS ---\n"
         "Your response MUST be a single JSON object that strictly follows the schema for a `CanonicalResponse`.\n"
         "You are required to populate its fields based on your analysis of the data provided above.\n"
@@ -1201,6 +1222,8 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
             "results": [report_data.model_dump()],
             "corrections": correction_descriptions
         }
+        if distill_meta:
+            result["_distillation_meta"] = distill_meta
         return result, input_tokens, output_tokens
     except (json.JSONDecodeError, ValidationError) as e:
         # --- FIX: More detailed error logging to diagnose parsing failures ---
@@ -1223,10 +1246,13 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
     prompt_goal = command.get("arguments", {}).get("prompt_goal", "No prompt goal provided.")
     final_call_id = call_id or str(uuid.uuid4())
 
+    distilled_data, distill_meta = _distill_workflow_for_report(workflow_state)
+    distilled_json = json.dumps(distilled_data, indent=2)
+
     final_summary_prompt_text = (
         "You are an expert technical writer and data analyst. Your task is to synthesize all the collected data from a completed workflow into a formal, structured report that fulfills the original prompt's goal.\n\n"
         f"--- ORIGINAL PROMPT GOAL ---\n{prompt_goal}\n\n"
-        f"--- ALL COLLECTED DATA ---\n{json.dumps(_distill_workflow_for_report(workflow_state), indent=2)}\n\n"
+        f"--- ALL COLLECTED DATA ---\n{distilled_json}\n\n"
         "--- INSTRUCTIONS ---\n"
         "Your response MUST be a single JSON object that strictly follows the schema for a `PromptReportResponse`.\n\n"
         "--- FIELD GUIDELINES ---\n"
@@ -1274,6 +1300,8 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
             "results": [report_data.model_dump()],
             "corrections": correction_descriptions
         }
+        if distill_meta:
+            result["_distillation_meta"] = distill_meta
         return result, input_tokens, output_tokens
     except (json.JSONDecodeError, ValidationError) as e:
         app_logger.error(f"Failed to parse/validate TDA_ComplexPromptReport: {e}. Response: {response_text}")

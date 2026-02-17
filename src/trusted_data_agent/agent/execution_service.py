@@ -435,7 +435,7 @@ async def _run_genie_execution(
         genie_user_input = user_input
         if attachments:
             from trusted_data_agent.agent.executor import load_document_context
-            doc_context = load_document_context(user_uuid, session_id, attachments)
+            doc_context, _ = load_document_context(user_uuid, session_id, attachments)
             if doc_context:
                 genie_user_input = f"[User has uploaded documents]\n{doc_context}\n\n[User's question]\n{user_input}"
 

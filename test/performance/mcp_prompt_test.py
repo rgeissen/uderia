@@ -134,7 +134,8 @@ Examples:
                 # Fetch session data for execution trace enrichment
                 try:
                     result.session_data = client.get_session(session_id)
-                except Exception:
+                except Exception as e:
+                    print(f"       Session:   fetch failed ({e})")
                     result.session_data = None
 
                 # Print progress indicator
@@ -174,7 +175,9 @@ Examples:
                     print(f"       Guards:    {', '.join(analysis.plan_quality.safeguards_fired)}")
                 if args.verbose and analysis.self_correction.count > 0:
                     for detail in analysis.self_correction.correction_details[:3]:
-                        print(f"       SC [{detail['type']}]: {detail['summary'][:80]}")
+                        tool_info = f" ({detail['tool_name']})" if detail.get('tool_name') else ""
+                        error_text = detail.get('error', detail['summary'])[:100]
+                        print(f"       SC [{detail['type']}]{tool_info}: {error_text}")
 
                 analyses.append(analysis)
 

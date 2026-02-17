@@ -57,9 +57,9 @@
         "database_scope": "user"
       },
       "tags": ["dba", "system-level"],
-      "timeout_seconds": 300,
+      "timeout_seconds": 120,
       "expectations": {
-        "max_self_corrections": 2,
+        "max_self_corrections": 0,
         "expect_status": "complete"
       }
     }

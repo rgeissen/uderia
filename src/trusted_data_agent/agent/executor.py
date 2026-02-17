@@ -38,7 +38,7 @@ from trusted_data_agent.agent.session_name_generator import generate_session_nam
 app_logger = logging.getLogger("quart.app")
 
 
-def load_document_context(user_uuid: str, session_id: str, attachments: list) -> str | None:
+def load_document_context(user_uuid: str, session_id: str, attachments: list) -> tuple[str | None, list[dict]]:
     """
     Load extracted text from uploaded documents and format as context block.
 
@@ -51,10 +51,10 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
         attachments: List of attachment dicts with file_id, filename keys
 
     Returns:
-        Formatted document context string, or None if no attachments
+        Tuple of (formatted document context string or None, list of truncation event dicts)
     """
     if not attachments:
-        return None
+        return None, []
 
     from pathlib import Path
     from trusted_data_agent.core.utils import get_project_root
@@ -65,17 +65,18 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
 
     if not manifest_path.exists():
         app_logger.warning(f"Upload manifest not found for session {session_id}")
-        return None
+        return None, []
 
     try:
         with open(manifest_path, 'r', encoding='utf-8') as f:
             manifest = json.loads(f.read())
     except Exception as e:
         app_logger.error(f"Failed to load upload manifest: {e}")
-        return None
+        return None, []
 
     context_parts = []
     total_chars = 0
+    truncation_events = []
 
     for attachment in attachments:
         file_id = attachment.get("file_id")
@@ -91,22 +92,40 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
             continue
 
         # Truncate individual documents if needed
-        if len(extracted_text) > APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:
+        original_size = len(extracted_text)
+        if original_size > APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:
             extracted_text = extracted_text[:APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS] + \
-                f"\n\n[Document truncated - showing first {APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:,} characters of {len(entry.get('extracted_text', '')):,} total]"
+                f"\n\n[Document truncated - showing first {APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:,} characters of {original_size:,} total]"
+            truncation_events.append({
+                "subtype": "document_truncation",
+                "summary": f"Document '{filename}' truncated: {original_size:,} → {APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:,} chars",
+                "filename": filename,
+                "original_chars": original_size,
+                "truncated_to_chars": APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS,
+                "reason": "per_file_limit"
+            })
 
         context_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
         total_chars += len(extracted_text)
 
         if total_chars > APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS:
             context_parts.append("[Additional documents omitted - context limit reached]")
+            truncation_events.append({
+                "subtype": "document_truncation",
+                "summary": f"Document context limit reached: {len(context_parts)} of {len(attachments)} documents loaded ({total_chars:,} chars)",
+                "documents_loaded": len(context_parts),
+                "documents_total": len(attachments),
+                "total_chars": total_chars,
+                "limit_chars": APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS,
+                "reason": "total_context_limit"
+            })
             break
 
     if not context_parts:
-        return None
+        return None, []
 
     app_logger.info(f"Loaded document context: {len(context_parts)} documents, {total_chars:,} chars total")
-    return "\n\n".join(context_parts)
+    return "\n\n".join(context_parts), truncation_events
 
 
 def load_multimodal_document_content(
@@ -953,9 +972,13 @@ class PlanExecutor:
              self.structured_collected_data[context_key].append(tool_result)
         app_logger.debug(f"Added tool result to structured data under key: '{context_key}'.")
 
-    def _distill_data_for_llm_context(self, data: any) -> any:
+    def _distill_data_for_llm_context(self, data: any, _events: list = None) -> any:
         """
         Recursively distills large data structures into metadata summaries to protect the LLM context window.
+
+        Args:
+            data: The data structure to distill
+            _events: Optional list to accumulate distillation event dicts (caller reads after call)
         """
         if isinstance(data, dict):
             if 'results' in data and isinstance(data['results'], list):
@@ -964,21 +987,30 @@ class PlanExecutor:
                             len(json.dumps(results_list)) > APP_CONFIG.CONTEXT_DISTILLATION_MAX_CHARS)
 
                 if is_large and all(isinstance(item, dict) for item in results_list):
+                    columns = list(results_list[0].keys()) if results_list else []
+                    if _events is not None:
+                        _events.append({
+                            "subtype": "context_distillation",
+                            "summary": f"Large result distilled: {len(results_list):,} rows → metadata summary",
+                            "row_count": len(results_list),
+                            "char_count": len(json.dumps(results_list)),
+                            "columns": columns
+                        })
                     distilled_result = {
                         "status": data.get("status", "success"),
                         "metadata": {
                             "row_count": len(results_list),
-                            "columns": list(results_list[0].keys()) if results_list else [],
+                            "columns": columns,
                             **data.get("metadata", {})
                         },
                         "comment": "Full data is too large for context. This is a summary."
                     }
                     return distilled_result
 
-            return {key: self._distill_data_for_llm_context(value) for key, value in data.items()}
+            return {key: self._distill_data_for_llm_context(value, _events=_events) for key, value in data.items()}
 
         elif isinstance(data, list):
-            return [self._distill_data_for_llm_context(item) for item in data]
+            return [self._distill_data_for_llm_context(item, _events=_events) for item in data]
 
         return data
 
@@ -2254,7 +2286,11 @@ Response:"""
             self.document_context = text_fallback
             if not self.document_context and not self.multimodal_content:
                 # Pure fallback: use text extraction for everything
-                self.document_context = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                self.document_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                for evt in doc_trunc_events:
+                    event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
+                    self._log_system_event(event_data)
+                    yield self._format_sse_with_depth(event_data)
 
             if self.multimodal_content:
                 app_logger.info(f"Native multimodal: {len(self.multimodal_content)} block(s) for {self.current_provider}")
@@ -2608,7 +2644,13 @@ The following domain knowledge may be relevant to this conversation:
                 app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
 
             # Load document context from uploaded files
-            doc_context = load_document_context(self.user_uuid, self.session_id, self.attachments) if self.attachments else None
+            doc_context = None
+            if self.attachments:
+                doc_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                for evt in doc_trunc_events:
+                    event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
+                    self._log_system_event(event_data)
+                    yield self._format_sse_with_depth(event_data)
 
             # Build user message (WITHOUT system prompt)
             user_message = await self._build_user_message_for_conversation(
@@ -3497,7 +3539,13 @@ The following domain knowledge may be relevant to this conversation:
                 app_logger.info(f"[RAG] Using synthesis prompt override ({len(system_prompt)} chars)")
 
             # Load document context from uploaded files
-            rag_doc_context = load_document_context(self.user_uuid, self.session_id, self.attachments) if self.attachments else None
+            rag_doc_context = None
+            if self.attachments:
+                rag_doc_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                for evt in doc_trunc_events:
+                    event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
+                    self._log_system_event(event_data)
+                    yield self._format_sse_with_depth(event_data)
 
             user_message = await self._build_user_message_for_rag_synthesis(
                 knowledge_context=knowledge_context,

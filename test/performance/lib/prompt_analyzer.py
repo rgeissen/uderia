@@ -354,7 +354,9 @@ class PromptAnalyzer:
             wh = session_data.get("last_turn_data", {}).get("workflow_history", [])
             if not wh:
                 return
-            sc = analysis.self_correction
+            # Reset SC — session trace is authoritative, SSE path is fallback.
+            # Both paths detect the same events; without reset, counts double.
+            sc = SelfCorrectionInfo()
             trace = wh[0].get("execution_trace", [])
             for entry in trace:
                 action = entry.get("action", {})
@@ -394,7 +396,14 @@ class PromptAnalyzer:
                         elif "schema" in error_msg or "validation" in error_msg:
                             sc_type = "schema_validation"
                         sc.types.append(sc_type)
-                        sc.correction_details.append({"type": sc_type, "summary": summary[:120]})
+                        tool_name_sc = inner.get("tool_name", "") if isinstance(inner, dict) else ""
+                        error_msg_sc = str(inner.get("error_message", inner.get("data", "")))[:200] if isinstance(inner, dict) else ""
+                        sc.correction_details.append({
+                            "type": sc_type,
+                            "summary": summary[:120],
+                            "tool_name": tool_name_sc,
+                            "error": error_msg_sc,
+                        })
 
                     # Count LLM correction calls (LLM proposes new arguments)
                     if meta_type == "workaround" and "llm proposed" in summary_lower:
@@ -415,8 +424,10 @@ class PromptAnalyzer:
                     if "date range" in details_lower or "date_range" in details_lower:
                         if "date_range" not in analysis.plan_quality.orchestrators_used:
                             analysis.plan_quality.orchestrators_used.append("date_range")
+            # Replace SSE-derived SC with authoritative trace-derived SC
+            analysis.self_correction = sc
         except (KeyError, IndexError, TypeError):
-            pass  # Session data may not have expected structure
+            pass  # Session data may not have expected structure; keep SSE-derived counts
 
     def _parse_system_log(self, msg: str, pq: PlanQualityInfo, sc: SelfCorrectionInfo):
         """Extract indicators from TDA_SystemLog messages."""
