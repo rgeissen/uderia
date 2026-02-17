@@ -173,6 +173,8 @@ Examples:
                     print(f"       Orch:      {', '.join(analysis.plan_quality.orchestrators_used)}")
                 if args.verbose and analysis.plan_quality.safeguards_fired:
                     print(f"       Guards:    {', '.join(analysis.plan_quality.safeguards_fired)}")
+                if args.verbose and analysis.plan_quality.rewrite_passes_fired:
+                    print(f"       Rewrites:  {', '.join(analysis.plan_quality.rewrite_passes_fired)}")
                 if args.verbose and analysis.self_correction.count > 0:
                     for detail in analysis.self_correction.correction_details[:3]:
                         tool_info = f" ({detail['tool_name']})" if detail.get('tool_name') else ""

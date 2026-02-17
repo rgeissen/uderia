@@ -256,7 +256,7 @@ class PromptAnalyzer:
                     else:
                         pq.slow_path_count += 1
 
-            # Tool result events
+            # Tool result events (named SSE event type = "tool_result")
             if ev.get("event_type") == "tool_result":
                 if isinstance(ed, dict):
                     details = ed.get("details", {})
@@ -264,6 +264,29 @@ class PromptAnalyzer:
                         tool_name = details.get("metadata", {}).get("tool_name", "")
                         if tool_name and tool_name not in pq.tools_invoked:
                             pq.tools_invoked.append(tool_name)
+
+            # Live SSE tool_intent / tool_result events (type embedded in data,
+            # no named SSE event type — emitted by phase_executor and orchestrators)
+            if ev.get("event_type") is None and isinstance(ed, dict):
+                data_type = ed.get("type", "")
+                details = ed.get("details", {})
+                if data_type in ("tool_intent", "tool_result", "tool_error") and isinstance(details, dict):
+                    tool_name = (
+                        details.get("tool_name")
+                        or details.get("metadata", {}).get("tool_name", "")
+                    )
+                    if tool_name and tool_name not in pq.tools_invoked:
+                        pq.tools_invoked.append(tool_name)
+
+                # Rewrite pass / optimization events from planner SSE
+                if data_type in ("optimization", "workaround", "plan_optimization"):
+                    summary = ""
+                    if isinstance(details, dict):
+                        summary = details.get("summary", "")
+                    elif isinstance(details, str):
+                        summary = details
+                    if summary:
+                        self._detect_rewrite_pass(summary, pq)
 
             # Status/notification events containing tool/orchestrator info
             if ev.get("event_type") == "notification":
@@ -285,11 +308,6 @@ class PromptAnalyzer:
                     safeguard = ntf_payload.get("safeguard", "")
                     if safeguard and safeguard not in pq.safeguards_fired:
                         pq.safeguards_fired.append(safeguard)
-
-                    # Rewrite passes
-                    rewrite = ntf_payload.get("rewrite_pass", "")
-                    if rewrite and rewrite not in pq.rewrite_passes_fired:
-                        pq.rewrite_passes_fired.append(rewrite)
 
             # Parse TDA_SystemLog messages from tool_result events
             if ev.get("event_type") == "tool_result":
@@ -424,6 +442,10 @@ class PromptAnalyzer:
                     if "date range" in details_lower or "date_range" in details_lower:
                         if "date_range" not in analysis.plan_quality.orchestrators_used:
                             analysis.plan_quality.orchestrators_used.append("date_range")
+
+                    # --- Rewrite pass detection from session trace ---
+                    if meta_type in ("optimization", "workaround", "plan_optimization"):
+                        self._detect_rewrite_pass(summary, analysis.plan_quality)
             # Replace SSE-derived SC with authoritative trace-derived SC
             analysis.self_correction = sc
         except (KeyError, IndexError, TypeError):
@@ -489,14 +511,35 @@ class PromptAnalyzer:
                 pq.tools_invoked.append(iterated_tool)
 
         # Rewrite passes
-        for rw in [
-            "temporal_flow", "sql_consolidation", "multi_loop_synthesis",
-            "scope_alignment", "argument_binding", "phase_dedup",
-            "goal_refinement", "tool_routing", "final_validation",
-        ]:
-            if rw in msg_lower:
-                if rw not in pq.rewrite_passes_fired:
-                    pq.rewrite_passes_fired.append(rw)
+        self._detect_rewrite_pass(msg, pq)
+
+    # ------------------------------------------------------------------
+    # Rewrite pass detection (shared across SSE, SystemLog, session trace)
+    # ------------------------------------------------------------------
+
+    # Canonical names → patterns that appear in log messages, SSE summaries,
+    # or session trace TDA_SystemLog entries.  Matched case-insensitively.
+    _REWRITE_PATTERNS = [
+        ("temporal_data_flow",    ["temporal data flow", "temporal preprocessing"]),
+        ("sql_consolidation",     ["sql consolidation", "sql plan was inefficient", "consolidated"]),
+        ("multi_loop_synthesis",  ["multi-loop", "distillation step"]),
+        ("date_range_wiring",     ["date range natively", "wired start_date", "unwrapped llm-generated loop for range tool"]),
+        ("date_range_loop",       ["process each item in the date range"]),
+        ("charting_cleanup",      ["charting argument cleanup", "charting cleanup"]),
+        ("chart_data_reuse",      ["chart data reuse", "redundant data-gathering"]),
+        ("context_report",        ["contextreport was missing", "tda_contextreport was called without"]),
+        ("llm_task_optimization", ["aggregation tda_llmtask", "optimized into a single batch"]),
+        ("plan_validation",       ["plan has been corrected"]),
+        ("plan_hydration",        ["plan hydration", "hydrated plan"]),
+    ]
+
+    def _detect_rewrite_pass(self, text: str, pq: PlanQualityInfo):
+        """Detect which rewrite pass fired from a log/summary string."""
+        text_lower = text.lower()
+        for canonical, patterns in self._REWRITE_PATTERNS:
+            if any(p in text_lower for p in patterns):
+                if canonical not in pq.rewrite_passes_fired:
+                    pq.rewrite_passes_fired.append(canonical)
 
     # ------------------------------------------------------------------
     # Parameter resolution

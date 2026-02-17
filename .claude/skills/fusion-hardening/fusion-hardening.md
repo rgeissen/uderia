@@ -1352,11 +1352,38 @@ The shared analyzer (`lib/prompt_analyzer.py`) applies fusion hardening patterns
 | Self-correction | `"System Self-Correction"` events, None value errors | Safeguard 2 (Section 2) |
 | Plan quality | Fast-path/slow-path counts, tools invoked, orchestrators | Section 1 decision tree |
 | Safeguards | Proactive re-planning, error correction, autonomous recovery | Section 2 safeguards |
-| Rewrite passes | SQL consolidation, temporal wiring, plan hydration, final report guarantee | Section 1 passes |
+| Rewrite passes | All planner rewrite passes (see table below) | Section 1 passes |
 | Parameter resolution | Fixture argument values present in execution events | MCP prompt/tool args |
 | **Tool invocation** | Expected tool appears in `tools_invoked` list | Tool fixture `expected_tool` |
 | **Tool arguments** | Expected argument values found in tool call events | Tool fixture `expected_tool_args` |
+| **Live tool events** | `tool_intent`/`tool_result` SSE events from phase_executor + orchestrators | Live execution stream |
 | Token metrics | Input/output from `token_update` events | Context window hygiene |
+
+**Rewrite pass detection** uses three complementary paths:
+
+| Detection Path | Events Scanned | Authority |
+|----------------|----------------|-----------|
+| Live SSE events | `event_type=None`, `data.type` in `optimization`/`workaround`/`plan_optimization` | Real-time |
+| TDA_SystemLog (SSE) | Named `tool_result` events with `tool_name=TDA_SystemLog` | SSE fallback |
+| Session trace | `execution_trace[].action` where `tool_name=TDA_SystemLog` and `metadata.type` matches | Authoritative |
+
+**Canonical rewrite pass names** detected by the analyzer:
+
+| Canonical Name | Planner Method | Pattern Strings |
+|----------------|---------------|-----------------|
+| `temporal_data_flow` | `_rewrite_plan_for_temporal_data_flow` | "temporal data flow", "temporal preprocessing" |
+| `sql_consolidation` | `_rewrite_plan_for_sql_consolidation` | "sql consolidation", "sql plan was inefficient" |
+| `multi_loop_synthesis` | `_rewrite_plan_for_multi_loop_synthesis` | "multi-loop", "distillation step" |
+| `date_range_wiring` | `_rewrite_plan_for_date_range_loops` | "date range natively", "wired start_date", "unwrapped llm-generated loop" |
+| `date_range_loop` | `_rewrite_plan_for_date_range_loops` | "process each item in the date range" |
+| `charting_cleanup` | `_rewrite_plan_for_charting_cleanup` | "charting argument cleanup" |
+| `chart_data_reuse` | `_rewrite_plan_for_charting_phases` | "chart data reuse", "redundant data-gathering" |
+| `context_report` | `_rewrite_plan_for_empty_context_report` | "tda_contextreport was called without" |
+| `llm_task_optimization` | `_rewrite_plan_for_corellmtask_loops` | "aggregation tda_llmtask", "optimized into a single batch" |
+| `plan_validation` | `_validate_and_correct_plan` | "plan has been corrected" |
+| `plan_hydration` | `_hydrate_plan` | "plan hydration", "hydrated plan" |
+
+**Tool name extraction** from live events: The analyzer now detects tool names from both named SSE events (`event_type="tool_result"` with `details.metadata.tool_name`) and live status events (`event_type=None`, `data.type` in `tool_intent`/`tool_result` with `details.tool_name` at top level).
 
 **Verdict computation:** ERROR issues → FAIL, WARNING only → WARN, no issues → PASS
 
@@ -1396,6 +1423,12 @@ python test/performance/mcp_tool_test.py --profile-tag OPTIM --tag column-scope
 ---
 
 ## Changelog
+
+**v1.5.0 (2026-02-17)**
+- **Live tool event detection**: Analyzer now captures `tool_intent`/`tool_result` SSE events from phase_executor and orchestrators (previously invisible — tool names only came from named SSE events or session trace)
+- **Rewrite pass detection overhaul**: Replaced 9 stale detection strings with 11 canonical pass names matching actual planner log messages. Detection now works across 3 paths: live SSE, TDA_SystemLog, and session trace
+- **Verbose rewrite display**: Both `mcp_prompt_test.py` and `mcp_tool_test.py` now show `Rewrites:` line in verbose output
+- **Section 8 documentation**: Added rewrite pass canonical names table, detection path table, and live tool event documentation
 
 **v1.4.0 (2026-02-12)**
 - Extended **Section 8** to cover both MCP Prompt and MCP Tool testing
