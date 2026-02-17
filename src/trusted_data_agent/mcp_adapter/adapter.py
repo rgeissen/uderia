@@ -3,7 +3,9 @@ import copy
 import json
 import logging
 import re
+import statistics as _stats
 import uuid
+from collections import Counter
 from datetime import datetime, timedelta
 
 from pydantic import ValidationError
@@ -58,15 +60,175 @@ def _distill_workflow_for_report(workflow_state: dict) -> tuple[dict, dict | Non
     if distilled_size < original_size * 0.9:  # only report meaningful reductions (>10%)
         meta = {
             "subtype": "report_distillation",
-            "summary": f"Report data distilled: {original_size:,} → {distilled_size:,} chars ({round((1 - distilled_size / original_size) * 100, 1)}% reduction, L{'2' if triggered_level2 else '1'})",
+            "summary": f"Report data distilled: {original_size:,} → {distilled_size:,} chars ({round((1 - distilled_size / original_size) * 100, 1)}% reduction, L{'2' if triggered_level2 else '1'}, analytical)",
             "original_chars": original_size,
             "distilled_chars": distilled_size,
             "reduction_pct": round((1 - distilled_size / original_size) * 100, 1),
             "level": 2 if triggered_level2 else 1,
-            "budget_chars": budget
+            "budget_chars": budget,
+            "analytical_distillation": True,
         }
 
     return distilled, meta
+
+
+# ---------------------------------------------------------------------------
+# Analytical Distillation — Column Statistics & Stratified Sampling
+# ---------------------------------------------------------------------------
+# Computes per-column statistics on the FULL dataset before truncation,
+# and selects stratified samples covering the full data range instead of
+# naive first-N rows. This gives the report LLM precise quantitative data
+# (min/max/mean/percentiles/distributions) with minimal token overhead.
+
+_TEMPORAL_NAME_HINTS = frozenset({
+    "date", "time", "timestamp", "logdate", "thedate",
+    "created", "modified", "updated", "datetime", "collecttimestamp",
+})
+
+
+def _compute_column_statistics(results_list: list[dict]) -> dict:
+    """Compute per-column statistics for analytical distillation.
+
+    Classifies each column as numeric, temporal, or categorical and
+    returns appropriate statistics.  Uses only Python stdlib.
+    """
+    if not results_list:
+        return {}
+
+    columns = list(results_list[0].keys())
+    col_stats = {}
+
+    for col in columns:
+        raw_values = [row.get(col) for row in results_list if row.get(col) is not None]
+        if not raw_values:
+            col_stats[col] = {"type": "empty", "count": 0}
+            continue
+
+        total_count = len(raw_values)
+
+        # --- Type detection ---
+        col_lower = col.lower().replace("_", "").replace("-", "").replace(" ", "")
+        is_temporal_name = any(hint in col_lower for hint in _TEMPORAL_NAME_HINTS)
+
+        # Numeric check: float() on sample of up to 50 values
+        sample_for_detection = raw_values[:50]
+        numeric_successes = 0
+        for v in sample_for_detection:
+            try:
+                float(v)
+                numeric_successes += 1
+            except (ValueError, TypeError):
+                pass
+        is_numeric = len(sample_for_detection) > 0 and numeric_successes / len(sample_for_detection) > 0.8
+
+        if is_numeric and not is_temporal_name:
+            # --- Numeric column ---
+            numeric_vals = []
+            for v in raw_values:
+                try:
+                    numeric_vals.append(float(v))
+                except (ValueError, TypeError):
+                    pass
+
+            if not numeric_vals:
+                col_stats[col] = {"type": "categorical", "count": total_count,
+                                  "distinct_count": len(set(str(v) for v in raw_values))}
+                continue
+
+            sorted_vals = sorted(numeric_vals)
+            n = len(sorted_vals)
+
+            entry = {
+                "type": "numeric",
+                "count": total_count,
+                "min": round(sorted_vals[0], 4),
+                "max": round(sorted_vals[-1], 4),
+                "mean": round(_stats.mean(sorted_vals), 4),
+                "sum": round(sum(sorted_vals), 4),
+            }
+
+            if n >= 2:
+                entry["median"] = round(_stats.median(sorted_vals), 4)
+                p25_idx = max(0, int(n * 0.25) - 1)
+                p75_idx = min(n - 1, int(n * 0.75))
+                entry["p25"] = round(sorted_vals[p25_idx], 4)
+                entry["p75"] = round(sorted_vals[p75_idx], 4)
+            if n >= 3:
+                try:
+                    entry["stddev"] = round(_stats.stdev(sorted_vals), 4)
+                except _stats.StatisticsError:
+                    pass
+
+            col_stats[col] = entry
+
+        elif is_temporal_name:
+            # --- Temporal column ---
+            str_values = [str(v) for v in raw_values]
+            counter = Counter(str_values)
+            sorted_unique = sorted(counter.keys())
+
+            top_values = [
+                {"value": val, "count": cnt, "pct": round(cnt / total_count * 100, 1)}
+                for val, cnt in counter.most_common(10)
+            ]
+            col_stats[col] = {
+                "type": "temporal",
+                "count": total_count,
+                "distinct_count": len(counter),
+                "range": {"min": sorted_unique[0], "max": sorted_unique[-1]},
+                "top_values": top_values,
+            }
+
+        else:
+            # --- Categorical column ---
+            str_values = [str(v) for v in raw_values]
+            counter = Counter(str_values)
+
+            top_values = [
+                {"value": val, "count": cnt, "pct": round(cnt / total_count * 100, 1)}
+                for val, cnt in counter.most_common(10)
+            ]
+            col_stats[col] = {
+                "type": "categorical",
+                "count": total_count,
+                "distinct_count": len(counter),
+                "top_values": top_values,
+            }
+
+    return col_stats
+
+
+def _select_representative_sample(results_list: list[dict], max_rows: int) -> list[dict]:
+    """Select a stratified sample covering the full range of data.
+
+    Instead of taking the first N rows (biased toward the beginning),
+    this selects boundary rows (first/last) plus evenly spaced interior
+    rows to ensure coverage of the entire dataset.
+    """
+    n = len(results_list)
+    if n <= max_rows:
+        return list(results_list)
+
+    boundary = min(5, max(1, max_rows // 4))
+    head = results_list[:boundary]
+    tail = results_list[-boundary:]
+
+    interior_count = max_rows - (2 * boundary)
+    if interior_count <= 0:
+        return (head + tail)[:max_rows]
+
+    middle_start = boundary
+    middle_end = n - boundary
+    middle_range = middle_end - middle_start
+
+    step = max(1, middle_range // (interior_count + 1))
+    interior = []
+    for i in range(middle_start, middle_end, step):
+        interior.append(results_list[i])
+        if len(interior) >= interior_count:
+            break
+
+    return (head + interior + tail)[:max_rows]
 
 
 def _distill_value_for_report(data):
@@ -82,17 +244,23 @@ def _distill_value_for_report(data):
                 or len(json.dumps(results_list)) > max_chars
             )
             if is_large and results_list and all(isinstance(r, dict) for r in results_list[:5]):
-                sample = results_list[:max_rows]
+                # Analytical distillation: statistics on FULL data + stratified sample
+                column_stats = _compute_column_statistics(results_list)
+                sample = _select_representative_sample(results_list, max_rows)
+
                 distilled = dict(data)
                 distilled['results'] = sample
                 distilled.setdefault('metadata', {})
                 distilled['metadata']['total_row_count'] = len(results_list)
                 distilled['metadata']['sample_rows_included'] = len(sample)
+                distilled['metadata']['sampling_method'] = 'stratified'
                 distilled['metadata']['columns'] = list(results_list[0].keys()) if results_list else []
+                distilled['metadata']['column_statistics'] = column_stats
                 distilled['metadata']['truncated'] = True
                 distilled['metadata']['truncation_note'] = (
-                    f"Showing first {len(sample)} of {len(results_list)} rows. "
-                    f"Analysis should note patterns are based on this sample."
+                    f"Analytical summary of {len(results_list)} rows with {len(sample)} "
+                    f"representative samples (stratified). Use column_statistics for precise "
+                    f"quantitative claims about the full dataset."
                 )
                 return distilled
         return {k: _distill_value_for_report(v) for k, v in data.items()}
@@ -103,13 +271,20 @@ def _distill_value_for_report(data):
             and data
             and all(isinstance(item, dict) for item in data[:5])
         ):
-            sample = data[:max_rows]
+            column_stats = _compute_column_statistics(data)
+            sample = _select_representative_sample(data, max_rows)
             return {
                 '_distilled': True,
                 'sample': sample,
                 'total_count': len(data),
                 'columns': list(data[0].keys()) if data else [],
-                'note': f"Showing first {len(sample)} of {len(data)} items."
+                'column_statistics': column_stats,
+                'sampling_method': 'stratified',
+                'note': (
+                    f"Analytical summary of {len(data)} items with {len(sample)} "
+                    f"representative samples (stratified). Use column_statistics for "
+                    f"precise quantitative claims about the full dataset."
+                )
             }
         return [_distill_value_for_report(item) for item in data]
 
@@ -127,18 +302,25 @@ def _aggressive_distill(distilled: dict, max_rows: int = None):
 
 
 def _reduce_samples(data, max_rows: int):
-    """Recursively reduce sample sizes in already-distilled data."""
+    """Recursively reduce sample sizes in already-distilled data.
+
+    Note: column_statistics are preserved as-is since they were computed
+    on the full dataset during L1 distillation.
+    """
     if isinstance(data, dict):
         if 'results' in data and isinstance(data['results'], list) and len(data['results']) > max_rows:
-            data['results'] = data['results'][:max_rows]
+            data['results'] = _select_representative_sample(data['results'], max_rows)
             if 'metadata' in data and isinstance(data['metadata'], dict):
-                data['metadata']['sample_rows_included'] = max_rows
+                data['metadata']['sample_rows_included'] = len(data['results'])
+                data['metadata']['sampling_method'] = 'stratified'
                 data['metadata']['truncation_note'] = (
-                    f"Aggressively reduced to first {max_rows} of "
-                    f"{data['metadata'].get('total_row_count', '?')} rows."
+                    f"Aggressively reduced to {len(data['results'])} stratified samples of "
+                    f"{data['metadata'].get('total_row_count', '?')} rows. "
+                    f"column_statistics reflect the full dataset."
                 )
         if '_distilled' in data and 'sample' in data and isinstance(data['sample'], list):
-            data['sample'] = data['sample'][:max_rows]
+            if len(data['sample']) > max_rows:
+                data['sample'] = _select_representative_sample(data['sample'], max_rows)
         return {k: _reduce_samples(v, max_rows) for k, v in data.items()}
     elif isinstance(data, list):
         return [_reduce_samples(item, max_rows) for item in data]
@@ -1178,7 +1360,11 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
         + "--- FIELD GUIDELINES ---\n"
         "1.  `direct_answer`: REQUIRED. A single, concise sentence that directly and factually answers the user's primary question.\n"
         "2.  `key_metric`: OPTIONAL. Use ONLY if the answer can be summarized by a single, primary value (e.g., a total count, a status). Requires `value` (string) and `label` (string). Omit the entire field if not applicable.\n"
-        "3.  `key_observations`: OPTIONAL. A list of objects, each with a `text` field containing a single, narrative bullet point of supporting detail or context. Do NOT include raw data or code."
+        "3.  `key_observations`: OPTIONAL. A list of objects, each with a `text` field containing a single, narrative bullet point of supporting detail or context. Do NOT include raw data or code.\n\n"
+        "--- STATISTICAL DATA USAGE ---\n"
+        "When the data includes `column_statistics` in metadata, use these pre-computed statistics "
+        "for precise quantitative claims (min, max, mean, median, percentiles, distributions). "
+        "These statistics cover the FULL dataset, not just the sample rows."
     )
 
     reason = f"Client-Side Tool Call: TDA_FinalReport\nGoal: {user_question}"
@@ -1260,7 +1446,11 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
         "2.  `executive_summary`: REQUIRED. A concise, high-level summary paragraph explaining the key findings of the analysis.\n"
         "3.  `report_sections`: REQUIRED. A list of objects, where each object represents a logical section of the report. Each section object MUST have:\n"
         "    - `title`: The title for that specific section (e.g., 'Data Quality Analysis', 'Table DDL').\n"
-        "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, code blocks, and MARKDOWN TABLES for clarity. When the prompt goal asks for tables, heatmaps, or rankings, you MUST include them as markdown tables inside the content string — do not defer rendering to the UI or use placeholders. Compute actual values from the data. IMPORTANT: Do NOT start the content with a markdown heading that repeats the section title — the title is already rendered separately by the UI."
+        "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, code blocks, and MARKDOWN TABLES for clarity. When the prompt goal asks for tables, heatmaps, or rankings, you MUST include them as markdown tables inside the content string — do not defer rendering to the UI or use placeholders. Compute actual values from the data. IMPORTANT: Do NOT start the content with a markdown heading that repeats the section title — the title is already rendered separately by the UI.\n\n"
+        "--- STATISTICAL DATA USAGE ---\n"
+        "When the collected data includes `column_statistics` in metadata, use these pre-computed statistics "
+        "for precise quantitative claims (min, max, mean, median, percentiles, value distributions). "
+        "These statistics cover the FULL dataset, not just the sample rows."
     )
 
     raw_data_chars = len(json.dumps(workflow_state, indent=2))
@@ -1428,6 +1618,8 @@ async def _invoke_util_calculate_date_range(STATE: dict, command: dict, user_uui
     return {
         "status": "success",
         "metadata": {"tool_name": "TDA_DateRange"},
+        "start_date": date_list[0]["date"],
+        "end_date": date_list[-1]["date"],
         "results": date_list
     }
 

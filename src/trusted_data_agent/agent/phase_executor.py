@@ -1533,10 +1533,29 @@ class PhaseExecutor:
 
         is_range_candidate, date_param_name, tool_supports_range = self._is_date_query_candidate(action)
         is_date_orchestrator_target = False
+        known_temporal_phrase = None  # Set when phrase is already known from args (skips LLM classification)
         if is_range_candidate and tool_name not in ["TDA_DateRange", "TDA_CurrentDate"]:
             if not tool_supports_range:
                 # Single-date tool — always route to orchestrator (existing behavior)
                 is_date_orchestrator_target = True
+                # Extract temporal phrase from the date argument if available
+                action_args = action.get("arguments", {})
+                date_val = action_args.get(date_param_name, "")
+                if isinstance(date_val, str) and date_val:
+                    temporal_patterns_single = [
+                        r'past\s+\d+\s+(hours?|days?|weeks?|months?)',
+                        r'last\s+\d+\s+(hours?|days?|weeks?|months?)',
+                        r'(yesterday|today)',
+                        r'in\s+the\s+(last|past)',
+                        r'for\s+the\s+(past|last)',
+                        r'\d+\s+(hours?|days?|weeks?|months?)\s+ago',
+                    ]
+                    if any(re.search(p, date_val.lower()) for p in temporal_patterns_single):
+                        known_temporal_phrase = date_val
+                        app_logger.info(
+                            f"ORCHESTRATOR: Single-date tool '{tool_name}' has temporal phrase "
+                            f"'{date_val}' in '{date_param_name}'. Extracted for deterministic routing."
+                        )
             else:
                 # Range tool (start_date + end_date) — route to orchestrator in two cases:
                 args = action.get("arguments", {})
@@ -1583,11 +1602,67 @@ class PhaseExecutor:
                                 f"'{date_arg_value}' in '{date_param_name}'. Routing to orchestrator."
                             )
                             is_date_orchestrator_target = True
+                            known_temporal_phrase = date_arg_value
 
         if is_date_orchestrator_target:
-            yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
-            async for event in self._classify_date_query_type(): yield event
-            yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
+            # Phase goal fallback: if phrase not found in action args, extract from phase goal.
+            # This covers Case 1 (empty args), Case 3 (non-string args), and single-date tools
+            # where Pass 0 didn't inject a temporal phrase into the argument value.
+            if not known_temporal_phrase:
+                phase_goal = phase.get('goal', '')
+                goal_match = re.search(
+                    r'((?:past|last|next)\s+\d+\s+(?:hours?|days?|weeks?|months?|years?)'
+                    r'|yesterday|today'
+                    r'|this\s+(?:week|month|year)'
+                    r'|last\s+(?:week|month|year))',
+                    phase_goal, re.IGNORECASE
+                )
+                if goal_match:
+                    known_temporal_phrase = goal_match.group(1)
+                    app_logger.info(
+                        f"ORCHESTRATOR: Extracted temporal phrase from phase goal: "
+                        f"'{known_temporal_phrase}' (goal: '{phase_goal}')"
+                    )
+
+            # Fallback 2: Extract from original user input.
+            # Covers plans where TDA_DateRange phase absorbed the temporal phrase
+            # and left the target tool phase with a generic goal.
+            if not known_temporal_phrase:
+                user_input_lower = self.executor.original_user_input.lower()
+                input_match = re.search(
+                    r'((?:past|last|next)\s+\d+\s+(?:hours?|days?|weeks?|months?|years?)'
+                    r'|yesterday|today'
+                    r'|this\s+(?:week|month|year)'
+                    r'|last\s+(?:week|month|year)'
+                    r'|current\s+(?:week|month|year))',
+                    user_input_lower
+                )
+                if input_match:
+                    known_temporal_phrase = input_match.group(1)
+                    app_logger.info(
+                        f"ORCHESTRATOR: Extracted temporal phrase from user input: "
+                        f"'{known_temporal_phrase}'"
+                    )
+
+            if known_temporal_phrase:
+                # DETERMINISTIC: type from tool schema, phrase from args or goal.
+                # Always 'range' — the orchestrator handles single dates too
+                # ("yesterday" → start=end, "today" → start=end).
+                self.executor.temp_data_holder = {'type': 'range', 'phrase': known_temporal_phrase}
+                app_logger.info(
+                    f"ORCHESTRATOR: Deterministic date routing — "
+                    f"phrase='{known_temporal_phrase}'"
+                )
+            else:
+                # LAST RESORT: no phrase in args, goal, or user input — use LLM classification.
+                # This should only fire for queries with no recognizable temporal phrase at all.
+                app_logger.warning(
+                    f"ORCHESTRATOR: No temporal phrase found in args, phase goal, or user input "
+                    f"for '{tool_name}'. Falling back to LLM classification."
+                )
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
+                async for event in self._classify_date_query_type(): yield event
+                yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             # For range tools (start_date + end_date), accept both 'range' and 'single' classifications.
             # "today" is often classified as 'single', but the orchestrator can still resolve it
@@ -1919,9 +1994,6 @@ class PhaseExecutor:
                 yield self.executor._format_sse_with_depth({"step": "System Notification", "details": action['notification'], "type": "workaround"})
                 del action['notification']
 
-            if not is_fast_path:
-                 yield self.executor._format_sse_with_depth({"step": "Tool Execution Intent", "details": action, "tool_name": tool_name}, "tool_intent")
-
             status_target = "db"
             call_id_for_tool = None
 
@@ -1944,6 +2016,13 @@ class PhaseExecutor:
                 })
 
             yield self.executor._format_sse_with_depth({"target": status_target, "state": "busy"}, "status_indicator_update")
+
+            # Emit tool execution intent (visible in Live Status during execution)
+            yield self.executor._format_sse_with_depth({
+                "step": "Tool Execution Intent",
+                "type": "tool_intent",
+                "details": action
+            })
 
             full_context_for_tool = {
                 "original_user_input": self.executor.original_user_input,
@@ -2002,6 +2081,14 @@ class PhaseExecutor:
             # --- Inject cost into tool_result metadata for "Tool Execution Result" card ---
             if _tool_llm_cost > 0 and isinstance(tool_result, dict) and "metadata" in tool_result:
                 tool_result["metadata"]["cost_usd"] = _tool_llm_cost
+
+            # Emit tool execution result (visible in Live Status during execution)
+            _result_event_type = "tool_error" if (isinstance(tool_result, dict) and tool_result.get("status") == "error") else "tool_result"
+            yield self.executor._format_sse_with_depth({
+                "step": "Tool Execution Result",
+                "type": _result_event_type,
+                "details": tool_result
+            })
 
             yield self.executor._format_sse_with_depth({"target": status_target, "state": "idle"}, "status_indicator_update")
 
@@ -2107,8 +2194,6 @@ class PhaseExecutor:
                     }
                     yield self.executor._format_sse_with_depth({"step": "Persistent Failure", "type": "error", "details": persistent_failure_details})
             else:
-                if not is_fast_path:
-                     yield self.executor._format_sse_with_depth({"step": "Tool Execution Result", "details": tool_result, "tool_name": tool_name}, "tool_result")
                 break
         
         # --- MODIFICATION START: Move logging out of the loop ---

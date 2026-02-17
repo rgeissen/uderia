@@ -1,0 +1,78 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T17:06:40.694355",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_date_orchestrator_fixtures.json",
+    "filter": "date_orch_last_month",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 10818,
+    "total_duration_ms": 8046,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 10818.0,
+    "avg_duration_ms": 8046.0
+  },
+  "results": [
+    {
+      "fixture_id": "date_orch_last_month_userdelay",
+      "prompt_name": "dba_userDelay",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-93bd964a-3866-4399-9b92-d49df9b8764e",
+      "session_id": "974d16ec-47cf-49d7-9c01-4126bad0199d",
+      "duration_ms": 8046,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 10323,
+        "output": 495,
+        "total": 10818
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_userDelay"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

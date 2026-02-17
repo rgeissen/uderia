@@ -257,9 +257,9 @@ Turn N:  Linear growth in history portion
 |--------------|-----------|---------|------------|
 | **Tool condensation** | Names-only after first turn | 60-70% of tool context | handler.py:423-437 |
 | **History condensation** | Remove duplicates, clean capabilities | 10-20% of history | handler.py:253-355 |
-| **Context distillation** | Summarize large tool outputs (metadata-only) | 99%+ of large results | executor.py:956-983 |
-| **Report distillation L1** | Sample rows per result set (preserves data) | 80-90% of large results | adapter.py:25-51 |
-| **Report distillation L2** | Aggressive row reduction on total budget | 95%+ when budget exceeded | adapter.py:101-127 |
+| **Context distillation** | Summarize large tool outputs (metadata-only) | 99%+ of large results | executor.py:975-1015 |
+| **Analytical distillation L1** | Column statistics + stratified samples per result set | 80-90% of large results | adapter.py:25-320 |
+| **Analytical distillation L2** | Aggressive stratified reduction on total budget | 95%+ when budget exceeded | adapter.py:293-320 |
 | **Document truncation** | Per-file + total char limits on uploads | Prevents unbounded doc context | executor.py:41-100 |
 | **Plan hydration** | Inject previous results, skip re-fetch | 1-2 tool calls saved | planner.py:182-250 |
 | **Turn validity toggle** | Exclude invalid turns from context | Variable | session_manager.py:1468-1532 |
@@ -272,39 +272,76 @@ Turn N:  Linear growth in history portion
 | Tool condensation | `full_context_sent == True` (after turn 1) |
 | History condensation | `CONDENSE_SYSTEMPROMPT_HISTORY` config flag |
 | Context distillation | Result > `CONTEXT_DISTILLATION_MAX_ROWS` (500) rows OR > `CONTEXT_DISTILLATION_MAX_CHARS` (10,000) chars |
-| Report distillation L1 | Per-result > `REPORT_DISTILLATION_MAX_ROWS` (100) rows OR > `REPORT_DISTILLATION_MAX_CHARS` (50,000) chars |
-| Report distillation L2 | Total distilled JSON > `REPORT_DISTILLATION_TOTAL_BUDGET` (200,000) chars |
+| Analytical distillation L1 | Per-result > `REPORT_DISTILLATION_MAX_ROWS` (100) rows OR > `REPORT_DISTILLATION_MAX_CHARS` (50,000) chars |
+| Analytical distillation L2 | Total distilled JSON > `REPORT_DISTILLATION_TOTAL_BUDGET` (200,000) chars |
 | Document truncation | Per-file > `DOCUMENT_PER_FILE_MAX_CHARS` (20,000) chars or total > `DOCUMENT_CONTEXT_MAX_CHARS` (50,000) chars |
 | Plan hydration | Previous turn has reusable data for current phase |
 | Turn validity | User toggles turn via UI |
 | Memory purge | User clicks "Clear Memory" |
 
-### 5.3 Report Distillation (Two-Level)
+### 5.3 Analytical Distillation (Two-Level)
 
-**File:** `src/trusted_data_agent/mcp_adapter/adapter.py` (lines 25-127)
+**File:** `src/trusted_data_agent/mcp_adapter/adapter.py` (lines 25-320)
 
-Report distillation operates separately from context distillation (Section 5.1). While context distillation replaces large results with **metadata-only** summaries during tactical execution, report distillation **preserves sample rows** for the final report generation phase. This distinction is critical: the report phase needs actual data to produce meaningful analysis, not just row counts and column names.
+Analytical distillation operates separately from context distillation (Section 5.1). While context distillation replaces large results with **metadata-only** summaries during tactical execution, analytical distillation computes **column statistics on the full dataset** and selects **stratified representative samples** for the final report generation phase. This gives the report LLM precise quantitative data (min/max/mean/percentiles/distributions) without requiring the full dataset in context.
 
-**Level 1 — Per-Result-Set Distillation:**
+**Core Components:**
+
+| Function | Purpose |
+|----------|---------|
+| `_compute_column_statistics()` | Per-column stats on FULL data: numeric (min/max/mean/median/P25/P75/stddev/sum), temporal (date range, top-10), categorical (distinct count, top-10 with %) |
+| `_select_representative_sample()` | Stratified sampling: first K + evenly spaced interior + last K (replaces naive first-N) |
+| `_distill_value_for_report()` | Orchestrates: compute stats → select sample → annotate metadata |
+
+**Column Type Detection:**
+- **Numeric**: `float()` conversion on first 50 values; >80% success → numeric stats
+- **Temporal**: Column name heuristic (contains "date", "time", "timestamp", "logdate", etc.)
+- **Categorical**: Everything else → value distributions with top-10
+
+**Level 1 — Per-Result-Set Analytical Distillation:**
 - **Function:** `_distill_workflow_for_report()` (line 25)
-- **Helper:** `_distill_value_for_report()` (line 54) — recursively processes nested data structures
+- **Helper:** `_distill_value_for_report()` (line 233) — recursively processes nested data structures
 - **Trigger:** Each result set checked against `APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS` (default 100) and `APP_CONFIG.REPORT_DISTILLATION_MAX_CHARS` (default 50,000)
-- **Action:** Truncates to sample rows while preserving column structure
+- **Action:** Computes column_statistics on full data, selects stratified sample rows, annotates metadata
 
 **Level 2 — Total Budget Enforcement:**
 - **Trigger:** Total distilled JSON exceeds `APP_CONFIG.REPORT_DISTILLATION_TOTAL_BUDGET` (default 200,000 chars)
-- **Function:** `_aggressive_distill()` (line 101)
-- **Helper:** `_reduce_samples()` (line 54) — reduces sample count per result set
-- **Action:** Reduces each result set to `APP_CONFIG.REPORT_DISTILLATION_AGGRESSIVE_ROWS` (default 25) rows
+- **Function:** `_aggressive_distill()` (line 293)
+- **Helper:** `_reduce_samples()` (line 303) — reduces sample count with stratified selection
+- **Action:** Reduces to `APP_CONFIG.REPORT_DISTILLATION_AGGRESSIVE_ROWS` (default 25) rows; **column_statistics are preserved** (computed on full data during L1)
+
+**Example Output (heatmap data, 166 rows → 100 stratified samples):**
+```json
+{
+  "results": ["... 100 rows covering full date range (stratified) ..."],
+  "metadata": {
+    "total_row_count": 166,
+    "sample_rows_included": 100,
+    "sampling_method": "stratified",
+    "columns": ["LogDate", "hourOfDay", "Request Count", "CPU Seconds"],
+    "column_statistics": {
+      "Request Count": {"type": "numeric", "min": 0, "max": 5234, "mean": 1847, "p75": 2891},
+      "LogDate": {"type": "temporal", "range": {"min": "2026-02-07", "max": "2026-02-16"}, "distinct_count": 10},
+      "hourOfDay": {"type": "numeric", "min": 0, "max": 23, "mean": 11.5}
+    }
+  }
+}
+```
+
+**LLM Prompt Integration:**
+Both TDA_FinalReport and TDA_ComplexPromptReport prompts include a `STATISTICAL DATA USAGE` guideline instructing the LLM to use `column_statistics` for precise quantitative claims (covering the full dataset) rather than estimating from sample rows.
 
 **Comparison with Context Distillation:**
 
-| Aspect | Context Distillation (executor) | Report Distillation (adapter) |
-|--------|--------------------------------|-------------------------------|
+| Aspect | Context Distillation (executor) | Analytical Distillation (adapter) |
+|--------|--------------------------------|----------------------------------|
 | **When** | During tactical phase execution | Before report generation |
-| **Output** | Metadata-only summary | Sample rows preserved |
-| **Purpose** | Minimize context for planning | Provide data for analysis |
+| **Output** | Metadata-only (0 rows) | Column statistics + stratified samples |
+| **Purpose** | Minimize context for tool selection | Provide analytical data for reports |
+| **Statistics** | None (row count + column names) | Full per-column (min/max/mean/percentiles/distributions) |
+| **Sampling** | N/A | Stratified (first + evenly spaced + last) |
 | **Thresholds** | 500 rows / 10K chars | L1: 100 rows / 50K chars; L2: 200K total |
+| **Token overhead** | Minimal | ~200-500 tokens per distilled result set |
 
 ### 5.4 Document Context Processing
 
@@ -934,11 +971,11 @@ All values below are admin-configurable via Administration → Optimizer Setting
 CONTEXT_DISTILLATION_MAX_ROWS = 500        # Trigger metadata-only summary (rows)
 CONTEXT_DISTILLATION_MAX_CHARS = 10_000    # Trigger metadata-only summary (chars)
 
-# Report distillation (adapter-level, preserves sample rows)
-REPORT_DISTILLATION_MAX_ROWS = 100         # L1: per-result-set sample rows
+# Analytical distillation (adapter-level, column statistics + stratified samples)
+REPORT_DISTILLATION_MAX_ROWS = 100         # L1: per-result-set stratified sample rows
 REPORT_DISTILLATION_MAX_CHARS = 50_000     # L1: per-result-set char limit
 REPORT_DISTILLATION_TOTAL_BUDGET = 200_000 # L2: total budget trigger
-REPORT_DISTILLATION_AGGRESSIVE_ROWS = 25   # L2: aggressive row limit
+REPORT_DISTILLATION_AGGRESSIVE_ROWS = 25   # L2: aggressive row limit (stats preserved)
 
 # Document context processing
 DOCUMENT_CONTEXT_MAX_CHARS = 50_000        # Total char limit for uploaded documents
@@ -1077,7 +1114,7 @@ These improvements would provide:
 | System prompt construction | `llm/handler.py` | 358-507 |
 | History condensation | `llm/handler.py` | 253-355 |
 | Context distillation | `agent/executor.py` | 956-983 |
-| Report distillation | `mcp_adapter/adapter.py` | 25-127 |
+| Analytical distillation | `mcp_adapter/adapter.py` | 25-320 |
 | Document context processing | `agent/executor.py` | 41-100 |
 | Session management | `core/session_manager.py` | 1038-1134, 1398-1465 |
 | Profile detection | `agent/executor.py` | 1302-1324 |

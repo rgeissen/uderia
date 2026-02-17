@@ -12,6 +12,91 @@ from trusted_data_agent.core.utils import get_argument_by_canonical_name
 
 app_logger = logging.getLogger("quart.app")
 
+
+def _resolve_temporal_phrase_deterministic(current_date_str: str, date_phrase: str):
+    """
+    Deterministically resolve a temporal phrase to (start_date, end_date) YYYY-MM-DD strings.
+    Returns (start_str, end_str) or None if the phrase can't be resolved deterministically.
+    """
+    import calendar
+    today = datetime.strptime(current_date_str, '%Y-%m-%d').date()
+    phrase = date_phrase.lower().strip()
+
+    # "today"
+    if phrase == 'today':
+        return (current_date_str, current_date_str)
+
+    # "yesterday"
+    if phrase == 'yesterday':
+        d = today - timedelta(days=1)
+        return (d.strftime('%Y-%m-%d'), d.strftime('%Y-%m-%d'))
+
+    # "last/past N days"
+    m = re.match(r'(?:last|past)\s+(\d+)\s+days?', phrase)
+    if m:
+        n = int(m.group(1))
+        start = today - timedelta(days=n)
+        end = today - timedelta(days=1)
+        return (start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+
+    # "last/past N weeks"
+    m = re.match(r'(?:last|past)\s+(\d+)\s+weeks?', phrase)
+    if m:
+        n = int(m.group(1))
+        start = today - timedelta(weeks=n)
+        end = today - timedelta(days=1)
+        return (start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+
+    # "last/past N months"
+    m = re.match(r'(?:last|past)\s+(\d+)\s+months?', phrase)
+    if m:
+        n = int(m.group(1))
+        month = today.month - n
+        year = today.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        start = datetime(year, month, today.day if today.day <= calendar.monthrange(year, month)[1] else calendar.monthrange(year, month)[1]).date()
+        end = today - timedelta(days=1)
+        return (start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+
+    # "this week" (Monday to today)
+    if phrase in ('this week', 'current week'):
+        start = today - timedelta(days=today.weekday())
+        return (start.strftime('%Y-%m-%d'), current_date_str)
+
+    # "last week" (previous Monday to Sunday)
+    if phrase == 'last week':
+        last_monday = today - timedelta(days=today.weekday() + 7)
+        last_sunday = last_monday + timedelta(days=6)
+        return (last_monday.strftime('%Y-%m-%d'), last_sunday.strftime('%Y-%m-%d'))
+
+    # "this month" (1st to today)
+    if phrase in ('this month', 'current month'):
+        start = today.replace(day=1)
+        return (start.strftime('%Y-%m-%d'), current_date_str)
+
+    # "last month" (1st to last day of previous month)
+    if phrase == 'last month':
+        first_of_this = today.replace(day=1)
+        last_of_prev = first_of_this - timedelta(days=1)
+        first_of_prev = last_of_prev.replace(day=1)
+        return (first_of_prev.strftime('%Y-%m-%d'), last_of_prev.strftime('%Y-%m-%d'))
+
+    # "this year" (Jan 1 to today)
+    if phrase in ('this year', 'current year'):
+        start = today.replace(month=1, day=1)
+        return (start.strftime('%Y-%m-%d'), current_date_str)
+
+    # "last year"
+    if phrase == 'last year':
+        start = today.replace(year=today.year - 1, month=1, day=1)
+        end = today.replace(year=today.year - 1, month=12, day=31)
+        return (start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+
+    return None  # Unrecognized — fall back to LLM
+
+
 def _format_sse(data: dict, event: str = None) -> str:
     """Helper to format data for Server-Sent Events."""
     msg = f"data: {json.dumps(data)}\n"
@@ -103,13 +188,16 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
             "details": "Orchestrator called with a single date; executing directly to prevent recursion."
         })
         yield _format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
+        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": command})
         # --- MODIFICATION START: Pass user_uuid ---
         single_result, _, _ = await mcp_adapter.invoke_mcp_tool(
             executor.dependencies['STATE'], command, user_uuid=user_uuid, session_id=executor.session_id
         )
         # --- MODIFICATION END ---
+        _result_type = "tool_error" if (isinstance(single_result, dict) and single_result.get("status") == "error") else "tool_result"
+        yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": single_result})
         yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
-        
+
         executor._add_to_structured_data(single_result)
         executor.last_tool_output = single_result
         return # Exit the orchestrator
@@ -121,11 +209,34 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         })
     else:
         # Scenario 3: Fallback to original LLM-based calculation for natural language phrases.
+
+        # Guard: If date_phrase is empty/None, try to extract from phase goal
+        if not date_phrase or not date_phrase.strip():
+            phase_goal = phase.get('goal', '')
+            temporal_match = re.search(
+                r'((?:past|last|next)\s+\d+\s+(?:hours?|days?|weeks?|months?|years?)'
+                r'|yesterday|today'
+                r'|this\s+(?:week|month|year)'
+                r'|last\s+(?:week|month|year))',
+                phase_goal, re.IGNORECASE
+            )
+            if temporal_match:
+                date_phrase = temporal_match.group(1)
+                app_logger.info(
+                    f"ORCHESTRATOR: Empty date_phrase recovered from phase goal: "
+                    f"'{date_phrase}' (goal: '{phase_goal}')"
+                )
+            else:
+                raise RuntimeError(
+                    f"Date Range Orchestrator received empty date phrase and could not "
+                    f"extract temporal reference from phase goal: '{phase_goal}'"
+                )
+
         yield _format_sse({
             "step": "System Orchestration", "type": "workaround",
             "details": f"Detected date range query ('{date_phrase}') for single-day tool ('{tool_name}')."
         })
-        
+
         # Log orchestration event to turn_action_history for RAG processing visibility
         phase_num = phase.get("phase", executor.current_phase_index + 1)
         orchestration_event = {
@@ -152,46 +263,69 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         executor.turn_action_history.append(orchestration_event)
 
         date_command = {"tool_name": "TDA_CurrentDate"}
-        # --- MODIFICATION START: Pass user_uuid ---
         date_result, _, _ = await mcp_adapter.invoke_mcp_tool(
             executor.dependencies['STATE'], date_command, user_uuid=user_uuid, session_id=executor.session_id
         )
-        # --- MODIFICATION END ---
         if not (date_result and date_result.get("status") == "success" and date_result.get("results")):
             raise RuntimeError("Date Range Orchestrator failed to fetch current date.")
         current_date_str = date_result["results"][0].get("current_date")
 
-        conversion_prompt = (
-            f"Given the current date is {current_date_str}, "
-            f"what are the start and end dates for '{date_phrase}'? "
-            "Respond with ONLY a JSON object with 'start_date' and 'end_date' in YYYY-MM-DD format."
-        )
-        reason = "Calculating date range."
-        yield _format_sse({"step": "Calling LLM", "details": {"summary": reason}})
-        yield _format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
-        range_response_str, _, _ = await executor._call_llm_and_update_tokens(
-            prompt=conversion_prompt, reason=reason,
-            system_prompt_override="You are a JSON-only responding assistant.", raise_on_error=True
-        )
-        yield _format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
-        
-        try:
-            # Added extraction logic to handle conversational models
-            json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", range_response_str, re.DOTALL)
-            if not json_match: raise json.JSONDecodeError("No JSON found in LLM response", range_response_str, 0)
-            json_str = json_match.group(1) or json_match.group(2)
-
-            range_data = json.loads(json_str)
-            start_date = datetime.strptime(range_data['start_date'], '%Y-%m-%d').date()
-            end_date = datetime.strptime(range_data['end_date'], '%Y-%m-%d').date()
-            
+        # Try deterministic resolution first (pure datetime arithmetic, no LLM needed)
+        resolved = _resolve_temporal_phrase_deterministic(current_date_str, date_phrase)
+        if resolved:
+            start_str, end_str = resolved
+            app_logger.info(
+                f"ORCHESTRATOR: Deterministic date resolution — "
+                f"'{date_phrase}' → {start_str} to {end_str} (no LLM call)"
+            )
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
             current_date_in_loop = start_date
             while current_date_in_loop <= end_date:
                 date_list.append({"date": current_date_in_loop.strftime('%Y-%m-%d')})
                 current_date_in_loop += timedelta(days=1)
+        else:
+            # Fallback: LLM-based resolution for unrecognized temporal phrases
+            app_logger.warning(
+                f"ORCHESTRATOR: Cannot resolve '{date_phrase}' deterministically. "
+                f"Falling back to LLM."
+            )
+            conversion_prompt = (
+                f"Given the current date is {current_date_str}, "
+                f"what are the start and end dates for '{date_phrase}'? "
+                "Respond with ONLY a JSON object with 'start_date' and 'end_date' in YYYY-MM-DD format."
+            )
+            reason = "Calculating date range."
+            yield _format_sse({"step": "Calling LLM", "details": {"summary": reason}})
+            yield _format_sse({"target": "llm", "state": "busy"}, "status_indicator_update")
+            range_response_str, _, _ = await executor._call_llm_and_update_tokens(
+                prompt=conversion_prompt, reason=reason,
+                system_prompt_override="You are a JSON-only responding assistant.", raise_on_error=True
+            )
+            yield _format_sse({"target": "llm", "state": "idle"}, "status_indicator_update")
 
-        except (json.JSONDecodeError, KeyError, ValueError, AttributeError) as e:
-            raise RuntimeError(f"Date Range Orchestrator failed to parse date range. Error: {e}")
+            try:
+                json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", range_response_str, re.DOTALL)
+                if not json_match: raise json.JSONDecodeError("No JSON found in LLM response", range_response_str, 0)
+                json_str = json_match.group(1) or json_match.group(2)
+
+                range_data = json.loads(json_str)
+                raw_start = range_data.get('start_date')
+                raw_end = range_data.get('end_date')
+                if not raw_start or not isinstance(raw_start, str) or not raw_end or not isinstance(raw_end, str):
+                    raise ValueError(
+                        f"LLM returned invalid dates: start_date={raw_start!r}, end_date={raw_end!r}"
+                    )
+                start_date = datetime.strptime(raw_start, '%Y-%m-%d').date()
+                end_date = datetime.strptime(raw_end, '%Y-%m-%d').date()
+
+                current_date_in_loop = start_date
+                while current_date_in_loop <= end_date:
+                    date_list.append({"date": current_date_in_loop.strftime('%Y-%m-%d')})
+                    current_date_in_loop += timedelta(days=1)
+
+            except (json.JSONDecodeError, KeyError, ValueError, AttributeError) as e:
+                raise RuntimeError(f"Date Range Orchestrator failed to parse date range. Error: {e}")
     # --- MODIFICATION END ---
 
     if not date_list or not all(isinstance(d, dict) and 'date' in d for d in date_list):
@@ -217,11 +351,14 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
             "details": f"Range tool '{tool_name}': resolved '{date_phrase}' → {start_date_str} to {end_date_str}"
         })
         yield _format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
+        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": range_command})
 
         range_result, _, _ = await mcp_adapter.invoke_mcp_tool(
             executor.dependencies['STATE'], range_command, user_uuid=user_uuid, session_id=executor.session_id
         )
 
+        _result_type = "tool_error" if (isinstance(range_result, dict) and range_result.get("status") == "error") else "tool_result"
+        yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": range_result})
         yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
 
         range_command.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -273,10 +410,13 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         yield _format_sse({"step": f"Processing data for: {date_str}"})
         
         day_command = {**cleaned_command, 'arguments': {**cleaned_command['arguments'], date_param_name: date_str}}
+        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": day_command})
         # --- MODIFICATION START: Pass user_uuid ---
         day_result, _, _ = await mcp_adapter.invoke_mcp_tool(
             executor.dependencies['STATE'], day_command, user_uuid=user_uuid, session_id=executor.session_id
         )
+        _result_type = "tool_error" if (isinstance(day_result, dict) and day_result.get("status") == "error") else "tool_result"
+        yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": day_result})
         # Add timestamp metadata for timing analysis
         day_command.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
         executor.turn_action_history.append({"action": day_command, "result": day_result})
@@ -339,11 +479,14 @@ async def execute_column_iteration(executor, command: dict):
 
     cols_command = {"tool_name": "base_columnDescription", "arguments": {"database_name": db_name, "object_name": table_name}}
     yield _format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
+    yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": cols_command})
     # --- MODIFICATION START: Pass user_uuid ---
     cols_result, _, _ = await mcp_adapter.invoke_mcp_tool(
         executor.dependencies['STATE'], cols_command, user_uuid=user_uuid, session_id=executor.session_id
     )
     # --- MODIFICATION END ---
+    _result_type = "tool_error" if (isinstance(cols_result, dict) and cols_result.get("status") == "error") else "tool_result"
+    yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": cols_result})
     yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
     
     if not (cols_result and isinstance(cols_result, dict) and cols_result.get('status') == 'success' and cols_result.get('results')):
@@ -390,11 +533,14 @@ async def execute_column_iteration(executor, command: dict):
         
         iter_command = {"tool_name": tool_name, "arguments": iter_args}
         # --- MODIFICATION END ---
+        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": iter_command})
         # --- MODIFICATION START: Pass user_uuid ---
         col_result, _, _ = await mcp_adapter.invoke_mcp_tool(
             executor.dependencies['STATE'], iter_command, user_uuid=user_uuid, session_id=executor.session_id
         )
         # --- MODIFICATION END ---
+        _col_result_type = "tool_error" if (isinstance(col_result, dict) and col_result.get("status") == "error") else "tool_result"
+        yield _format_sse({"step": "Tool Execution Result", "type": _col_result_type, "details": col_result})
         all_column_results.append(col_result)
     yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
 
@@ -450,11 +596,14 @@ async def execute_hallucinated_loop(executor, phase: dict):
     for item in hallucinated_items:
         yield _format_sse({"step": f"Processing item: {item}"})
         command = {"tool_name": tool_name, "arguments": {argument_name: item}}
+        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": command})
         # --- MODIFICATION START: Pass user_uuid ---
         result, _, _ = await mcp_adapter.invoke_mcp_tool(
             executor.dependencies['STATE'], command, user_uuid=executor.user_uuid, session_id=executor.session_id
         )
         # --- MODIFICATION END ---
+        _result_type = "tool_error" if (isinstance(result, dict) and result.get("status") == "error") else "tool_result"
+        yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": result})
         all_results.append(result)
     yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
 

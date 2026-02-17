@@ -1,0 +1,202 @@
+{
+  "$schema_version": "1.0",
+  "description": "Date orchestrator edge case test fixtures. Validates deterministic date routing, phase goal extraction, and all temporal phrase patterns. Uses dba_flowControl (small result set ~24 rows/day) as primary tool.",
+  "defaults": {
+    "timeout_seconds": 180,
+    "expect_zero_self_corrections": true
+  },
+  "fixtures": [
+
+    {
+      "id": "date_orch_today",
+      "description": "Single-day range: 'today' resolves to start=end=today",
+      "query": "Show flow control metrics for today",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_yesterday",
+      "description": "Single-day range: 'yesterday' resolves to start=end=yesterday",
+      "query": "Show flow control metrics for yesterday",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_last_2_days",
+      "description": "Short range: 'last 2 days' resolves to 2-day date range",
+      "query": "Show flow control metrics for the last 2 days",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_past_3_days",
+      "description": "'past N days' phrasing (common in MCP prompts via Pass 0)",
+      "query": "Show flow control metrics for the past 3 days",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_this_week",
+      "description": "'this week' temporal pattern — deterministic goal extraction",
+      "query": "Show flow control metrics for this week",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_last_week",
+      "description": "'last week' temporal pattern — deterministic goal extraction",
+      "query": "Show flow control metrics for last week",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_last_month_userdelay",
+      "description": "'last month' on dba_userDelay — validates 2nd range tool + large range",
+      "query": "Show user query delay statistics for last month",
+      "expected_tool": "dba_userDelay",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_feature_usage_today",
+      "description": "3rd date tool: dba_featureUsage with 'today'",
+      "query": "Show which database features have been used today",
+      "expected_tool": "dba_featureUsage",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_user_delay_today",
+      "description": "dba_userDelay with 'today' — single-day on range tool",
+      "query": "Show user delay statistics for today",
+      "expected_tool": "dba_userDelay",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "temporal", "deterministic"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true,
+        "expect_orchestrator": "date_range"
+      }
+    },
+
+    {
+      "id": "date_orch_no_explicit_date",
+      "description": "No temporal phrase — planner should infer date context, orchestrator handles",
+      "query": "Show flow control metrics on the system",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "implicit-temporal"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      }
+    },
+
+    {
+      "id": "date_orch_recent",
+      "description": "Vague temporal: 'recent' — tests planner date inference",
+      "query": "Show recent flow control metrics",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "implicit-temporal"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      }
+    },
+
+    {
+      "id": "date_orch_explicit_date_range",
+      "description": "Explicit YYYY-MM-DD dates — should resolve without orchestrator",
+      "query": "Show flow control metrics from 2026-02-15 to 2026-02-17",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "explicit-dates"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      }
+    },
+
+    {
+      "id": "date_orch_single_explicit_date",
+      "description": "Single explicit date — orchestrator should set start=end",
+      "query": "Show flow control metrics for 2026-02-17",
+      "expected_tool": "dba_flowControl",
+      "expected_tool_args": {},
+      "tags": ["date-orchestrator", "dba", "explicit-dates"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete",
+        "expect_final_report": true
+      }
+    }
+
+  ]
+}

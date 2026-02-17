@@ -1591,57 +1591,86 @@ class Planner:
             is_date_range_phase = (
                 "TDA_DateRange" in current_phase.get("relevant_tools", [])
             )
-            is_missing_loop = (
-                next_phase.get("type") != "loop"
-            )
 
-            uses_date_range_output = False
+            if not is_date_range_phase:
+                i += 1
+                continue
+
+            dr_phase_ref = f"result_of_phase_{current_phase['phase']}"
+
+            # Check if next phase references TDA_DateRange via string ref OR loop_over
+            uses_string_ref = False
             if isinstance(next_phase.get("arguments"), dict):
                 for arg_value in next_phase["arguments"].values():
-                    if isinstance(arg_value, str) and arg_value == f"result_of_phase_{current_phase['phase']}":
-                         uses_date_range_output = True
-                         break
+                    if isinstance(arg_value, str) and arg_value == dr_phase_ref:
+                        uses_string_ref = True
+                        break
 
-            if is_date_range_phase and is_missing_loop and uses_date_range_output:
+            is_loop_over_dr = (next_phase.get("loop_over") == dr_phase_ref)
+            references_date_range = uses_string_ref or is_loop_over_dr
 
-                # Check if the tool has paired start/end date arguments,
-                # indicating it handles date ranges natively (no iteration needed).
-                arg_names = set(next_phase.get("arguments", {}).keys())
-                range_pairs = [("start_date", "end_date"), ("from_date", "to_date"),
-                               ("begin_date", "end_date"), ("start", "end")]
-                has_range_args = any(s in arg_names and e in arg_names for s, e in range_pairs)
+            if not references_date_range:
+                i += 1
+                continue
 
-                if has_range_args:
-                    # Tool handles date ranges natively — extract boundary date
-                    # from TDA_DateRange output instead of iterating per day.
-                    for arg_name, arg_value in next_phase["arguments"].items():
-                        if (isinstance(arg_value, str) and
-                            arg_value == f"result_of_phase_{current_phase['phase']}"):
-                            next_phase["arguments"][arg_name] = {
-                                "source": f"result_of_phase_{current_phase['phase']}",
-                                "key": "date"
-                            }
-                            break
+            # Check MCP tool schema (source of truth) for range pair
+            tool_name = next_phase.get("relevant_tools", [""])[0]
+            mcp_tools = self.executor.dependencies['STATE'].get('mcp_tools', {})
+            tool_spec = mcp_tools.get(tool_name)
+            schema_param_names = set()
+            if tool_spec and hasattr(tool_spec, 'args') and isinstance(tool_spec.args, dict):
+                schema_param_names = set(tool_spec.args.keys())
 
-                    app_logger.info(
-                        f"PLAN REWRITE: Phase {next_phase['phase']} has date range args "
-                        f"({arg_names}). Extracting first date instead of iterating."
-                    )
-                    event_data = {
-                        "step": "System Correction",
-                        "type": "optimization",
-                        "details": {
-                            "summary": "Tool accepts a date range natively. "
-                                       "Extracted boundary date from TDA_DateRange output "
-                                       "instead of iterating per day.",
+            range_pairs = [("start_date", "end_date"), ("from_date", "to_date"),
+                           ("begin_date", "end_date"), ("start", "end")]
+            is_range_tool = any(s in schema_param_names and e in schema_param_names
+                                for s, e in range_pairs)
+
+            if is_range_tool:
+                # --- RANGE TOOL: Wire both args from TDA_DateRange, unwrap loop if needed ---
+                for start_name, end_name in range_pairs:
+                    if start_name in schema_param_names and end_name in schema_param_names:
+                        next_phase["arguments"][start_name] = {
+                            "source": dr_phase_ref, "key": "start_date"
                         }
-                    }
-                    self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse_with_depth(event_data)
-                    made_change = True
-                    i += 1
-                    continue  # Skip the loop conversion below
+                        next_phase["arguments"][end_name] = {
+                            "source": dr_phase_ref, "key": "end_date"
+                        }
+                        break
 
+                # If LLM created a loop, unwrap it — range tools don't iterate per day
+                if is_loop_over_dr:
+                    next_phase.pop("type", None)
+                    next_phase.pop("loop_over", None)
+                    app_logger.info(
+                        f"PLAN REWRITE: Phase {next_phase['phase']} — unwrapped LLM-generated "
+                        f"loop for range tool '{tool_name}'. Wired start_date + end_date "
+                        f"from TDA_DateRange (phase {current_phase['phase']})."
+                    )
+                else:
+                    app_logger.info(
+                        f"PLAN REWRITE: Phase {next_phase['phase']} — wired start_date + "
+                        f"end_date from TDA_DateRange for range tool '{tool_name}'."
+                    )
+
+                event_data = {
+                    "step": "System Correction",
+                    "type": "optimization",
+                    "details": {
+                        "summary": "Tool accepts a date range natively. "
+                                   "Wired start_date and end_date from TDA_DateRange output.",
+                    }
+                }
+                self.executor._log_system_event(event_data)
+                yield self.executor._format_sse_with_depth(event_data)
+                made_change = True
+                i += 1
+                continue
+
+            # --- SINGLE-DATE TOOL: Convert to loop if not already one ---
+            is_missing_loop = (next_phase.get("type") != "loop")
+
+            if is_missing_loop and uses_string_ref:
                 app_logger.warning(
                     f"PLAN REWRITE: Detected TDA_DateRange at phase {current_phase['phase']} "
                     f"not followed by a loop. Rewriting phase {next_phase['phase']}."
@@ -1650,12 +1679,10 @@ class Planner:
                 original_next_phase = copy.deepcopy(next_phase)
 
                 next_phase["type"] = "loop"
-                next_phase["loop_over"] = f"result_of_phase_{current_phase['phase']}"
+                next_phase["loop_over"] = dr_phase_ref
 
                 for arg_name, arg_value in next_phase["arguments"].items():
-                    if (isinstance(arg_value, str) and
-                        arg_value == f"result_of_phase_{current_phase['phase']}"):
-
+                    if isinstance(arg_value, str) and arg_value == dr_phase_ref:
                         next_phase["arguments"][arg_name] = {
                             "source": "loop_item",
                             "key": "date"
@@ -1676,6 +1703,8 @@ class Planner:
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse_with_depth(event_data)
                 made_change = True
+
+            # else: single-date tool already a loop — leave unchanged
 
             i += 1
 

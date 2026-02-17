@@ -20,6 +20,7 @@ Usage:
 
 import logging
 import os
+import re
 from typing import Any, Optional, List
 
 from trusted_data_agent.core.config_manager import get_config_manager
@@ -33,7 +34,8 @@ def create_langchain_llm(
     llm_config_id: str,
     user_uuid: str,
     temperature: float = 0.7,
-    disable_thinking: bool = False
+    disable_thinking: bool = False,
+    thinking_budget: int = None
 ) -> Any:
     """
     Create a LangChain-compatible LLM instance from Uderia LLM configuration.
@@ -43,7 +45,7 @@ def create_langchain_llm(
         user_uuid: User UUID for accessing encrypted credentials
         temperature: Temperature parameter for the LLM (default: 0.7)
         disable_thinking: Disable extended thinking mode for models that support it (default: False)
-        temperature: LLM temperature setting (default 0.7)
+        thinking_budget: Gemini 2.x thinking budget (None = not set, 0 = disabled, -1 = dynamic)
 
     Returns:
         LangChain Chat model instance
@@ -64,6 +66,9 @@ def create_langchain_llm(
     model = llm_config.get("model")
     credentials = llm_config.get("credentials", {})
 
+    # Resolve thinking_budget: explicit parameter > LLM config > None
+    effective_thinking_budget = thinking_budget if thinking_budget is not None else llm_config.get("thinking_budget")
+
     # Load credentials from credential store (like configuration_service does)
     decrypted_creds = _load_credentials_for_provider(user_uuid, provider, credentials)
 
@@ -75,7 +80,7 @@ def create_langchain_llm(
     elif provider == "Anthropic":
         return _create_anthropic_llm(model, decrypted_creds, temperature)
     elif provider == "Google":
-        return _create_google_llm(model, decrypted_creds, temperature, disable_thinking)
+        return _create_google_llm(model, decrypted_creds, temperature, disable_thinking, effective_thinking_budget)
     elif provider == "Azure":
         return _create_azure_llm(model, decrypted_creds, llm_config, temperature)
     elif provider == "Friendli":
@@ -219,7 +224,7 @@ def _create_anthropic_llm(model: str, credentials: dict, temperature: float) -> 
         raise ImportError("langchain-anthropic package not installed. Run: pip install langchain-anthropic")
 
 
-def _create_google_llm(model: str, credentials: dict, temperature: float, disable_thinking: bool = False) -> Any:
+def _create_google_llm(model: str, credentials: dict, temperature: float, disable_thinking: bool = False, thinking_budget: int = None) -> Any:
     """Create LangChain ChatGoogleGenerativeAI instance."""
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -236,12 +241,18 @@ def _create_google_llm(model: str, credentials: dict, temperature: float, disabl
             "include_thoughts": True  # Required for token usage tracking
         }
 
-        # Add thinking_budget parameter to disable extended thinking (Gemini 2.x only)
+        # Apply thinking budget for Gemini 2.x models
+        # ThinkingConfig is only supported on Gemini 2.5+ models (not 2.0)
         # NOTE: include_thoughts=True is still needed for token tracking even with thinking_budget=0
         # They serve different purposes: thinking_budget controls generation, include_thoughts controls visibility
-        if disable_thinking and model.startswith("gemini-2"):
+        _ver_match = re.search(r'gemini-(\d+(?:\.\d+)?)', model)
+        is_thinking_capable = bool(_ver_match and float(_ver_match.group(1)) >= 2.5)
+        if disable_thinking and is_thinking_capable:
             llm_kwargs["thinking_budget"] = 0
             logger.debug(f"[SessionName] LangChain: Disabling thinking mode for {model} (thinking_budget=0)")
+        elif thinking_budget is not None and is_thinking_capable:
+            llm_kwargs["thinking_budget"] = thinking_budget
+            logger.debug(f"[ThinkingBudget] LangChain: Setting thinking_budget={thinking_budget} for {model}")
 
         return ChatGoogleGenerativeAI(**llm_kwargs)
     except ImportError:

@@ -1,0 +1,126 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T17:08:09.263035",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_date_orchestrator_fixtures.json",
+    "filter": null,
+    "tag": [
+      "implicit-temporal"
+    ],
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 2,
+    "passed": 2,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 67979,
+    "total_duration_ms": 45923,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 33989.5,
+    "avg_duration_ms": 22961.5
+  },
+  "results": [
+    {
+      "fixture_id": "date_orch_no_explicit_date",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e4f213d0-5140-49c2-8038-6530a27386ae",
+      "session_id": "9d295835-5be4-42ac-9ae3-b03ccc3dda87",
+      "duration_ms": 29585,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 31577,
+        "output": 484,
+        "total": 32061
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_recent",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-9bd4c39a-690f-46dd-bbad-d2467e88d2af",
+      "session_id": "e279cc00-e842-4ace-b8d2-c9f61c005933",
+      "duration_ms": 16338,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 35129,
+        "output": 789,
+        "total": 35918
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

@@ -1,0 +1,669 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T17:28:41.297048",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_date_orchestrator_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 13,
+    "passed": 11,
+    "failed": 2,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 377737,
+    "total_duration_ms": 119468,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 29056.69230769231,
+    "avg_duration_ms": 9189.846153846154
+  },
+  "results": [
+    {
+      "fixture_id": "date_orch_today",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "Expected orchestrator 'date_range' not used (orchestrators: [])"
+      ],
+      "status": "complete",
+      "task_id": "task-02970cbe-490d-4b49-9024-514de6b186b1",
+      "session_id": "c88e4b57-b265-4cc6-a72a-5597a6b653bc",
+      "duration_ms": 8512,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 24716,
+        "output": 362,
+        "total": 25078
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_yesterday",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-3a69b490-ddbc-4492-89bc-9d3af013299a",
+      "session_id": "22128bae-f696-4833-b159-f4b701464682",
+      "duration_ms": 10069,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 38802,
+        "output": 647,
+        "total": 39449
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_last_2_days",
+      "prompt_name": "dba_flowControl",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Execution error (llm_error): Failed to get a valid JSON action from the tactical LLM. Response: . Error: No JSON object found: line 1 column 1 (char 0) [phases_completed=2, partial_tokens=11,856]",
+        "Expected tool 'dba_flowControl' not invoked. Got: ['TDA_CurrentDate', 'TDA_DateRange']"
+      ],
+      "status": "complete",
+      "task_id": "task-1af97da8-75ad-4461-a9b3-1bf2adb314db",
+      "session_id": "e35b45d9-6d42-4b18-a522-11bd2d249b2b",
+      "duration_ms": 6037,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 11856,
+        "output": 408,
+        "total": 12264
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": [
+        {
+          "error_message": "Failed to get a valid JSON action from the tactical LLM. Response: . Error: No JSON object found: line 1 column 1 (char 0)",
+          "error_type": "llm_error",
+          "phases_completed": 2,
+          "partial_input_tokens": 11856,
+          "partial_output_tokens": 408
+        }
+      ]
+    },
+    {
+      "fixture_id": "date_orch_past_3_days",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-276b3a58-6710-4d80-97c5-3491a5aee903",
+      "session_id": "7e7b80f0-6ffc-4a90-9c9a-5b268fe9e39a",
+      "duration_ms": 12092,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 84781,
+        "output": 693,
+        "total": 85474
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_this_week",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-09d13b32-9237-4c54-8384-f0b1057662ef",
+      "session_id": "77d261d2-4e98-4b77-b1cf-6abf6e313bde",
+      "duration_ms": 10076,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 31375,
+        "output": 817,
+        "total": 32192
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_last_week",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-34797a74-6fa6-4bb9-b5f6-e7e66bf1413e",
+      "session_id": "d978e28d-ff60-4ce8-ab4d-a348dd05ef31",
+      "duration_ms": 10087,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 31729,
+        "output": 630,
+        "total": 32359
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_last_month_userdelay",
+      "prompt_name": "dba_userDelay",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Execution error (rate_limit): 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details. [phases_completed=6, partial_tokens=8,704]"
+      ],
+      "status": "complete",
+      "task_id": "task-c0166ee0-ab8a-4ace-a161-5b0cf5cae85b",
+      "session_id": "a8618fbb-b54e-49b9-9c13-ee0e4195afeb",
+      "duration_ms": 6027,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 8637,
+        "output": 321,
+        "total": 8958
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_SystemOrchestration",
+          "dba_userDelay"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": [
+        {
+          "error_message": "429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.",
+          "error_type": "rate_limit",
+          "phases_completed": 6,
+          "partial_input_tokens": 8704,
+          "partial_output_tokens": 368
+        }
+      ]
+    },
+    {
+      "fixture_id": "date_orch_feature_usage_today",
+      "prompt_name": "dba_featureUsage",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "Expected orchestrator 'date_range' not used (orchestrators: [])"
+      ],
+      "status": "complete",
+      "task_id": "task-33605de9-9d65-44c2-a161-cf52cd752dd7",
+      "session_id": "fca438ec-d947-4435-82d6-017fe47d073f",
+      "duration_ms": 10060,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 13462,
+        "output": 589,
+        "total": 14051
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_featureUsage"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_user_delay_today",
+      "prompt_name": "dba_userDelay",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "Expected orchestrator 'date_range' not used (orchestrators: [])"
+      ],
+      "status": "complete",
+      "task_id": "task-9fd7cd3e-5343-41e0-9df8-59608a98b607",
+      "session_id": "f128fa7b-0512-47c9-beb8-1b08a59fea75",
+      "duration_ms": 6036,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 10228,
+        "output": 378,
+        "total": 10606
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_userDelay"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_no_explicit_date",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-fd976dba-200d-46cf-aacf-0411681db1d7",
+      "session_id": "f54e4869-7659-4fb6-bf06-917b1001140a",
+      "duration_ms": 8050,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 23974,
+        "output": 397,
+        "total": 24371
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_recent",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-5e04e000-8691-4699-bbb1-3ca0447e0525",
+      "session_id": "acc3857e-8c52-4e94-b0c7-148fea277190",
+      "duration_ms": 18310,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 35169,
+        "output": 904,
+        "total": 36073
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_explicit_date_range",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-ee45cbe1-7d65-4f1e-a22e-c639b61c6af1",
+      "session_id": "cae59c1b-699a-4c4e-a4af-582d8d8734e1",
+      "duration_ms": 8076,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 31569,
+        "output": 479,
+        "total": 32048
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "date_orch_single_explicit_date",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-af47ca2a-ea5a-48ae-80fa-f4eb364545c9",
+      "session_id": "fb800457-4ffe-47f2-97cc-909ac787e05c",
+      "duration_ms": 6036,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 24439,
+        "output": 375,
+        "total": 24814
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

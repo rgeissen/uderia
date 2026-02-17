@@ -1539,6 +1539,13 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
                             </button>
                         </div>
                     </div>
+                    <div id="llm-modal-thinking-container" class="${(config?.provider || '') === 'Google' ? '' : 'hidden'}">
+                        <label class="block text-sm font-medium mb-1" style="color: var(--text-secondary);">Thinking Budget</label>
+                        <input type="number" id="llm-modal-thinking-budget" value="${config?.thinking_budget ?? 0}" min="-1"
+                            class="w-full p-2 rounded-md outline-none"
+                            style="background-color: var(--input-bg); border: 1px solid var(--border-primary); color: var(--text-primary);">
+                        <p class="text-xs mt-1" style="color: var(--text-muted);">Gemini 2.5+ thinking tokens. 0 = disabled, -1 = dynamic/unlimited.</p>
+                    </div>
                     <div class="flex gap-3 pt-4">
                         <button id="llm-modal-cancel" class="flex-1 card-btn card-btn--neutral">
                             Cancel
@@ -1886,6 +1893,12 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
             modelList.innerHTML = '';
             cachedModels = [];
 
+            // Toggle thinking budget visibility (Google only)
+            const thinkingContainer = modal.querySelector('#llm-modal-thinking-container');
+            if (thinkingContainer) {
+                thinkingContainer.classList.toggle('hidden', newProvider !== 'Google');
+            }
+
             // Auto-fill credentials from existing config for same provider
             await autoFillCredentials(newProvider);
         });
@@ -1956,6 +1969,12 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
             model,
             credentials
         };
+
+        // Include thinking_budget for Google models
+        if (provider === 'Google') {
+            const thinkingInput = modal.querySelector('#llm-modal-thinking-budget');
+            configData.thinking_budget = thinkingInput ? parseInt(thinkingInput.value) || 0 : 0;
+        }
 
         try {
             // Disable save button during validation

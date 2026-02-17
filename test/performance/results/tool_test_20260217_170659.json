@@ -1,0 +1,75 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T17:06:59.483493",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_date_orchestrator_fixtures.json",
+    "filter": "date_orch_feature_usage",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 13955,
+    "total_duration_ms": 10055,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 13955.0,
+    "avg_duration_ms": 10055.0
+  },
+  "results": [
+    {
+      "fixture_id": "date_orch_feature_usage_today",
+      "prompt_name": "dba_featureUsage",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "Expected orchestrator 'date_range' not used (orchestrators: [])"
+      ],
+      "status": "complete",
+      "task_id": "task-56f90e44-e3e4-4da8-bfa0-b2be2fd20a32",
+      "session_id": "4f321d00-b814-45d3-b4af-68fac336e14f",
+      "duration_ms": 10055,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 13462,
+        "output": 493,
+        "total": 13955
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_featureUsage"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

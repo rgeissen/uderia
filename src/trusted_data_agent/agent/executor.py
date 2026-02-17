@@ -405,7 +405,8 @@ class PlanExecutor:
         self.original_server_id = None  # Will store original current_server_id_by_user entry if overridden
         self.effective_mcp_server_id = None  # Track the ACTUAL MCP server ID used during this turn (for RAG storage)
         self.profile_llm_instance = None  # Profile-specific LLM client (created when profile uses different provider than default)
-        
+        self.thinking_budget = None  # Gemini 2.x thinking budget from LLM config (None = not set, 0 = disabled, -1 = dynamic)
+
         # Snapshot model and provider for this turn from active profile (default or override)
         # Don't use global config as it may not match the profile being used
         try:
@@ -429,6 +430,7 @@ class PlanExecutor:
                         if llm_config:
                             self.current_provider = llm_config.get('provider', get_user_provider(user_uuid))
                             self.current_model = llm_config.get('model', get_user_model(user_uuid))
+                            self.thinking_budget = llm_config.get('thinking_budget')
                             app_logger.debug(f"Initialized consumption tracking with profile model: {self.current_provider}/{self.current_model}")
                         else:
                             # Fallback to global config if LLM config not found
@@ -745,7 +747,8 @@ class PlanExecutor:
             current_provider=effective_provider,  # Use effective provider (may be overridden)
             current_model=effective_model,        # Use effective model (may be overridden)
             # --- MODIFICATION END ---
-            multimodal_content=multimodal_content
+            multimodal_content=multimodal_content,
+            thinking_budget=self.thinking_budget
         )
         self.llm_debug_history.append({"reason": reason, "response": response_text})
         app_logger.debug(f"LLM RESPONSE (DEBUG): Reason='{reason}', Response='{response_text}'")
@@ -1405,7 +1408,7 @@ class PlanExecutor:
         try:
             # Create LangChain LLM instance
             app_logger.info(f"Creating LangChain LLM for config {llm_config_id}")
-            llm_instance = create_langchain_llm(llm_config_id, self.user_uuid)
+            llm_instance = create_langchain_llm(llm_config_id, self.user_uuid, thinking_budget=self.thinking_budget)
 
             # Load MCP tools filtered by profile
             app_logger.info(f"Loading MCP tools from server {mcp_server_id}")

@@ -558,7 +558,7 @@ def _normalize_bedrock_model_id(model_id: str) -> str:
     return model_id.split(':')[0]
 
     # --- MODIFICATION START: Add user_uuid parameter ---
-async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, current_model: str = None, multimodal_content: list = None, planning_phase: str = None) -> tuple[str, int, int, str, str]: # Added provider, model, and planning_phase parameters
+async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, session_id: str = None, chat_history=None, raise_on_error: bool = False, system_prompt_override: str = None, dependencies: dict = None, reason: str = "No reason provided.", disabled_history: bool = False, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, current_model: str = None, multimodal_content: list = None, planning_phase: str = None, thinking_budget: int = None) -> tuple[str, int, int, str, str]: # Added provider, model, planning_phase, and thinking_budget parameters
 # --- MODIFICATION END ---
     if not llm_instance:
         raise RuntimeError("LLM is not initialized.")
@@ -670,12 +670,19 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                 # --- FIX: Set max_output_tokens to prevent truncation (consistent with other providers) ---
                 # Use low token limit for session name generation (3-5 word title)
                 gen_config_kwargs = {"max_output_tokens": 100 if is_session_name_call else APP_CONFIG.LLM_MAX_OUTPUT_TOKENS}
+                # ThinkingConfig is only supported on Gemini 2.5+ models (not 2.0)
+                model_name = getattr(llm_instance, 'model_name', '')
+                _ver_match = re.search(r'gemini-(\d+(?:\.\d+)?)', model_name)
+                is_thinking_capable = bool(_ver_match and float(_ver_match.group(1)) >= 2.5 and hasattr(genai, 'ThinkingConfig'))
                 if is_session_name_call:
-                    # Auto-disable thinking for session name generation (Gemini 2.x only)
-                    model_name = getattr(llm_instance, 'model_name', '')
-                    if model_name.startswith('models/gemini-2') and hasattr(genai, 'ThinkingConfig'):
+                    # Auto-disable thinking for session name generation
+                    if is_thinking_capable:
                         gen_config_kwargs["thinking_config"] = genai.ThinkingConfig(thinking_budget=0)
                         app_logger.debug(f"[SessionName] Disabling thinking mode for session name generation (model: {model_name})")
+                elif thinking_budget is not None and is_thinking_capable:
+                    # Apply user-configured thinking budget
+                    gen_config_kwargs["thinking_config"] = genai.ThinkingConfig(thinking_budget=thinking_budget)
+                    app_logger.debug(f"[ThinkingBudget] Applying thinking_budget={thinking_budget} for model {model_name}")
 
                 google_generation_config = genai.GenerationConfig(**gen_config_kwargs)
 
