@@ -829,11 +829,6 @@ class RAGRetriever:
         if collection_id == 0:
             return {"success": False, "items_deleted": 0, "message": "Cannot reset default collection"}
 
-        if user_id:
-            default_collection_id = self._get_user_default_collection_id(user_id)
-            if default_collection_id and collection_id == default_collection_id:
-                return {"success": False, "items_deleted": 0, "message": "Cannot reset your default collection"}
-
         coll_meta = self.get_collection_metadata(collection_id)
         if not coll_meta:
             return {"success": False, "items_deleted": 0, "message": f"Collection '{collection_id}' not found"}
