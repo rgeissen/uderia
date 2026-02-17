@@ -27,6 +27,7 @@ import hashlib
 import uuid
 
 from chromadb.utils import embedding_functions
+from trusted_data_agent.core.config import APP_CONFIG
 
 logger = logging.getLogger("repository_constructor")
 
@@ -75,10 +76,10 @@ class DocumentProcessor:
     """Handles document processing with configurable chunking strategies."""
     
     def __init__(self, chunking_strategy: ChunkingStrategy = ChunkingStrategy.SEMANTIC,
-                 chunk_size: int = 1000, chunk_overlap: int = 200):
+                 chunk_size: int = None, chunk_overlap: int = None):
         self.chunking_strategy = chunking_strategy
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        self.chunk_size = chunk_size if chunk_size is not None else APP_CONFIG.KNOWLEDGE_CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap if chunk_overlap is not None else APP_CONFIG.KNOWLEDGE_CHUNK_OVERLAP
     
     def process_document(self, content: str, metadata: Dict[str, Any]) -> List[DocumentChunk]:
         """

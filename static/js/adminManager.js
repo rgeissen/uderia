@@ -201,6 +201,10 @@ const AdminManager = {
         if (saveSecurityBtn) {
             saveSecurityBtn.addEventListener('click', () => this.saveSecuritySettings());
         }
+        const saveSystemOperationsBtn = document.getElementById('save-system-operations-btn');
+        if (saveSystemOperationsBtn) {
+            saveSystemOperationsBtn.addEventListener('click', () => this.saveSystemOperationsSettings());
+        }
 
         // Temperature slider value display
         const genieTemperatureSlider = document.getElementById('genie-temperature');
@@ -221,6 +225,7 @@ const AdminManager = {
         this.setupAIKnowledgeChangeListeners();
         this.setupUISettingsChangeListeners();
         this.setupSecurityChangeListeners();
+        this.setupSystemOperationsChangeListeners();
 
         // Knowledge Global Settings
         const saveKnowledgeGlobalSettingsBtn = document.getElementById('save-knowledge-global-settings-btn');
@@ -2343,8 +2348,11 @@ const AdminManager = {
         const optimizerFields = [
             // Agent Configuration
             'max-execution-steps', 'tool-call-timeout',
-            // Performance & Context
+            'max-execution-depth', 'max-phase-retry-attempts',
+            // Context Window Management
             'context-max-rows', 'context-max-chars', 'description-threshold',
+            'report-distillation-max-rows', 'report-distillation-max-chars',
+            'report-distillation-total-budget', 'report-distillation-aggressive-rows',
             // Agent Behavior (checkboxes)
             'allow-synthesis', 'force-sub-summary', 'condense-prompts',
             // Query Optimization
@@ -2383,12 +2391,13 @@ const AdminManager = {
      */
     setupAIKnowledgeChangeListeners() {
         const fields = [
-            'llm-max-retries', 'llm-base-delay',
+            'llm-max-retries', 'llm-base-delay', 'llm-max-output-tokens',
             'rag-refresh-startup', 'rag-num-examples', 'rag-embedding-model',
             'knowledge-rag-enabled', 'knowledge-min-relevance', 'knowledge-num-docs',
             'knowledge-max-tokens', 'knowledge-reranking-enabled',
             'knowledge-min-relevance-locked', 'knowledge-num-docs-locked',
-            'knowledge-max-tokens-locked', 'knowledge-reranking-locked'
+            'knowledge-max-tokens-locked', 'knowledge-reranking-locked',
+            'knowledge-chunk-size', 'knowledge-chunk-overlap'
         ];
         fields.forEach(fieldId => {
             const el = document.getElementById(fieldId);
@@ -2446,10 +2455,16 @@ const AdminManager = {
             // Agent Configuration
             max_execution_steps: this.getFieldValue('max-execution-steps'),
             tool_call_timeout: this.getFieldValue('tool-call-timeout'),
-            // Performance & Context
+            max_execution_depth: this.getFieldValue('max-execution-depth'),
+            max_phase_retry_attempts: this.getFieldValue('max-phase-retry-attempts'),
+            // Context Window Management
             context_max_rows: this.getFieldValue('context-max-rows'),
             context_max_chars: this.getFieldValue('context-max-chars'),
             description_threshold: this.getFieldValue('description-threshold'),
+            report_distillation_max_rows: this.getFieldValue('report-distillation-max-rows'),
+            report_distillation_max_chars: this.getFieldValue('report-distillation-max-chars'),
+            report_distillation_total_budget: this.getFieldValue('report-distillation-total-budget'),
+            report_distillation_aggressive_rows: this.getFieldValue('report-distillation-aggressive-rows'),
             // Agent Behavior
             allow_synthesis: document.getElementById('allow-synthesis')?.checked || false,
             force_sub_summary: document.getElementById('force-sub-summary')?.checked || false,
@@ -2509,6 +2524,7 @@ const AdminManager = {
         return this._snapshotFields({
             llm_max_retries: 'llm-max-retries',
             llm_base_delay: 'llm-base-delay',
+            llm_max_output_tokens: 'llm-max-output-tokens',
             rag_refresh: 'rag-refresh-startup',
             rag_num_examples: 'rag-num-examples',
             rag_embedding_model: 'rag-embedding-model',
@@ -2521,7 +2537,9 @@ const AdminManager = {
             knowledge_num_docs_locked: 'knowledge-num-docs-locked',
             knowledge_max_tokens_locked: 'knowledge-max-tokens-locked',
             knowledge_reranking_locked: 'knowledge-reranking-locked',
-            autocomplete_min_relevance: 'autocomplete-min-relevance'
+            autocomplete_min_relevance: 'autocomplete-min-relevance',
+            knowledge_chunk_size: 'knowledge-chunk-size',
+            knowledge_chunk_overlap: 'knowledge-chunk-overlap'
         });
     },
     checkAIKnowledgeDirty() {
@@ -2570,6 +2588,70 @@ const AdminManager = {
         this._updateSaveButton('save-security-settings-btn', this.securityDirty);
     },
 
+    // --- System Operations Tab ---
+    setupSystemOperationsChangeListeners() {
+        const fields = ['document-context-max-chars', 'document-per-file-max-chars'];
+        fields.forEach(fieldId => {
+            const el = document.getElementById(fieldId);
+            if (el) {
+                el.addEventListener('input', () => this.checkSystemOperationsDirty());
+            }
+        });
+    },
+    getSystemOperationsSnapshot() {
+        return this._snapshotFields({
+            document_context_max_chars: 'document-context-max-chars',
+            document_per_file_max_chars: 'document-per-file-max-chars'
+        });
+    },
+    checkSystemOperationsDirty() {
+        this.systemOperationsDirty = this._isDirty(this.getSystemOperationsSnapshot(), this.systemOperationsOriginal);
+        this._updateSaveButton('save-system-operations-btn', this.systemOperationsDirty);
+    },
+
+    async saveSystemOperationsSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) {
+                window.showNotification('error', 'Not authenticated');
+                return;
+            }
+
+            const settings = {
+                performance: {
+                    document_context_max_chars: parseInt(this.getFieldValue('document-context-max-chars')),
+                    document_per_file_max_chars: parseInt(this.getFieldValue('document-per-file-max-chars'))
+                }
+            };
+
+            const response = await fetch('/api/v1/admin/expert-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.status !== 'success') {
+                window.showNotification('error', data.message || 'Failed to save system operations settings');
+                return;
+            }
+
+            this.systemOperationsOriginal = this.getSystemOperationsSnapshot();
+            this.systemOperationsDirty = false;
+            this._updateSaveButton('save-system-operations-btn', false);
+
+            window.showNotification('success', 'System operations settings saved successfully');
+
+        } catch (error) {
+            console.error('[AdminManager] Error saving system operations settings:', error);
+            window.showNotification('error', error.message);
+        }
+    },
+
     // --- Optimizer Tab (unchanged) ---
     checkOptimizerSettingsDirty() {
         const current = this.getOptimizerSettingsSnapshot();
@@ -2602,13 +2684,19 @@ const AdminManager = {
                     if (s.agent_config) {
                         this.setFieldValue('max-execution-steps', s.agent_config.max_execution_steps);
                         this.setFieldValue('tool-call-timeout', s.agent_config.tool_call_timeout);
+                        this.setFieldValue('max-execution-depth', s.agent_config.max_execution_depth);
+                        this.setFieldValue('max-phase-retry-attempts', s.agent_config.max_phase_retry_attempts);
                     }
 
-                    // Performance & Context
+                    // Context Window Management
                     if (s.performance) {
                         this.setFieldValue('context-max-rows', s.performance.context_max_rows);
                         this.setFieldValue('context-max-chars', s.performance.context_max_chars);
                         this.setFieldValue('description-threshold', s.performance.description_threshold);
+                        this.setFieldValue('report-distillation-max-rows', s.performance.report_distillation_max_rows);
+                        this.setFieldValue('report-distillation-max-chars', s.performance.report_distillation_max_chars);
+                        this.setFieldValue('report-distillation-total-budget', s.performance.report_distillation_total_budget);
+                        this.setFieldValue('report-distillation-aggressive-rows', s.performance.report_distillation_aggressive_rows);
                     }
 
                     // Agent Behavior
@@ -2740,12 +2828,18 @@ const AdminManager = {
             const settings = {
                 agent_config: {
                     max_execution_steps: parseInt(this.getFieldValue('max-execution-steps')),
-                    tool_call_timeout: parseInt(this.getFieldValue('tool-call-timeout'))
+                    tool_call_timeout: parseInt(this.getFieldValue('tool-call-timeout')),
+                    max_execution_depth: parseInt(this.getFieldValue('max-execution-depth')),
+                    max_phase_retry_attempts: parseInt(this.getFieldValue('max-phase-retry-attempts'))
                 },
                 performance: {
                     context_max_rows: parseInt(this.getFieldValue('context-max-rows')),
                     context_max_chars: parseInt(this.getFieldValue('context-max-chars')),
-                    description_threshold: parseInt(this.getFieldValue('description-threshold'))
+                    description_threshold: parseInt(this.getFieldValue('description-threshold')),
+                    report_distillation_max_rows: parseInt(this.getFieldValue('report-distillation-max-rows')),
+                    report_distillation_max_chars: parseInt(this.getFieldValue('report-distillation-max-chars')),
+                    report_distillation_total_budget: parseInt(this.getFieldValue('report-distillation-total-budget')),
+                    report_distillation_aggressive_rows: parseInt(this.getFieldValue('report-distillation-aggressive-rows'))
                 },
                 agent_behavior: {
                     allow_synthesis: document.getElementById('allow-synthesis')?.checked || false,
@@ -2944,6 +3038,8 @@ const AdminManager = {
                             this.setFieldValue('knowledge-min-relevance', kc.min_relevance_score);
                             this.setFieldValue('knowledge-max-tokens', kc.max_tokens);
                             if (knowledgeRerankingCheckbox) knowledgeRerankingCheckbox.checked = kc.reranking_enabled || false;
+                            this.setFieldValue('knowledge-chunk-size', kc.chunk_size);
+                            this.setFieldValue('knowledge-chunk-overlap', kc.chunk_overlap);
                         }
                     }
                 } catch (knowledgeError) {
@@ -2997,6 +3093,13 @@ const AdminManager = {
                             if (s.llm_behavior) {
                                 this.setFieldValue('llm-max-retries', s.llm_behavior.max_retries);
                                 this.setFieldValue('llm-base-delay', s.llm_behavior.base_delay);
+                                this.setFieldValue('llm-max-output-tokens', s.llm_behavior.max_output_tokens);
+                            }
+
+                            // Document Context (System Operations tab)
+                            if (s.performance) {
+                                this.setFieldValue('document-context-max-chars', s.performance.document_context_max_chars);
+                                this.setFieldValue('document-per-file-max-chars', s.performance.document_per_file_max_chars);
                             }
 
                             // Security
@@ -3019,6 +3122,11 @@ const AdminManager = {
                 this.securityOriginal = this.getSecuritySnapshot();
                 this.securityDirty = false;
                 this._updateSaveButton('save-security-settings-btn', false);
+
+                // Store original values for dirty tracking - System Operations tab
+                this.systemOperationsOriginal = this.getSystemOperationsSnapshot();
+                this.systemOperationsDirty = false;
+                this._updateSaveButton('save-system-operations-btn', false);
             }
 
             // Store original values for dirty tracking - Features tab
@@ -3292,7 +3400,8 @@ const AdminManager = {
             const expertSettings = {
                 llm_behavior: {
                     max_retries: parseInt(this.getFieldValue('llm-max-retries')),
-                    base_delay: parseFloat(this.getFieldValue('llm-base-delay'))
+                    base_delay: parseFloat(this.getFieldValue('llm-base-delay')),
+                    max_output_tokens: parseInt(this.getFieldValue('llm-max-output-tokens'))
                 }
             };
 
@@ -3643,7 +3752,9 @@ const AdminManager = {
                 num_docs: parseInt(this.getFieldValue('knowledge-num-docs')) || 3,
                 min_relevance_score: parseFloat(this.getFieldValue('knowledge-min-relevance')) || 0.70,
                 max_tokens: parseInt(this.getFieldValue('knowledge-max-tokens')) || 2000,
-                reranking_enabled: knowledgeRerankingCheckbox ? knowledgeRerankingCheckbox.checked : false
+                reranking_enabled: knowledgeRerankingCheckbox ? knowledgeRerankingCheckbox.checked : false,
+                chunk_size: parseInt(this.getFieldValue('knowledge-chunk-size')) || 1000,
+                chunk_overlap: parseInt(this.getFieldValue('knowledge-chunk-overlap')) || 200
             };
 
             const response = await fetch('/api/v1/admin/knowledge-config', {

@@ -22,17 +22,12 @@ app_logger = logging.getLogger("quart.app")
 # Unlike the executor's _distill_data_for_llm_context (metadata-only),
 # this preserves sample rows so the LLM can generate meaningful analysis.
 
-REPORT_DISTILLATION_MAX_ROWS = 100       # Keep first N rows as samples
-REPORT_DISTILLATION_MAX_CHARS = 50_000   # ~12,500 tokens per result set
-REPORT_DISTILLATION_TOTAL_BUDGET = 200_000  # ~50,000 tokens total
-
-
 def _distill_workflow_for_report(workflow_state: dict) -> dict:
     """Create a report-friendly distillation of workflow_state.
 
-    Keeps first REPORT_DISTILLATION_MAX_ROWS rows as representative samples
-    and adds metadata summary for the full dataset. Applies a total budget
-    check and aggressively reduces if needed.
+    Keeps first APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS rows as representative
+    samples and adds metadata summary for the full dataset. Applies a total
+    budget check and aggressively reduces if needed.
     """
     distilled = copy.deepcopy(workflow_state)
 
@@ -43,10 +38,11 @@ def _distill_workflow_for_report(workflow_state: dict) -> dict:
 
     # Safety check: if total size still exceeds budget, reduce further
     total_json = json.dumps(distilled)
-    if len(total_json) > REPORT_DISTILLATION_TOTAL_BUDGET:
+    budget = APP_CONFIG.REPORT_DISTILLATION_TOTAL_BUDGET
+    if len(total_json) > budget:
         app_logger.warning(
             f"Report distillation: total size {len(total_json):,} chars exceeds "
-            f"budget {REPORT_DISTILLATION_TOTAL_BUDGET:,}. Applying aggressive reduction."
+            f"budget {budget:,}. Applying aggressive reduction."
         )
         _aggressive_distill(distilled)
         reduced_json = json.dumps(distilled)
@@ -57,15 +53,18 @@ def _distill_workflow_for_report(workflow_state: dict) -> dict:
 
 def _distill_value_for_report(data):
     """Recursively distill a single value, preserving sample rows."""
+    max_rows = APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS
+    max_chars = APP_CONFIG.REPORT_DISTILLATION_MAX_CHARS
+
     if isinstance(data, dict):
         if 'results' in data and isinstance(data['results'], list):
             results_list = data['results']
             is_large = (
-                len(results_list) > REPORT_DISTILLATION_MAX_ROWS
-                or len(json.dumps(results_list)) > REPORT_DISTILLATION_MAX_CHARS
+                len(results_list) > max_rows
+                or len(json.dumps(results_list)) > max_chars
             )
             if is_large and results_list and all(isinstance(r, dict) for r in results_list[:5]):
-                sample = results_list[:REPORT_DISTILLATION_MAX_ROWS]
+                sample = results_list[:max_rows]
                 distilled = dict(data)
                 distilled['results'] = sample
                 distilled.setdefault('metadata', {})
@@ -82,11 +81,11 @@ def _distill_value_for_report(data):
 
     elif isinstance(data, list):
         if (
-            len(data) > REPORT_DISTILLATION_MAX_ROWS
+            len(data) > max_rows
             and data
             and all(isinstance(item, dict) for item in data[:5])
         ):
-            sample = data[:REPORT_DISTILLATION_MAX_ROWS]
+            sample = data[:max_rows]
             return {
                 '_distilled': True,
                 'sample': sample,
@@ -99,8 +98,10 @@ def _distill_value_for_report(data):
     return data
 
 
-def _aggressive_distill(distilled: dict, max_rows: int = 25):
+def _aggressive_distill(distilled: dict, max_rows: int = None):
     """Further reduce sample sizes when initial distillation exceeds budget."""
+    if max_rows is None:
+        max_rows = APP_CONFIG.REPORT_DISTILLATION_AGGRESSIVE_ROWS
     for key in list(distilled.keys()):
         if key.startswith('_'):
             continue

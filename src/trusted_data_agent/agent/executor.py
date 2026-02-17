@@ -38,10 +38,6 @@ from trusted_data_agent.agent.session_name_generator import generate_session_nam
 app_logger = logging.getLogger("quart.app")
 
 
-MAX_DOCUMENT_CONTEXT_CHARS = 50000  # ~12,500 tokens total across all attachments
-MAX_PER_DOCUMENT_CHARS = 20000  # Per-document character limit
-
-
 def load_document_context(user_uuid: str, session_id: str, attachments: list) -> str | None:
     """
     Load extracted text from uploaded documents and format as context block.
@@ -95,14 +91,14 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
             continue
 
         # Truncate individual documents if needed
-        if len(extracted_text) > MAX_PER_DOCUMENT_CHARS:
-            extracted_text = extracted_text[:MAX_PER_DOCUMENT_CHARS] + \
-                f"\n\n[Document truncated - showing first {MAX_PER_DOCUMENT_CHARS:,} characters of {len(entry.get('extracted_text', '')):,} total]"
+        if len(extracted_text) > APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:
+            extracted_text = extracted_text[:APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS] + \
+                f"\n\n[Document truncated - showing first {APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:,} characters of {len(entry.get('extracted_text', '')):,} total]"
 
         context_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
         total_chars += len(extracted_text)
 
-        if total_chars > MAX_DOCUMENT_CONTEXT_CHARS:
+        if total_chars > APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS:
             context_parts.append("[Additional documents omitted - context limit reached]")
             break
 
@@ -219,9 +215,9 @@ def load_multimodal_document_content(
             if block_type == "document":
                 extracted_text = entry.get("extracted_text", "")
                 if extracted_text:
-                    if len(extracted_text) > MAX_PER_DOCUMENT_CHARS:
-                        extracted_text = extracted_text[:MAX_PER_DOCUMENT_CHARS] + \
-                            f"\n\n[Document truncated - showing first {MAX_PER_DOCUMENT_CHARS:,} characters]"
+                    if len(extracted_text) > APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:
+                        extracted_text = extracted_text[:APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS] + \
+                            f"\n\n[Document truncated - showing first {APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:,} characters]"
                     text_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
                     total_text_chars += len(extracted_text)
                     app_logger.info(f"Also extracted text for native document {filename} (fallback for non-multimodal paths)")
@@ -230,12 +226,12 @@ def load_multimodal_document_content(
             extracted_text = entry.get("extracted_text", "")
             if not extracted_text:
                 continue
-            if len(extracted_text) > MAX_PER_DOCUMENT_CHARS:
-                extracted_text = extracted_text[:MAX_PER_DOCUMENT_CHARS] + \
-                    f"\n\n[Document truncated - showing first {MAX_PER_DOCUMENT_CHARS:,} characters]"
+            if len(extracted_text) > APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:
+                extracted_text = extracted_text[:APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS] + \
+                    f"\n\n[Document truncated - showing first {APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS:,} characters]"
             text_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
             total_text_chars += len(extracted_text)
-            if total_text_chars > MAX_DOCUMENT_CONTEXT_CHARS:
+            if total_text_chars > APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS:
                 text_parts.append("[Additional documents omitted - context limit reached]")
                 break
 
@@ -569,7 +565,7 @@ class PlanExecutor:
         self.max_steps = 40
 
         self.execution_depth = execution_depth
-        self.MAX_EXECUTION_DEPTH = 5
+        self.MAX_EXECUTION_DEPTH = APP_CONFIG.MAX_EXECUTION_DEPTH
 
         self.disabled_history = disabled_history or force_history_disable
         self.previous_turn_data = previous_turn_data or {}

@@ -1327,7 +1327,7 @@ class PhaseExecutor:
 
         # --- Tactical LLM Path (Slow Path) ---
         phase_attempts = 0
-        max_phase_attempts = 5
+        max_phase_attempts = APP_CONFIG.MAX_PHASE_RETRY_ATTEMPTS
         tactical_call_id = None
         while True:
             phase_attempts += 1

@@ -10,7 +10,7 @@ This document provides a detailed analysis of how the Uderia platform manages se
 
 ### 1.1 System Prompt Construction
 
-**File:** `src/trusted_data_agent/llm/handler.py` (lines 325-497)
+**File:** `src/trusted_data_agent/llm/handler.py` (lines 358-507)
 **Function:** `_get_full_system_prompt()`
 
 The system prompt is dynamically assembled from multiple sources:
@@ -35,7 +35,7 @@ The system prompt is dynamically assembled from multiple sources:
 
 ### 1.2 Conversation History Assembly
 
-**File:** `src/trusted_data_agent/core/session_manager.py` (lines 582-668)
+**File:** `src/trusted_data_agent/core/session_manager.py` (lines 1038-1134)
 **Function:** `add_message_to_histories()`
 
 Each message added to context includes:
@@ -50,7 +50,7 @@ Each message added to context includes:
 
 ### 1.3 RAG Context Injection
 
-**File:** `src/trusted_data_agent/agent/planner.py` (lines 1760-1833)
+**File:** `src/trusted_data_agent/agent/planner.py` (lines 2230-2586)
 
 Champion cases are retrieved and formatted:
 ```
@@ -62,7 +62,7 @@ Champion cases are retrieved and formatted:
 
 ### 1.4 Plan Hydration Context
 
-**File:** `src/trusted_data_agent/agent/planner.py` (lines 200-249)
+**File:** `src/trusted_data_agent/agent/planner.py` (lines 182-250)
 
 Previous turn results injected into workflow state:
 ```
@@ -148,7 +148,7 @@ Previous turn results injected into workflow state:
 
 ### 3.3 Consumer-Specific Formatting
 
-**File:** `src/trusted_data_agent/llm/handler.py` (lines 569-717)
+**File:** `src/trusted_data_agent/llm/handler.py` (lines 740-887)
 
 ```
 Google:     ChatSession.send_message_async(prompt)
@@ -229,12 +229,12 @@ Bedrock:    invoke_model(body={...})
 
 | Operation | Function | File | Lines |
 |-----------|----------|------|-------|
-| **Add message** | `add_message_to_histories()` | session_manager.py | 582-668 |
-| **Update tokens** | `update_token_count()` | session_manager.py | 708-744 |
-| **Update turn data** | `update_last_turn_data()` | session_manager.py | 781-908 |
-| **Toggle validity** | `toggle_turn_validity()` | session_manager.py | 981-1046 |
-| **Purge memory** | `purge_session_memory()` | session_manager.py | 911-978 |
-| **Condense history** | `_condense_and_clean_history()` | handler.py | 220-322 |
+| **Add message** | `add_message_to_histories()` | session_manager.py | 1038-1134 |
+| **Update tokens** | `update_token_count()` | session_manager.py | 1174-1210 |
+| **Update turn data** | `update_last_turn_data()` | session_manager.py | 1268-1395 |
+| **Toggle validity** | `toggle_turn_validity()` | session_manager.py | 1468-1532 |
+| **Purge memory** | `purge_session_memory()` | session_manager.py | 1398-1465 |
+| **Condense history** | `_condense_and_clean_history()` | handler.py | 253-355 |
 
 ### 4.4 Context Growth Pattern
 
@@ -255,12 +255,15 @@ Turn N:  Linear growth in history portion
 
 | Optimization | Mechanism | Savings | File:Lines |
 |--------------|-----------|---------|------------|
-| **Tool condensation** | Names-only after first turn | 60-70% of tool context | handler.py:394-401 |
-| **History condensation** | Remove duplicates, clean capabilities | 10-20% of history | handler.py:220-322 |
-| **Context distillation** | Summarize large tool outputs | 99%+ of large results | executor.py:522-549 |
-| **Plan hydration** | Inject previous results, skip re-fetch | 1-2 tool calls saved | planner.py:200-249 |
-| **Turn validity toggle** | Exclude invalid turns from context | Variable | session_manager.py:981-1046 |
-| **Memory purge** | Reset chat_object, keep audit trail | 100% of history | session_manager.py:911-978 |
+| **Tool condensation** | Names-only after first turn | 60-70% of tool context | handler.py:423-437 |
+| **History condensation** | Remove duplicates, clean capabilities | 10-20% of history | handler.py:253-355 |
+| **Context distillation** | Summarize large tool outputs (metadata-only) | 99%+ of large results | executor.py:956-983 |
+| **Report distillation L1** | Sample rows per result set (preserves data) | 80-90% of large results | adapter.py:25-51 |
+| **Report distillation L2** | Aggressive row reduction on total budget | 95%+ when budget exceeded | adapter.py:101-127 |
+| **Document truncation** | Per-file + total char limits on uploads | Prevents unbounded doc context | executor.py:41-100 |
+| **Plan hydration** | Inject previous results, skip re-fetch | 1-2 tool calls saved | planner.py:182-250 |
+| **Turn validity toggle** | Exclude invalid turns from context | Variable | session_manager.py:1468-1532 |
+| **Memory purge** | Reset chat_object, keep audit trail | 100% of history | session_manager.py:1398-1465 |
 
 ### 5.2 Optimization Trigger Conditions
 
@@ -268,10 +271,62 @@ Turn N:  Linear growth in history portion
 |--------------|---------|
 | Tool condensation | `full_context_sent == True` (after turn 1) |
 | History condensation | `CONDENSE_SYSTEMPROMPT_HISTORY` config flag |
-| Context distillation | Result > 500 rows OR > 10,000 chars |
+| Context distillation | Result > `CONTEXT_DISTILLATION_MAX_ROWS` (500) rows OR > `CONTEXT_DISTILLATION_MAX_CHARS` (10,000) chars |
+| Report distillation L1 | Per-result > `REPORT_DISTILLATION_MAX_ROWS` (100) rows OR > `REPORT_DISTILLATION_MAX_CHARS` (50,000) chars |
+| Report distillation L2 | Total distilled JSON > `REPORT_DISTILLATION_TOTAL_BUDGET` (200,000) chars |
+| Document truncation | Per-file > `DOCUMENT_PER_FILE_MAX_CHARS` (20,000) chars or total > `DOCUMENT_CONTEXT_MAX_CHARS` (50,000) chars |
 | Plan hydration | Previous turn has reusable data for current phase |
 | Turn validity | User toggles turn via UI |
 | Memory purge | User clicks "Clear Memory" |
+
+### 5.3 Report Distillation (Two-Level)
+
+**File:** `src/trusted_data_agent/mcp_adapter/adapter.py` (lines 25-127)
+
+Report distillation operates separately from context distillation (Section 5.1). While context distillation replaces large results with **metadata-only** summaries during tactical execution, report distillation **preserves sample rows** for the final report generation phase. This distinction is critical: the report phase needs actual data to produce meaningful analysis, not just row counts and column names.
+
+**Level 1 — Per-Result-Set Distillation:**
+- **Function:** `_distill_workflow_for_report()` (line 25)
+- **Helper:** `_distill_value_for_report()` (line 54) — recursively processes nested data structures
+- **Trigger:** Each result set checked against `APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS` (default 100) and `APP_CONFIG.REPORT_DISTILLATION_MAX_CHARS` (default 50,000)
+- **Action:** Truncates to sample rows while preserving column structure
+
+**Level 2 — Total Budget Enforcement:**
+- **Trigger:** Total distilled JSON exceeds `APP_CONFIG.REPORT_DISTILLATION_TOTAL_BUDGET` (default 200,000 chars)
+- **Function:** `_aggressive_distill()` (line 101)
+- **Helper:** `_reduce_samples()` (line 54) — reduces sample count per result set
+- **Action:** Reduces each result set to `APP_CONFIG.REPORT_DISTILLATION_AGGRESSIVE_ROWS` (default 25) rows
+
+**Comparison with Context Distillation:**
+
+| Aspect | Context Distillation (executor) | Report Distillation (adapter) |
+|--------|--------------------------------|-------------------------------|
+| **When** | During tactical phase execution | Before report generation |
+| **Output** | Metadata-only summary | Sample rows preserved |
+| **Purpose** | Minimize context for planning | Provide data for analysis |
+| **Thresholds** | 500 rows / 10K chars | L1: 100 rows / 50K chars; L2: 200K total |
+
+### 5.4 Document Context Processing
+
+**File:** `src/trusted_data_agent/agent/executor.py` (lines 41-100)
+**Function:** `load_document_context()`
+
+Uploaded document attachments (PDFs, text files) are loaded and truncated before injection into LLM context. This is a module-level function shared by both the PlanExecutor and genie execution paths.
+
+**Processing:**
+```
+1. Load extracted text from session attachment files
+2. Per-file truncation: Trim to APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS (default 20,000)
+3. Append "[Document truncated...]" suffix to trimmed files
+4. Format as context block: "--- UPLOADED DOCUMENTS ---\n{content}"
+5. Prepend to user query before sending to LLM
+```
+
+**Configuration:**
+- Per-file limit: `APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS` (default 20,000 chars)
+- Total limit: `APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS` (default 50,000 chars)
+
+All values are admin-configurable via Administration → App Config → System Operations → Document Context.
 
 ---
 
@@ -405,8 +460,10 @@ if rag_tokens > budget_allocation["rag_cases"]:
 
 ### 6.7 Profile-Specific Context Strategies
 
-**Current State:** Same context assembly for all profile types
-**Opportunity:** Optimize per profile type
+> **Status:** Partially implemented — see Section 9 for current per-profile context handling. The base infrastructure for profile-specific context strategies is in place. The remaining opportunity is further optimization *within* each profile type.
+
+**Current State:** Basic profile-specific context assembly implemented (Section 9)
+**Opportunity:** Further optimize per profile type
 
 | Profile Type | Optimization |
 |--------------|--------------|
@@ -659,7 +716,7 @@ context_metrics = {
 
 ### 9.2 tool_enabled (Optimizer) Profile
 
-**File:** `src/trusted_data_agent/agent/executor.py` (lines 4291+)
+**File:** `src/trusted_data_agent/agent/executor.py` (lines 4365-4405)
 
 **Context Building:**
 ```python
@@ -678,7 +735,7 @@ context_metrics = {
 
 ### 9.3 llm_only (Chat) Profile
 
-**File:** `src/trusted_data_agent/agent/executor.py` (lines 1690-2180)
+**File:** `src/trusted_data_agent/agent/executor.py` (lines 2238-2980)
 
 **Context Building:**
 ```python
@@ -700,7 +757,7 @@ clean_dependencies = {
 
 ### 9.4 rag_focused (Knowledge) Profile
 
-**File:** `src/trusted_data_agent/agent/executor.py` (lines 2201-2905)
+**File:** `src/trusted_data_agent/agent/executor.py` (lines 3005-3814)
 
 **Context Building:**
 ```python
@@ -726,7 +783,7 @@ all_results = self.rag_retriever.retrieve_examples(
 
 ### 9.5 genie (Multi-Profile Coordinator)
 
-**File:** `src/trusted_data_agent/agent/genie_coordinator.py` (lines 365-823)
+**File:** `src/trusted_data_agent/agent/genie_coordinator.py` (lines 399-898)
 
 **Context Building:**
 ```python
@@ -748,7 +805,7 @@ for msg in history_messages:
 
 ### 9.6 ProfilePromptResolver
 
-**File:** `src/trusted_data_agent/agent/profile_prompt_resolver.py` (lines 100-249)
+**File:** `src/trusted_data_agent/agent/profile_prompt_resolver.py` (lines 32-249)
 
 All profile types use this class for prompt selection:
 
@@ -869,23 +926,54 @@ def record_improvement(session_id, turn_index,
 ### 11.1 Context Overflow Prevention
 
 **Configuration:** `src/trusted_data_agent/core/config.py`
+
+All values below are admin-configurable via Administration → Optimizer Settings / App Config / Knowledge Repository.
+
 ```python
-CONTEXT_DISTILLATION_MAX_ROWS = 500        # Trigger distillation
-CONTEXT_DISTILLATION_MAX_CHARS = 10000     # Character threshold
-KNOWLEDGE_MAX_TOKENS = 2000                # Knowledge context budget
+# Context distillation (executor-level, metadata-only summaries)
+CONTEXT_DISTILLATION_MAX_ROWS = 500        # Trigger metadata-only summary (rows)
+CONTEXT_DISTILLATION_MAX_CHARS = 10_000    # Trigger metadata-only summary (chars)
+
+# Report distillation (adapter-level, preserves sample rows)
+REPORT_DISTILLATION_MAX_ROWS = 100         # L1: per-result-set sample rows
+REPORT_DISTILLATION_MAX_CHARS = 50_000     # L1: per-result-set char limit
+REPORT_DISTILLATION_TOTAL_BUDGET = 200_000 # L2: total budget trigger
+REPORT_DISTILLATION_AGGRESSIVE_ROWS = 25   # L2: aggressive row limit
+
+# Document context processing
+DOCUMENT_CONTEXT_MAX_CHARS = 50_000        # Total char limit for uploaded documents
+DOCUMENT_PER_FILE_MAX_CHARS = 20_000       # Per-document truncation limit
+
+# Execution limits
+MAX_EXECUTION_DEPTH = 5                    # Maximum recursive execution depth
+MAX_PHASE_RETRY_ATTEMPTS = 5              # Maximum self-correction retries per phase
+
+# Knowledge chunking
+KNOWLEDGE_CHUNK_SIZE = 1_000               # Default chunk size for knowledge repositories
+KNOWLEDGE_CHUNK_OVERLAP = 200              # Default overlap between chunks
+
+# LLM output
+LLM_MAX_OUTPUT_TOKENS = 8_192             # Max output tokens (all providers)
+
+# Knowledge context
+KNOWLEDGE_MAX_TOKENS = 2_000               # Knowledge context budget per retrieval
 ```
 
 **Mechanisms:**
 
 | Mechanism | Trigger | Action |
 |-----------|---------|--------|
-| **Data Distillation** | Result > 500 rows OR > 10K chars | Replace with metadata summary |
+| **Context Distillation** | Result > 500 rows OR > 10K chars | Replace with metadata-only summary |
+| **Report Distillation L1** | Per-result > 100 rows OR > 50K chars | Truncate to sample rows |
+| **Report Distillation L2** | Total > 200K chars | Reduce to 25 rows per result set |
+| **Document Truncation** | Per-file > 20K chars or total > 50K chars | Truncate with "[Document truncated...]" suffix |
 | **Knowledge Truncation** | Accumulated chars > limit | Stop adding documents mid-iteration |
 | **System Prompt Condensation** | `full_context_sent == True` | Names-only tool list (60-70% savings) |
+| **LLM Output Cap** | All provider calls | Limit response to 8,192 tokens (100 for session names) |
 
 ### 11.2 Malformed Data Recovery
 
-**JSON Parsing with Sanitization:** `handler.py:72-111`
+**JSON Parsing with Sanitization:** `handler.py:69-156`
 ```python
 def parse_and_coerce_llm_response(response_text: str, target_model: BaseModel):
     # 1. Sanitize (remove control characters)
@@ -894,7 +982,7 @@ def parse_and_coerce_llm_response(response_text: str, target_model: BaseModel):
     # 4. Auto-correct common issues (list→objects, numbers→strings)
 ```
 
-**Session Corruption:** `session_manager.py:103-105`
+**Session Corruption:** `session_manager.py:103-110`
 ```python
 except (json.JSONDecodeError, OSError) as e:
     app_logger.error(f"Error loading session file: {e}")
@@ -903,7 +991,7 @@ except (json.JSONDecodeError, OSError) as e:
 
 ### 11.3 Retry Logic
 
-**LLM API Retries:** `handler.py:569-886`
+**LLM API Retries:** `handler.py:610-1041`
 ```python
 for attempt in range(APP_CONFIG.LLM_API_MAX_RETRIES):
     try:
@@ -925,7 +1013,7 @@ except KeyError as e:
 
 ### 11.4 Response Truncation Detection
 
-**Google API:** `handler.py:616-643`
+**Google API:** `handler.py:699-727`
 ```python
 finish_reason_name = candidate.finish_reason.name
 # MAX_TOKENS: Response truncated (log warning, return partial)
@@ -935,12 +1023,12 @@ finish_reason_name = candidate.finish_reason.name
 
 ### 11.5 History Validity Control
 
-**Turn Toggle:** `session_manager.py:981-1046`
+**Turn Toggle:** `session_manager.py:1468-1532`
 - Toggle `isValid` flag across all three histories
 - Invalid turns automatically excluded from LLM context
 - Preserves data for auditing
 
-**Memory Purge:** `session_manager.py:911-978`
+**Memory Purge:** `session_manager.py:1398-1465`
 - Marks all history as `isValid: false`
 - Resets `chat_object` to empty
 - Resets `full_context_sent` flag
@@ -986,13 +1074,15 @@ These improvements would provide:
 
 | Component | File | Key Lines |
 |-----------|------|-----------|
-| System prompt construction | `llm/handler.py` | 325-497 |
-| History condensation | `llm/handler.py` | 220-322 |
-| Context distillation | `agent/executor.py` | 522-549 |
-| Session management | `core/session_manager.py` | 582-668, 911-978 |
-| Profile detection | `agent/executor.py` | 1670-1687 |
-| Genie coordination | `agent/genie_coordinator.py` | 365-823 |
-| RAG retrieval | `agent/rag_retriever.py` | 1227-1397 |
+| System prompt construction | `llm/handler.py` | 358-507 |
+| History condensation | `llm/handler.py` | 253-355 |
+| Context distillation | `agent/executor.py` | 956-983 |
+| Report distillation | `mcp_adapter/adapter.py` | 25-127 |
+| Document context processing | `agent/executor.py` | 41-100 |
+| Session management | `core/session_manager.py` | 1038-1134, 1398-1465 |
+| Profile detection | `agent/executor.py` | 1302-1324 |
+| Genie coordination | `agent/genie_coordinator.py` | 399-898 |
+| RAG retrieval | `agent/rag_retriever.py` | 1288+ |
 | Token tracking | `core/cost_manager.py` | 251-276 |
 | Consumption tracking | `auth/consumption_manager.py` | 194-296 |
-| Profile prompt resolution | `agent/profile_prompt_resolver.py` | 100-249 |
+| Profile prompt resolution | `agent/profile_prompt_resolver.py` | 32-249 |

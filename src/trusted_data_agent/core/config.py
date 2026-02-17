@@ -50,6 +50,26 @@ class AppConfig:
     CONTEXT_DISTILLATION_MAX_ROWS = 500 # The maximum number of rows from a tool's result to include in the LLM context.
     CONTEXT_DISTILLATION_MAX_CHARS = 10000 # The maximum number of characters from a tool's result to include in the LLM context.
     DETAILED_DESCRIPTION_THRESHOLD = 200 # A heuristic character count for the PlanExecutor to distinguish between a generic vs. a detailed task description from the planner.
+    REPORT_DISTILLATION_MAX_ROWS = 100  # Report distillation Level 1: per-result-set row limit
+    REPORT_DISTILLATION_MAX_CHARS = 50_000  # Report distillation Level 1: per-result-set character limit (~12,500 tokens)
+    REPORT_DISTILLATION_TOTAL_BUDGET = 200_000  # Report distillation Level 2 trigger: total character budget (~50,000 tokens)
+    REPORT_DISTILLATION_AGGRESSIVE_ROWS = 25  # Report distillation Level 2 reduction: aggressive row limit per result set
+
+    # Document context limits
+    DOCUMENT_CONTEXT_MAX_CHARS = 50_000  # Total character limit across all uploaded document attachments
+    DOCUMENT_PER_FILE_MAX_CHARS = 20_000  # Per-document character truncation limit
+
+    # Execution limits
+    MAX_EXECUTION_DEPTH = 5  # Maximum nesting depth for delegated prompt execution
+    MAX_PHASE_RETRY_ATTEMPTS = 5  # Maximum retry attempts per phase before LLM recovery
+
+    # Knowledge chunking defaults
+    KNOWLEDGE_CHUNK_SIZE = 1_000  # Default chunk size in characters for document segmentation
+    KNOWLEDGE_CHUNK_OVERLAP = 200  # Overlap between consecutive document chunks
+
+    # LLM output limits
+    LLM_MAX_OUTPUT_TOKENS = 8_192  # Max output tokens for LLM generation calls
+
     SQL_OPTIMIZATION_PROMPTS = []
     SQL_OPTIMIZATION_TOOLS = ["base_readQuery"]
 

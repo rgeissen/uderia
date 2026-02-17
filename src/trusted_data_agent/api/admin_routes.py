@@ -1491,16 +1491,25 @@ async def get_expert_settings():
         settings = {
             'llm_behavior': {
                 'max_retries': APP_CONFIG.LLM_API_MAX_RETRIES,
-                'base_delay': APP_CONFIG.LLM_API_BASE_DELAY
+                'base_delay': APP_CONFIG.LLM_API_BASE_DELAY,
+                'max_output_tokens': APP_CONFIG.LLM_MAX_OUTPUT_TOKENS
             },
             'agent_config': {
                 'max_execution_steps': APP_CONFIG.MAX_EXECUTION_STEPS if hasattr(APP_CONFIG, 'MAX_EXECUTION_STEPS') else 25,
-                'tool_call_timeout': APP_CONFIG.TOOL_CALL_TIMEOUT if hasattr(APP_CONFIG, 'TOOL_CALL_TIMEOUT') else 60
+                'tool_call_timeout': APP_CONFIG.TOOL_CALL_TIMEOUT if hasattr(APP_CONFIG, 'TOOL_CALL_TIMEOUT') else 60,
+                'max_execution_depth': APP_CONFIG.MAX_EXECUTION_DEPTH,
+                'max_phase_retry_attempts': APP_CONFIG.MAX_PHASE_RETRY_ATTEMPTS
             },
             'performance': {
                 'context_max_rows': APP_CONFIG.CONTEXT_DISTILLATION_MAX_ROWS,
                 'context_max_chars': APP_CONFIG.CONTEXT_DISTILLATION_MAX_CHARS,
-                'description_threshold': APP_CONFIG.DETAILED_DESCRIPTION_THRESHOLD
+                'description_threshold': APP_CONFIG.DETAILED_DESCRIPTION_THRESHOLD,
+                'report_distillation_max_rows': APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS,
+                'report_distillation_max_chars': APP_CONFIG.REPORT_DISTILLATION_MAX_CHARS,
+                'report_distillation_total_budget': APP_CONFIG.REPORT_DISTILLATION_TOTAL_BUDGET,
+                'report_distillation_aggressive_rows': APP_CONFIG.REPORT_DISTILLATION_AGGRESSIVE_ROWS,
+                'document_context_max_chars': APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS,
+                'document_per_file_max_chars': APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS
             },
             'agent_behavior': {
                 'allow_synthesis': APP_CONFIG.ALLOW_SYNTHESIS_FROM_HISTORY,
@@ -1558,6 +1567,8 @@ async def save_expert_settings():
                 APP_CONFIG.LLM_API_MAX_RETRIES = int(llm['max_retries'])
             if 'base_delay' in llm:
                 APP_CONFIG.LLM_API_BASE_DELAY = float(llm['base_delay'])
+            if 'max_output_tokens' in llm:
+                APP_CONFIG.LLM_MAX_OUTPUT_TOKENS = int(llm['max_output_tokens'])
         
         # Update agent configuration
         if 'agent_config' in data:
@@ -1566,6 +1577,10 @@ async def save_expert_settings():
                 APP_CONFIG.MAX_EXECUTION_STEPS = int(agent['max_execution_steps'])
             if 'tool_call_timeout' in agent:
                 APP_CONFIG.TOOL_CALL_TIMEOUT = int(agent['tool_call_timeout'])
+            if 'max_execution_depth' in agent:
+                APP_CONFIG.MAX_EXECUTION_DEPTH = int(agent['max_execution_depth'])
+            if 'max_phase_retry_attempts' in agent:
+                APP_CONFIG.MAX_PHASE_RETRY_ATTEMPTS = int(agent['max_phase_retry_attempts'])
         
         # Update performance settings
         if 'performance' in data:
@@ -1576,6 +1591,18 @@ async def save_expert_settings():
                 APP_CONFIG.CONTEXT_DISTILLATION_MAX_CHARS = int(perf['context_max_chars'])
             if 'description_threshold' in perf:
                 APP_CONFIG.DETAILED_DESCRIPTION_THRESHOLD = int(perf['description_threshold'])
+            if 'report_distillation_max_rows' in perf:
+                APP_CONFIG.REPORT_DISTILLATION_MAX_ROWS = int(perf['report_distillation_max_rows'])
+            if 'report_distillation_max_chars' in perf:
+                APP_CONFIG.REPORT_DISTILLATION_MAX_CHARS = int(perf['report_distillation_max_chars'])
+            if 'report_distillation_total_budget' in perf:
+                APP_CONFIG.REPORT_DISTILLATION_TOTAL_BUDGET = int(perf['report_distillation_total_budget'])
+            if 'report_distillation_aggressive_rows' in perf:
+                APP_CONFIG.REPORT_DISTILLATION_AGGRESSIVE_ROWS = int(perf['report_distillation_aggressive_rows'])
+            if 'document_context_max_chars' in perf:
+                APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS = int(perf['document_context_max_chars'])
+            if 'document_per_file_max_chars' in perf:
+                APP_CONFIG.DOCUMENT_PER_FILE_MAX_CHARS = int(perf['document_per_file_max_chars'])
         
         # Update agent behavior settings
         if 'agent_behavior' in data:
@@ -2016,7 +2043,9 @@ async def get_knowledge_config():
                 'num_docs': APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS,
                 'min_relevance_score': APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE,
                 'max_tokens': APP_CONFIG.KNOWLEDGE_MAX_TOKENS,
-                'reranking_enabled': APP_CONFIG.KNOWLEDGE_RERANKING_ENABLED
+                'reranking_enabled': APP_CONFIG.KNOWLEDGE_RERANKING_ENABLED,
+                'chunk_size': APP_CONFIG.KNOWLEDGE_CHUNK_SIZE,
+                'chunk_overlap': APP_CONFIG.KNOWLEDGE_CHUNK_OVERLAP
             }
         }), 200
     except Exception as e:
@@ -2056,7 +2085,15 @@ async def save_knowledge_config():
         if 'reranking_enabled' in data:
             APP_CONFIG.KNOWLEDGE_RERANKING_ENABLED = bool(data['reranking_enabled'])
             logger.info(f"Knowledge reranking enabled: {APP_CONFIG.KNOWLEDGE_RERANKING_ENABLED}")
-        
+
+        if 'chunk_size' in data:
+            APP_CONFIG.KNOWLEDGE_CHUNK_SIZE = int(data['chunk_size'])
+            logger.info(f"Knowledge chunk size: {APP_CONFIG.KNOWLEDGE_CHUNK_SIZE}")
+
+        if 'chunk_overlap' in data:
+            APP_CONFIG.KNOWLEDGE_CHUNK_OVERLAP = int(data['chunk_overlap'])
+            logger.info(f"Knowledge chunk overlap: {APP_CONFIG.KNOWLEDGE_CHUNK_OVERLAP}")
+
         return jsonify({
             'status': 'success',
             'message': 'Knowledge repository configuration updated successfully',
@@ -2065,7 +2102,9 @@ async def save_knowledge_config():
                 'num_docs': APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS,
                 'min_relevance_score': APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE,
                 'max_tokens': APP_CONFIG.KNOWLEDGE_MAX_TOKENS,
-                'reranking_enabled': APP_CONFIG.KNOWLEDGE_RERANKING_ENABLED
+                'reranking_enabled': APP_CONFIG.KNOWLEDGE_RERANKING_ENABLED,
+                'chunk_size': APP_CONFIG.KNOWLEDGE_CHUNK_SIZE,
+                'chunk_overlap': APP_CONFIG.KNOWLEDGE_CHUNK_OVERLAP
             }
         }), 200
         
