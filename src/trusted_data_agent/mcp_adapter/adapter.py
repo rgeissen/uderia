@@ -1,4 +1,5 @@
 # trusted_data_agent/mcp/adapter.py
+import copy
 import json
 import logging
 import re
@@ -13,6 +14,116 @@ from trusted_data_agent.core.config import get_user_mcp_server_id
 from trusted_data_agent.agent.response_models import CanonicalResponse, PromptReportResponse
 
 app_logger = logging.getLogger("quart.app")
+
+
+# ---------------------------------------------------------------------------
+# Report-aware context distillation
+# ---------------------------------------------------------------------------
+# Unlike the executor's _distill_data_for_llm_context (metadata-only),
+# this preserves sample rows so the LLM can generate meaningful analysis.
+
+REPORT_DISTILLATION_MAX_ROWS = 100       # Keep first N rows as samples
+REPORT_DISTILLATION_MAX_CHARS = 50_000   # ~12,500 tokens per result set
+REPORT_DISTILLATION_TOTAL_BUDGET = 200_000  # ~50,000 tokens total
+
+
+def _distill_workflow_for_report(workflow_state: dict) -> dict:
+    """Create a report-friendly distillation of workflow_state.
+
+    Keeps first REPORT_DISTILLATION_MAX_ROWS rows as representative samples
+    and adds metadata summary for the full dataset. Applies a total budget
+    check and aggressively reduces if needed.
+    """
+    distilled = copy.deepcopy(workflow_state)
+
+    for key in list(distilled.keys()):
+        if key.startswith('_'):
+            continue
+        distilled[key] = _distill_value_for_report(distilled[key])
+
+    # Safety check: if total size still exceeds budget, reduce further
+    total_json = json.dumps(distilled)
+    if len(total_json) > REPORT_DISTILLATION_TOTAL_BUDGET:
+        app_logger.warning(
+            f"Report distillation: total size {len(total_json):,} chars exceeds "
+            f"budget {REPORT_DISTILLATION_TOTAL_BUDGET:,}. Applying aggressive reduction."
+        )
+        _aggressive_distill(distilled)
+        reduced_json = json.dumps(distilled)
+        app_logger.info(f"Report distillation: reduced to {len(reduced_json):,} chars")
+
+    return distilled
+
+
+def _distill_value_for_report(data):
+    """Recursively distill a single value, preserving sample rows."""
+    if isinstance(data, dict):
+        if 'results' in data and isinstance(data['results'], list):
+            results_list = data['results']
+            is_large = (
+                len(results_list) > REPORT_DISTILLATION_MAX_ROWS
+                or len(json.dumps(results_list)) > REPORT_DISTILLATION_MAX_CHARS
+            )
+            if is_large and results_list and all(isinstance(r, dict) for r in results_list[:5]):
+                sample = results_list[:REPORT_DISTILLATION_MAX_ROWS]
+                distilled = dict(data)
+                distilled['results'] = sample
+                distilled.setdefault('metadata', {})
+                distilled['metadata']['total_row_count'] = len(results_list)
+                distilled['metadata']['sample_rows_included'] = len(sample)
+                distilled['metadata']['columns'] = list(results_list[0].keys()) if results_list else []
+                distilled['metadata']['truncated'] = True
+                distilled['metadata']['truncation_note'] = (
+                    f"Showing first {len(sample)} of {len(results_list)} rows. "
+                    f"Analysis should note patterns are based on this sample."
+                )
+                return distilled
+        return {k: _distill_value_for_report(v) for k, v in data.items()}
+
+    elif isinstance(data, list):
+        if (
+            len(data) > REPORT_DISTILLATION_MAX_ROWS
+            and data
+            and all(isinstance(item, dict) for item in data[:5])
+        ):
+            sample = data[:REPORT_DISTILLATION_MAX_ROWS]
+            return {
+                '_distilled': True,
+                'sample': sample,
+                'total_count': len(data),
+                'columns': list(data[0].keys()) if data else [],
+                'note': f"Showing first {len(sample)} of {len(data)} items."
+            }
+        return [_distill_value_for_report(item) for item in data]
+
+    return data
+
+
+def _aggressive_distill(distilled: dict, max_rows: int = 25):
+    """Further reduce sample sizes when initial distillation exceeds budget."""
+    for key in list(distilled.keys()):
+        if key.startswith('_'):
+            continue
+        distilled[key] = _reduce_samples(distilled[key], max_rows)
+
+
+def _reduce_samples(data, max_rows: int):
+    """Recursively reduce sample sizes in already-distilled data."""
+    if isinstance(data, dict):
+        if 'results' in data and isinstance(data['results'], list) and len(data['results']) > max_rows:
+            data['results'] = data['results'][:max_rows]
+            if 'metadata' in data and isinstance(data['metadata'], dict):
+                data['metadata']['sample_rows_included'] = max_rows
+                data['metadata']['truncation_note'] = (
+                    f"Aggressively reduced to first {max_rows} of "
+                    f"{data['metadata'].get('total_row_count', '?')} rows."
+                )
+        if '_distilled' in data and 'sample' in data and isinstance(data['sample'], list):
+            data['sample'] = data['sample'][:max_rows]
+        return {k: _reduce_samples(v, max_rows) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [_reduce_samples(item, max_rows) for item in data]
+    return data
 
 
 # --- MODIFICATION START: Consolidate all client-side tools into a single list ---
@@ -1037,7 +1148,7 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
         "You are an expert data analyst. Your task is to create a final report for the user by analyzing the provided data and their original question.\n\n"
         f"--- USER'S ORIGINAL QUESTION ---\n{user_question}\n\n"
         f"{knowledge_section}"
-        f"--- DATA FOR ANALYSIS ---\n{json.dumps(workflow_state_for_data, indent=2)}\n\n"
+        f"--- DATA FOR ANALYSIS ---\n{json.dumps(_distill_workflow_for_report(workflow_state_for_data), indent=2)}\n\n"
         "--- INSTRUCTIONS ---\n"
         "Your response MUST be a single JSON object that strictly follows the schema for a `CanonicalResponse`.\n"
         "You are required to populate its fields based on your analysis of the data provided above.\n"
@@ -1051,10 +1162,13 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
     reason = f"Client-Side Tool Call: TDA_FinalReport\nGoal: {user_question}"
 
     # --- FIX: Log prompt size to help diagnose large data issues ---
-    workflow_data_json = json.dumps(workflow_state_for_data, indent=2)
+    raw_data_chars = len(json.dumps(workflow_state_for_data, indent=2))
     prompt_char_count = len(final_summary_prompt_text)
-    workflow_data_char_count = len(workflow_data_json)
-    app_logger.info(f"TDA_FinalReport: Prompt size={prompt_char_count} chars, workflow_data size={workflow_data_char_count} chars")
+    app_logger.info(
+        f"TDA_FinalReport: Prompt size={prompt_char_count:,} chars, "
+        f"raw workflow_data={raw_data_chars:,} chars "
+        f"(distilled to {prompt_char_count:,} in prompt)"
+    )
     # --- END FIX ---
 
     # --- MODIFICATION START: Pass user_uuid and planning_phase ---
@@ -1111,7 +1225,7 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
     final_summary_prompt_text = (
         "You are an expert technical writer and data analyst. Your task is to synthesize all the collected data from a completed workflow into a formal, structured report that fulfills the original prompt's goal.\n\n"
         f"--- ORIGINAL PROMPT GOAL ---\n{prompt_goal}\n\n"
-        f"--- ALL COLLECTED DATA ---\n{json.dumps(workflow_state, indent=2)}\n\n"
+        f"--- ALL COLLECTED DATA ---\n{json.dumps(_distill_workflow_for_report(workflow_state), indent=2)}\n\n"
         "--- INSTRUCTIONS ---\n"
         "Your response MUST be a single JSON object that strictly follows the schema for a `PromptReportResponse`.\n\n"
         "--- FIELD GUIDELINES ---\n"
@@ -1120,6 +1234,13 @@ async def _invoke_complex_prompt_report_task(STATE: dict, command: dict, workflo
         "3.  `report_sections`: REQUIRED. A list of objects, where each object represents a logical section of the report. Each section object MUST have:\n"
         "    - `title`: The title for that specific section (e.g., 'Data Quality Analysis', 'Table DDL').\n"
         "    - `content`: The detailed findings for that section, formatted in markdown. You can use lists, bolding, and code blocks for clarity. IMPORTANT: Do NOT start the content with a markdown heading that repeats the section title — the title is already rendered separately by the UI."
+    )
+
+    raw_data_chars = len(json.dumps(workflow_state, indent=2))
+    prompt_chars = len(final_summary_prompt_text)
+    app_logger.info(
+        f"TDA_ComplexPromptReport: raw workflow_state={raw_data_chars:,} chars, "
+        f"distilled prompt={prompt_chars:,} chars"
     )
 
     reason = f"Client-Side Tool Call: TDA_ComplexPromptReport\nGoal: {prompt_goal}"
