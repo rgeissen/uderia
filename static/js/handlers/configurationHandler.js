@@ -1270,7 +1270,7 @@ export function renderLLMProviders() {
             <div class="bg-gradient-to-br from-white/10 to-white/5 border-2 border-white/10 rounded-xl p-5 hover:border-white/20 transition-all duration-200 h-full" data-llm-config-id="${config.id}">
                 <div class="flex flex-col gap-4 h-full">
                     <div class="flex items-start justify-between flex-1">
-                        <div class="flex-1">
+                        <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-3">
                                 <h4 class="text-lg font-bold text-white">${escapeHtml(config.name)}</h4>
                                 ${statusBadges}
