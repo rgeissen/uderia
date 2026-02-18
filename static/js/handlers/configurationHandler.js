@@ -1280,9 +1280,9 @@ export function renderLLMProviders() {
                                     <span class="font-semibold text-gray-300">Provider:</span>
                                     ${getProviderLabel(config.provider)}
                                 </div>
-                                <div class="flex items-center gap-2 text-sm">
-                                    <span class="font-semibold text-gray-300">Model:</span>
-                                    <span class="text-gray-400">${escapeHtml(config.model)}</span>
+                                <div class="flex items-center gap-2 text-sm min-w-0">
+                                    <span class="font-semibold text-gray-300 shrink-0">Model:</span>
+                                    <span class="text-gray-400 truncate" title="${escapeHtml(config.model)}">${escapeHtml(config.model)}</span>
                                 </div>
                             </div>
                         </div>
