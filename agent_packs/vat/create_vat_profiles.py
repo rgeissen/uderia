@@ -239,7 +239,7 @@ def main():
                 "maxTokens": 8000,
                 "minRelevanceScore": 0.25,
                 "maxChunksPerDocument": 2,
-                "freshnessWeight": 0.3,
+                "freshnessWeight": 0.5,
                 "freshnessDecayRate": 0.005,
                 "synthesisPromptOverride": VAT_SYNTHESIS_PROMPT,
             },
@@ -260,6 +260,33 @@ def main():
     if not created_profiles:
         print("\nERROR: No sub-profiles created. Cannot create Genie coordinator.")
         sys.exit(1)
+
+    # Create External SME profile (tool_enabled, uses external_sme MCP server)
+    print(f"\n{'='*60}")
+    print("Creating External SME profile (Gemini Grounded Search)")
+    print(f"{'='*60}")
+
+    external_sme_data = {
+        "tag": "EXTERNAL_SME",
+        "name": "External Research",
+        "description": "Expert for finding external, public information via internet search. Used when internal knowledge is insufficient or the query requires current public data.",
+        "profile_type": "tool_enabled",
+        "llmConfigurationId": llm_config_id,
+        "mcpServerName": "external_sme",
+        "classification_mode": "light",
+    }
+
+    print(f"\n  Creating @EXTERNAL_SME (External Research)...")
+    result = create_profile(args.base_url, token, external_sme_data)
+
+    if result.get("status") == "success" or result.get("profile"):
+        profile = result.get("profile", result)
+        ext_id = profile.get("id", "unknown")
+        print(f"    OK: id={ext_id}")
+        created_profiles["EXTERNAL_SME"] = ext_id
+    else:
+        print(f"    WARNING: External SME creation failed: {result.get('message', result)}")
+        print(f"    (This is optional - the @VAT Genie will work without it)")
 
     # Create Genie coordinator
     print(f"\n{'='*60}")

@@ -109,7 +109,7 @@ def load_config(config_path: Path, *, cli_overrides: dict | None = None) -> dict
         print("Set it to the Python interpreter of your corpus_tools venv.")
         sys.exit(1)
 
-    for key in ("corpcontent_dir", "corpus_tools_dir", "corpus_output_dir", "vat_project_dir"):
+    for key in ("corpcontent_dir", "corpus_tools_dir", "corpus_output_dir"):
         path = config.get(key)
         if not path or not Path(path).exists():
             print(f"ERROR: {key} not set or not found: {path}")
@@ -246,169 +246,6 @@ def process_content(
             logger.error(f"CombineCorpus failed: {result.stderr}")
 
     return processed
-
-
-# ── Phase 3: Rebuild VAT FAISS Cache ─────────────────────────────────────────
-
-def rebuild_vat_cache(config: dict, changes: dict[str, bool]) -> None:
-    """Rebuild FAISS indexes for changed categories in TheVirtualAccountTeam.
-
-    Strategy: selective invalidation — delete stale cache files for changed
-    categories, then call MCP_Tool_Server.initialize_vector_store(False)
-    which skips categories that still have valid cache and only rebuilds
-    the missing ones.
-    """
-    vat_project_dir = config.get("vat_project_dir")
-    if not vat_project_dir or not Path(vat_project_dir).exists():
-        logger.warning("vat_project_dir not set or not found — skipping FAISS cache rebuild")
-        return
-
-    corpus_python = config["corpus_python"]
-    cache_dir = Path(config["corpus_output_dir"]) / "cache"
-
-    if not cache_dir.exists():
-        logger.info("No FAISS cache directory — full rebuild will happen")
-    else:
-        # Delete stale cache files for changed categories
-        invalidated = []
-        for category, changed in changes.items():
-            if not changed:
-                continue
-            corpus_name = f"{category}_Corpus"
-            index_file = cache_dir / f"{corpus_name}.index"
-            chunks_file = cache_dir / f"{corpus_name}.chunks.pkl"
-            deleted = False
-            if index_file.exists():
-                index_file.unlink()
-                deleted = True
-            if chunks_file.exists():
-                chunks_file.unlink()
-                deleted = True
-            if deleted:
-                invalidated.append(category)
-
-        if invalidated:
-            logger.info(f"Invalidated FAISS cache for: {', '.join(invalidated)}")
-        else:
-            logger.info("No FAISS cache files to invalidate")
-
-    # Rebuild missing indexes via MCP_Tool_Server.initialize_vector_store()
-    logger.info("Rebuilding FAISS indexes (changed categories only)...")
-    rebuild_script = (
-        "from MCP_Tool_Server import initialize_vector_store; "
-        "initialize_vector_store(False)"
-    )
-    try:
-        result = subprocess.run(
-            [corpus_python, "-c", rebuild_script],
-            capture_output=True, text=True,
-            timeout=600,
-            cwd=vat_project_dir,
-        )
-        if result.returncode != 0:
-            logger.error(f"FAISS cache rebuild failed: {result.stderr}")
-        else:
-            logger.info("FAISS cache rebuild completed")
-    except subprocess.TimeoutExpired:
-        logger.error("FAISS cache rebuild timed out (600s)")
-
-
-# ── Phase 4: Deploy VAT Corpus ────────────────────────────────────────────────
-
-def deploy_vat_corpus(config: dict, changed_categories: list[str]) -> None:
-    """Git commit updated corpus + cache, push, and pull on remote server.
-
-    Commits changes in TheVirtualAccountTeam/Corpus/ (corpus JSONs + FAISS
-    cache), pushes to origin, then SSH-pulls on the production server.
-    """
-    vat_project_dir = config.get("vat_project_dir")
-    deploy_ssh = config.get("deploy_ssh_host")
-    deploy_path = config.get("deploy_ssh_path")
-
-    if not deploy_ssh or not deploy_path:
-        logger.info("deploy_ssh_host/deploy_ssh_path not configured — skipping deploy")
-        return
-
-    # Step 1: Stage Corpus/ changes (corpus JSONs + cache files)
-    logger.info("Staging Corpus/ changes...")
-    result = subprocess.run(
-        ["git", "add", "Corpus/"],
-        capture_output=True, text=True, timeout=30,
-        cwd=vat_project_dir,
-    )
-    if result.returncode != 0:
-        logger.error(f"git add failed: {result.stderr}")
-        return
-
-    # Step 2: Check if there's anything to commit
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
-        capture_output=True, text=True, timeout=10,
-        cwd=vat_project_dir,
-    )
-    if result.returncode == 0:
-        logger.info("No Corpus/ changes to commit")
-        return
-
-    # Step 3: Commit
-    categories_str = ", ".join(changed_categories) if changed_categories else "all"
-    commit_msg = f"Pipeline: update corpus + cache ({categories_str})"
-    logger.info(f"Committing: {commit_msg}")
-    result = subprocess.run(
-        ["git", "commit", "-m", commit_msg],
-        capture_output=True, text=True, timeout=30,
-        cwd=vat_project_dir,
-    )
-    if result.returncode != 0:
-        logger.error(f"git commit failed: {result.stderr}")
-        return
-    logger.info("Committed successfully")
-
-    # Step 4: Push to origin
-    logger.info("Pushing to origin...")
-    result = subprocess.run(
-        ["git", "push"],
-        capture_output=True, text=True, timeout=120,
-        cwd=vat_project_dir,
-    )
-    if result.returncode != 0:
-        logger.error(f"git push failed: {result.stderr}")
-        return
-    logger.info("Pushed to origin")
-
-    # Step 5: Pull on remote server via SSH
-    logger.info(f"Pulling on {deploy_ssh}:{deploy_path}...")
-    result = subprocess.run(
-        ["ssh", deploy_ssh, f"cd {deploy_path} && git pull"],
-        capture_output=True, text=True, timeout=120,
-    )
-    if result.returncode != 0:
-        logger.error(f"Remote git pull failed: {result.stderr}")
-        return
-    logger.info(f"Remote pull completed: {result.stdout.strip()}")
-
-    # Step 6: Restart Docker container(s) on remote server
-    containers_config = config.get("deploy_docker_container")
-    if not containers_config:
-        logger.info("deploy_docker_container not set — skipping container restart")
-        return
-
-    # Support both single string and list of containers
-    containers = containers_config if isinstance(containers_config, list) else [containers_config]
-
-    for container in containers:
-        logger.info(f"Restarting Docker container '{container}' on {deploy_ssh}...")
-        result = subprocess.run(
-            ["ssh", deploy_ssh,
-             f"cd {deploy_path} && docker compose restart {container}"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            logger.error(f"Docker restart failed for '{container}': {result.stderr}")
-            logger.info("Hint: ensure user is in the 'docker' group on the remote server")
-            # Continue with other containers even if one fails
-            continue
-        logger.info(f"Container '{container}' restarted")
 
 
 # ── Phase 5: Build Agent Pack ─────────────────────────────────────────────────
@@ -635,21 +472,11 @@ def run_pipeline(
             logger.info("Skipping content processing (--skip-content)")
             log_entry["categories_processed"] = []
 
-        # Phase 3: Rebuild VAT FAISS cache
-        if not skip_content:
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info("Phase 3: Rebuilding VAT FAISS cache")
-            logger.info("=" * 60)
-            rebuild_vat_cache(config, changes)
-
-        # Phase 4: Deploy VAT corpus to production
-        if not skip_content:
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info("Phase 4: Deploying VAT corpus")
-            logger.info("=" * 60)
-            deploy_vat_corpus(config, changed_categories)
+        # Phase 3 & 4: FAISS cache rebuild and VAT deploy (RETIRED)
+        # These phases are no longer needed — Uderia's ChromaDB replaces FAISS,
+        # and the VAT frontend now uses Uderia as its backend.
+        logger.info("")
+        logger.info("Phases 3-4: Skipped (FAISS rebuild + VAT deploy retired — Uderia is the backend)")
 
         # Phase 5: Build agentpack
         logger.info("")

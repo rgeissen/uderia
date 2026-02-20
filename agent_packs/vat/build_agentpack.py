@@ -357,7 +357,7 @@ def build_manifest(expert_stats: dict[str, dict]) -> dict:
                 "maxTokens": 8000,
                 "minRelevanceScore": 0.25,
                 "maxChunksPerDocument": 2,
-                "freshnessWeight": 0.3,
+                "freshnessWeight": 0.5,
                 "freshnessDecayRate": 0.005,
             },
             "synthesisPromptOverride": SYNTHESIS_PROMPT,
@@ -376,6 +376,16 @@ def build_manifest(expert_stats: dict[str, dict]) -> dict:
             coll_entry["documents"] = stats["documents"]
             coll_entry["chunks"] = stats["chunks"]
         manifest["collections"].append(coll_entry)
+
+    # Add External SME profile (no collection — uses external MCP server)
+    manifest["experts"].append({
+        "tag": "EXTERNAL_SME",
+        "name": "External Research",
+        "description": "Expert for finding external, public information via internet search. Used when internal knowledge is insufficient or the query requires current public data.",
+        "profile_type": "tool_enabled",
+        "classification_mode": "light",
+        "mcpServerName": "external_sme",
+    })
 
     return manifest
 
