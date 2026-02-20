@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-mcp = FastMCP(name="external_sme")
+mcp = FastMCP(name="Google Search")
 
 
 @mcp.tool()

@@ -384,7 +384,7 @@ def build_manifest(expert_stats: dict[str, dict]) -> dict:
         "description": "Expert for finding external, public information via internet search. Used when internal knowledge is insufficient or the query requires current public data.",
         "profile_type": "tool_enabled",
         "classification_mode": "light",
-        "mcpServerName": "external_sme",
+        "mcpServerName": "Google Search",
     })
 
     return manifest
