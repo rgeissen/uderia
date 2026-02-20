@@ -29,11 +29,7 @@ logger = logging.getLogger(__name__)
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-mcp = FastMCP(
-    name="external_sme",
-    host="0.0.0.0",
-    port=int(os.getenv("EXTERNAL_SME_PORT", "5003")),
-)
+mcp = FastMCP(name="external_sme")
 
 
 @mcp.tool()
@@ -116,11 +112,10 @@ if __name__ == "__main__":
 
     if args.server:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-        mcp.settings.port = args.port
         logger.info(f"Starting External SME MCP server on port {args.port}")
         logger.info(f"Gemini model: {GEMINI_MODEL_NAME}")
         logger.info(f"API key configured: {'yes' if GEMINI_API_KEY else 'NO - set GEMINI_API_KEY env var'}")
-        mcp.run("streamable-http")
+        mcp.run("streamable-http", host="0.0.0.0", port=args.port)
     else:
         # stdio mode: logging must go to stderr (stdout is reserved for MCP protocol)
         logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr)
