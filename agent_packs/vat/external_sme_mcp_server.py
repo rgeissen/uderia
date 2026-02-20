@@ -6,9 +6,11 @@ Provides a single MCP tool that searches the public internet via Google's
 Gemini Grounded Search API. Designed to run as a standalone MCP server
 registered in Uderia as a tool_enabled profile under the @VAT Genie coordinator.
 
-Usage:
-    export GEMINI_API_KEY="your-api-key"
-    python external_sme_mcp_server.py [--port 5003]
+Usage (Uderia subprocess - default):
+    python external_sme_mcp_server.py
+
+Usage (standalone HTTP server):
+    python external_sme_mcp_server.py --server [--port 5003]
 
 The server exposes one tool:
     external_search(query) -> str
@@ -17,11 +19,11 @@ The server exposes one tool:
 import argparse
 import logging
 import os
+import sys
 
-import requests
+import httpx
 from fastmcp import FastMCP
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
@@ -63,7 +65,7 @@ def external_search(query: str) -> str:
     }
 
     try:
-        response = requests.post(
+        response = httpx.post(
             api_url, json=payload, headers={"Content-Type": "application/json"}, timeout=30
         )
         response.raise_for_status()
@@ -95,10 +97,10 @@ def external_search(query: str) -> str:
         logger.info(f"External search returned {len(text_content)} chars, {len(sources)} sources")
         return text_content
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.error("External search timed out")
         return "External search timed out. Please try again."
-    except requests.exceptions.RequestException as e:
+    except (httpx.HTTPStatusError, httpx.RequestError) as e:
         logger.error(f"External search API error: {e}")
         return f"External search failed: {e}"
     except Exception as e:
@@ -108,11 +110,18 @@ def external_search(query: str) -> str:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="External SME MCP Tool Server (Gemini Grounded Search)")
-    parser.add_argument("--port", type=int, default=5003, help="Server port (default: 5003)")
+    parser.add_argument("--server", action="store_true", help="Run as HTTP server (default: stdio for Uderia subprocess)")
+    parser.add_argument("--port", type=int, default=5003, help="Server port for --server mode (default: 5003)")
     args = parser.parse_args()
 
-    mcp.settings.port = args.port
-    logger.info(f"Starting External SME MCP server on port {args.port}")
-    logger.info(f"Gemini model: {GEMINI_MODEL_NAME}")
-    logger.info(f"API key configured: {'yes' if GEMINI_API_KEY else 'NO - set GEMINI_API_KEY env var'}")
-    mcp.run("streamable-http")
+    if args.server:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+        mcp.settings.port = args.port
+        logger.info(f"Starting External SME MCP server on port {args.port}")
+        logger.info(f"Gemini model: {GEMINI_MODEL_NAME}")
+        logger.info(f"API key configured: {'yes' if GEMINI_API_KEY else 'NO - set GEMINI_API_KEY env var'}")
+        mcp.run("streamable-http")
+    else:
+        # stdio mode: logging must go to stderr (stdout is reserved for MCP protocol)
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr)
+        mcp.run("stdio")
