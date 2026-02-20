@@ -1317,7 +1317,12 @@ class AgentPackManager:
                 if rag_ids:
                     profile_data["ragCollections"] = rag_ids
 
-        # llm_only needs no extra config
+        elif profile_type == "llm_only":
+            # llm_only profiles can optionally use MCP tools via LangChain
+            if mcp_server_id and prof.get("mcpServerName"):
+                profile_data["mcpServerId"] = mcp_server_id
+            if prof.get("useMcpTools"):
+                profile_data["useMcpTools"] = True
 
         return profile_data
 

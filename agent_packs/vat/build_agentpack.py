@@ -378,11 +378,13 @@ def build_manifest(expert_stats: dict[str, dict]) -> dict:
         manifest["collections"].append(coll_entry)
 
     # Add External SME profile (no collection — uses external MCP server)
+    # llm_only + useMcpTools = conversation-focused with LangChain tool calling
     manifest["experts"].append({
         "tag": "EXTERNAL_SME",
         "name": "External Research",
         "description": "Expert for finding external, public information via internet search. Used when internal knowledge is insufficient or the query requires current public data.",
-        "profile_type": "tool_enabled",
+        "profile_type": "llm_only",
+        "useMcpTools": True,
         "classification_mode": "light",
         "mcpServerName": "Google Search",
     })
