@@ -13,6 +13,7 @@ import { safeSetItem, safeGetItem } from '../storageUtils.js';
 import { showAppBanner } from '../bannerSystem.js';
 import { markSaving } from '../configDirtyState.js';
 import { loadAgentPacks } from './agentPackHandler.js';
+import { loadExtensions, initializeExtensionHandlers } from './extensionHandler.js';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers } from './agentPackGrouping.js';
 
 // ============================================================================
@@ -2843,6 +2844,11 @@ function initializeConfigTabs() {
             // Lazy-load agent packs when tab is activated
             if (targetTabId === 'agent-packs-tab') {
                 loadAgentPacks();
+            }
+
+            // Lazy-load extensions when tab is activated
+            if (targetTabId === 'extensions-tab') {
+                loadExtensions();
             }
         });
     });
@@ -6961,7 +6967,8 @@ export async function initializeConfigurationUI() {
     setupLLMProviderTabs();
     renderProfiles();
     updateReconnectButton();
-    
+    initializeExtensionHandlers();
+
     // Load MCP classification setting
     await loadClassificationSetting();
 

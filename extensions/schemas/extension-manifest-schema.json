@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Extension Manifest",
+  "description": "Schema for Uderia post-processing extension manifest files.",
+  "type": "object",
+  "required": ["name", "version", "extension_id", "display_name", "description", "files"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Package name (kebab-case).",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "version": {
+      "type": "string",
+      "description": "SemVer version string.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "extension_id": {
+      "type": "string",
+      "description": "Unique identifier matching the #name trigger syntax. Lowercase, no spaces.",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for UI display."
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description of what the extension does."
+    },
+    "author": {
+      "type": "string",
+      "description": "Author or team name."
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier."
+    },
+    "category": {
+      "type": "string",
+      "description": "UI grouping category.",
+      "enum": ["Transform", "Automation", "Export", "Visualization", "Custom"]
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Search keywords for discovery."
+    },
+    "files": {
+      "type": "object",
+      "required": ["extension"],
+      "properties": {
+        "extension": {
+          "type": "string",
+          "description": "Python file implementing the Extension subclass."
+        },
+        "readme": {
+          "type": "string",
+          "description": "Optional README file."
+        }
+      }
+    },
+    "output_target": {
+      "type": "string",
+      "description": "Where extension output is displayed in the UI.",
+      "enum": ["silent", "chat_append", "status_panel"],
+      "default": "silent"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Parameter specification for #name:param syntax.",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether the extension accepts parameters."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the parameter controls."
+        },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Example parameter values."
+        },
+        "allowed_values": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Restrict to specific values (optional)."
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "JSON Schema describing the extension's output content structure. Informational for consumers."
+    },
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "min_app_version": { "type": "string" },
+        "max_app_version": { "type": "string" }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "python_packages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Required pip packages (e.g., ['requests>=2.28'])."
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

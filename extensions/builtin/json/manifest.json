@@ -1,0 +1,45 @@
+{
+  "name": "json-output",
+  "version": "1.0.0",
+  "extension_id": "json",
+  "display_name": "JSON Output",
+  "description": "Wraps the LLM answer and execution metadata into a standardized JSON structure for machine consumption.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "category": "Transform",
+  "keywords": ["json", "structured", "n8n", "flowise", "api", "automation"],
+  "files": {
+    "extension": "json_ext.py"
+  },
+  "output_target": "chat_append",
+  "parameters": {
+    "supported": true,
+    "description": "Output detail level",
+    "examples": ["minimal", "full"],
+    "allowed_values": ["minimal", "full"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string", "description": "The user's original query" },
+      "answer": { "type": "string", "description": "The LLM's answer text" },
+      "session_id": { "type": "string" },
+      "turn_id": { "type": "integer" },
+      "profile_tag": { "type": "string" },
+      "provider": { "type": "string" },
+      "model": { "type": "string" },
+      "tokens": {
+        "type": "object",
+        "properties": {
+          "input": { "type": "integer" },
+          "output": { "type": "integer" }
+        }
+      },
+      "tools_used": { "type": "array", "items": { "type": "string" } },
+      "timestamp": { "type": "string", "format": "date-time" }
+    }
+  },
+  "metadata": {
+    "tags": ["built-in", "transform", "core"]
+  }
+}

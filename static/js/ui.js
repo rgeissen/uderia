@@ -10,7 +10,7 @@ import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedMod
 // We need access to the functions that will handle save/cancel from the input
 import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.6';
 import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
-import { checkServerStatus, loadSessions } from './api.js';
+import { checkServerStatus, loadSessions, fetchTurnDetails } from './api.js';
 import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
 import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './handlers/agentPackGrouping.js';
 
@@ -912,7 +912,65 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 }
 
 
-export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false) { // eslint-disable-line no-unused-vars
+/**
+ * Show extension result when clicking an extension tag on a user message.
+ * For chat_append extensions: scrolls to and highlights the existing output block.
+ * For silent/status_panel extensions: fetches turn details and shows an inline popover.
+ */
+function _showExtensionResult(tagEl, messageBubble) {
+    const extName = tagEl.dataset.extName;
+
+    // Toggle off: remove existing popover if already shown
+    const existingPopover = messageBubble.querySelector(`.ext-result-popover[data-ext-name="${extName}"]`);
+    if (existingPopover) {
+        existingPopover.remove();
+        return;
+    }
+
+    // Look for chat_append output in the adjacent assistant message
+    const nextBubble = messageBubble.nextElementSibling;
+    if (nextBubble) {
+        const chatAppendBlock = nextBubble.querySelector(`.extension-output[data-ext-name="${extName}"]`);
+        if (chatAppendBlock) {
+            chatAppendBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            chatAppendBlock.classList.add('ext-highlight');
+            setTimeout(() => chatAppendBlock.classList.remove('ext-highlight'), 1500);
+            return;
+        }
+    }
+
+    // For silent/status_panel extensions: fetch turn details and show inline popover
+    // turnId may be on the user avatar (set retroactively), user/assistant badge, or assistant avatar
+    const turnId = messageBubble.querySelector('[data-turn-id]')?.dataset?.turnId
+        || nextBubble?.querySelector('[data-turn-id]')?.dataset?.turnId;
+    if (!turnId) return;
+
+    fetchTurnDetails(state.currentSessionId, turnId).then(turnData => {
+        const result = turnData?.extension_results?.[extName];
+        if (!result) return;
+
+        const contentStr = typeof result.content === 'object'
+            ? JSON.stringify(result.content, null, 2)
+            : String(result.content || result.error || 'No content');
+        const escapedContent = contentStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        const popover = document.createElement('div');
+        popover.className = 'ext-result-popover';
+        popover.dataset.extName = extName;
+        popover.innerHTML = `
+            <div class="text-xs font-medium text-amber-300 mb-1">#${extName} result
+                <span class="text-gray-500 font-normal">${result.content_type || 'json'}</span>
+            </div>
+            <pre class="text-xs text-gray-400 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${escapedContent}</pre>
+        `;
+        messageBubble.appendChild(popover);
+    }).catch(err => {
+        console.warn(`[ExtTag] Failed to fetch result for #${extName}:`, err);
+    });
+}
+
+
+export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false, extensionSpecs = null) { // eslint-disable-line no-unused-vars
     // Normalize content - Google Gemini may return content as an array of parts
     if (Array.isArray(content)) {
         content = content.map(part => {
@@ -1064,6 +1122,25 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         primerTag.textContent = 'Primer';
         primerTag.title = 'Session initialization message';
         author.appendChild(primerTag);
+    }
+
+    // Render extension tags for user messages (amber badges like #json, #decision:critical)
+    if (role === 'user' && extensionSpecs && extensionSpecs.length > 0) {
+        extensionSpecs.forEach(spec => {
+            const extTag = document.createElement('span');
+            extTag.className = 'extension-tag';
+            extTag.textContent = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            extTag.title = `Extension: ${spec.name}${spec.param ? ' (' + spec.param + ')' : ''} — click to view result`;
+            extTag.dataset.extName = spec.name;
+            extTag.dataset.extParam = spec.param || '';
+
+            // Click handler: show extension result
+            extTag.addEventListener('click', () => {
+                _showExtensionResult(extTag, wrapper);
+            });
+
+            author.appendChild(extTag);
+        });
     }
 
     const messageContent = document.createElement('div');

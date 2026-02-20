@@ -1098,6 +1098,7 @@
 
                             <footer id="chat-footer" class="p-4">
                                 <div class="max-w-5xl mx-auto relative">
+                                    <div id="extension-selector" class="absolute bottom-full mb-2 w-full hidden"></div>
                                     <div id="profile-tag-selector" class="absolute bottom-full mb-2 w-full hidden"></div>
                                     <div id="rag-suggestions-container" class="absolute bottom-full mb-2 w-full hidden"></div>
                                     <!-- File Attachments Preview (shown above chat form when files are pending) -->
@@ -1133,6 +1134,7 @@
                                         <!-- Input area: tag + text input wrapped together -->
                                         <div id="input-area" class="flex-1 flex items-center min-w-0">
                                             <div id="active-profile-tag" class="hidden"></div>
+                                            <div id="active-extension-tags" class="flex items-center gap-1 flex-wrap"></div>
                                             <input type="text" id="user-input" placeholder="Ask about databases, tables, users..."
                                                 class="flex-1 p-3 bg-transparent border-none rounded-lg focus:outline-none text-white placeholder-gray-400 min-w-0"
                                                 autocomplete="off" disabled />
@@ -2145,6 +2147,14 @@
                                 Agent Profiles
                             </div>
                         </button>
+                        <button class="config-tab ind-tab ind-tab--underline" data-tab="extensions-tab">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Extensions
+                            </div>
+                        </button>
                         <button class="config-tab ind-tab ind-tab--underline" data-tab="agent-packs-tab">
                             <div class="flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -2638,6 +2648,29 @@
                                     <!-- 4. Genie Profiles Container (Coordinate) -->
                                     <div id="genie-profiles-container" class="profile-type-content space-y-4 hidden">
                                         <!-- Genie profile cards will be dynamically added here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Extensions -->
+                        <div id="extensions-tab" class="config-tab-content hidden">
+                            <div class="space-y-6">
+                                <div class="glass-panel rounded-xl p-6">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <div>
+                                            <h3 class="text-xl font-bold text-white">Extensions</h3>
+                                            <p class="text-sm text-gray-400 mt-1">Post-processing extensions for structured output (#json, #decision, ...)</p>
+                                        </div>
+                                        <button id="reload-extensions-btn" class="ind-button ind-button--secondary ind-button--sm" title="Reload extensions from disk">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                            </svg>
+                                            Reload
+                                        </button>
+                                    </div>
+                                    <div id="extensions-list" class="space-y-4">
+                                        <!-- Extension cards rendered by extensionHandler.js -->
                                     </div>
                                 </div>
                             </div>

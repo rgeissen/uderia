@@ -1,0 +1,43 @@
+{
+  "name": "data-extract",
+  "version": "1.0.0",
+  "extension_id": "extract",
+  "display_name": "Data Extractor",
+  "description": "Extracts structured data (numbers, percentages, entities) from the LLM answer using deterministic regex patterns.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "category": "Transform",
+  "keywords": ["extract", "numbers", "entities", "percentages", "structured", "parsing"],
+  "files": {
+    "extension": "extract.py"
+  },
+  "output_target": "silent",
+  "parameters": {
+    "supported": true,
+    "description": "Filter to a specific data type",
+    "examples": ["numbers", "percentages", "entities"],
+    "allowed_values": ["numbers", "percentages", "entities"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "numbers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": { "type": "string" },
+            "value": { "type": "number" },
+            "unit": { "type": "string" }
+          }
+        }
+      },
+      "percentages": { "type": "array", "items": { "type": "number" } },
+      "entities": { "type": "array", "items": { "type": "string" } },
+      "source_length": { "type": "integer" }
+    }
+  },
+  "metadata": {
+    "tags": ["built-in", "transform", "core"]
+  }
+}

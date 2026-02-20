@@ -2293,6 +2293,8 @@ async def ask_stream():
     # --- MODIFICATION END ---
     # --- Document upload attachments ---
     attachments = data.get("attachments")  # Optional list of [{file_id, filename, ...}]
+    # --- Post-processing extensions ---
+    extension_specs = data.get("extensions")  # Optional list of [{"name": "json", "param": null}]
 
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
@@ -2577,7 +2579,8 @@ async def ask_stream():
                         task_id=task_id, # Pass the generated task_id
                         profile_override_id=profile_override_id, # Pass the profile override
                         is_session_primer=is_session_primer, # Pass the session primer flag
-                        attachments=attachments  # Pass document upload attachments
+                        attachments=attachments,  # Pass document upload attachments
+                        extension_specs=extension_specs  # Pass post-processing extensions
                     )
                 )
                 # --- MODIFICATION END ---

@@ -1,0 +1,35 @@
+{
+  "name": "answer-classifier",
+  "version": "1.0.0",
+  "extension_id": "classify",
+  "display_name": "Answer Classifier",
+  "description": "Categorizes the LLM answer into predefined topic buckets using keyword scoring. Useful for routing in workflow automation tools.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "category": "Automation",
+  "keywords": ["classify", "categorize", "routing", "n8n", "flowise", "switch"],
+  "files": {
+    "extension": "classify.py"
+  },
+  "output_target": "silent",
+  "parameters": {
+    "supported": false,
+    "description": "No parameters — categories are built-in"
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "primary_category": { "type": "string", "description": "Highest-scoring category" },
+      "confidence": { "type": "number", "description": "Confidence score 0-1" },
+      "all_categories": {
+        "type": "object",
+        "description": "All categories with their scores",
+        "additionalProperties": { "type": "integer" }
+      },
+      "query": { "type": "string" }
+    }
+  },
+  "metadata": {
+    "tags": ["built-in", "automation", "core"]
+  }
+}

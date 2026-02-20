@@ -275,6 +275,15 @@ async function initializeRAGAutoCompletion() {
     let profileSelectedIndex = -1;
     let isShowingProfileSelector = false;
 
+    // Extension selector state
+    const extensionSelector = document.getElementById('extension-selector');
+    const activeExtensionTagsContainer = document.getElementById('active-extension-tags');
+    let currentExtensions = [];
+    let extensionSelectedIndex = -1;
+    let isShowingExtensionSelector = false;
+    let activeExtensions = [];  // [{name, param}] — active extension badges
+    window.activeExtensions = activeExtensions;
+
     // Prevent scroll events from propagating to parent when scrolling inside dropdown
     profileTagSelector.addEventListener('wheel', (e) => {
         const { scrollTop, scrollHeight, clientHeight } = profileTagSelector;
@@ -282,6 +291,16 @@ async function initializeRAGAutoCompletion() {
         const atBottom = scrollTop + clientHeight >= scrollHeight;
 
         // Only prevent default if we're at the boundary and trying to scroll further
+        if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+            e.preventDefault();
+        }
+        e.stopPropagation();
+    }, { passive: false });
+
+    extensionSelector.addEventListener('wheel', (e) => {
+        const { scrollTop, scrollHeight, clientHeight } = extensionSelector;
+        const atTop = scrollTop === 0;
+        const atBottom = scrollTop + clientHeight >= scrollHeight;
         if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
             e.preventDefault();
         }
@@ -863,6 +882,165 @@ async function initializeRAGAutoCompletion() {
         isShowingProfileSelector = false;
     }
 
+    // --- Extension selector functions ---
+
+    function highlightExtension(index) {
+        const items = extensionSelector.querySelectorAll('.extension-item');
+        items.forEach((item, idx) => {
+            if (idx === index) {
+                item.classList.add('extension-highlighted');
+                const container = extensionSelector;
+                const itemTop = item.offsetTop;
+                const itemBottom = itemTop + item.offsetHeight;
+                const containerTop = container.scrollTop;
+                const containerBottom = containerTop + container.clientHeight;
+                if (itemTop < containerTop) {
+                    container.scrollTop = itemTop;
+                } else if (itemBottom > containerBottom) {
+                    container.scrollTop = itemBottom - container.clientHeight;
+                }
+            } else {
+                item.classList.remove('extension-highlighted');
+            }
+        });
+    }
+
+    function showExtensionSelector(extensions) {
+        currentExtensions = extensions;
+        extensionSelectedIndex = extensions.length > 0 ? 0 : -1;
+        isShowingExtensionSelector = true;
+
+        if (extensions.length === 0) {
+            extensionSelector.innerHTML = '';
+            extensionSelector.classList.add('hidden');
+            return;
+        }
+
+        extensionSelector.innerHTML = '';
+
+        extensions.forEach((ext, index) => {
+            const item = document.createElement('div');
+            item.className = 'extension-item';
+            if (index === 0) {
+                item.classList.add('extension-highlighted');
+            }
+
+            const header = document.createElement('div');
+            header.className = 'extension-item-header';
+
+            const activationName = ext.activation_name || ext.extension_id;
+
+            const badge = document.createElement('span');
+            badge.className = 'extension-item-badge';
+            badge.textContent = `#${activationName}`;
+            header.appendChild(badge);
+
+            const name = document.createElement('span');
+            name.className = 'extension-item-name';
+            name.textContent = ext.display_name || ext.extension_id;
+            header.appendChild(name);
+
+            item.appendChild(header);
+
+            if (ext.description) {
+                const desc = document.createElement('div');
+                desc.className = 'extension-item-description';
+                desc.textContent = ext.description;
+                item.appendChild(desc);
+            }
+
+            // Show default param if set via activation
+            if (ext.default_param) {
+                const param = document.createElement('div');
+                param.className = 'extension-item-param';
+                param.textContent = `Default: ${ext.default_param}`;
+                item.appendChild(param);
+            }
+
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectExtension(index);
+                userInput.focus();
+            });
+            item.addEventListener('mouseenter', () => {
+                extensionSelectedIndex = index;
+                highlightExtension(index);
+            });
+
+            extensionSelector.appendChild(item);
+        });
+
+        extensionSelector.classList.remove('hidden');
+    }
+
+    function hideExtensionSelector() {
+        extensionSelector.innerHTML = '';
+        extensionSelector.classList.add('hidden');
+        currentExtensions = [];
+        extensionSelectedIndex = -1;
+        isShowingExtensionSelector = false;
+    }
+
+    function selectExtension(index) {
+        if (index >= 0 && index < currentExtensions.length) {
+            const ext = currentExtensions[index];
+            const activationName = ext.activation_name || ext.extension_id;
+
+            // Remove the partial #tag from input text
+            const currentValue = userInput.value;
+            const hashMatch = currentValue.match(/#(\w*)$/);
+            if (hashMatch) {
+                const beforeHash = currentValue.substring(0, hashMatch.index);
+                isUpdatingInput = true;
+                userInput.value = beforeHash.trimEnd();
+                isUpdatingInput = false;
+            }
+
+            // Add as visual badge (skip if already active)
+            if (!activeExtensions.find(e => e.name === activationName)) {
+                const defaultParam = ext.default_param || null;
+                addExtensionBadge(activationName, defaultParam);
+            }
+
+            hideExtensionSelector();
+            userInput.focus();
+        }
+    }
+
+    function addExtensionBadge(name, param) {
+        activeExtensions.push({ name, param });
+        window.activeExtensions = activeExtensions;
+        _renderExtensionBadges();
+    }
+
+    function removeExtensionBadge(name) {
+        activeExtensions = activeExtensions.filter(e => e.name !== name);
+        window.activeExtensions = activeExtensions;
+        _renderExtensionBadges();
+        userInput.focus();
+    }
+
+    function clearExtensionBadges() {
+        activeExtensions = [];
+        window.activeExtensions = activeExtensions;
+        activeExtensionTagsContainer.innerHTML = '';
+    }
+    window.clearExtensionBadges = clearExtensionBadges;
+
+    function _renderExtensionBadges() {
+        activeExtensionTagsContainer.innerHTML = '';
+        activeExtensions.forEach(spec => {
+            const badge = document.createElement('span');
+            badge.className = 'active-extension-badge';
+            const label = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            badge.innerHTML = `<span>${label}</span><span class="active-extension-badge__remove" title="Remove extension">×</span>`;
+            badge.querySelector('.active-extension-badge__remove').addEventListener('click', () => {
+                removeExtensionBadge(spec.name);
+            });
+            activeExtensionTagsContainer.appendChild(badge);
+        });
+    }
+
     async function fetchAndShowSuggestions(queryText) {
         if (!queryText || queryText.length < 2) {
             showSuggestions([]);
@@ -988,7 +1166,24 @@ async function initializeRAGAutoCompletion() {
             if (isShowingProfileSelector) {
                 hideProfileSelector();
             }
-            
+
+            // Check if user is typing #extension (show extension autocomplete)
+            const hashMatch = inputValue.match(/#(\w*)$/);
+            if (hashMatch && window.extensionState?.activated?.length > 0) {
+                const prefix = hashMatch[1].toLowerCase();
+                const filtered = window.extensionState.activated.filter(e =>
+                    (e.activation_name || e.extension_id).toLowerCase().startsWith(prefix)
+                );
+                if (filtered.length > 0) {
+                    showExtensionSelector(filtered);
+                    return;
+                }
+            }
+            // Hide extension selector if not typing #
+            if (isShowingExtensionSelector) {
+                hideExtensionSelector();
+            }
+
             const trimmedValue = inputValue.trim();
             if (trimmedValue.length >= 2) {
                 // Debounce API calls (300ms delay)
@@ -1001,12 +1196,20 @@ async function initializeRAGAutoCompletion() {
         });
 
         userInput.addEventListener('keydown', (e) => {
-            // Handle backspace to remove active profile tag
-            if (e.key === 'Backspace' && activeTagPrefix && userInput.value === '') {
-                e.preventDefault();
-                activeTagPrefix = '';
-                hideActiveTagBadge();
-                return;
+            // Handle backspace on empty input: remove last extension badge first, then profile tag
+            if (e.key === 'Backspace' && userInput.value === '') {
+                if (activeExtensions.length > 0) {
+                    e.preventDefault();
+                    const last = activeExtensions[activeExtensions.length - 1];
+                    removeExtensionBadge(last.name);
+                    return;
+                }
+                if (activeTagPrefix) {
+                    e.preventDefault();
+                    activeTagPrefix = '';
+                    hideActiveTagBadge();
+                    return;
+                }
             }
             
             // Handle profile selector navigation
@@ -1066,6 +1269,25 @@ async function initializeRAGAutoCompletion() {
                 return;
             }
 
+            // Handle extension selector navigation
+            if (isShowingExtensionSelector && currentExtensions.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    extensionSelectedIndex = (extensionSelectedIndex + 1) % currentExtensions.length;
+                    highlightExtension(extensionSelectedIndex);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    extensionSelectedIndex = (extensionSelectedIndex - 1 + currentExtensions.length) % currentExtensions.length;
+                    highlightExtension(extensionSelectedIndex);
+                } else if ((e.key === 'Tab' || e.key === 'Enter') && extensionSelectedIndex >= 0) {
+                    e.preventDefault();
+                    selectExtension(extensionSelectedIndex);
+                } else if (e.key === 'Escape') {
+                    hideExtensionSelector();
+                }
+                return;
+            }
+
             // Handle autocomplete navigation
             if (currentSuggestions.length === 0) return;
 
@@ -1095,10 +1317,37 @@ async function initializeRAGAutoCompletion() {
                 currentSuggestions = [];
                 selectedIndex = -1;
                 hideProfileSelector();
+                hideExtensionSelector();
             }, 150);
         });
     }
 }
+
+/**
+ * Load activated extensions from the API for # autocomplete.
+ * Stores results in window.extensionState.activated for access by the input handler.
+ */
+async function loadActivatedExtensions() {
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        if (!token) return;
+
+        const response = await fetch('/api/v1/extensions/activated', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            window.extensionState = { activated: data.extensions || [] };
+            console.log(`[Extensions] Loaded ${window.extensionState.activated.length} activated extension(s)`);
+        }
+    } catch (err) {
+        console.warn('[Extensions] Failed to load activated extensions:', err);
+        window.extensionState = { activated: [] };
+    }
+}
+// Expose for refresh from Extensions config tab
+window.loadActivatedExtensions = loadActivatedExtensions;
 
 /**
  * Extract user ID from JWT authentication for SSE notifications.
@@ -1343,6 +1592,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         await updateResourcePanelForProfile(window.configState.defaultProfileId);
         console.log('[Startup] Resource panel initialized with default profile:', window.configState.defaultProfileId);
     }
+
+    // Load activated extensions for # autocomplete
+    loadActivatedExtensions();
 
     // Hide prompt editor menu item if it exists (may be removed from UI)
     if (DOM.promptEditorButton?.parentElement) {

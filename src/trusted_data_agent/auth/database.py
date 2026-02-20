@@ -99,6 +99,9 @@ def init_database():
         # Create agent packs tables (for agent pack install/uninstall tracking)
         _create_agent_packs_tables()
 
+        # Create extensions activation table (per-user extension enablement)
+        _create_extensions_table()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -406,6 +409,54 @@ def _create_agent_packs_tables():
 
     except Exception as e:
         logger.error(f"Error creating agent packs tables: {e}", exc_info=True)
+
+
+def _create_extensions_table():
+    """
+    Create the per-user extension activation table.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "12_extensions.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 12_extensions.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS user_extensions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_uuid VARCHAR(36) NOT NULL,
+                    extension_id VARCHAR(100) NOT NULL,
+                    activation_name VARCHAR(100) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    default_param VARCHAR(255),
+                    config_json TEXT,
+                    activated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_uuid) REFERENCES users(id),
+                    UNIQUE(user_uuid, activation_name)
+                );
+                CREATE INDEX IF NOT EXISTS idx_user_extensions_user
+                    ON user_extensions(user_uuid, is_active);
+                CREATE INDEX IF NOT EXISTS idx_user_extensions_name
+                    ON user_extensions(user_uuid, activation_name);
+            """)
+            logger.info("Created extensions table (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating extensions table: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

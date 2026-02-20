@@ -9,6 +9,10 @@ from trusted_data_agent.agent.executor import PlanExecutor
 from trusted_data_agent.agent.session_name_generator import generate_session_name_with_events
 from trusted_data_agent.core.config import APP_STATE
 from trusted_data_agent.core import session_manager
+from trusted_data_agent.extensions.runner import ExtensionRunner, serialize_extension_results
+from trusted_data_agent.extensions.manager import get_extension_manager
+from trusted_data_agent.extensions.models import ExtensionContext
+from trusted_data_agent.extensions.db import get_user_activated_extensions
 
 app_logger = logging.getLogger("quart.app")
 
@@ -40,6 +44,162 @@ def _parse_sse_event(event_str: str) -> tuple[dict, str]:
     return data, event_type
 
 
+async def _run_extensions(
+    extension_specs: list,
+    final_payload: dict,
+    user_input: str,
+    session_id: str,
+    user_uuid: str,
+    event_handler,
+) -> tuple:
+    """
+    Execute post-processing extensions after the LLM answer is complete.
+
+    Builds an ExtensionContext from the final payload and runs extensions
+    serially via ExtensionRunner. Only activated extensions are executed;
+    activation default_param is used when query doesn't provide one.
+
+    Returns (serialized_results, collected_events) tuple, or (None, []).
+    """
+    try:
+        manager = get_extension_manager()
+        runner = ExtensionRunner(manager)
+
+        # Look up user's activated extensions keyed by activation_name
+        activated = get_user_activated_extensions(user_uuid)
+        activated_lookup = {a["activation_name"]: a for a in activated}
+
+        # Filter to activated-only, resolve extension_id, merge default params
+        resolved_specs = []
+        for spec in extension_specs:
+            name = spec.get("name", "")  # activation_name from frontend
+            activation = activated_lookup.get(name)
+
+            if activation is None:
+                app_logger.warning(
+                    f"Extension '{name}' not activated for user {user_uuid} — skipping"
+                )
+                continue
+
+            # Query param overrides activation default_param
+            param = spec.get("param") or activation.get("default_param")
+            resolved_specs.append({
+                "name": name,                                # activation_name (for result keys)
+                "extension_id": activation["extension_id"],  # actual extension to execute
+                "param": param,
+            })
+
+        if not resolved_specs:
+            app_logger.info("No activated extensions to run after filtering")
+            return None, []
+
+        # Build rich context from the final answer payload
+        context = ExtensionContext(
+            answer_text=final_payload.get("final_answer_text") or final_payload.get("final_summary_text") or "",
+            answer_html=final_payload.get("final_answer") or final_payload.get("html_response") or "",
+            original_query=user_input,
+            clean_query=user_input,  # Already stripped by frontend
+            session_id=session_id,
+            turn_id=final_payload.get("turn_id", 0),
+            task_id=final_payload.get("task_id"),
+            profile_tag=final_payload.get("profile_tag"),
+            profile_type=final_payload.get("profile_type", "tool_enabled"),
+            provider=final_payload.get("provider"),
+            model=final_payload.get("model"),
+            turn_input_tokens=final_payload.get("turn_input_tokens", 0),
+            turn_output_tokens=final_payload.get("turn_output_tokens", 0),
+            total_input_tokens=final_payload.get("total_input_tokens", 0),
+            total_output_tokens=final_payload.get("total_output_tokens", 0),
+            execution_trace=final_payload.get("execution_trace", []),
+            tools_used=final_payload.get("tools_used", []),
+            collected_data=final_payload.get("collected_data", []),
+        )
+
+        # Wrap event_handler to collect extension lifecycle events for persistence
+        collected_events = []
+
+        async def collecting_event_handler(data, event_type):
+            """Forward events AND capture extension lifecycle events."""
+            await event_handler(data, event_type)
+            # Capture extension-related events for session persistence
+            evt_type = data.get("type") if isinstance(data, dict) else None
+            if evt_type in ("extension_start", "extension_complete") or event_type == "extension_results":
+                collected_events.append({
+                    "type": evt_type or event_type,
+                    "payload": data.get("payload", data) if isinstance(data, dict) else data,
+                })
+
+        app_logger.info(f"Running {len(resolved_specs)} extension(s): {[s.get('name') for s in resolved_specs]}")
+        results = await runner.run(resolved_specs, context, collecting_event_handler)
+        serialized = serialize_extension_results(results)
+
+        # Emit combined extension_results event for frontend
+        await collecting_event_handler(
+            {"type": "extension_results", "payload": serialized},
+            "extension_results",
+        )
+
+        return serialized, collected_events
+
+    except Exception as e:
+        app_logger.error(f"Extension execution failed: {e}", exc_info=True)
+        return None, []
+
+
+async def _persist_extension_results(
+    ext_results: dict,
+    ext_events: list,
+    user_uuid: str,
+    session_id: str,
+    event_handler,
+):
+    """
+    Persist extension results to the session file and emit cost events if needed.
+
+    Aggregates extension token/cost usage across all results. If any extension
+    consumed tokens (future LLM-calling extensions), emits a token_update event
+    and updates session totals.
+    """
+    # Aggregate extension token costs
+    total_ext_input = sum(r.get("extension_input_tokens", 0) for r in ext_results.values())
+    total_ext_output = sum(r.get("extension_output_tokens", 0) for r in ext_results.values())
+
+    # If extensions consumed tokens, update session totals and emit token_update
+    if total_ext_input > 0 or total_ext_output > 0:
+        await session_manager.update_token_count(
+            user_uuid, session_id, total_ext_input, total_ext_output
+        )
+
+        current_session = await session_manager.get_session(user_uuid, session_id)
+        if current_session:
+            total_ext_cost = sum(r.get("extension_cost_usd", 0) for r in ext_results.values())
+            await event_handler({
+                "statement_input": total_ext_input,
+                "statement_output": total_ext_output,
+                "turn_input": total_ext_input,
+                "turn_output": total_ext_output,
+                "total_input": current_session.get("input_tokens", 0),
+                "total_output": current_session.get("output_tokens", 0),
+                "call_id": "extensions",
+                "cost_usd": total_ext_cost,
+            }, "token_update")
+
+            app_logger.info(
+                f"Extension token update: {total_ext_input} in / {total_ext_output} out "
+                f"(cost: ${total_ext_cost:.6f})"
+            )
+
+    # Persist to session file (post-append to already-saved turn)
+    await session_manager.append_extension_results_to_turn(
+        user_uuid=user_uuid,
+        session_id=session_id,
+        extension_results=ext_results,
+        extension_events=ext_events,
+        extension_input_tokens=total_ext_input,
+        extension_output_tokens=total_ext_output,
+    )
+
+
 # --- MODIFICATION START: Add plan_to_execute and is_replay parameters ---
 async def run_agent_execution(
     user_uuid: str,
@@ -56,7 +216,8 @@ async def run_agent_execution(
     task_id: str = None, # Add task_id parameter here
     profile_override_id: str = None, # Add profile override parameter
     is_session_primer: bool = False, # Session primer flag - marks messages as initialization
-    attachments: list = None  # Document upload attachments [{file_id, filename, ...}]
+    attachments: list = None,  # Document upload attachments [{file_id, filename, ...}]
+    extension_specs: list = None  # Post-processing extensions [{"name": "json", "param": null}]
 ):
 # --- MODIFICATION END ---
     """
@@ -117,7 +278,8 @@ async def run_agent_execution(
                 source=source,
                 profile_tag=profile_tag,
                 is_session_primer=is_session_primer,
-                attachments=attachments
+                attachments=attachments,
+                extension_specs=extension_specs
             )
             app_logger.debug(f"Added user message to session_history for {session_id}: '{message_to_save}' with profile_tag: {profile_tag}, is_session_primer: {is_session_primer}")
 
@@ -206,6 +368,23 @@ async def run_agent_execution(
                 is_session_primer=is_session_primer,  # Pass session primer flag
                 attachments=attachments  # Pass document upload attachments
             )
+
+            # --- EXTENSION EXECUTION: Genie path ---
+            if extension_specs and final_result_payload:
+                ext_results, ext_events = await _run_extensions(
+                    extension_specs=extension_specs,
+                    final_payload=final_result_payload,
+                    user_input=user_input,
+                    session_id=session_id,
+                    user_uuid=user_uuid,
+                    event_handler=event_handler,
+                )
+                if ext_results:
+                    final_result_payload["extension_results"] = ext_results
+                    await _persist_extension_results(
+                        ext_results, ext_events, user_uuid, session_id, event_handler
+                    )
+
             return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
 
@@ -236,6 +415,22 @@ async def run_agent_execution(
 
             if event_type == "final_answer":
                 final_result_payload = event_data
+
+        # --- EXTENSION EXECUTION: PlanExecutor path (tool_enabled, llm_only, rag_focused) ---
+        if extension_specs and final_result_payload:
+            ext_results, ext_events = await _run_extensions(
+                extension_specs=extension_specs,
+                final_payload=final_result_payload,
+                user_input=user_input,
+                session_id=session_id,
+                user_uuid=user_uuid,
+                event_handler=event_handler,
+            )
+            if ext_results:
+                final_result_payload["extension_results"] = ext_results
+                await _persist_extension_results(
+                    ext_results, ext_events, user_uuid, session_id, event_handler
+                )
 
     except Exception as e:
         app_logger.error(f"An unhandled error occurred in the agent execution service for user {user_uuid}, session {session_id}: {e}", exc_info=True)

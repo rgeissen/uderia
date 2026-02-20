@@ -2270,6 +2270,9 @@ async def execute_query(session_id: str):
     # Optional file attachments (uploaded via /api/v1/chat/upload)
     attachments = data.get("attachments")  # [{file_id, filename, ...}]
 
+    # Post-processing extensions [{"name": "json", "param": null}]
+    extension_specs = data.get("extensions")
+
     # --- MODIFICATION START: Validate session for this user ---
     if not await session_manager.get_session(user_uuid, session_id):
         app_logger.warning(f"REST API: Session '{session_id}' not found for user '{user_uuid}'.")
@@ -2393,13 +2396,19 @@ async def execute_query(session_id: str):
                 task_id=task_id, # Pass the task_id here
                 profile_override_id=profile_id_override, # Pass profile override for per-message tracking
                 is_session_primer=is_session_primer, # Pass session primer flag
-                attachments=attachments  # File attachments (uploaded via /api/v1/chat/upload)
+                attachments=attachments,  # File attachments (uploaded via /api/v1/chat/upload)
+                extension_specs=extension_specs  # Post-processing extensions
             )
 
             if task_status_dict:
                 task_status_dict["status"] = "complete"
                 task_status_dict["result"] = _sanitize_for_json(final_result_payload)
                 task_status_dict["last_updated"] = datetime.now(timezone.utc).isoformat()
+                # Promote extension_results to top-level for easy n8n/Flowise access
+                if final_result_payload and isinstance(final_result_payload, dict):
+                    ext_results = final_result_payload.get("extension_results")
+                    if ext_results:
+                        task_status_dict["extension_results"] = ext_results
 
         except asyncio.CancelledError:
             app_logger.info(f"REST background task {task_id} (user {user_uuid}) was cancelled.")
@@ -2438,7 +2447,8 @@ async def execute_query(session_id: str):
                             "turn_id": final_result_payload.get("turn_id"),
                             "user_input": prompt,
                             "final_answer": final_result_payload.get("final_answer"),
-                            "profile_tag": profile_tag
+                            "profile_tag": profile_tag,
+                            "extension_specs": extension_specs
                         }
                     }
                     for queue in notification_queues:
@@ -10205,3 +10215,282 @@ async def get_genie_parent_session(session_id: str):
     except Exception as e:
         app_logger.error(f"Failed to get parent session for {session_id}: {e}", exc_info=True)
         return jsonify({"error": "Failed to retrieve parent session."}), 500
+
+
+# ============================================================================
+# EXTENSIONS ENDPOINTS
+# ============================================================================
+
+@rest_api_bp.route("/v1/extensions", methods=["GET"])
+async def list_extensions():
+    """
+    List all available post-processing extensions.
+    Used for UI card display and frontend autocomplete.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        extensions = manager.list_extensions()
+        return jsonify({"extensions": extensions}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to list extensions: {e}", exc_info=True)
+        return jsonify({"error": "Failed to list extensions."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/reload", methods=["POST"])
+async def reload_extensions():
+    """
+    Hot-reload all extensions without restarting the application.
+    Admin only.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        manager.reload()
+        return jsonify({
+            "status": "success",
+            "loaded": len(manager.extensions),
+            "extensions": manager.get_all_names()
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to reload extensions: {e}", exc_info=True)
+        return jsonify({"error": "Failed to reload extensions."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/<name>/source", methods=["GET"])
+async def get_extension_source(name: str):
+    """
+    Get the Python source code of an extension.
+    Used by the 'View Script' feature in the Extensions UI tab.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        source = manager.get_extension_source(name)
+        if source is None:
+            return jsonify({"error": f"Extension '{name}' not found."}), 404
+
+        manifest = manager.get_manifest(name)
+        return jsonify({
+            "name": name,
+            "source": source,
+            "manifest": manifest
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get extension source for '{name}': {e}", exc_info=True)
+        return jsonify({"error": "Failed to retrieve extension source."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/activated", methods=["GET"])
+async def get_activated_extensions():
+    """
+    Get the current user's activated extensions.
+    Returns activated extensions merged with their manifest metadata.
+    This is what the frontend uses for # autocomplete.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.db import get_user_activated_extensions
+        from trusted_data_agent.extensions.manager import get_extension_manager
+
+        activations = get_user_activated_extensions(user_uuid)
+        manager = get_extension_manager()
+
+        # Merge activation data with manifest metadata
+        result = []
+        for activation in activations:
+            ext_id = activation["extension_id"]
+            ext_info = next(
+                (e for e in manager.list_extensions() if e["extension_id"] == ext_id),
+                None,
+            )
+            if ext_info:
+                merged = {**ext_info, **activation}
+                result.append(merged)
+
+        return jsonify({"extensions": result}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get activated extensions: {e}", exc_info=True)
+        return jsonify({"error": "Failed to get activated extensions."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/<ext_id>/activate", methods=["POST"])
+async def activate_extension_endpoint(ext_id: str):
+    """
+    Activate a new instance of an extension for the current user.
+    Supports multiple activations of the same extension with different params.
+    Auto-generates a unique activation_name (json, json2, json3, ...).
+
+    Request body (optional):
+    {
+        "default_param": "critical",
+        "config": {"key": "value"},
+        "activation_name": "myalias"  (optional — auto-generated if omitted)
+    }
+
+    Returns the generated activation_name.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.db import activate_extension
+        from trusted_data_agent.extensions.manager import get_extension_manager
+
+        # Validate extension exists in registry
+        manager = get_extension_manager()
+        if manager.get_extension(ext_id) is None:
+            return jsonify({"error": f"Extension '{ext_id}' not found."}), 404
+
+        data = await request.get_json() or {}
+        default_param = data.get("default_param")
+        config = data.get("config")
+        activation_name = data.get("activation_name")
+
+        success, generated_name = activate_extension(
+            user_uuid, ext_id, default_param, config, activation_name
+        )
+        if success:
+            return jsonify({
+                "status": "activated",
+                "extension_id": ext_id,
+                "activation_name": generated_name,
+            }), 200
+        else:
+            return jsonify({"error": "Failed to activate extension. Name may already be in use."}), 409
+
+    except Exception as e:
+        app_logger.error(f"Failed to activate extension '{ext_id}': {e}", exc_info=True)
+        return jsonify({"error": "Failed to activate extension."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/activations/<activation_name>/deactivate", methods=["POST"])
+async def deactivate_extension_endpoint(activation_name: str):
+    """Deactivate an extension activation by its activation_name."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.db import deactivate_extension
+
+        success = deactivate_extension(user_uuid, activation_name)
+        if success:
+            return jsonify({"status": "deactivated", "activation_name": activation_name}), 200
+        else:
+            return jsonify({"error": f"Activation '{activation_name}' not found."}), 404
+
+    except Exception as e:
+        app_logger.error(f"Failed to deactivate extension '{activation_name}': {e}", exc_info=True)
+        return jsonify({"error": "Failed to deactivate extension."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/activations/<activation_name>/config", methods=["PUT"])
+async def update_extension_config_endpoint(activation_name: str):
+    """
+    Update configuration for an activation by its activation_name.
+
+    Request body:
+    {
+        "default_param": "warning",
+        "config": {"threshold": 80}
+    }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.db import update_extension_config
+
+        data = await request.get_json() or {}
+        default_param = data.get("default_param")
+        config = data.get("config")
+
+        success = update_extension_config(user_uuid, activation_name, default_param, config)
+        if success:
+            return jsonify({"status": "updated", "activation_name": activation_name}), 200
+        else:
+            return jsonify({"error": f"Activation '{activation_name}' is not active."}), 404
+
+    except Exception as e:
+        app_logger.error(f"Failed to update extension config: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update extension config."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/activations/<activation_name>/rename", methods=["PUT"])
+async def rename_extension_activation_endpoint(activation_name: str):
+    """
+    Rename an activation.
+
+    Request body:
+    {
+        "new_name": "my_custom_name"
+    }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.db import rename_extension_activation
+
+        data = await request.get_json() or {}
+        new_name = data.get("new_name")
+        if not new_name:
+            return jsonify({"error": "new_name is required."}), 400
+
+        success = rename_extension_activation(user_uuid, activation_name, new_name)
+        if success:
+            return jsonify({
+                "status": "renamed",
+                "old_name": activation_name,
+                "new_name": new_name,
+            }), 200
+        else:
+            return jsonify({"error": f"Rename failed. Name '{new_name}' may already be in use."}), 409
+
+    except Exception as e:
+        app_logger.error(f"Failed to rename extension '{activation_name}': {e}", exc_info=True)
+        return jsonify({"error": "Failed to rename extension."}), 500
+
+
+@rest_api_bp.route("/v1/extensions/activations/<activation_name>", methods=["DELETE"])
+async def delete_extension_activation_endpoint(activation_name: str):
+    """Hard-delete an extension activation (removes the row entirely)."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.db import delete_extension_activation
+
+        success = delete_extension_activation(user_uuid, activation_name)
+        if success:
+            return jsonify({"status": "deleted", "activation_name": activation_name}), 200
+        else:
+            return jsonify({"error": f"Activation '{activation_name}' not found."}), 404
+
+    except Exception as e:
+        app_logger.error(f"Failed to delete extension '{activation_name}': {e}", exc_info=True)
+        return jsonify({"error": "Failed to delete extension activation."}), 500

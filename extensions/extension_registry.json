@@ -1,0 +1,48 @@
+{
+  "registry_version": "1.0.0",
+  "last_updated": "2026-02-20T00:00:00Z",
+  "extensions": [
+    {
+      "extension_id": "json",
+      "plugin_directory": "json",
+      "status": "active",
+      "display_order": 1,
+      "category": "Transform",
+      "is_builtin": true,
+      "notes": "Wraps LLM answer + metadata into standardized JSON structure"
+    },
+    {
+      "extension_id": "decision",
+      "plugin_directory": "decision",
+      "status": "active",
+      "display_order": 2,
+      "category": "Automation",
+      "is_builtin": true,
+      "notes": "Binary/multi-branch decision output for n8n/Flowise workflow branching"
+    },
+    {
+      "extension_id": "extract",
+      "plugin_directory": "extract",
+      "status": "active",
+      "display_order": 3,
+      "category": "Transform",
+      "is_builtin": true,
+      "notes": "Extract structured data (numbers, percentages, entities) from answer"
+    },
+    {
+      "extension_id": "classify",
+      "plugin_directory": "classify",
+      "status": "active",
+      "display_order": 4,
+      "category": "Automation",
+      "is_builtin": true,
+      "notes": "Categorize answer into predefined buckets for workflow routing"
+    }
+  ],
+  "extension_status_definitions": {
+    "active": "Ready for use",
+    "beta": "Still being tested",
+    "deprecated": "Being phased out",
+    "draft": "Not yet available"
+  }
+}

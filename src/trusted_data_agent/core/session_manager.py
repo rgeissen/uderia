@@ -1035,7 +1035,7 @@ def _cleanup_session_uploads(user_uuid: str, session_id: str):
             app_logger.warning(f"Failed to clean up uploads directory for session {session_id}: {e}")
 
 # --- MODIFICATION START: Rename and refactor add_to_history ---
-async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None):
+async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None, extension_specs: list | None = None):
     """
     Adds a message to the appropriate histories, decoupling UI from LLM context.
     - `content` (plain text) is *always* added to the LLM's chat_object.
@@ -1086,6 +1086,9 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
                 {k: v for k, v in att.items() if k != 'extracted_text'}
                 for att in attachments
             ]
+
+        if extension_specs and role == 'user':
+            message_to_append['extension_specs'] = extension_specs
 
         session_history.append(message_to_append)
         # --- MODIFICATION END ---
@@ -1393,6 +1396,67 @@ async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict
             app_logger.error(f"Failed to save session after updating last turn data for {session_id}")
     else:
         app_logger.warning(f"Could not update last turn data: Session {session_id} not found for user {user_uuid}.")
+
+
+async def append_extension_results_to_turn(
+    user_uuid: str,
+    session_id: str,
+    extension_results: dict,
+    extension_events: list = None,
+    extension_input_tokens: int = 0,
+    extension_output_tokens: int = 0,
+):
+    """
+    Append extension results and lifecycle events to the most recent turn
+    in workflow_history. Called after extensions complete in execution_service.py,
+    since extensions run AFTER the turn is already saved by update_last_turn_data().
+
+    Args:
+        user_uuid: User UUID for session lookup
+        session_id: Session ID
+        extension_results: Serialized extension results dict
+        extension_events: List of extension lifecycle events [{type, payload}, ...]
+        extension_input_tokens: Total input tokens consumed by extensions (for LLM-calling extensions)
+        extension_output_tokens: Total output tokens consumed by extensions
+    """
+    session_data = await _load_session(user_uuid, session_id)
+    if not session_data:
+        app_logger.warning(f"Cannot append extension results: session {session_id} not found")
+        return
+
+    workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+    if not workflow_history:
+        app_logger.warning(f"Cannot append extension results: no turns in session {session_id}")
+        return
+
+    # Patch the last turn entry
+    last_turn = workflow_history[-1]
+    last_turn["extension_results"] = extension_results
+    if extension_events:
+        last_turn["extension_events"] = extension_events
+
+    # Update turn-level token totals if extensions consumed tokens
+    if extension_input_tokens > 0 or extension_output_tokens > 0:
+        last_turn["turn_input_tokens"] = last_turn.get("turn_input_tokens", 0) + extension_input_tokens
+        last_turn["turn_output_tokens"] = last_turn.get("turn_output_tokens", 0) + extension_output_tokens
+        try:
+            from trusted_data_agent.core.cost_manager import get_cost_manager
+            cost_manager = get_cost_manager()
+            provider = last_turn.get("provider", "")
+            model = last_turn.get("model", "")
+            last_turn["turn_cost"] = cost_manager.calculate_cost(
+                provider, model,
+                last_turn["turn_input_tokens"],
+                last_turn["turn_output_tokens"]
+            )
+        except Exception:
+            pass
+
+    if not await _save_session(user_uuid, session_id, session_data):
+        app_logger.error(f"Failed to save session after appending extension results for {session_id}")
+    else:
+        app_logger.debug(f"Appended extension results to last turn in session {session_id}")
+
 
 # --- MODIFICATION START: Add function to purge only the agent's memory ---
 async def purge_session_memory(user_uuid: str, session_id: str) -> bool:

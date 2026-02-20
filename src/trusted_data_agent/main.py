@@ -297,6 +297,17 @@ def create_app():
         else:
             APP_STATE["rag_collections"] = []
         
+        # Initialize Extensions manager
+        try:
+            from trusted_data_agent.extensions.manager import get_extension_manager
+            ext_manager = get_extension_manager()
+            ext_count = len(ext_manager.extensions)
+            APP_STATE['extension_manager'] = ext_manager
+            app_logger.info(f"Extension system ready: {ext_count} extension(s) loaded")
+        except Exception as e:
+            app_logger.error(f"Failed to initialize extensions: {e}", exc_info=True)
+            app_logger.warning("Extensions will be lazy-initialized on first use.")
+
         # Start the single RAG worker as a background task
         asyncio.create_task(rag_processing_worker())
 

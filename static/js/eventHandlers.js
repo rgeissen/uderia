@@ -947,6 +947,21 @@ async function processStream(responseBody, originSessionId) {
                                 type: eventData.type,
                                 metadata: eventData.metadata
                             }, isFinal, 'lifecycle');
+                        } else if (eventData.type === 'extension_start') {
+                            const extPayload = eventData.payload || {};
+                            UI.updateStatusWindow({
+                                step: `Running extension #${extPayload.name}${extPayload.param ? ':' + extPayload.param : ''}`,
+                                details: 'Processing...',
+                                type: 'extension_running'
+                            }, false, 'extension');
+                        } else if (eventData.type === 'extension_complete') {
+                            const extPayload = eventData.payload || {};
+                            const statusIcon = extPayload.success ? '\u2713' : '\u2717';
+                            UI.updateStatusWindow({
+                                step: `${statusIcon} Extension #${extPayload.name}`,
+                                details: extPayload.success ? 'Completed' : 'Failed',
+                                type: 'extension_complete'
+                            }, false, 'extension');
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full CCR (Champion Case Retrieval) data
@@ -1041,6 +1056,50 @@ async function processStream(responseBody, originSessionId) {
                             const toolType = eventData.tool_name.startsWith('generate_') ? 'charts' : 'tools';
                             UI.highlightResource(eventData.tool_name, toolType);
                         }
+                    // --- Extension Results (combined event, own SSE type) ---
+                    } else if (eventName === 'extension_results') {
+                        const payload = eventData.payload || {};
+                        console.log('[SSE] Extension results received:', Object.keys(payload));
+
+                        // Display results based on each extension's output_target
+                        for (const [extName, result] of Object.entries(payload)) {
+                            if (!result.success) {
+                                console.warn(`[Extension] ${extName} failed:`, result.error);
+                                continue;
+                            }
+
+                            const outputTarget = result.output_target || 'silent';
+
+                            if (outputTarget === 'chat_append' && result.content) {
+                                const extHtml = `
+                                    <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}" style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
+                                            <span class="text-xs text-gray-500">${result.content_type}</span>
+                                        </div>
+                                        <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${
+                                            typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
+                                        }</pre>
+                                    </div>
+                                `;
+                                // Append to the last chat message
+                                const chatLog = document.getElementById('chat-log');
+                                if (chatLog) {
+                                    const lastMsg = chatLog.querySelector('.chat-message:last-child .message-content');
+                                    if (lastMsg) {
+                                        lastMsg.insertAdjacentHTML('beforeend', extHtml);
+                                    }
+                                }
+                            } else if (outputTarget === 'status_panel' && result.content) {
+                                UI.updateStatusWindow({
+                                    step: `Extension: #${extName}`,
+                                    details: typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content,
+                                    type: 'extension_result'
+                                }, false, 'extension');
+                            }
+                            // 'silent' — no UI display (API-only for n8n/Flowise)
+                        }
+
                     // --- Genie Coordination Events ---
                     } else if (eventName === 'genie_start' || eventName === 'genie_routing' ||
                                eventName === 'genie_coordination_start' || eventName === 'genie_llm_step' ||
@@ -1283,7 +1342,7 @@ export async function handleStreamRequest(endpoint, body) {
                 const chipHtml = renderAttachmentChips(body.attachments);
                 displayMessage = body.message + chipHtml;
             }
-            UI.addMessage('user', displayMessage, null, true, 'text', profileTag, body.is_session_primer || false);
+            UI.addMessage('user', displayMessage, null, true, 'text', profileTag, body.is_session_primer || false, body.extensions || null);
         } else {
         }
     } else {
@@ -1409,6 +1468,33 @@ export async function handleChatSubmit(e, source = 'text') {
         console.log('ℹ️  No @TAG detected or profiles not loaded');
     }
     
+    // Check for #extension:param directives in text (manual typing)
+    let extensionSpecs = [];
+    const extensionRegex = /#(\w+)(?::(\S+))?/g;
+    let extMatch;
+    while ((extMatch = extensionRegex.exec(cleanedMessage)) !== null) {
+        extensionSpecs.push({
+            name: extMatch[1].toLowerCase(),
+            param: extMatch[2] || null
+        });
+    }
+    // Strip #extension tags from message sent to LLM
+    if (extensionSpecs.length > 0) {
+        cleanedMessage = cleanedMessage.replace(/#\w+(?::\S+)?/g, '').trim();
+    }
+
+    // Merge badge-based extensions (from autocomplete selection)
+    const badgeExtensions = window.activeExtensions || [];
+    for (const ext of badgeExtensions) {
+        if (!extensionSpecs.find(e => e.name === ext.name)) {
+            extensionSpecs.push({ name: ext.name, param: ext.param || null });
+        }
+    }
+
+    if (extensionSpecs.length > 0) {
+        console.log(`🧩 Extensions: ${extensionSpecs.map(e => '#' + e.name + (e.param ? ':' + e.param : '')).join(' ')}`);
+    }
+
     // Collect pending file attachments
     const attachments = getPendingAttachments();
 
@@ -1417,9 +1503,15 @@ export async function handleChatSubmit(e, source = 'text') {
         session_id: state.currentSessionId,
         source: source,
         profile_override_id: profileOverrideId,
+        extensions: extensionSpecs.length > 0 ? extensionSpecs : undefined,
         attachments: attachments.length > 0 ? attachments : undefined
         // is_replay is implicitly false here
     });
+
+    // Clear extension badges after sending
+    if (window.clearExtensionBadges) {
+        window.clearExtensionBadges();
+    }
 
     // Clear attachments after sending
     if (attachments.length > 0) {
@@ -1497,6 +1589,81 @@ function forceResetExecutionState() {
         details: "Process forcibly terminated after timeout.",
         type: 'error'
     }, true);
+}
+
+/**
+ * Render extension lifecycle events and results into the status panel for historical turn recall.
+ * Called after each profile-type block renders its own events — appends an "Extensions" section.
+ *
+ * @param {Object} turnData - The turn data from the API (contains extension_events + extension_results)
+ * @param {HTMLElement} container - The DOM container to append extension rendering to
+ */
+function _renderExtensionEventsForReload(turnData, container) {
+    const extEvents = turnData.extension_events || [];
+    const extResults = turnData.extension_results || {};
+
+    if (extEvents.length === 0 && Object.keys(extResults).length === 0) {
+        return; // No extension data to render
+    }
+
+    // --- Divider ---
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t border-amber-500/30';
+    divider.innerHTML = `<span class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Extensions</span>`;
+    container.appendChild(divider);
+
+    // --- Replay lifecycle events (extension_start / extension_complete) ---
+    extEvents.forEach(event => {
+        const eventType = event.type;
+        const payload = event.payload || {};
+
+        if (eventType === 'extension_start') {
+            const stepEl = document.createElement('div');
+            stepEl.className = 'px-4 py-2 status-step';
+            stepEl.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="text-amber-400 text-xs">&#9654;</span>
+                    <span class="text-xs text-gray-300">Running <span class="text-amber-300 font-medium">#${payload.name || '?'}${payload.param ? ':' + payload.param : ''}</span></span>
+                </div>`;
+            container.appendChild(stepEl);
+        } else if (eventType === 'extension_complete') {
+            const success = payload.success !== false;
+            const icon = success ? '&#10003;' : '&#10007;';
+            const color = success ? 'text-green-400' : 'text-red-400';
+            const stepEl = document.createElement('div');
+            stepEl.className = 'px-4 py-2 status-step';
+            stepEl.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="${color} text-xs">${icon}</span>
+                    <span class="text-xs text-gray-300"><span class="text-amber-300 font-medium">#${payload.name || '?'}</span> ${success ? 'completed' : 'failed'}</span>
+                    ${payload.output_target ? `<span class="text-xs text-gray-500 ml-auto">${payload.output_target}</span>` : ''}
+                </div>`;
+            container.appendChild(stepEl);
+        }
+    });
+
+    // --- Show result summaries for silent/status_panel extensions ---
+    for (const [name, result] of Object.entries(extResults)) {
+        const target = result.output_target || 'silent';
+        if (target === 'chat_append') continue; // Chat output visible in chat log already
+
+        if (result.success && result.content) {
+            const contentPreview = typeof result.content === 'object'
+                ? JSON.stringify(result.content, null, 2).substring(0, 300)
+                : String(result.content).substring(0, 300);
+
+            const resultEl = document.createElement('div');
+            resultEl.className = 'px-4 py-2';
+            resultEl.innerHTML = `
+                <details class="group">
+                    <summary class="text-xs text-amber-300 cursor-pointer hover:text-amber-200">
+                        #${name} output <span class="text-gray-500">(${result.content_type || 'json'})</span>
+                    </summary>
+                    <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                </details>`;
+            container.appendChild(resultEl);
+        }
+    }
 }
 
 /**
@@ -1732,6 +1899,9 @@ export async function handleReloadPlanClick(element) {
                 DOM.statusWindowContent.appendChild(genieInfoEl);
             }
 
+            // Render extension events if present
+            _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+
             // Hide replay buttons for genie profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
                 DOM.headerReplayPlannedButton.classList.add('hidden');
@@ -1883,6 +2053,9 @@ export async function handleReloadPlanClick(element) {
                 `;
                 DOM.statusWindowContent.appendChild(agentInfoEl);
             }
+
+            // Render extension events if present
+            _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
 
             // Hide replay buttons for conversation_with_tools (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -2036,6 +2209,9 @@ export async function handleReloadPlanClick(element) {
                 session_cost_usd: sessionCost  // NEW - authoritative session cost
             }, true);
 
+            // Render extension events if present
+            _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+
             // Hide replay buttons for non-tool profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
                 DOM.headerReplayPlannedButton.classList.add('hidden');
@@ -2127,6 +2303,9 @@ export async function handleReloadPlanClick(element) {
             planning_phase: turnData.planning_phase,
             perModelBreakdown: perModelBreakdown
         }, true);
+
+        // Render extension events if present
+        _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
 
         // Show replay buttons
         if (DOM.headerReplayPlannedButton) {
