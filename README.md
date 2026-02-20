@@ -514,6 +514,32 @@ Agent Packs bundle complete agent configurations—coordinator profiles, expert 
 Agent Packs turn the collaborative marketplace into a distribution channel for complete AI solutions—not just individual knowledge repositories, but fully operational agent teams ready for production use.
 
 
+#### Bundled MCP Server: Google Search (Gemini Grounded Search)
+
+Uderia ships with a ready-to-use MCP server for public internet search, located at `mcp_servers/google_search.py`. It uses Google's Gemini Grounded Search API to find current public information and return factual summaries with source citations.
+
+**How to activate:**
+
+1. **Import MCP Server** — Navigate to Setup → MCP Servers → Import and paste the following Claude Desktop configuration:
+   ```json
+   {
+     "mcpServers": {
+       "Google Search": {
+         "command": "python",
+         "args": ["/app/mcp_servers/google_search.py"],
+         "env": {"GEMINI_API_KEY": "your-gemini-api-key"}
+       }
+     }
+   }
+   ```
+   Replace `/app/mcp_servers/...` with the actual path if running outside Docker.
+
+2. **Link to a Profile** — Create or edit a profile (e.g., `tool_enabled` type) and select "Google Search" as its MCP Server.
+
+3. **Use** — The `external_search` tool is now available. Queries routed to this profile will search the public internet via Gemini and return results with citations.
+
+Each user provides their own Gemini API key through the `env` field, enabling per-user authentication without shared credentials.
+
 ---
 
 ## 🎭 Profile Classes: The IFOC Workflow
