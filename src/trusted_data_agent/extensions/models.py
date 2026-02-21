@@ -80,6 +80,13 @@ class ExtensionContext:
     Populated automatically by ExtensionRunner during serial execution.
     """
 
+    # --- LLM config (for LLMExtension, injected by runner) ---
+    user_uuid: Optional[str] = None
+    """User UUID for LLM credential resolution."""
+
+    llm_config_id: Optional[str] = None
+    """LLM configuration ID from the active profile."""
+
 
 @dataclass
 class ExtensionResult:

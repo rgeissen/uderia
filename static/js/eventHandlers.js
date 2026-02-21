@@ -956,10 +956,9 @@ async function processStream(responseBody, originSessionId) {
                             }, false, 'extension');
                         } else if (eventData.type === 'extension_complete') {
                             const extPayload = eventData.payload || {};
-                            const statusIcon = extPayload.success ? '\u2713' : '\u2717';
                             UI.updateStatusWindow({
-                                step: `${statusIcon} Extension #${extPayload.name}`,
-                                details: extPayload.success ? 'Completed' : 'Failed',
+                                step: `Extension #${extPayload.name}`,
+                                details: extPayload,
                                 type: 'extension_complete'
                             }, false, 'extension');
                         }
@@ -1097,8 +1096,15 @@ async function processStream(responseBody, originSessionId) {
                                     type: 'extension_result'
                                 }, false, 'extension');
                             }
-                            // 'silent' — no UI display (API-only for n8n/Flowise)
+                            // 'silent' — show output preview in Live Status (collapsible)
                         }
+
+                        // Also render silent extension output previews in Live Status
+                        UI.updateStatusWindow({
+                            step: 'Extension results',
+                            details: payload,
+                            type: 'extension_results'
+                        }, false, 'extension');
 
                     // --- Genie Coordination Events ---
                     } else if (eventName === 'genie_start' || eventName === 'genie_routing' ||
@@ -1630,13 +1636,35 @@ function _renderExtensionEventsForReload(turnData, container) {
             const success = payload.success !== false;
             const icon = success ? '&#10003;' : '&#10007;';
             const color = success ? 'text-green-400' : 'text-red-400';
+
+            // Build metrics string (tokens, cost, time) — same as live renderer
+            let metricsHtml = '';
+            const inputTokens = payload.input_tokens;
+            const outputTokens = payload.output_tokens;
+            const costUsd = payload.cost_usd;
+            const execTimeMs = payload.execution_time_ms;
+
+            if (inputTokens || outputTokens) {
+                const parts = [];
+                parts.push(`${(inputTokens || 0).toLocaleString()} in / ${(outputTokens || 0).toLocaleString()} out`);
+                if (costUsd !== undefined && costUsd > 0) {
+                    parts.push(`$${parseFloat(costUsd).toFixed(6)}`);
+                }
+                if (execTimeMs) {
+                    parts.push(`${execTimeMs}ms`);
+                }
+                metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${parts.join(' &middot; ')}</span>`;
+            } else if (execTimeMs) {
+                metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${execTimeMs}ms</span>`;
+            }
+
             const stepEl = document.createElement('div');
             stepEl.className = 'px-4 py-2 status-step';
             stepEl.innerHTML = `
                 <div class="flex items-center gap-2">
                     <span class="${color} text-xs">${icon}</span>
                     <span class="text-xs text-gray-300"><span class="text-amber-300 font-medium">#${payload.name || '?'}</span> ${success ? 'completed' : 'failed'}</span>
-                    ${payload.output_target ? `<span class="text-xs text-gray-500 ml-auto">${payload.output_target}</span>` : ''}
+                    ${metricsHtml}
                 </div>`;
             container.appendChild(stepEl);
         }

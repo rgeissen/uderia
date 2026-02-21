@@ -39,7 +39,18 @@
     "category": {
       "type": "string",
       "description": "UI grouping category.",
-      "enum": ["Transform", "Automation", "Export", "Visualization", "Custom"]
+      "enum": ["Transform", "Automation", "Analysis", "Export", "Visualization", "Custom"]
+    },
+    "extension_tier": {
+      "type": "string",
+      "description": "Extension complexity tier. Determines UI badges and discovery behavior.",
+      "enum": ["convention", "simple", "standard", "llm"],
+      "default": "standard"
+    },
+    "requires_llm": {
+      "type": "boolean",
+      "description": "Whether the extension makes LLM calls. Used for UI cost warnings.",
+      "default": false
     },
     "keywords": {
       "type": "array",

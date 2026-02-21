@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path # Use pathlib for better path handling
 import shutil # For potential cleanup later if needed
 import asyncio # For sending notifications asynchronously
+import tempfile # For atomic file writes
 import aiofiles # For async file I/O
 
 import google.generativeai as genai
@@ -44,6 +45,46 @@ _initialize_sessions_dir()
 # Track last notification state per session to avoid spam
 # Key: session_id, Value: dict with provider, model, profile_tag
 _last_notification_state = {}
+
+# --- Per-Session Write Lock ---
+# Serializes load-modify-save cycles on a per-session basis to prevent:
+# 1. File corruption from concurrent aiofiles writes (defense-in-depth; atomic writes are the primary guard)
+# 2. Logical data loss where a stale load overwrites another writer's changes
+# Key: session_id, Value: asyncio.Lock
+_session_locks: dict[str, asyncio.Lock] = {}
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """Get or create an asyncio.Lock for a session to serialize file writes."""
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def _session_transaction(user_uuid: str, session_id: str):
+    """
+    Context manager that serializes load-modify-save cycles for a session.
+
+    Usage:
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if session_data is None:
+                return  # Session not found
+            session_data['field'] = new_value
+            # Auto-saved on exit (only if session_data was found)
+
+    The lock is held for the entire load-modify-save cycle, preventing concurrent
+    writers from reading stale data and overwriting each other's changes.
+    """
+    lock = _get_session_lock(session_id)
+    async with lock:
+        session_data = await _load_session(user_uuid, session_id)
+        yield session_data
+        if session_data is not None:
+            if not await _save_session(user_uuid, session_id, session_data):
+                app_logger.error(f"Failed to save session {session_id} in transaction")
+
 
 # --- File I/O Helper Functions ---
 
@@ -118,8 +159,26 @@ async def _save_session(user_uuid: str, session_id: str, session_data: dict):
         if not session_path.parent.exists():
              app_logger.warning(f"User session directory was just created (or failed silently): {session_path.parent}")
 
-        async with aiofiles.open(session_path, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(session_data, indent=2)) # Use indent for readability
+        # Atomic write: write to temp file, then rename (os.replace is atomic on POSIX).
+        # This prevents file corruption when concurrent async tasks write simultaneously.
+        json_content = json.dumps(session_data, indent=2)
+        temp_fd, temp_path = tempfile.mkstemp(
+            dir=str(session_path.parent),
+            suffix='.tmp',
+            prefix='.session_'
+        )
+        try:
+            os.close(temp_fd)  # Close fd; we use aiofiles for async write
+            async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+                await f.write(json_content)
+            os.replace(temp_path, str(session_path))  # Atomic on POSIX
+        except BaseException:
+            # Clean up temp file on any error
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+            raise
         app_logger.debug(f"Successfully saved session '{session_id}' for user '{user_uuid}'.")
 
         # --- MODIFICATION START: Send session_model_update notification (with deduplication) ---
@@ -1044,26 +1103,26 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
     - `profile_tag` (if provided) stores which profile was used for this message.
     - `is_session_primer` (if True) marks this message as part of session initialization.
     """
-    session_data = await _load_session(user_uuid, session_id)
-    if session_data:
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            app_logger.warning(f"Could not add history: Session {session_id} not found for user {user_uuid}.")
+            return
+
         # --- 1. Add to UI History (session_history) ---
-        # Use the rich HTML content if provided, otherwise fall back to plain text.
         ui_content = html_content if html_content is not None else content
-        
-        # --- MODIFICATION START: Explicitly manage turn_number ---
+
         session_history = session_data.setdefault('session_history', [])
-        
+
         # Determine the next turn number
         next_turn_number = 1
         if session_history:
             last_message = session_history[-1]
-            last_turn_number = last_message.get('turn_number', 0) # Default to 0 if not found
-            # Increment turn number only when a new user message is added
+            last_turn_number = last_message.get('turn_number', 0)
             if role == 'user':
                 next_turn_number = last_turn_number + 1
-            else: # Assistant's turn
+            else:
                 next_turn_number = last_turn_number
-        
+
         message_to_append = {
             'role': role,
             'content': ui_content,
@@ -1072,53 +1131,42 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
         }
 
         if source:
-             message_to_append['source'] = source
-
+            message_to_append['source'] = source
         if profile_tag:
-             message_to_append['profile_tag'] = profile_tag
-
+            message_to_append['profile_tag'] = profile_tag
         if is_session_primer:
-             message_to_append['is_session_primer'] = True
-
+            message_to_append['is_session_primer'] = True
         if attachments and role == 'user':
-            # Store attachment metadata (not extracted text) for UI display
             message_to_append['attachments'] = [
                 {k: v for k, v in att.items() if k != 'extracted_text'}
                 for att in attachments
             ]
-
         if extension_specs and role == 'user':
             message_to_append['extension_specs'] = extension_specs
 
         session_history.append(message_to_append)
-        # --- MODIFICATION END ---
 
         # --- 2. Add to LLM History (chat_object) ---
-        # Determine the correct role for the LLM provider
         provider_in_session = session_data.get("license_info", {}).get("provider")
         current_provider = APP_CONFIG.CURRENT_PROVIDER
         provider = provider_in_session or current_provider
         if not provider:
-             app_logger.warning(f"Could not determine LLM provider for role conversion in session {session_id}. Defaulting role.")
-             provider = "Unknown" # Avoid error if APP_CONFIG isn't set somehow
+            app_logger.warning(f"Could not determine LLM provider for role conversion in session {session_id}. Defaulting role.")
+            provider = "Unknown"
 
         llm_role = 'model' if role == 'assistant' and provider == 'Google' else role
-        
-        # --- MODIFICATION START: Explicitly manage turn_number for chat_object ---
+
         chat_object_history = session_data.setdefault('chat_object', [])
 
-        # Determine the next turn number for the LLM history
         llm_turn_number = 1
         if chat_object_history:
             last_llm_message = chat_object_history[-1]
-            last_llm_turn = last_llm_message.get('turn_number', 0) # Default to 0
-            # Increment only on the user's turn for the next cycle
+            last_llm_turn = last_llm_message.get('turn_number', 0)
             if llm_role == 'user':
                 llm_turn_number = last_llm_turn + 1
-            else: # Model's turn
+            else:
                 llm_turn_number = last_llm_turn
 
-        # *Always* add the clean, plain text `content` to the LLM's history.
         llm_message = {
             'role': llm_role,
             'content': content,
@@ -1128,89 +1176,63 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
         if attachments and role == 'user':
             llm_message['has_attachments'] = True
         chat_object_history.append(llm_message)
-        # --- MODIFICATION END ---
-        # --- MODIFICATION END ---
-
-        if not await _save_session(user_uuid, session_id, session_data):
-             app_logger.error(f"Failed to save session after adding history for {session_id}")
-    else:
-        app_logger.warning(f"Could not add history: Session {session_id} not found for user {user_uuid}.")
 
 async def update_session_name(user_uuid: str, session_id: str, new_name: str):
-    session_data = await _load_session(user_uuid, session_id)
-    if session_data:
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            app_logger.warning(f"Could not update name: Session {session_id} not found for user {user_uuid}.")
+            return
         session_data['name'] = new_name
-        if not await _save_session(user_uuid, session_id, session_data):
-             app_logger.error(f"Failed to save session after updating name for {session_id}")
-        else:
-            # --- CONSUMPTION TRACKING: Update session name in database ---
-            try:
-                from trusted_data_agent.auth.database import get_db_session
-                from trusted_data_agent.auth.consumption_manager import ConsumptionManager
-                
-                with get_db_session() as db_session:
-                    manager = ConsumptionManager(db_session)
-                    manager.update_session_name(user_uuid, session_id, new_name)
-            except Exception as e:
-                app_logger.warning(f"Failed to update session name in consumption database: {e}")
-            # --- CONSUMPTION TRACKING END ---
-            
-            # --- MODIFICATION START: Send session_name_update notification ---
-            notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
-            if notification_queues:
-                notification_payload = {
-                    "session_id": session_id,
-                    "newName": new_name,
-                }
-                app_logger.debug(f"update_session_name sending notification for session {session_id}: newName={new_name}")
-                notification = {
-                    "type": "session_name_update",
-                    "payload": notification_payload
-                }
-                for queue in notification_queues:
-                    asyncio.create_task(queue.put(notification))
-            # --- MODIFICATION END ---
-    else:
-         app_logger.warning(f"Could not update name: Session {session_id} not found for user {user_uuid}.")
+
+    # Post-save operations (outside lock)
+    try:
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.consumption_manager import ConsumptionManager
+
+        with get_db_session() as db_session:
+            manager = ConsumptionManager(db_session)
+            manager.update_session_name(user_uuid, session_id, new_name)
+    except Exception as e:
+        app_logger.warning(f"Failed to update session name in consumption database: {e}")
+
+    notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
+    if notification_queues:
+        notification = {
+            "type": "session_name_update",
+            "payload": {"session_id": session_id, "newName": new_name}
+        }
+        for queue in notification_queues:
+            asyncio.create_task(queue.put(notification))
 
 
 async def update_token_count(user_uuid: str, session_id: str, input_tokens: int, output_tokens: int):
     """Updates the token counts for a given session."""
-    session_data = await _load_session(user_uuid, session_id)
-    if session_data:
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            app_logger.warning(f"Could not update tokens: Session {session_id} not found for user {user_uuid}.")
+            return
         session_data['input_tokens'] = session_data.get('input_tokens', 0) + input_tokens
         session_data['output_tokens'] = session_data.get('output_tokens', 0) + output_tokens
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after updating tokens for {session_id}")
-        
-        # Record token usage for consumption tracking and quota enforcement
-        try:
-            from trusted_data_agent.auth.token_quota import record_token_usage
-            record_token_usage(user_uuid, input_tokens, output_tokens)
-            app_logger.debug(f"Recorded token usage for user {user_uuid}: input={input_tokens}, output={output_tokens}")
-        except Exception as e:
-            app_logger.error(f"Failed to record token usage for user {user_uuid}: {e}")
-        
-        # --- CONSUMPTION TRACKING START ---
-        # Dual-write to consumption database for performance optimization
-        # This enables O(1) lookups for rate limiting and quota checks
-        try:
-            from trusted_data_agent.auth.database import get_db_session
-            from trusted_data_agent.auth.consumption_manager import ConsumptionManager
-            
-            # Note: This is a lightweight update - no full turn data yet
-            # Full turn metrics will be recorded in update_last_turn_data
-            with get_db_session() as db_session:
-                manager = ConsumptionManager(db_session)
-                # Just increment request counter here (called at start of turn)
-                manager.increment_request_counter(user_uuid)
-                app_logger.debug(f"Incremented request counter for user {user_uuid}")
-        except Exception as e:
-            # Non-critical: File storage is source of truth, DB is performance cache
-            app_logger.warning(f"Failed to update consumption tracking for user {user_uuid}: {e}")
-        # --- CONSUMPTION TRACKING END ---
-    else:
-        app_logger.warning(f"Could not update tokens: Session {session_id} not found for user {user_uuid}.")
+
+    # Post-save operations (outside lock for minimal lock hold time)
+    try:
+        from trusted_data_agent.auth.token_quota import record_token_usage
+        record_token_usage(user_uuid, input_tokens, output_tokens)
+        app_logger.debug(f"Recorded token usage for user {user_uuid}: input={input_tokens}, output={output_tokens}")
+    except Exception as e:
+        app_logger.error(f"Failed to record token usage for user {user_uuid}: {e}")
+
+    # --- CONSUMPTION TRACKING ---
+    try:
+        from trusted_data_agent.auth.database import get_db_session
+        from trusted_data_agent.auth.consumption_manager import ConsumptionManager
+
+        with get_db_session() as db_session:
+            manager = ConsumptionManager(db_session)
+            manager.increment_request_counter(user_uuid)
+            app_logger.debug(f"Incremented request counter for user {user_uuid}")
+    except Exception as e:
+        app_logger.warning(f"Failed to update consumption tracking for user {user_uuid}: {e}")
 
 
 async def update_models_used(user_uuid: str, session_id: str, provider: str, model: str, profile_tag: str | None = None, planning_phase: str | None = None):
@@ -1222,8 +1244,10 @@ async def update_models_used(user_uuid: str, session_id: str, provider: str, mod
                        for dual-model tracking
     """
     app_logger.debug(f"update_models_used called for session {session_id} with provider={provider}, model={model}, profile_tag={profile_tag}, planning_phase={planning_phase}")
-    session_data = await _load_session(user_uuid, session_id)
-    if session_data:
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            app_logger.warning(f"Could not update models used: Session {session_id} not found for user {user_uuid}.")
+            return
         # Keep models_used for backwards compatibility
         models_used = session_data.get('models_used', [])
         model_string = f"{provider}/{model}"
@@ -1237,8 +1261,8 @@ async def update_models_used(user_uuid: str, session_id: str, provider: str, mod
                 session_data["dual_model_usage"] = {
                     "strategic": [],
                     "tactical": [],
-                    "tactical_fastpath": [],  # NEW: Tactical model configured but FASTPATH used
-                    "conversation": []          # NEW: TDA_FinalReport, TDA_LLMTask, etc.
+                    "tactical_fastpath": [],
+                    "conversation": []
                 }
 
             phase_models = session_data["dual_model_usage"][planning_phase]
@@ -1253,61 +1277,49 @@ async def update_models_used(user_uuid: str, session_id: str, provider: str, mod
                 profile_tags_used.append(profile_tag)
                 session_data['profile_tags_used'] = profile_tags_used
 
-        # --- MODIFICATION START: Update top-level fields ---
-        app_logger.debug(f"Updating session_data provider from {session_data.get('provider')} to {provider}")
-        app_logger.debug(f"Updating session_data model from {session_data.get('model')} to {model}")
-        app_logger.debug(f"Updating session_data profile_tag from {session_data.get('profile_tag')} to {profile_tag}")
         session_data['provider'] = provider
         session_data['model'] = model
         session_data['profile_tag'] = profile_tag
-        # --- MODIFICATION END ---
-
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after updating models used for {session_id}")
-    else:
-        app_logger.warning(f"Could not update models used: Session {session_id} not found for user {user_uuid}.")
 
 
 async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict):
     """Saves the most recent turn's action history and plans to the session file."""
-    session_data = await _load_session(user_uuid, session_id)
-    if session_data:
-        # Ensure the structure exists (already done on creation, but good for robustness)
+    # Capture values needed for post-save consumption tracking
+    _session_name = None
+    _consumption_data = None
+
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            app_logger.warning(f"Could not update last turn data: Session {session_id} not found for user {user_uuid}.")
+            return
+        # Ensure the structure exists
         if "last_turn_data" not in session_data:
             session_data["last_turn_data"] = {}
         if "workflow_history" not in session_data["last_turn_data"] or not isinstance(session_data["last_turn_data"]["workflow_history"], list):
             session_data["last_turn_data"]["workflow_history"] = []
-        
-        # --- MODIFICATION START: Add isValid=True for new turns ---
-        # By default, all new turns are valid.
+
         if isinstance(turn_data, dict):
             turn_data["isValid"] = True
-        # --- MODIFICATION END ---
 
-        # --- EFFICIENCY TRACKING START ---
-        # Track sequential improvements: compare Turn N vs Turn N-1
-        # Credit RAG when PREVIOUS turn had RAG guidance (teaching effect)
+        # --- EFFICIENCY TRACKING ---
         workflow_history = session_data["last_turn_data"]["workflow_history"]
         if len(workflow_history) > 0 and isinstance(turn_data, dict):
             previous_turn = workflow_history[-1]
             previous_output = previous_turn.get('turn_output_tokens', 0)
             current_output = turn_data.get('turn_output_tokens', 0)
-            # Check if PREVIOUS turn had RAG (enables improvement in current turn)
             previous_had_rag = previous_turn.get('rag_source_collection_id') is not None
-            
-            # Calculate cost per token for this model
+
             provider = turn_data.get('provider', 'Unknown')
             model = turn_data.get('model', 'unknown')
             output_tokens = turn_data.get('turn_output_tokens', 0)
-            
+
             cost_per_token = 0.0
             if output_tokens > 0:
                 from trusted_data_agent.core.cost_manager import get_cost_manager
                 cost_manager = get_cost_manager()
                 turn_cost = cost_manager.calculate_cost(provider, model, 0, output_tokens)
                 cost_per_token = turn_cost / output_tokens if output_tokens > 0 else 0.0
-            
-            # Record improvement if PREVIOUS turn had RAG and current turn improved
+
             if previous_output > 0:
                 from trusted_data_agent.core.efficiency_tracker import get_efficiency_tracker
                 tracker = get_efficiency_tracker()
@@ -1321,81 +1333,66 @@ async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict
                     user_uuid=user_uuid
                 )
 
-                # FIX: Store efficiency gain in turn_data for consumption database sync
-                # Credit the CURRENT turn if it used RAG and resulted in fewer output tokens
                 current_turn_has_rag = turn_data.get('rag_source_collection_id') is not None
                 if current_turn_has_rag and current_output < previous_output:
                     tokens_saved = previous_output - current_output
                     turn_data['rag_efficiency_gain'] = tokens_saved
                     app_logger.debug(f"RAG efficiency gain for current turn: {tokens_saved} tokens saved")
-        # --- EFFICIENCY TRACKING END ---
 
-        # Append the new turn data (contains original_plan and user_query now)
+        # Append the new turn data
         session_data["last_turn_data"]["workflow_history"].append(turn_data)
 
-        # --- CONSUMPTION TRACKING START ---
-        # Record full turn metrics to consumption database
-        # This provides comprehensive per-turn tracking with cost, RAG, quality metrics
+        # Capture data for post-save consumption tracking (avoid secondary load)
+        _session_name = session_data.get('name') or 'Untitled Session'
+        turn_number = len(session_data["last_turn_data"]["workflow_history"])
+        _consumption_data = {
+            "turn_number": turn_number,
+            "input_tokens": turn_data.get('turn_input_tokens', 0),
+            "output_tokens": turn_data.get('turn_output_tokens', 0),
+            "provider": turn_data.get('provider', 'Unknown'),
+            "model": turn_data.get('model', 'unknown'),
+            "status": turn_data.get('status', 'success'),
+            "rag_used": turn_data.get('rag_source_collection_id') is not None,
+            "rag_tokens_saved": turn_data.get('rag_efficiency_gain', 0) if turn_data.get('rag_source_collection_id') is not None else 0,
+            "user_query": turn_data.get('user_query', ''),
+        }
+
+    # --- CONSUMPTION TRACKING (outside lock for minimal lock hold time) ---
+    if _consumption_data:
         try:
             from trusted_data_agent.auth.database import get_db_session
             from trusted_data_agent.auth.consumption_manager import ConsumptionManager
             from trusted_data_agent.core.cost_manager import get_cost_manager
-            
+
             with get_db_session() as db_session:
                 manager = ConsumptionManager(db_session)
-                
-                # Extract turn metrics
-                turn_number = len(session_data["last_turn_data"]["workflow_history"])
-                input_tokens = turn_data.get('turn_input_tokens', 0)
-                output_tokens = turn_data.get('turn_output_tokens', 0)
-                provider = turn_data.get('provider', 'Unknown')
-                model = turn_data.get('model', 'unknown')
-                status = turn_data.get('status', 'success')
-                
-                # RAG metrics
-                rag_used = turn_data.get('rag_source_collection_id') is not None
-                rag_tokens_saved = turn_data.get('rag_efficiency_gain', 0) if rag_used else 0
-                
-                # Calculate cost
-                cost_manager = get_cost_manager()
-                cost_usd = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
-                cost_usd_cents = int(cost_usd * 1000000)  # Convert to micro-dollars
-                app_logger.info(f"[Cost Tracking] {provider}/{model}: {input_tokens}in + {output_tokens}out = ${cost_usd:.6f} ({cost_usd_cents} micro-dollars)")
 
-                # Reload session to get latest name (might have been updated after initial load)
-                current_session = await _load_session(user_uuid, session_id)
-                session_name = (current_session.get('name') if current_session else None) or session_data.get('name') or 'Untitled Session'
-                user_query = turn_data.get('user_query', '')
-                
-                # Record the turn
+                cost_manager = get_cost_manager()
+                cost_usd = cost_manager.calculate_cost(
+                    _consumption_data["provider"], _consumption_data["model"],
+                    _consumption_data["input_tokens"], _consumption_data["output_tokens"]
+                )
+                cost_usd_cents = int(cost_usd * 1000000)
+                app_logger.info(f"[Cost Tracking] {_consumption_data['provider']}/{_consumption_data['model']}: {_consumption_data['input_tokens']}in + {_consumption_data['output_tokens']}out = ${cost_usd:.6f} ({cost_usd_cents} micro-dollars)")
+
                 manager.record_turn(
                     user_id=user_uuid,
                     session_id=session_id,
-                    turn_number=turn_number,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    provider=provider,
-                    model=model,
-                    status=status,
-                    rag_used=rag_used,
-                    rag_tokens_saved=rag_tokens_saved,
+                    turn_number=_consumption_data["turn_number"],
+                    input_tokens=_consumption_data["input_tokens"],
+                    output_tokens=_consumption_data["output_tokens"],
+                    provider=_consumption_data["provider"],
+                    model=_consumption_data["model"],
+                    status=_consumption_data["status"],
+                    rag_used=_consumption_data["rag_used"],
+                    rag_tokens_saved=_consumption_data["rag_tokens_saved"],
                     cost_usd_cents=cost_usd_cents,
-                    user_query=user_query,
-                    session_name=session_name
+                    user_query=_consumption_data["user_query"],
+                    session_name=_session_name
                 )
-                
-                app_logger.debug(f"Recorded turn with session_name='{session_name}', user_query='{user_query[:50] if user_query else None}...')")
-                
-                app_logger.debug(f"Recorded turn metrics for user {user_uuid}, session {session_id}, turn {turn_number}")
+                app_logger.debug(f"Recorded turn metrics for user {user_uuid}, session {session_id}, turn {_consumption_data['turn_number']}")
         except Exception as e:
-            # Non-critical: File storage is source of truth, DB is performance cache
             app_logger.warning(f"Failed to record turn metrics for user {user_uuid}: {e}")
-        # --- CONSUMPTION TRACKING END ---
-
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after updating last turn data for {session_id}")
-    else:
-        app_logger.warning(f"Could not update last turn data: Session {session_id} not found for user {user_uuid}.")
 
 
 async def append_extension_results_to_turn(
@@ -1419,42 +1416,39 @@ async def append_extension_results_to_turn(
         extension_input_tokens: Total input tokens consumed by extensions (for LLM-calling extensions)
         extension_output_tokens: Total output tokens consumed by extensions
     """
-    session_data = await _load_session(user_uuid, session_id)
-    if not session_data:
-        app_logger.warning(f"Cannot append extension results: session {session_id} not found")
-        return
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            app_logger.warning(f"Cannot append extension results: session {session_id} not found")
+            return
 
-    workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
-    if not workflow_history:
-        app_logger.warning(f"Cannot append extension results: no turns in session {session_id}")
-        return
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+        if not workflow_history:
+            app_logger.warning(f"Cannot append extension results: no turns in session {session_id}")
+            return  # No modifications — _session_transaction save is a harmless no-op
 
-    # Patch the last turn entry
-    last_turn = workflow_history[-1]
-    last_turn["extension_results"] = extension_results
-    if extension_events:
-        last_turn["extension_events"] = extension_events
+        # Patch the last turn entry
+        last_turn = workflow_history[-1]
+        last_turn["extension_results"] = extension_results
+        if extension_events:
+            last_turn["extension_events"] = extension_events
 
-    # Update turn-level token totals if extensions consumed tokens
-    if extension_input_tokens > 0 or extension_output_tokens > 0:
-        last_turn["turn_input_tokens"] = last_turn.get("turn_input_tokens", 0) + extension_input_tokens
-        last_turn["turn_output_tokens"] = last_turn.get("turn_output_tokens", 0) + extension_output_tokens
-        try:
-            from trusted_data_agent.core.cost_manager import get_cost_manager
-            cost_manager = get_cost_manager()
-            provider = last_turn.get("provider", "")
-            model = last_turn.get("model", "")
-            last_turn["turn_cost"] = cost_manager.calculate_cost(
-                provider, model,
-                last_turn["turn_input_tokens"],
-                last_turn["turn_output_tokens"]
-            )
-        except Exception:
-            pass
+        # Update turn-level token totals if extensions consumed tokens
+        if extension_input_tokens > 0 or extension_output_tokens > 0:
+            last_turn["turn_input_tokens"] = last_turn.get("turn_input_tokens", 0) + extension_input_tokens
+            last_turn["turn_output_tokens"] = last_turn.get("turn_output_tokens", 0) + extension_output_tokens
+            try:
+                from trusted_data_agent.core.cost_manager import get_cost_manager
+                cost_manager = get_cost_manager()
+                provider = last_turn.get("provider", "")
+                model = last_turn.get("model", "")
+                last_turn["turn_cost"] = cost_manager.calculate_cost(
+                    provider, model,
+                    last_turn["turn_input_tokens"],
+                    last_turn["turn_output_tokens"]
+                )
+            except Exception:
+                pass
 
-    if not await _save_session(user_uuid, session_id, session_data):
-        app_logger.error(f"Failed to save session after appending extension results for {session_id}")
-    else:
         app_logger.debug(f"Appended extension results to last turn in session {session_id}")
 
 
@@ -1466,67 +1460,52 @@ async def purge_session_memory(user_uuid: str, session_id: str) -> bool:
     (`last_turn_data`) intact.
     """
     app_logger.info(f"Attempting to purge agent memory (chat_object) for session '{session_id}', user '{user_uuid}'.")
-    session_data = await _load_session(user_uuid, session_id)
-    if not session_data:
-        app_logger.warning(f"Could not purge memory: Session {session_id} not found for user {user_uuid}.")
-        return False # Session not found
-
     try:
-        # --- MODIFICATION START: Mark all existing history as invalid ---
-        # This makes the "purge" a persistent archival event.
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if not session_data:
+                app_logger.warning(f"Could not purge memory: Session {session_id} not found for user {user_uuid}.")
+                return False
 
-        # 1. Mark UI history (session_history) as invalid
-        session_history = session_data.get('session_history', [])
-        history_count = 0
-        if isinstance(session_history, list):
-            for msg in session_history:
-                if isinstance(msg, dict):
-                    msg["isValid"] = False
-                    history_count += 1
-        
-        # 2. Mark backend turn data (workflow_history) as invalid
-        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
-        turn_count = 0
-        if isinstance(workflow_history, list):
-            for turn in workflow_history:
-                if isinstance(turn, dict):
-                    turn["isValid"] = False
-                    turn_count += 1
-        
-        app_logger.info(f"Marked {history_count} UI messages and {turn_count} turns as invalid for session '{session_id}'.")
-        # --- MODIFICATION END ---
+            # Mark all existing history as invalid
+            session_history = session_data.get('session_history', [])
+            history_count = 0
+            if isinstance(session_history, list):
+                for msg in session_history:
+                    if isinstance(msg, dict):
+                        msg["isValid"] = False
+                        history_count += 1
 
-        # Determine the correct initial state for chat_object
-        # This mirrors the logic in create_session
-        chat_history_for_file = []
-        provider_in_session = session_data.get("license_info", {}).get("provider")
-        current_provider = APP_CONFIG.CURRENT_PROVIDER
-        provider = provider_in_session or current_provider or "Google" # Default to Google logic if unknown
+            workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+            turn_count = 0
+            if isinstance(workflow_history, list):
+                for turn in workflow_history:
+                    if isinstance(turn, dict):
+                        turn["isValid"] = False
+                        turn_count += 1
 
-        if provider == "Google":
-            initial_history_google = [
-                {"role": "user", "parts": [{"text": "You are a helpful assistant."}]},
-                {"role": "model", "parts": [{"text": "Understood."}]}
-            ]
-            chat_history_for_file = [{'role': m['role'], 'content': m['parts'][0]['text']} for m in initial_history_google]
-        
-        # Reset *only* the chat_object
-        session_data['chat_object'] = chat_history_for_file
-        
-        # Also reset the full_context_sent flag so the agent sends the full system prompt next time
-        session_data['full_context_sent'] = False
+            app_logger.info(f"Marked {history_count} UI messages and {turn_count} turns as invalid for session '{session_id}'.")
+
+            chat_history_for_file = []
+            provider_in_session = session_data.get("license_info", {}).get("provider")
+            current_provider = APP_CONFIG.CURRENT_PROVIDER
+            provider = provider_in_session or current_provider or "Google"
+
+            if provider == "Google":
+                initial_history_google = [
+                    {"role": "user", "parts": [{"text": "You are a helpful assistant."}]},
+                    {"role": "model", "parts": [{"text": "Understood."}]}
+                ]
+                chat_history_for_file = [{'role': m['role'], 'content': m['parts'][0]['text']} for m in initial_history_google]
+
+            session_data['chat_object'] = chat_history_for_file
+            session_data['full_context_sent'] = False
 
         app_logger.info(f"Successfully reset chat_object for session '{session_id}'. Invalidated existing history.")
-
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after purging memory for {session_id}")
-            return False # Save failed
-
-        return True # Success
+        return True
 
     except Exception as e:
         app_logger.error(f"An unexpected error occurred during memory purge for session '{session_id}': {e}", exc_info=True)
-# --- MODIFICATION END ---
+        return False
 
 # --- MODIFICATION START: Add function to toggle turn validity ---
 async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) -> bool:
@@ -1535,66 +1514,54 @@ async def toggle_turn_validity(user_uuid: str, session_id: str, turn_id: int) ->
     UI messages in the session history and LLM chat_object.
     """
     app_logger.info(f"Toggling validity for turn {turn_id} in session '{session_id}' for user '{user_uuid}'.")
-    session_data = await _load_session(user_uuid, session_id)
-    if not session_data:
-        app_logger.warning(f"Could not toggle validity: Session {session_id} not found.")
-        return False
-
     try:
-        # 1. Toggle validity in workflow_history
-        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
-        turn_found = False
-        new_status = None
-        if isinstance(workflow_history, list):
-            for turn in workflow_history:
-                if isinstance(turn, dict) and turn.get("turn") == turn_id:
-                    current_status = turn.get("isValid", True)
-                    new_status = not current_status
-                    turn["isValid"] = new_status
-                    turn_found = True
-                    app_logger.info(f"Found turn {turn_id} in workflow_history. Set isValid to {new_status}.")
-                    break
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if not session_data:
+                app_logger.warning(f"Could not toggle validity: Session {session_id} not found.")
+                return False
 
-        if not turn_found:
-            app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}.")
-            return False # If the planner's source of truth can't be updated, fail fast
-
-        # 2. Toggle validity in session_history (for the UI)
-        session_history = session_data.get('session_history', [])
-        if isinstance(session_history, list):
-            assistant_message_count = 0
-            for i, msg in enumerate(session_history):
-                if isinstance(msg, dict) and msg.get('role') == 'assistant':
-                    assistant_message_count += 1
-                    if assistant_message_count == turn_id:
-                        msg['isValid'] = new_status
-                        if i > 0 and session_history[i-1].get('role') == 'user':
-                            session_history[i-1]['isValid'] = new_status
-                        app_logger.info(f"Updated messages in session_history for turn {turn_id} to isValid={new_status}.")
+            # 1. Toggle validity in workflow_history
+            workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+            turn_found = False
+            new_status = None
+            if isinstance(workflow_history, list):
+                for turn in workflow_history:
+                    if isinstance(turn, dict) and turn.get("turn") == turn_id:
+                        current_status = turn.get("isValid", True)
+                        new_status = not current_status
+                        turn["isValid"] = new_status
+                        turn_found = True
                         break
 
-        # 3. Toggle validity in chat_object (for LLM context / Genie conversation history)
-        chat_object = session_data.get('chat_object', [])
-        if isinstance(chat_object, list):
-            # Find messages with matching turn_number
-            chat_updated = 0
-            for msg in chat_object:
-                if isinstance(msg, dict) and msg.get('turn_number') == turn_id:
-                    msg['isValid'] = new_status
-                    chat_updated += 1
-            if chat_updated > 0:
-                app_logger.info(f"Updated {chat_updated} messages in chat_object for turn {turn_id} to isValid={new_status}.")
+            if not turn_found:
+                app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}.")
+                return False
 
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after toggling validity for turn {turn_id}")
-            return False
+            # 2. Toggle validity in session_history (for the UI)
+            session_history = session_data.get('session_history', [])
+            if isinstance(session_history, list):
+                assistant_message_count = 0
+                for i, msg in enumerate(session_history):
+                    if isinstance(msg, dict) and msg.get('role') == 'assistant':
+                        assistant_message_count += 1
+                        if assistant_message_count == turn_id:
+                            msg['isValid'] = new_status
+                            if i > 0 and session_history[i-1].get('role') == 'user':
+                                session_history[i-1]['isValid'] = new_status
+                            break
+
+            # 3. Toggle validity in chat_object
+            chat_object = session_data.get('chat_object', [])
+            if isinstance(chat_object, list):
+                for msg in chat_object:
+                    if isinstance(msg, dict) and msg.get('turn_number') == turn_id:
+                        msg['isValid'] = new_status
 
         return True
 
     except Exception as e:
         app_logger.error(f"An unexpected error occurred during validity toggle for turn {turn_id}: {e}", exc_info=True)
         return False
-# --- MODIFICATION END ---
 
 # --- MODIFICATION START: Add function to update turn system_events ---
 async def update_turn_system_events(user_uuid: str, session_id: str, turn_number: int, system_events: list) -> bool:
@@ -1613,35 +1580,30 @@ async def update_turn_system_events(user_uuid: str, session_id: str, turn_number
         True if successful, False otherwise
     """
     try:
-        session_data = await _load_session(user_uuid, session_id)
-        if not session_data:
-            app_logger.warning(f"Could not update system_events: Session {session_id} not found for user {user_uuid}.")
-            return False
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if not session_data:
+                app_logger.warning(f"Could not update system_events: Session {session_id} not found for user {user_uuid}.")
+                return False
 
-        # Get workflow_history from last_turn_data
-        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+            workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
-        # Find the turn with matching turn number
-        turn_found = False
-        for turn in workflow_history:
-            if turn.get("turn") == turn_number:
-                turn["system_events"] = system_events
-                turn_found = True
-                break
+            turn_found = False
+            for turn in workflow_history:
+                if turn.get("turn") == turn_number:
+                    turn["system_events"] = system_events
+                    turn_found = True
+                    break
 
-        if not turn_found:
-            app_logger.warning(f"Could not update system_events: Turn {turn_number} not found in session {session_id}.")
-            return False
+            if not turn_found:
+                app_logger.warning(f"Could not update system_events: Turn {turn_number} not found in session {session_id}.")
+                return False
 
-        # Save the updated session
-        await _save_session(user_uuid, session_id, session_data)
         app_logger.debug(f"Updated system_events for turn {turn_number} in session {session_id}")
         return True
 
     except Exception as e:
         app_logger.error(f"Failed to update system_events for turn {turn_number}: {e}", exc_info=True)
         return False
-# --- MODIFICATION END ---
 
 # --- MODIFICATION START: Add function to update turn token counts ---
 async def update_turn_token_counts(user_uuid: str, session_id: str, turn_number: int, input_tokens: int, output_tokens: int) -> bool:
@@ -1661,66 +1623,53 @@ async def update_turn_token_counts(user_uuid: str, session_id: str, turn_number:
         True if successful, False otherwise
     """
     try:
-        session_data = await _load_session(user_uuid, session_id)
-        if not session_data:
-            app_logger.warning(f"Could not update token counts: Session {session_id} not found for user {user_uuid}.")
-            return False
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if not session_data:
+                app_logger.warning(f"Could not update token counts: Session {session_id} not found for user {user_uuid}.")
+                return False
 
-        # Get workflow_history from last_turn_data
-        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+            workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
-        # Find the turn with matching turn number
-        turn_found = False
-        for turn in workflow_history:
-            if turn.get("turn") == turn_number:
-                # Update all token count fields to ensure consistency
-                turn["input_tokens"] = input_tokens
-                turn["output_tokens"] = output_tokens
-                turn["turn_input_tokens"] = input_tokens
-                turn["turn_output_tokens"] = output_tokens
-                # Also update session_input_tokens and session_output_tokens if they exist
-                # (these are snapshots of session totals at time of turn)
-                if "session_input_tokens" in turn:
-                    turn["session_input_tokens"] = session_data.get("input_tokens", input_tokens)
-                if "session_output_tokens" in turn:
-                    turn["session_output_tokens"] = session_data.get("output_tokens", output_tokens)
+            turn_found = False
+            for turn in workflow_history:
+                if turn.get("turn") == turn_number:
+                    turn["input_tokens"] = input_tokens
+                    turn["output_tokens"] = output_tokens
+                    turn["turn_input_tokens"] = input_tokens
+                    turn["turn_output_tokens"] = output_tokens
+                    if "session_input_tokens" in turn:
+                        turn["session_input_tokens"] = session_data.get("input_tokens", input_tokens)
+                    if "session_output_tokens" in turn:
+                        turn["session_output_tokens"] = session_data.get("output_tokens", output_tokens)
 
-                # Calculate and save turn cost
-                try:
-                    from trusted_data_agent.core.cost_manager import CostManager
-                    cost_manager = CostManager()
-                    provider = session_data.get("provider", "")
-                    model = session_data.get("model", "")
-                    turn_cost = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
-                    turn["turn_cost"] = turn_cost
-                    app_logger.debug(f"Calculated turn cost: ${turn_cost:.6f} for {provider}/{model}")
-                except Exception as e:
-                    app_logger.warning(f"Failed to calculate turn cost: {e}")
+                    try:
+                        from trusted_data_agent.core.cost_manager import CostManager
+                        cost_manager = CostManager()
+                        provider = session_data.get("provider", "")
+                        model = session_data.get("model", "")
+                        turn_cost = cost_manager.calculate_cost(provider, model, input_tokens, output_tokens)
+                        turn["turn_cost"] = turn_cost
+                    except Exception as e:
+                        app_logger.warning(f"Failed to calculate turn cost: {e}")
 
-                # Recalculate session_cost_usd (cumulative cost up to and including this turn)
-                # This is necessary when session naming adds tokens AFTER turn_summary is saved
-                try:
-                    session_cost = 0.0
-                    for i, t in enumerate(workflow_history):
-                        if i + 1 <= turn_number:  # Sum all turns up to and including current turn
-                            if "turn_cost" in t:
-                                session_cost += float(t["turn_cost"])
-                    turn["session_cost_usd"] = session_cost
-                    app_logger.debug(f"Recalculated session_cost_usd for turn {turn_number}: ${session_cost:.6f}")
-                except Exception as e:
-                    app_logger.warning(f"Failed to recalculate session_cost_usd: {e}")
+                    try:
+                        session_cost = 0.0
+                        for i, t in enumerate(workflow_history):
+                            if i + 1 <= turn_number:
+                                if "turn_cost" in t:
+                                    session_cost += float(t["turn_cost"])
+                        turn["session_cost_usd"] = session_cost
+                    except Exception as e:
+                        app_logger.warning(f"Failed to recalculate session_cost_usd: {e}")
 
-                turn_found = True
-                app_logger.debug(f"Updated turn {turn_number} token counts: {input_tokens} in / {output_tokens} out")
-                break
+                    turn_found = True
+                    app_logger.debug(f"Updated turn {turn_number} token counts: {input_tokens} in / {output_tokens} out")
+                    break
 
-        if not turn_found:
-            app_logger.warning(f"Could not update token counts: Turn {turn_number} not found in session {session_id}.")
-            return False
+            if not turn_found:
+                app_logger.warning(f"Could not update token counts: Turn {turn_number} not found in session {session_id}.")
+                return False
 
-        # Save the updated session
-        await _save_session(user_uuid, session_id, session_data)
-        app_logger.debug(f"Updated token counts for turn {turn_number} in session {session_id}")
         return True
 
     except Exception as e:
@@ -1746,72 +1695,48 @@ async def update_turn_feedback(user_uuid: str, session_id: str, turn_id: int, vo
     import asyncio
     from trusted_data_agent.core.config import APP_STATE, APP_CONFIG
 
+    case_id = None
     try:
-        session_data = await _load_session(user_uuid, session_id)
-        if not session_data:
-            app_logger.warning(f"Could not update feedback: Session {session_id} not found for user {user_uuid}.")
-            return False
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if not session_data:
+                app_logger.warning(f"Could not update feedback: Session {session_id} not found for user {user_uuid}.")
+                return False
 
-        # Get workflow_history from last_turn_data
-        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
-        
-        # Find the turn with matching turn number
-        turn_found = False
-        case_id = None
-        for turn in workflow_history:
-            if turn.get("turn") == turn_id:
-                # Update or remove feedback field
-                if vote is None:
-                    turn.pop("feedback", None)
-                else:
-                    turn["feedback"] = vote
-                turn_found = True
-                
-                # Extract case_id if this turn has one (for RAG update)
-                case_id = turn.get("case_id")
-                
-                app_logger.info(f"Updated feedback for turn {turn_id} in session {session_id}: {vote}")
-                break
-        
-        if not turn_found:
-            app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}")
-            return False
+            workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
-        # Save the updated session data
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after updating feedback for turn {turn_id}")
-            return False
+            turn_found = False
+            for turn in workflow_history:
+                if turn.get("turn") == turn_id:
+                    if vote is None:
+                        turn.pop("feedback", None)
+                    else:
+                        turn["feedback"] = vote
+                    turn_found = True
+                    case_id = turn.get("case_id")
+                    app_logger.info(f"Updated feedback for turn {turn_id} in session {session_id}: {vote}")
+                    break
 
-        # --- Update RAG case if RAG is enabled and case_id exists ---
+            if not turn_found:
+                app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}")
+                return False
+
+        # Post-save: Update RAG case (outside lock)
         if APP_CONFIG.RAG_ENABLED and case_id:
             retriever = APP_STATE.get('rag_retriever_instance')
             if retriever:
-                # Convert vote string to numeric score
                 feedback_score = 1 if vote == 'up' else -1 if vote == 'down' else 0
-                
-                # Update the RAG case asynchronously
                 try:
-                    # Get or create event loop
-                    try:
-                        loop = asyncio.get_running_loop()
-                        # We're already in an async context
-                        loop.create_task(retriever.update_case_feedback(case_id, feedback_score))
-                    except RuntimeError:
-                        # No running loop, create new one
-                        asyncio.run(retriever.update_case_feedback(case_id, feedback_score))
-                    
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(retriever.update_case_feedback(case_id, feedback_score))
                     app_logger.info(f"Queued RAG case {case_id} feedback update: {feedback_score}")
                 except Exception as e:
                     app_logger.error(f"Failed to update RAG case {case_id}: {e}", exc_info=True)
-            else:
-                app_logger.debug(f"RAG retriever not available, skipping case update for turn {turn_id}")
-        
+
         return True
 
     except Exception as e:
         app_logger.error(f"Error updating feedback for turn {turn_id}: {e}", exc_info=True)
         return False
-# --- MODIFICATION END ---
 
 async def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, case_id: str) -> bool:
     """
@@ -1827,31 +1752,24 @@ async def add_case_id_to_turn(user_uuid: str, session_id: str, turn_id: int, cas
         True if successful, False otherwise
     """
     try:
-        session_data = await _load_session(user_uuid, session_id)
-        if not session_data:
-            app_logger.warning(f"Could not add case_id: Session {session_id} not found for user {user_uuid}.")
-            return False
+        async with _session_transaction(user_uuid, session_id) as session_data:
+            if not session_data:
+                app_logger.warning(f"Could not add case_id: Session {session_id} not found for user {user_uuid}.")
+                return False
 
-        # Get workflow_history from last_turn_data
-        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
-        
-        # Find the turn with matching turn number
-        turn_found = False
-        for turn in workflow_history:
-            if turn.get("turn") == turn_id:
-                turn["case_id"] = case_id
-                turn_found = True
-                app_logger.debug(f"Added case_id {case_id} to turn {turn_id} in session {session_id}")
-                break
-        
-        if not turn_found:
-            app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}")
-            return False
+            workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
-        # Save the updated session data
-        if not await _save_session(user_uuid, session_id, session_data):
-            app_logger.error(f"Failed to save session after adding case_id to turn {turn_id}")
-            return False
+            turn_found = False
+            for turn in workflow_history:
+                if turn.get("turn") == turn_id:
+                    turn["case_id"] = case_id
+                    turn_found = True
+                    app_logger.debug(f"Added case_id {case_id} to turn {turn_id} in session {session_id}")
+                    break
+
+            if not turn_found:
+                app_logger.warning(f"Turn {turn_id} not found in workflow_history for session {session_id}")
+                return False
 
         return True
 

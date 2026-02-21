@@ -1,52 +1,59 @@
 """
-#decision extension — Binary/multi-branch decision output.
+#decision extension — LLM-powered semantic decision output.
 
-Analyzes the LLM answer using keyword heuristics to produce a structured
+Uses the session's LLM to semantically analyze the answer and produce a structured
 decision that downstream workflow tools can branch on.
 
 Output includes a `branch_key` field designed for n8n Switch nodes.
+Compatible with the same JSON shape as previous keyword-based version.
+
+Tier: LLM (LLMExtension) — calls the session's configured LLM.
 
 Usage:
     #decision           → auto-detect severity from answer content
-    #decision:critical  → force severity context to 'critical'
+    #decision:critical  → focus analysis on critical severity
     #decision:binary    → simplified yes/no output
 """
 
+import json
 from typing import Optional
 
-from trusted_data_agent.extensions.base import Extension
+from trusted_data_agent.extensions.base import LLMExtension
 from trusted_data_agent.extensions.models import (
     ExtensionContext,
     ExtensionResult,
     OutputTarget,
 )
-
-# Keyword signal groups (ordered by specificity)
-CRITICAL_SIGNALS = [
-    "critical", "urgent", "immediate", "emergency", "exceeded",
-    "failure", "failed", "down", "outage", "crash", "fatal",
-    "overflow", "exhausted", "unreachable",
-]
-WARNING_SIGNALS = [
-    "warning", "elevated", "approaching", "caution", "above normal",
-    "degraded", "slow", "high", "spike", "anomaly", "increasing",
-    "nearing", "threshold",
-]
-OK_SIGNALS = [
-    "normal", "within limits", "healthy", "no issues", "all clear",
-    "stable", "optimal", "good", "below threshold", "nominal",
-]
-ACTION_SIGNALS = [
-    "recommend", "should", "suggest", "action required", "consider",
-    "investigate", "review", "attention", "needed",
-]
+from trusted_data_agent.extensions.helpers import extract_json_from_text
 
 
-class DecisionExtension(Extension):
+SYSTEM_PROMPT = """You are a decision analysis engine. Analyze the provided text and return a structured JSON decision.
 
-    @property
-    def name(self) -> str:
-        return "decision"
+You MUST return valid JSON with exactly these fields:
+- "result": One of "threshold_exceeded", "approaching_threshold", "action_required", "nominal"
+- "severity": One of "critical", "warning", "info", "ok"
+- "confidence": A number between 0.0 and 1.0 indicating your confidence
+- "action_recommended": boolean - whether action should be taken
+- "branch_key": A string combining result and severity as "result_severity" (e.g., "threshold_exceeded_critical")
+- "reasoning": A brief (1-2 sentence) explanation of your decision
+
+Respond with JSON only, no markdown fences or extra text."""
+
+BINARY_SYSTEM_PROMPT = """You are a decision analysis engine. Analyze the provided text and return a binary yes/no decision.
+
+You MUST return valid JSON with exactly these fields:
+- "result": "yes" if action is needed or issues exist, "no" if everything is fine
+- "action_recommended": boolean
+- "branch_key": "yes" or "no"
+- "reasoning": A brief (1-2 sentence) explanation
+
+Respond with JSON only, no markdown fences or extra text."""
+
+
+class DecisionExtension(LLMExtension):
+
+    name = "decision"
+    description = "LLM-powered semantic decision analysis for workflow branching"
 
     @property
     def output_target(self) -> OutputTarget:
@@ -58,56 +65,64 @@ class DecisionExtension(Extension):
         param: Optional[str] = None,
     ) -> ExtensionResult:
 
-        answer_lower = context.answer_text.lower()
+        is_binary = param == "binary"
 
-        # Count signal matches per category
-        critical_count = sum(1 for s in CRITICAL_SIGNALS if s in answer_lower)
-        warning_count = sum(1 for s in WARNING_SIGNALS if s in answer_lower)
-        ok_count = sum(1 for s in OK_SIGNALS if s in answer_lower)
-        action_count = sum(1 for s in ACTION_SIGNALS if s in answer_lower)
+        # Build the analysis prompt
+        severity_hint = ""
+        if param and param != "binary":
+            severity_hint = f"\nFocus your analysis on '{param}'-level concerns."
 
-        # Determine result and severity
-        if critical_count > 0:
-            result = "threshold_exceeded"
-            severity = "critical"
-            confidence = min(0.6 + critical_count * 0.1, 0.98)
-        elif warning_count > 0:
-            result = "approaching_threshold"
-            severity = "warning"
-            confidence = min(0.5 + warning_count * 0.1, 0.90)
-        elif ok_count > 0:
-            result = "nominal"
-            severity = "ok"
-            confidence = min(0.5 + ok_count * 0.1, 0.95)
-        else:
-            result = "nominal"
-            severity = "info"
-            confidence = 0.5
+        prompt = (
+            f"Analyze this LLM response and produce a decision:\n\n"
+            f"**Original query:** {context.clean_query}\n\n"
+            f"**LLM answer:**\n{context.answer_text[:3000]}"
+            f"{severity_hint}"
+        )
 
-        action_recommended = action_count > 0 or severity in ("critical", "warning")
+        system = BINARY_SYSTEM_PROMPT if is_binary else SYSTEM_PROMPT
 
-        # Binary mode simplification
-        if param == "binary":
+        try:
+            raw_response = await self.call_llm(
+                prompt=prompt,
+                system_prompt=system,
+                temperature=0.1,
+                json_mode=True,
+            )
+
+            parsed = extract_json_from_text(raw_response)
+            if parsed is None:
+                parsed = json.loads(raw_response)
+
+            # Ensure required fields exist with defaults
+            if is_binary:
+                output = {
+                    "result": parsed.get("result", "no"),
+                    "action_recommended": parsed.get("action_recommended", False),
+                    "branch_key": parsed.get("branch_key", parsed.get("result", "no")),
+                    "reasoning": parsed.get("reasoning", ""),
+                }
+            else:
+                result = parsed.get("result", "nominal")
+                severity = parsed.get("severity", "info")
+                output = {
+                    "result": result,
+                    "severity": severity,
+                    "confidence": parsed.get("confidence", 0.8),
+                    "action_recommended": parsed.get("action_recommended", False),
+                    "branch_key": parsed.get("branch_key", f"{result}_{severity}"),
+                    "reasoning": parsed.get("reasoning", ""),
+                    "query": context.clean_query,
+                }
+
+        except Exception as e:
+            # Graceful degradation: return a safe default
             output = {
-                "result": "yes" if severity in ("critical", "warning") else "no",
-                "action_recommended": action_recommended,
-                "branch_key": "yes" if action_recommended else "no",
-                "reasoning": f"Analyzed {len(context.answer_text)} chars of LLM output",
-            }
-        else:
-            output = {
-                "result": result,
-                "severity": severity,
-                "confidence": round(confidence, 2),
-                "action_recommended": action_recommended,
-                "branch_key": f"{result}_{severity}",
-                "signal_counts": {
-                    "critical": critical_count,
-                    "warning": warning_count,
-                    "ok": ok_count,
-                    "action": action_count,
-                },
-                "reasoning": f"Analyzed {len(context.answer_text)} chars of LLM output",
+                "result": "nominal",
+                "severity": "info",
+                "confidence": 0.0,
+                "action_recommended": False,
+                "branch_key": "nominal_info",
+                "reasoning": f"LLM analysis failed: {str(e)}",
                 "query": context.clean_query,
             }
 
@@ -115,5 +130,5 @@ class DecisionExtension(Extension):
             extension_name="decision",
             content=output,
             content_type="application/json",
-            metadata={"param": param, "mode": "binary" if param == "binary" else "multi-branch"},
+            metadata={"param": param, "mode": "binary" if is_binary else "multi-branch"},
         )

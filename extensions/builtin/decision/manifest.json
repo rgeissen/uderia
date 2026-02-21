@@ -7,6 +7,8 @@
   "author": "TDA Core Team",
   "license": "MIT",
   "category": "Automation",
+  "extension_tier": "llm",
+  "requires_llm": true,
   "keywords": ["decision", "branching", "n8n", "flowise", "switch", "routing"],
   "files": {
     "extension": "decision.py"

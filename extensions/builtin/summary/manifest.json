@@ -1,0 +1,34 @@
+{
+  "name": "executive-summary",
+  "version": "1.0.0",
+  "extension_id": "summary",
+  "display_name": "Executive Summary",
+  "description": "Produces a concise executive summary of the LLM answer with key points and action items. Displayed in chat.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "category": "Analysis",
+  "extension_tier": "llm",
+  "requires_llm": true,
+  "keywords": ["summary", "executive", "key points", "digest", "tldr"],
+  "files": {
+    "extension": "summary.py"
+  },
+  "output_target": "chat_append",
+  "parameters": {
+    "supported": true,
+    "description": "Summary detail level",
+    "examples": ["brief", "detailed"],
+    "allowed_values": ["brief", "detailed"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "summary": { "type": "string", "description": "Executive summary text" },
+      "key_points": { "type": "array", "items": { "type": "string" }, "description": "Key takeaways" },
+      "action_items": { "type": "array", "items": { "type": "string" }, "description": "Recommended actions" }
+    }
+  },
+  "metadata": {
+    "tags": ["built-in", "analysis", "core"]
+  }
+}

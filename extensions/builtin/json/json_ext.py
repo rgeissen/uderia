@@ -4,6 +4,8 @@
 Wraps the LLM answer and execution metadata into a standardized JSON
 structure that downstream tools (n8n, Flowise, Airflow) can parse reliably.
 
+Tier: Standard (Extension) — needs full ExtensionContext for metadata.
+
 Usage:
     #json           → standard output (query, answer, metadata, tokens, tools)
     #json:minimal   → query + answer only
@@ -19,6 +21,7 @@ from trusted_data_agent.extensions.models import (
     ExtensionResult,
     OutputTarget,
 )
+from trusted_data_agent.extensions.helpers import json_result
 
 VALID_PARAMS = {"minimal", "full"}
 
@@ -73,9 +76,4 @@ class JsonExtension(Extension):
                 output["execution_trace"] = context.execution_trace
                 output["collected_data"] = context.collected_data
 
-        return ExtensionResult(
-            extension_name="json",
-            content=output,
-            content_type="application/json",
-            metadata={"param": param or "standard"},
-        )
+        return json_result("json", output, param=param or "standard")

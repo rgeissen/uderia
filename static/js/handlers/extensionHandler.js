@@ -26,6 +26,35 @@ function _notify(type, msg) {
     else console.log(`[Extension] ${type}: ${msg}`);
 }
 
+// ── Tier badge config ───────────────────────────────────────────────────────
+
+const TIER_CONFIG = {
+    convention: { label: 'Convention', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.12)', border: 'rgba(156, 163, 175, 0.25)' },
+    simple:     { label: 'Simple',     color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.12)',  border: 'rgba(96, 165, 250, 0.25)' },
+    standard:   { label: 'Standard',   color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.12)', border: 'rgba(167, 139, 250, 0.25)' },
+    llm:        { label: 'LLM',        color: '#f472b6', bg: 'rgba(244, 114, 182, 0.12)', border: 'rgba(244, 114, 182, 0.25)' },
+};
+
+function _createTierBadge(tier) {
+    const cfg = TIER_CONFIG[tier] || TIER_CONFIG.standard;
+    const span = document.createElement('span');
+    span.className = 'inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded';
+    span.style.cssText = `background: ${cfg.bg}; border: 1px solid ${cfg.border}; color: ${cfg.color};`;
+    span.textContent = cfg.label;
+    return span;
+}
+
+function _createLlmWarning() {
+    const span = document.createElement('span');
+    span.className = 'inline-flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5';
+    span.style.cssText = 'background: rgba(244, 114, 182, 0.08); color: #f472b6;';
+    span.title = 'This extension calls an LLM and consumes tokens';
+    span.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>LLM`;
+    return span;
+}
+
 // ── API Calls ────────────────────────────────────────────────────────────────
 
 async function fetchAllExtensions() {
@@ -113,6 +142,156 @@ async function reloadExtensionsAPI() {
     return await res.json();
 }
 
+// ── Scaffold API ────────────────────────────────────────────────────────────
+
+async function scaffoldExtension(name, level, description) {
+    const res = await fetch('/api/v1/extensions/scaffold', {
+        method: 'POST',
+        headers: _headers(),
+        body: JSON.stringify({ name, level, description }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Scaffold failed: ${res.status}`);
+    }
+    return await res.json();
+}
+
+function showScaffoldModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center';
+    overlay.style.cssText = 'background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const modal = document.createElement('div');
+    modal.className = 'glass-panel rounded-xl p-6 max-w-lg w-full mx-4';
+    modal.style.cssText = 'border: 1px solid rgba(251, 191, 36, 0.2);';
+
+    modal.innerHTML = `
+        <div class="flex items-center justify-between mb-5">
+            <h3 class="text-base font-semibold text-white">Create Extension</h3>
+            <button class="text-gray-400 hover:text-white transition-colors close-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Extension Name</label>
+                <input id="scaffold-name" type="text" placeholder="my_extension"
+                    class="w-full text-sm px-3 py-2 rounded-lg border bg-transparent text-gray-200 focus:outline-none"
+                    style="border-color: rgba(148,163,184,0.2); font-family: 'JetBrains Mono','Fira Code',monospace;"
+                    pattern="[a-z][a-z0-9_]*">
+                <p class="text-[10px] text-gray-600 mt-1">Lowercase, underscores ok. This becomes the #name trigger.</p>
+            </div>
+
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Level</label>
+                <div id="scaffold-levels" class="grid grid-cols-2 gap-2">
+                    <button data-level="convention" class="scaffold-level-btn selected text-left p-2.5 rounded-lg border text-xs transition-all"
+                        style="border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.08);">
+                        <div class="font-medium text-white mb-0.5">Convention</div>
+                        <div class="text-gray-500">Zero friction — plain function, no imports</div>
+                    </button>
+                    <button data-level="simple" class="scaffold-level-btn text-left p-2.5 rounded-lg border text-xs transition-all"
+                        style="border-color: rgba(148,163,184,0.15); background: transparent;">
+                        <div class="font-medium text-gray-300 mb-0.5">Simple</div>
+                        <div class="text-gray-500">Class with transform() method</div>
+                    </button>
+                    <button data-level="standard" class="scaffold-level-btn text-left p-2.5 rounded-lg border text-xs transition-all"
+                        style="border-color: rgba(148,163,184,0.15); background: transparent;">
+                        <div class="font-medium text-gray-300 mb-0.5">Standard</div>
+                        <div class="text-gray-500">Full context access, async execute()</div>
+                    </button>
+                    <button data-level="llm" class="scaffold-level-btn text-left p-2.5 rounded-lg border text-xs transition-all"
+                        style="border-color: rgba(148,163,184,0.15); background: transparent;">
+                        <div class="font-medium text-gray-300 mb-0.5">LLM</div>
+                        <div class="text-gray-500">Calls your LLM with cost tracking</div>
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Description <span class="text-gray-600">(optional)</span></label>
+                <input id="scaffold-desc" type="text" placeholder="What does this extension do?"
+                    class="w-full text-sm px-3 py-2 rounded-lg border bg-transparent text-gray-200 focus:outline-none"
+                    style="border-color: rgba(148,163,184,0.2);">
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3 mt-6">
+            <button class="ind-button ind-button--secondary ind-button--sm close-btn">Cancel</button>
+            <button id="scaffold-create-btn" class="ind-button ind-button--sm"
+                style="background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24;">
+                Create Extension
+            </button>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Level selection
+    let selectedLevel = 'convention';
+    modal.querySelectorAll('.scaffold-level-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            modal.querySelectorAll('.scaffold-level-btn').forEach(b => {
+                b.style.borderColor = 'rgba(148,163,184,0.15)';
+                b.style.background = 'transparent';
+                b.classList.remove('selected');
+            });
+            btn.style.borderColor = 'rgba(251,191,36,0.4)';
+            btn.style.background = 'rgba(251,191,36,0.08)';
+            btn.classList.add('selected');
+            selectedLevel = btn.dataset.level;
+        });
+    });
+
+    // Close handlers
+    modal.querySelectorAll('.close-btn').forEach(btn => btn.addEventListener('click', () => overlay.remove()));
+    const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+    document.addEventListener('keydown', escHandler);
+
+    // Create handler
+    modal.querySelector('#scaffold-create-btn').addEventListener('click', async () => {
+        const nameInput = modal.querySelector('#scaffold-name');
+        const descInput = modal.querySelector('#scaffold-desc');
+        const name = nameInput.value.trim();
+        const desc = descInput.value.trim();
+
+        if (!name) {
+            nameInput.style.borderColor = 'rgba(239,68,68,0.5)';
+            return;
+        }
+        if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+            nameInput.style.borderColor = 'rgba(239,68,68,0.5)';
+            _notify('error', 'Name must start with a letter and contain only lowercase letters, numbers, underscores');
+            return;
+        }
+
+        const createBtn = modal.querySelector('#scaffold-create-btn');
+        try {
+            createBtn.disabled = true;
+            createBtn.textContent = 'Creating...';
+            const result = await scaffoldExtension(name, selectedLevel, desc);
+            overlay.remove();
+            _notify('success', `Extension #${name} created (${selectedLevel}) — ${result.files.length} file(s) at ${result.path}`);
+            await loadExtensions();
+            if (window.loadActivatedExtensions) window.loadActivatedExtensions();
+        } catch (err) {
+            _notify('error', err.message);
+        } finally {
+            createBtn.disabled = false;
+            createBtn.textContent = 'Create Extension';
+        }
+    });
+
+    // Focus name input
+    setTimeout(() => modal.querySelector('#scaffold-name')?.focus(), 100);
+}
+
 // ── Available Extension Card (registry item with Activate button) ────────────
 
 function createAvailableExtensionCard(ext, activationCount) {
@@ -136,6 +315,14 @@ function createAvailableExtensionCard(ext, activationCount) {
     name.className = 'text-white font-medium text-sm';
     name.textContent = ext.display_name || ext.extension_id;
     headerLeft.appendChild(name);
+
+    if (ext.extension_tier) {
+        headerLeft.appendChild(_createTierBadge(ext.extension_tier));
+    }
+
+    if (ext.requires_llm && ext.extension_tier !== 'llm') {
+        headerLeft.appendChild(_createLlmWarning());
+    }
 
     if (ext.category) {
         const cat = document.createElement('span');
@@ -298,12 +485,18 @@ function createActivationCard(activation, extInfo) {
 
     card.appendChild(paramRow);
 
-    // Footer: output target + version
+    // Footer: tier badge + LLM warning + output target + version
     if (extInfo) {
         const footer = document.createElement('div');
         footer.className = 'flex items-center gap-3 text-xs text-gray-600 mt-2 pt-2';
         footer.style.borderTop = '1px solid rgba(148, 163, 184, 0.06)';
 
+        if (extInfo.extension_tier) {
+            footer.appendChild(_createTierBadge(extInfo.extension_tier));
+        }
+        if (extInfo.requires_llm && extInfo.extension_tier !== 'llm') {
+            footer.appendChild(_createLlmWarning());
+        }
         if (extInfo.output_target) {
             const target = document.createElement('span');
             target.textContent = `Output: ${extInfo.output_target}`;
@@ -412,13 +605,23 @@ export async function loadExtensions() {
             return;
         }
 
-        // Section 1: Available Extensions (from registry)
+        // Section 1: Available Extensions (from registry) with Create button
         const availableHeader = document.createElement('div');
-        availableHeader.className = 'mb-3';
+        availableHeader.className = 'flex items-center justify-between mb-3';
         availableHeader.innerHTML = `
-            <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Available Extensions</h4>
-            <p class="text-xs text-gray-600 mt-0.5">Click Activate to create a new instance</p>
+            <div>
+                <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Available Extensions</h4>
+                <p class="text-xs text-gray-600 mt-0.5">Click Activate to create a new instance</p>
+            </div>
         `;
+        const createBtn = document.createElement('button');
+        createBtn.className = 'ind-button ind-button--sm';
+        createBtn.style.cssText = 'background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; font-size: 0.75rem;';
+        createBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>Create Extension`;
+        createBtn.addEventListener('click', () => showScaffoldModal());
+        availableHeader.appendChild(createBtn);
         container.appendChild(availableHeader);
 
         for (const ext of all) {

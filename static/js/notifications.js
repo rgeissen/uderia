@@ -251,6 +251,68 @@ function _dispatchRestEvent(event, taskId) {
         return;
     }
 
+    // --- Extension events (all profile types) ---
+    if (eventType === 'extension_start') {
+        const payload = event.payload || {};
+        UI.updateStatusWindow({
+            step: `Running extension #${payload.name}${payload.param ? ':' + payload.param : ''}`,
+            details: 'Processing...',
+            type: 'extension_running'
+        }, false, 'extension');
+        return;
+    }
+    if (eventType === 'extension_complete') {
+        const payload = event.payload || {};
+        UI.updateStatusWindow({
+            step: `Extension #${payload.name}`,
+            details: payload,
+            type: 'extension_complete'
+        }, false, 'extension');
+        return;
+    }
+    if (eventType === 'extension_results') {
+        const payload = event.payload || {};
+
+        // Display results based on each extension's output_target
+        for (const [extName, result] of Object.entries(payload)) {
+            if (!result.success) continue;
+            const outputTarget = result.output_target || 'silent';
+
+            if (outputTarget === 'chat_append' && result.content) {
+                const extHtml = `
+                    <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}" style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
+                            <span class="text-xs text-gray-500">${result.content_type}</span>
+                        </div>
+                        <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${
+                            typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
+                        }</pre>
+                    </div>
+                `;
+                const chatLog = document.getElementById('chat-log');
+                if (chatLog) {
+                    const lastMsg = chatLog.querySelector('.chat-message:last-child .message-content');
+                    if (lastMsg) lastMsg.insertAdjacentHTML('beforeend', extHtml);
+                }
+            } else if (outputTarget === 'status_panel' && result.content) {
+                UI.updateStatusWindow({
+                    step: `Extension: #${extName}`,
+                    details: typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content,
+                    type: 'extension_result'
+                }, false, 'extension');
+            }
+        }
+
+        // Render silent extension output previews in Live Status
+        UI.updateStatusWindow({
+            step: 'Extension results',
+            details: payload,
+            type: 'extension_results'
+        }, false, 'extension');
+        return;
+    }
+
     // --- Lifecycle events (all profile types) ---
     if (eventType === 'execution_start' || eventType === 'execution_complete' ||
         eventType === 'execution_error' || eventType === 'execution_cancelled') {

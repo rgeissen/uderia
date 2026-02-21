@@ -5,6 +5,9 @@ Each extension in the chain receives:
   - The original LLM answer context
   - Results from all prior extensions (for serial chaining)
 
+LLMExtension instances automatically receive LLM config injection
+before execute() and have their tokens extracted after execute().
+
 Extensions never break the main answer — errors are caught per-extension
 and recorded as ExtensionResult(success=False).
 """
@@ -13,7 +16,7 @@ import logging
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from trusted_data_agent.extensions.base import Extension
+from trusted_data_agent.extensions.base import Extension, LLMExtension
 from trusted_data_agent.extensions.manager import ExtensionManager
 from trusted_data_agent.extensions.models import ExtensionContext, ExtensionResult
 
@@ -107,6 +110,23 @@ class ExtensionRunner:
                 except Exception:
                     pass  # Don't let event emission break execution
 
+            # --- LLM config injection for LLMExtension ---
+            if isinstance(ext, LLMExtension) and getattr(ext, 'requires_llm', False):
+                ext._user_uuid = context.user_uuid
+                ext._llm_config_id = context.llm_config_id
+                ext._provider = context.provider
+                ext._model = context.model
+                # Reset accumulators for this execution
+                ext._total_input_tokens = 0
+                ext._total_output_tokens = 0
+                ext._total_cost_usd = 0.0
+
+                if not context.llm_config_id:
+                    logger.warning(
+                        f"Extension '{name}' requires LLM but no llm_config_id "
+                        "in context. Extension may fail."
+                    )
+
             # --- Execute ---
             start_time = time.monotonic()
             try:
@@ -114,6 +134,19 @@ class ExtensionRunner:
                 elapsed_ms = round((time.monotonic() - start_time) * 1000)
                 result.metadata["execution_time_ms"] = elapsed_ms
                 result.output_target = ext.output_target.value
+
+                # --- Extract LLM tokens from LLMExtension ---
+                if isinstance(ext, LLMExtension):
+                    result.extension_input_tokens = ext._total_input_tokens
+                    result.extension_output_tokens = ext._total_output_tokens
+                    result.extension_cost_usd = ext._total_cost_usd
+                    if ext._total_input_tokens > 0:
+                        logger.info(
+                            f"Extension '{name}' LLM usage: "
+                            f"{ext._total_input_tokens} in / {ext._total_output_tokens} out "
+                            f"(${ext._total_cost_usd:.6f})"
+                        )
+
                 results[name] = result
                 logger.info(
                     f"Extension '{name}' completed in {elapsed_ms}ms "
@@ -134,15 +167,23 @@ class ExtensionRunner:
             # --- Emit complete event ---
             if event_handler:
                 try:
+                    r = results[name]
+                    complete_payload = {
+                        "name": name,
+                        "success": r.success,
+                        "content_type": r.content_type,
+                        "output_target": ext.output_target.value,
+                        "execution_time_ms": r.metadata.get("execution_time_ms", 0),
+                    }
+                    # Include token/cost data for LLM extensions
+                    if r.extension_input_tokens > 0 or r.extension_output_tokens > 0:
+                        complete_payload["input_tokens"] = r.extension_input_tokens
+                        complete_payload["output_tokens"] = r.extension_output_tokens
+                        complete_payload["cost_usd"] = r.extension_cost_usd
                     await event_handler(
                         {
                             "type": "extension_complete",
-                            "payload": {
-                                "name": name,
-                                "success": results[name].success,
-                                "content_type": results[name].content_type,
-                                "output_target": ext.output_target.value,
-                            },
+                            "payload": complete_payload,
                         },
                         "notification",
                     )

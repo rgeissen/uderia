@@ -1027,11 +1027,42 @@ async function initializeRAGAutoCompletion() {
     }
     window.clearExtensionBadges = clearExtensionBadges;
 
+    /**
+     * Lookup manifest metadata for an activation name.
+     * Returns the merged activation+manifest object from window.extensionState.activated.
+     */
+    function _getExtensionMeta(activationName) {
+        return (window.extensionState?.activated || []).find(
+            e => (e.activation_name || e.extension_id) === activationName
+        );
+    }
+
+    /**
+     * Validate a param value against the extension's allowed_values.
+     * Returns: 'valid' | 'invalid' | 'none' (no restrictions)
+     */
+    function _validateExtensionParam(activationName, paramValue) {
+        const meta = _getExtensionMeta(activationName);
+        if (!meta) return 'none';
+        const params = meta.parameters || {};
+        if (!params.supported) return 'invalid'; // params not supported at all
+        if (!params.allowed_values) return 'none'; // freeform
+        if (!paramValue) return 'none';
+        return params.allowed_values.includes(paramValue) ? 'valid' : 'invalid';
+    }
+
     function _renderExtensionBadges() {
         activeExtensionTagsContainer.innerHTML = '';
         activeExtensions.forEach(spec => {
             const badge = document.createElement('span');
             badge.className = 'active-extension-badge';
+
+            // Validate param
+            const validation = spec.param ? _validateExtensionParam(spec.name, spec.param) : 'none';
+            if (validation === 'invalid') {
+                badge.classList.add('active-extension-badge--invalid');
+            }
+
             const label = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
             badge.innerHTML = `<span>${label}</span><span class="active-extension-badge__remove" title="Remove extension">×</span>`;
             badge.querySelector('.active-extension-badge__remove').addEventListener('click', () => {
@@ -1039,6 +1070,134 @@ async function initializeRAGAutoCompletion() {
             });
             activeExtensionTagsContainer.appendChild(badge);
         });
+    }
+
+    // --- Param picker (reuses extensionSelector dropdown) ---
+    let isShowingParamPicker = false;
+    let paramPickerValues = [];
+    let paramPickerIndex = -1;
+
+    function showParamPicker(hints, typedPrefix, isStrict) {
+        // Filter hints by typed prefix
+        const filtered = typedPrefix
+            ? hints.filter(v => v.toLowerCase().startsWith(typedPrefix.toLowerCase()))
+            : hints;
+
+        paramPickerValues = filtered;
+        paramPickerIndex = filtered.length > 0 ? 0 : -1;
+        isShowingParamPicker = true;
+
+        extensionSelector.innerHTML = '';
+
+        // Header: description + strict/suggested mode badge
+        const meta = activeExtensions.length > 0 ? _getExtensionMeta(activeExtensions[activeExtensions.length - 1].name) : null;
+        const desc = meta?.parameters?.description || 'Parameter';
+
+        const header = document.createElement('div');
+        header.className = 'param-picker-header';
+
+        const descSpan = document.createElement('span');
+        descSpan.textContent = desc;
+        header.appendChild(descSpan);
+
+        const modeBadge = document.createElement('span');
+        modeBadge.className = `param-picker-mode ${isStrict ? 'param-picker-mode--strict' : 'param-picker-mode--suggested'}`;
+        modeBadge.textContent = isStrict ? 'Required' : 'Suggested';
+        header.appendChild(modeBadge);
+
+        extensionSelector.appendChild(header);
+
+        if (filtered.length === 0 && typedPrefix) {
+            // No matches for current prefix
+            const noMatch = document.createElement('div');
+            noMatch.className = 'param-picker-no-params';
+            noMatch.textContent = isStrict
+                ? `"${typedPrefix}" is not a valid parameter`
+                : `No suggestions matching "${typedPrefix}"`;
+            extensionSelector.appendChild(noMatch);
+            extensionSelector.classList.remove('hidden');
+            return;
+        }
+
+        filtered.forEach((val, index) => {
+            const item = document.createElement('div');
+            item.className = 'extension-item';
+            if (index === 0) item.classList.add('extension-highlighted');
+
+            const itemHeader = document.createElement('div');
+            itemHeader.className = 'extension-item-header';
+
+            const badge = document.createElement('span');
+            badge.className = 'extension-item-badge';
+            badge.textContent = `:${val}`;
+            itemHeader.appendChild(badge);
+
+            item.appendChild(itemHeader);
+
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectParamValue(val);
+            });
+            item.addEventListener('mouseenter', () => {
+                paramPickerIndex = index;
+                _highlightParamPicker(index);
+            });
+
+            extensionSelector.appendChild(item);
+        });
+
+        extensionSelector.classList.remove('hidden');
+    }
+
+    /**
+     * Show a "no parameters" hint in the dropdown.
+     */
+    function showNoParamsHint() {
+        isShowingParamPicker = true;
+        paramPickerValues = [];
+        paramPickerIndex = -1;
+        extensionSelector.innerHTML = '';
+
+        const hint = document.createElement('div');
+        hint.className = 'param-picker-no-params';
+        hint.textContent = 'This extension does not accept parameters';
+        extensionSelector.appendChild(hint);
+        extensionSelector.classList.remove('hidden');
+
+        // Auto-hide after 1.5s
+        setTimeout(() => {
+            if (isShowingParamPicker && paramPickerValues.length === 0) {
+                hideParamPicker();
+            }
+        }, 1500);
+    }
+
+    function _highlightParamPicker(index) {
+        const items = extensionSelector.querySelectorAll('.extension-item');
+        items.forEach((item, idx) => {
+            item.classList.toggle('extension-highlighted', idx === index);
+        });
+    }
+
+    function hideParamPicker() {
+        isShowingParamPicker = false;
+        paramPickerValues = [];
+        paramPickerIndex = -1;
+        extensionSelector.innerHTML = '';
+        extensionSelector.classList.add('hidden');
+    }
+
+    function selectParamValue(val) {
+        if (activeExtensions.length > 0) {
+            const last = activeExtensions[activeExtensions.length - 1];
+            last.param = val;
+            _renderExtensionBadges();
+        }
+        isUpdatingInput = true;
+        userInput.value = '';
+        isUpdatingInput = false;
+        hideParamPicker();
+        userInput.focus();
     }
 
     async function fetchAndShowSuggestions(queryText) {
@@ -1167,6 +1326,38 @@ async function initializeRAGAutoCompletion() {
                 hideProfileSelector();
             }
 
+            // Check if user is typing :param for the last extension badge
+            const colonMatch = inputValue.match(/^:(\S*)$/);
+            if (colonMatch && activeExtensions.length > 0) {
+                const last = activeExtensions[activeExtensions.length - 1];
+                const typedPrefix = colonMatch[1] || '';
+
+                // Live-update the badge
+                last.param = typedPrefix || null;
+                _renderExtensionBadges();
+
+                // Show param picker or "no params" hint
+                const meta = _getExtensionMeta(last.name);
+                const paramDef = meta?.parameters || {};
+                if (paramDef.supported === false) {
+                    // Extension doesn't accept params at all
+                    if (!isShowingParamPicker) showNoParamsHint();
+                } else {
+                    const allowed = paramDef.allowed_values || null;
+                    const hints = allowed || paramDef.examples || [];
+                    if (hints.length > 0) {
+                        showParamPicker(hints, typedPrefix, !!allowed);
+                    } else if (isShowingParamPicker) {
+                        hideParamPicker();
+                    }
+                }
+                return;
+            }
+            // Hide param picker if not in :param mode
+            if (isShowingParamPicker) {
+                hideParamPicker();
+            }
+
             // Check if user is typing #extension (show extension autocomplete)
             const hashMatch = inputValue.match(/#(\w*)$/);
             if (hashMatch && window.extensionState?.activated?.length > 0) {
@@ -1196,6 +1387,40 @@ async function initializeRAGAutoCompletion() {
         });
 
         userInput.addEventListener('keydown', (e) => {
+            // Handle param picker navigation and commit
+            if (isShowingParamPicker && paramPickerValues.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    paramPickerIndex = (paramPickerIndex + 1) % paramPickerValues.length;
+                    _highlightParamPicker(paramPickerIndex);
+                    return;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    paramPickerIndex = (paramPickerIndex - 1 + paramPickerValues.length) % paramPickerValues.length;
+                    _highlightParamPicker(paramPickerIndex);
+                    return;
+                } else if ((e.key === 'Tab' || e.key === 'Enter') && paramPickerIndex >= 0) {
+                    e.preventDefault();
+                    selectParamValue(paramPickerValues[paramPickerIndex]);
+                    return;
+                } else if (e.key === 'Escape') {
+                    hideParamPicker();
+                    return;
+                }
+            }
+
+            // Commit :param to last extension badge on Space or Tab (no picker match)
+            const paramInput = userInput.value.match(/^:(\S+)$/);
+            if (paramInput && activeExtensions.length > 0 && (e.key === ' ' || e.key === 'Tab')) {
+                e.preventDefault();
+                // Param is already applied live via input handler — just clear input
+                isUpdatingInput = true;
+                userInput.value = '';
+                isUpdatingInput = false;
+                hideParamPicker();
+                return;
+            }
+
             // Handle backspace on empty input: remove last extension badge first, then profile tag
             if (e.key === 'Backspace' && userInput.value === '') {
                 if (activeExtensions.length > 0) {

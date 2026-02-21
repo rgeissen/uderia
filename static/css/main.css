@@ -1705,6 +1705,18 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
     white-space: nowrap;
     line-height: 1.3;
     flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+.active-extension-badge--invalid {
+    border-color: rgba(239, 68, 68, 0.6);
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    animation: badge-shake 0.3s ease;
+}
+@keyframes badge-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
 }
 .active-extension-badge__remove {
     cursor: pointer;
@@ -1716,6 +1728,41 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
 }
 .active-extension-badge__remove:hover {
     opacity: 1;
+}
+/* Param picker header */
+.param-picker-header {
+    padding: 8px 20px 4px;
+    font-size: 0.7rem;
+    color: #9ca3af;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.param-picker-mode {
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+.param-picker-mode--strict {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+.param-picker-mode--suggested {
+    background: rgba(148, 163, 184, 0.1);
+    color: #6b7280;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+}
+.param-picker-no-params {
+    padding: 10px 20px;
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-style: italic;
+    text-align: center;
 }
 
 /* Extension result popover (shown on tag click) */

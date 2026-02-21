@@ -36,7 +36,16 @@
       "display_order": 4,
       "category": "Automation",
       "is_builtin": true,
-      "notes": "Categorize answer into predefined buckets for workflow routing"
+      "notes": "LLM-powered semantic classification for workflow routing"
+    },
+    {
+      "extension_id": "summary",
+      "plugin_directory": "summary",
+      "status": "active",
+      "display_order": 5,
+      "category": "Analysis",
+      "is_builtin": true,
+      "notes": "LLM-powered executive summary with key points and action items"
     }
   ],
   "extension_status_definitions": {

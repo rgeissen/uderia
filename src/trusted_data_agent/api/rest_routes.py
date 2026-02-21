@@ -10267,6 +10267,69 @@ async def reload_extensions():
         return jsonify({"error": "Failed to reload extensions."}), 500
 
 
+@rest_api_bp.route("/v1/extensions/scaffold", methods=["POST"])
+async def scaffold_extension():
+    """
+    Create a new extension from a template.
+
+    Body:
+        name:        Extension name (lowercase, underscores allowed)
+        level:       "convention" | "simple" | "standard" | "llm"
+        description: One-line description (optional)
+        parameters:  List of valid parameter values (optional)
+
+    Returns:
+        path:  Where the files were created
+        files: List of filenames created
+        level: The level that was used
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        data = await request.get_json()
+        ext_name = data.get("name", "").strip().lower().replace(" ", "_")
+        level = data.get("level", "convention")
+        description = data.get("description", "")
+        parameters = data.get("parameters")
+
+        if not ext_name:
+            return jsonify({"error": "Extension name is required"}), 400
+
+        if not ext_name.isidentifier():
+            return jsonify({"error": "Extension name must be a valid Python identifier (letters, numbers, underscores)"}), 400
+
+        valid_levels = {"convention", "simple", "standard", "llm"}
+        if level not in valid_levels:
+            return jsonify({"error": f"Invalid level '{level}'. Valid: {', '.join(sorted(valid_levels))}"}), 400
+
+        from trusted_data_agent.extensions.scaffolds import write_scaffold
+        result = write_scaffold(
+            name=ext_name,
+            level=level,
+            description=description,
+            parameters=parameters,
+        )
+
+        # Auto-reload extensions so the new one is immediately available
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        manager.reload()
+
+        return jsonify({
+            "status": "success",
+            "path": result["path"],
+            "files": result["files"],
+            "level": result["level"],
+            "loaded": ext_name in manager.extensions,
+        }), 201
+
+    except Exception as e:
+        app_logger.error(f"Failed to scaffold extension: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to create extension: {str(e)}"}), 500
+
+
 @rest_api_bp.route("/v1/extensions/<name>/source", methods=["GET"])
 async def get_extension_source(name: str):
     """

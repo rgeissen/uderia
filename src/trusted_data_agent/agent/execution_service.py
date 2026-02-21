@@ -51,6 +51,7 @@ async def _run_extensions(
     session_id: str,
     user_uuid: str,
     event_handler,
+    llm_config_id: str = None,
 ) -> tuple:
     """
     Execute post-processing extensions after the LLM answer is complete.
@@ -113,6 +114,9 @@ async def _run_extensions(
             execution_trace=final_payload.get("execution_trace", []),
             tools_used=final_payload.get("tools_used", []),
             collected_data=final_payload.get("collected_data", []),
+            # LLM config for LLMExtension support
+            user_uuid=user_uuid,
+            llm_config_id=llm_config_id,
         )
 
         # Wrap event_handler to collect extension lifecycle events for persistence
@@ -152,13 +156,18 @@ async def _persist_extension_results(
     user_uuid: str,
     session_id: str,
     event_handler,
+    prior_turn_input: int = 0,
+    prior_turn_output: int = 0,
+    provider: str = None,
+    model: str = None,
 ):
     """
     Persist extension results to the session file and emit cost events if needed.
 
     Aggregates extension token/cost usage across all results. If any extension
-    consumed tokens (future LLM-calling extensions), emits a token_update event
-    and updates session totals.
+    consumed tokens (LLM-calling extensions), emits a token_update event
+    and updates session totals. Turn tokens include prior execution tokens
+    (from the main LLM calls) plus extension tokens for accurate KPI display.
     """
     # Aggregate extension token costs
     total_ext_input = sum(r.get("extension_input_tokens", 0) for r in ext_results.values())
@@ -173,11 +182,39 @@ async def _persist_extension_results(
         current_session = await session_manager.get_session(user_uuid, session_id)
         if current_session:
             total_ext_cost = sum(r.get("extension_cost_usd", 0) for r in ext_results.values())
+
+            # Fallback: calculate cost if extensions didn't (e.g. CostManager failed in call_llm)
+            if total_ext_cost == 0 and provider and model:
+                try:
+                    from trusted_data_agent.core.cost_manager import CostManager
+                    cost_mgr = CostManager()
+                    total_ext_cost = cost_mgr.calculate_cost(
+                        provider, model, total_ext_input, total_ext_output
+                    )
+                    # Backfill cost into extension results for session persistence
+                    for r in ext_results.values():
+                        ext_in = r.get("extension_input_tokens", 0)
+                        ext_out = r.get("extension_output_tokens", 0)
+                        if ext_in > 0 or ext_out > 0:
+                            r["extension_cost_usd"] = cost_mgr.calculate_cost(
+                                provider, model, ext_in, ext_out
+                            )
+                    # Backfill cost into extension_complete events for reload renderer
+                    for evt in ext_events:
+                        if evt.get("type") == "extension_complete":
+                            payload = evt.get("payload", {})
+                            ext_name = payload.get("name")
+                            if ext_name and ext_name in ext_results:
+                                payload["cost_usd"] = ext_results[ext_name].get("extension_cost_usd", 0)
+                    app_logger.info(f"Extension cost fallback: ${total_ext_cost:.6f}")
+                except Exception as e:
+                    app_logger.warning(f"Extension cost fallback failed: {e}")
+
             await event_handler({
                 "statement_input": total_ext_input,
                 "statement_output": total_ext_output,
-                "turn_input": total_ext_input,
-                "turn_output": total_ext_output,
+                "turn_input": prior_turn_input + total_ext_input,
+                "turn_output": prior_turn_output + total_ext_output,
                 "total_input": current_session.get("input_tokens", 0),
                 "total_output": current_session.get("output_tokens", 0),
                 "call_id": "extensions",
@@ -186,7 +223,9 @@ async def _persist_extension_results(
 
             app_logger.info(
                 f"Extension token update: {total_ext_input} in / {total_ext_output} out "
-                f"(cost: ${total_ext_cost:.6f})"
+                f"(turn cumulative: {prior_turn_input + total_ext_input} in / "
+                f"{prior_turn_output + total_ext_output} out, "
+                f"cost: ${total_ext_cost:.6f})"
             )
 
     # Persist to session file (post-append to already-saved turn)
@@ -371,6 +410,24 @@ async def run_agent_execution(
 
             # --- EXTENSION EXECUTION: Genie path ---
             if extension_specs and final_result_payload:
+                # Read prior turn tokens from workflow_history (genie saves turn data before returning)
+                _prior_turn_input = 0
+                _prior_turn_output = 0
+                _ext_provider = None
+                _ext_model = None
+                try:
+                    _session_data = await session_manager.get_session(user_uuid, session_id)
+                    if _session_data:
+                        _wh = _session_data.get("last_turn_data", {}).get("workflow_history", [])
+                        if _wh:
+                            _latest = _wh[-1]
+                            _prior_turn_input = _latest.get("turn_input_tokens", 0) or 0
+                            _prior_turn_output = _latest.get("turn_output_tokens", 0) or 0
+                            _ext_provider = _latest.get("provider")
+                            _ext_model = _latest.get("model")
+                except Exception:
+                    pass
+
                 ext_results, ext_events = await _run_extensions(
                     extension_specs=extension_specs,
                     final_payload=final_result_payload,
@@ -378,11 +435,16 @@ async def run_agent_execution(
                     session_id=session_id,
                     user_uuid=user_uuid,
                     event_handler=event_handler,
+                    llm_config_id=active_profile.get("llmConfigurationId") if active_profile else None,
                 )
                 if ext_results:
                     final_result_payload["extension_results"] = ext_results
                     await _persist_extension_results(
-                        ext_results, ext_events, user_uuid, session_id, event_handler
+                        ext_results, ext_events, user_uuid, session_id, event_handler,
+                        prior_turn_input=_prior_turn_input,
+                        prior_turn_output=_prior_turn_output,
+                        provider=_ext_provider,
+                        model=_ext_model,
                     )
 
             return final_result_payload
@@ -418,6 +480,26 @@ async def run_agent_execution(
 
         # --- EXTENSION EXECUTION: PlanExecutor path (tool_enabled, llm_only, rag_focused) ---
         if extension_specs and final_result_payload:
+            # Read prior turn tokens from workflow_history (reliable across all profile types).
+            # The executor saves turn_summary via update_last_turn_data() before the generator ends,
+            # so this data is available here. final_answer events don't include turn tokens.
+            _prior_turn_input = 0
+            _prior_turn_output = 0
+            _ext_provider = None
+            _ext_model = None
+            try:
+                _session_data = await session_manager.get_session(user_uuid, session_id)
+                if _session_data:
+                    _wh = _session_data.get("last_turn_data", {}).get("workflow_history", [])
+                    if _wh:
+                        _latest = _wh[-1]
+                        _prior_turn_input = _latest.get("turn_input_tokens", 0) or 0
+                        _prior_turn_output = _latest.get("turn_output_tokens", 0) or 0
+                        _ext_provider = _latest.get("provider")
+                        _ext_model = _latest.get("model")
+            except Exception:
+                pass  # Fallback to 0 — KPI display will still work, just show extension tokens only
+
             ext_results, ext_events = await _run_extensions(
                 extension_specs=extension_specs,
                 final_payload=final_result_payload,
@@ -425,11 +507,16 @@ async def run_agent_execution(
                 session_id=session_id,
                 user_uuid=user_uuid,
                 event_handler=event_handler,
+                llm_config_id=active_profile.get("llmConfigurationId") if active_profile else None,
             )
             if ext_results:
                 final_result_payload["extension_results"] = ext_results
                 await _persist_extension_results(
-                    ext_results, ext_events, user_uuid, session_id, event_handler
+                    ext_results, ext_events, user_uuid, session_id, event_handler,
+                    prior_turn_input=_prior_turn_input,
+                    prior_turn_output=_prior_turn_output,
+                    provider=_ext_provider,
+                    model=_ext_model,
                 )
 
     except Exception as e:

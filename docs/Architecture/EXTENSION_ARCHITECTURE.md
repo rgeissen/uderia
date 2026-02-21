@@ -668,6 +668,36 @@ When an extension is selected from the autocomplete, a styled amber badge appear
 1. Remove last extension badge first
 2. If no extension badges remain, remove profile badge
 
+### Inline Parameter Editing
+
+After selecting an extension from the autocomplete, typing `:` immediately opens a **parameter picker** dropdown. The system inspects the extension's manifest `parameters` field to determine behavior:
+
+| Manifest Field | Behavior |
+|---------------|----------|
+| `supported: false` | Shows "This extension does not accept parameters" hint (auto-dismisses) |
+| `allowed_values: [...]` | **Strict mode** — dropdown shows values with amber "Required" badge. Invalid params turn the badge red with shake animation. |
+| `examples: [...]` (no `allowed_values`) | **Suggested mode** — dropdown shows values with gray "Suggested" badge. Freeform input accepted. |
+| `supported: true`, no hints | No dropdown — freeform input accepted. |
+
+**Flow:**
+
+```
+1. Select #json from autocomplete       → Badge: [#json ×]
+2. Type ":"                              → Param picker opens with: :minimal :full
+3. Type "mi"                             → Filtered to: :minimal
+4. Press Tab/Enter                       → Badge: [#json:minimal ×], input cleared
+   (or press Space to commit freeform)
+```
+
+**Visual validation:**
+
+```
+[#json:minimal ×]    ← amber (valid or no restrictions)
+[#json:foobar ×]     ← red + shake animation (invalid: not in allowed_values)
+```
+
+**Keyboard:** Arrow Up/Down to navigate, Tab/Enter to select, Escape to dismiss, Space to commit freeform.
+
 ### Query Submission
 
 On submit, extensions are collected from two sources and merged:

@@ -3273,6 +3273,102 @@ function _renderContextOptimizationDetails(details) {
     return html || null;
 }
 
+// ── Extension Renderer (compact, amber-accented) ────────────────────────────
+// Matches the historical reload style from _renderExtensionEventsForReload().
+// Extension events are visually distinct from the main execution pipeline.
+
+let _extensionDividerAdded = false;
+
+function _ensureExtensionDivider(parentContainer) {
+    if (_extensionDividerAdded) return;
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.style.borderColor = 'rgba(251, 191, 36, 0.3)';
+    divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #fbbf24;">Extensions</span>`;
+    parentContainer.appendChild(divider);
+    _extensionDividerAdded = true;
+}
+
+function _renderExtensionStep(eventData, parentContainer) {
+    const { step, details, type } = eventData;
+
+    _ensureExtensionDivider(parentContainer);
+
+    if (type === 'extension_running') {
+        // Start event — amber play icon
+        const payload = typeof details === 'string' ? {} : (details || {});
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #fbbf24;">&#9654;</span>
+                <span class="text-xs text-gray-300">${step || 'Running extension'}</span>
+            </div>`;
+        parentContainer.appendChild(stepEl);
+    } else if (type === 'extension_complete') {
+        // Complete event — green check or red X, with optional token/cost metrics
+        const payload = typeof details === 'object' ? (details || {}) : {};
+        const success = typeof details === 'string' ? details !== 'Failed' : true;
+        const icon = success ? '&#10003;' : '&#10007;';
+        const color = success ? 'text-green-400' : 'text-red-400';
+
+        // Build metrics string for LLM extensions (tokens, cost, time)
+        let metricsHtml = '';
+        const inputTokens = payload.input_tokens;
+        const outputTokens = payload.output_tokens;
+        const costUsd = payload.cost_usd;
+        const execTimeMs = payload.execution_time_ms;
+
+        if (inputTokens || outputTokens) {
+            const parts = [];
+            parts.push(`${(inputTokens || 0).toLocaleString()} in / ${(outputTokens || 0).toLocaleString()} out`);
+            if (costUsd !== undefined && costUsd > 0) {
+                parts.push(`$${parseFloat(costUsd).toFixed(6)}`);
+            }
+            if (execTimeMs) {
+                parts.push(`${execTimeMs}ms`);
+            }
+            metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${parts.join(' · ')}</span>`;
+        } else if (execTimeMs) {
+            metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${execTimeMs}ms</span>`;
+        }
+
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="${color} text-xs">${icon}</span>
+                <span class="text-xs text-gray-300">${step || 'Extension'}</span>
+                ${metricsHtml}
+            </div>`;
+        parentContainer.appendChild(stepEl);
+    } else if (type === 'extension_results') {
+        // Combined results — show output previews for silent extensions
+        const results = typeof details === 'object' ? details : {};
+        for (const [name, result] of Object.entries(results)) {
+            const target = result?.output_target || 'silent';
+            if (target === 'chat_append') continue; // already visible in chat
+
+            if (result?.success && result?.content) {
+                const contentPreview = typeof result.content === 'object'
+                    ? JSON.stringify(result.content, null, 2).substring(0, 300)
+                    : String(result.content).substring(0, 300);
+
+                const resultEl = document.createElement('div');
+                resultEl.className = 'px-4 py-2';
+                resultEl.innerHTML = `
+                    <details class="group">
+                        <summary class="text-xs cursor-pointer hover:text-amber-200" style="color: #fbbf24;">
+                            &#9660; #${name} output <span class="text-gray-500">(${result.content_type || 'application/json'})</span>
+                        </summary>
+                        <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    </details>`;
+                parentContainer.appendChild(resultEl);
+            }
+        }
+    }
+}
+
 function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     const { step, details, type } = eventData;
 
@@ -3510,6 +3606,7 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
  */
 export function resetStatusWindowForNewTask() {
     DOM.statusWindowContent.innerHTML = '';
+    _extensionDividerAdded = false; // Reset extension divider flag for new task
     // Remove any existing scroll spacer
     const existingSpacer = document.getElementById('status-scroll-spacer');
     if (existingSpacer) existingSpacer.remove();
@@ -3658,6 +3755,13 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         // Don't change status title — session name generation is a background activity
         // that shouldn't override the current execution context title
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'extension') {
+        // Extension events — use dedicated compact renderer (amber-accented, matches reload style)
+        _renderExtensionStep(eventData, DOM.statusWindowContent);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }
