@@ -12,6 +12,17 @@ Extensions complement the existing `@TAG` input routing with `#Extension` output
 @PROFILE (how to answer) → Query → LLM Answer → #Extension (structured output) → n8n/Flowise
 ```
 
+### Design Principle: Progressive Disclosure
+
+Maximum Python flexibility through progressive disclosure. Every friction point has a lower-friction alternative. Citizen users never see a class or import statement. Expert users get full async Python with rich context and LLM access.
+
+| Level | Who | Friction | What they write |
+|-------|-----|----------|-----------------|
+| **Level 0 (Convention)** | Citizen users | Zero | A plain Python function + module constants |
+| **Level 1 (SimpleExtension)** | Power users | Minimal | ~15 lines with class + `transform()` |
+| **Level 2 (Extension)** | Developers | Standard | Full context access, async `execute()` |
+| **Level 3 (LLMExtension)** | Advanced | Standard | Calls user's LLM with auto cost tracking |
+
 ---
 
 ## System Architecture
@@ -55,8 +66,9 @@ Extensions complement the existing `@TAG` input routing with `#Extension` output
 │  │     ├─ ExtensionRunner.run() — serial with chaining   │        │          │
 │  │     └─ Emit extension_results SSE event               │        │          │
 │  │  4. _persist_extension_results()                      │        │          │
-│  │     ├─ Aggregate token costs                          │────────┘          │
-│  │     ├─ Update session token counts                    │                   │
+│  │     ├─ Aggregate token costs (+ fallback calculation) │────────┘          │
+│  │     ├─ Update session token counts (cumulative)       │                   │
+│  │     ├─ Emit token_update SSE (call_id: "extensions")  │                   │
 │  │     └─ append_extension_results_to_turn()             │                   │
 │  └──────────────────────────────────────────────────────┘                   │
 │                         │                                                    │
@@ -69,56 +81,219 @@ Extensions complement the existing `@TAG` input routing with `#Extension` output
 │  └──────┬───────┘ └───────────┘ └──────────────┘                           │
 │         │                                                                    │
 │         ▼                                                                    │
-│  ┌──────────────────────────────────────────┐                               │
-│  │  Built-in Extensions                      │                               │
-│  │  ┌──────┐ ┌──────────┐ ┌───────┐ ┌─────┐│                               │
-│  │  │#json │ │#decision │ │#extract│ │#classify│                            │
-│  │  └──────┘ └──────────┘ └───────┘ └─────┘│                               │
-│  └──────────────────────────────────────────┘                               │
-└─────────────────────────────────────────────────────────────────────────────┘
+│  ┌───────────────────────────────────────────────────────────┐              │
+│  │  Built-in Extensions                                       │              │
+│  │  ┌──────┐ ┌──────────┐ ┌───────┐ ┌─────────┐ ┌─────────┐│              │
+│  │  │#json │ │#decision │ │#extract│ │#classify│ │#summary ││              │
+│  │  │Tier 2│ │ Tier 3   │ │Tier 1 │ │ Tier 3  │ │ Tier 3  ││              │
+│  │  └──────┘ └──────────┘ └───────┘ └─────────┘ └─────────┘│              │
+│  └───────────────────────────────────────────────────────────┘              │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────┐              │
+│  │  Helpers Library                                           │              │
+│  │  text.py │ json_utils.py │ regex.py │ result_builders.py  │              │
+│  └───────────────────────────────────────────────────────────┘              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### File Structure
 
 ```
 src/trusted_data_agent/extensions/
-├── __init__.py              # Public API exports
+├── __init__.py              # Public API: SimpleExtension, Extension, LLMExtension
 ├── models.py                # ExtensionContext, ExtensionResult, OutputTarget
-├── base.py                  # Abstract Extension base class
-├── manager.py               # Singleton discovery & loading (ExtensionManager)
-├── runner.py                # Serial execution orchestrator (ExtensionRunner)
-└── db.py                    # Per-user activation persistence (SQLite)
+├── base.py                  # Three-tier base classes
+├── manager.py               # Singleton discovery & loading (4 discovery modes)
+├── runner.py                # Serial execution with LLM injection & token extraction
+├── db.py                    # Per-user activation persistence (SQLite)
+├── scaffolds.py             # Template generators for all 4 levels
+└── helpers/                 # Shared utilities for extension authors
+    ├── __init__.py          # Re-exports all helpers
+    ├── text.py              # count_words, extract_sentences, extract_code_blocks, etc.
+    ├── json_utils.py        # extract_json_from_text, safe_json_dumps
+    ├── regex.py             # NUMBER_WITH_UNIT, PERCENTAGE, IDENTIFIER, etc.
+    └── result_builders.py   # json_result, text_result, error_result
 
 extensions/
-├── extension_registry.json  # Central registry of all extensions
+├── extension_registry.json  # Central registry of built-in extensions
 ├── schemas/
 │   └── extension-manifest-schema.json
 └── builtin/
-    ├── json/                # #json — Structured JSON output
+    ├── json/                # #json — Structured JSON output (Tier 2)
     │   ├── manifest.json
     │   └── json_ext.py
-    ├── decision/            # #decision — Workflow branching
+    ├── decision/            # #decision — LLM workflow branching (Tier 3)
     │   ├── manifest.json
     │   └── decision.py
-    ├── extract/             # #extract — Data extraction
+    ├── extract/             # #extract — Regex data extraction (Tier 1)
     │   ├── manifest.json
     │   └── extract.py
-    └── classify/            # #classify — Answer classification
+    ├── classify/            # #classify — LLM semantic classification (Tier 3)
+    │   ├── manifest.json
+    │   └── classify.py
+    └── summary/             # #summary — LLM executive summary (Tier 3)
         ├── manifest.json
-        └── classify.py
+        └── summary.py
+
+~/.tda/extensions/           # User extensions (auto-discovered)
+├── myext.py                 # Level 0: Convention-based (flat file)
+├── wordcount/               # Level 1: SimpleExtension (no manifest)
+│   └── wordcount.py
+└── analyzer/                # Level 2-3: With manifest
+    ├── manifest.json
+    └── analyzer.py
 
 static/js/
 ├── main.js                  # # autocomplete, badge management
-├── eventHandlers.js         # Extension parsing, SSE event handling, recall
-├── ui.js                    # Extension tags on messages, click-to-view
-├── notifications.js         # REST notification path (extension_specs)
+├── eventHandlers.js         # Extension parsing, SSE events, historical recall
+├── ui.js                    # Extension tags, _renderExtensionStep(), cost display
+├── notifications.js         # REST notification dispatch (extension events)
 └── handlers/
-    ├── extensionHandler.js  # Extensions configuration tab UI
+    ├── extensionHandler.js  # Extensions configuration tab, tier badges
     └── sessionManagement.js # Session reload with extension_specs
-
-static/css/main.css          # .extension-tag, .active-extension-badge, etc.
-templates/index.html         # Extensions tab, autocomplete containers
 ```
+
+---
+
+## Four-Tier Extension Hierarchy
+
+### Level 0: Convention-Based (Zero Friction)
+
+Drop a `.py` file in `~/.tda/extensions/`. No imports, no classes, no manifest, no registry.
+
+```python
+# ~/.tda/extensions/wordcount.py
+
+EXTENSION_NAME = "wordcount"
+EXTENSION_DESCRIPTION = "Counts words, sentences, and characters"
+# ALLOWED_PARAMS = {"brief", "detailed"}   # Optional: restrict parameters
+# OUTPUT_TARGET = "chat_append"            # Optional: default is "silent"
+
+def transform(answer_text, param=None):
+    """The only thing you write. Everything else is auto-wired."""
+    words = answer_text.split()
+    return {
+        "word_count": len(words),
+        "sentence_count": answer_text.count('.') + answer_text.count('!') + answer_text.count('?'),
+        "char_count": len(answer_text),
+    }
+```
+
+**How it works:** The Extension Manager's `_try_convention_wrap()` imports the file, reads module-level constants (`EXTENSION_NAME`, `EXTENSION_DESCRIPTION`, etc.), and dynamically creates a `SimpleExtension` subclass that delegates to the `transform()` function. An in-memory manifest is generated automatically.
+
+**Required:** `EXTENSION_NAME` + `def transform(answer_text, param=None)`
+**Optional:** `EXTENSION_DESCRIPTION`, `ALLOWED_PARAMS`, `CONTENT_TYPE`, `OUTPUT_TARGET`
+
+### Level 1: SimpleExtension (Minimal Class)
+
+For users who want a class but minimal boilerplate. ~15 lines total.
+
+```python
+# ~/.tda/extensions/wordcount/wordcount.py
+
+from trusted_data_agent.extensions import SimpleExtension
+
+class WordCountExtension(SimpleExtension):
+    name = "wordcount"
+    description = "Counts words, sentences, and characters"
+    # allowed_params = {"brief", "detailed"}  # Optional
+
+    def transform(self, answer_text, param=None):
+        words = answer_text.split()
+        return {
+            "word_count": len(words),
+            "char_count": len(answer_text),
+        }
+```
+
+**Pre-implemented by SimpleExtension:**
+- `execute()` — delegates to `transform()`, wraps result in `ExtensionResult`
+- `validate_param()` — validates against `allowed_params` set (if defined)
+
+**No manifest needed.** The Manager's `_try_auto_manifest()` reads class attributes and generates one in memory.
+
+### Level 2: Extension (Full Context)
+
+For developers who need access to the full `ExtensionContext` (tokens, execution trace, tools used, session data).
+
+```python
+from trusted_data_agent.extensions import Extension, ExtensionResult, ExtensionContext, OutputTarget
+
+class MyExtension(Extension):
+    @property
+    def name(self) -> str:
+        return "myext"
+
+    @property
+    def output_target(self) -> OutputTarget:
+        return OutputTarget.CHAT_APPEND
+
+    def validate_param(self, param=None):
+        if param and param not in ("mode1", "mode2"):
+            return False, f"Invalid param '{param}'"
+        return True, None
+
+    async def execute(self, context: ExtensionContext, param=None) -> ExtensionResult:
+        output = {
+            "query": context.clean_query,
+            "tools_used": context.tools_used,
+            "tokens": {"input": context.turn_input_tokens, "output": context.turn_output_tokens},
+        }
+        return ExtensionResult(
+            extension_name="myext",
+            content=output,
+            content_type="application/json",
+        )
+```
+
+**Requires:** `manifest.json` in the extension directory (or registry entry for builtins).
+
+### Level 3: LLMExtension (Calls the User's LLM)
+
+For extensions that need semantic analysis. Automatic token counting and cost tracking.
+
+```python
+from trusted_data_agent.extensions import LLMExtension, ExtensionResult, ExtensionContext
+from trusted_data_agent.extensions.helpers import extract_json_from_text
+
+class SentimentExtension(LLMExtension):
+    name = "sentiment"
+    description = "Analyzes sentiment using the session's LLM"
+
+    async def execute(self, context, param=None):
+        raw = await self.call_llm(
+            prompt=f"Classify the sentiment:\n\n{context.answer_text}",
+            system_prompt="Return JSON: {sentiment, confidence}",
+            json_mode=True,
+            temperature=0.2,
+        )
+        parsed = extract_json_from_text(raw) or {"sentiment": "unknown", "confidence": 0}
+
+        return ExtensionResult(
+            extension_name=self.name,
+            content=parsed,
+            content_type="application/json",
+        )
+```
+
+**`call_llm()` signature:**
+
+```python
+async def call_llm(
+    self,
+    prompt: str,
+    system_prompt: str = "You are a helpful assistant.",
+    temperature: float = 0.3,
+    json_mode: bool = False,
+) -> str
+```
+
+**Automatic behavior:**
+- Uses the session's configured LLM (same provider/model as the main query)
+- LLM config injected by `ExtensionRunner` before `execute()` is called
+- Token accumulators (`_total_input_tokens`, `_total_output_tokens`, `_total_cost_usd`) reset per execution and accumulate across multiple `call_llm()` invocations
+- Cost calculated via `CostManager` with provider-specific pricing
+- Raises `RuntimeError` if no LLM configuration is available on the active profile
 
 ---
 
@@ -173,6 +348,10 @@ class ExtensionContext:
 
     # Serial chaining (auto-populated by runner)
     previous_extension_results: dict    # {name: ExtensionResult} from prior extensions
+
+    # LLM config (for LLMExtension, injected by runner)
+    user_uuid: Optional[str]            # User UUID for LLM credential resolution
+    llm_config_id: Optional[str]        # LLM configuration ID from active profile
 ```
 
 ### ExtensionResult
@@ -198,87 +377,125 @@ class ExtensionResult:
 
 ---
 
-## Extension Base Class
+## Helpers Library
 
-All extensions must subclass `Extension` and implement `name` and `execute()`:
+Shared utilities that extension authors import. Eliminates copy-paste between extensions.
 
 ```python
-class Extension(ABC):
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Unique identifier matching #name syntax. Lowercase, no spaces."""
-
-    @property
-    def output_target(self) -> OutputTarget:
-        """Where output displays. Default: SILENT."""
-        return OutputTarget.SILENT
-
-    @abstractmethod
-    async def execute(self, context: ExtensionContext, param: Optional[str] = None) -> ExtensionResult:
-        """Transform the LLM answer into structured output."""
-
-    def validate_param(self, param: Optional[str] = None) -> tuple[bool, Optional[str]]:
-        """Optional parameter validation. Default: accept all."""
-        return True, None
+from trusted_data_agent.extensions.helpers import (
+    extract_json_from_text, safe_json_dumps,       # JSON
+    count_words, extract_sentences, truncate,       # Text
+    extract_code_blocks, extract_tables,            # Text
+    json_result, text_result, error_result,         # Result builders
+)
+from trusted_data_agent.extensions.helpers.regex import (
+    NUMBER_WITH_UNIT, PERCENTAGE, IDENTIFIER,       # Regex patterns
+    SQL_STATEMENT, KEY_VALUE, EMAIL, URL,
+    ENTITY_STOPWORDS,
+)
 ```
 
-### Extension Manifest
+### JSON Utilities (`helpers/json_utils.py`)
 
-Each extension directory contains a `manifest.json`:
+| Function | Purpose | Returns |
+|----------|---------|---------|
+| `extract_json_from_text(text)` | Find and parse first JSON object/array in text. Handles markdown fences, bare JSON, nested brackets. | `dict`, `list`, or `None` |
+| `safe_json_dumps(obj, indent=2)` | `json.dumps` with `default=str`, `ensure_ascii=False`. Handles datetime, UUID, Decimal. | `str` |
 
-```json
-{
-  "name": "json-output",
-  "version": "1.0.0",
-  "extension_id": "json",
-  "display_name": "JSON Output",
-  "description": "Wraps the LLM answer into a standardized JSON structure",
-  "author": "TDA Core Team",
-  "category": "Transform",
-  "files": { "extension": "json_ext.py" },
-  "output_target": "chat_append",
-  "parameters": {
-    "supported": true,
-    "description": "Output detail level",
-    "examples": ["minimal", "full"],
-    "allowed_values": ["minimal", "full"]
-  },
-  "output_schema": { ... },
-  "keywords": ["json", "structured", "n8n", "api"]
-}
+### Text Utilities (`helpers/text.py`)
+
+| Function | Purpose | Returns |
+|----------|---------|---------|
+| `count_words(text)` | Count whitespace-separated words | `int` |
+| `extract_sentences(text)` | Split on sentence boundaries (`.`, `!`, `?`) | `list[str]` |
+| `extract_code_blocks(text)` | Extract markdown fenced code blocks | `list[{"language", "code"}]` |
+| `extract_tables(text)` | Extract markdown tables | `list[list[list[str]]]` |
+| `truncate(text, max_chars=1000)` | Truncate at word boundary with ellipsis | `str` |
+
+### Regex Patterns (`helpers/regex.py`)
+
+Pre-compiled patterns for structured data extraction:
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `NUMBER_WITH_UNIT` | Labeled numbers | `"CPU Usage: 94.5%"`, `"Total: 1,234 rows"` |
+| `PERCENTAGE` | Percentage values | `"94.5%"`, `"0.01%"` |
+| `IDENTIFIER` | UPPER_CASE identifiers (3+ chars) | `"DATABASE_NAME"`, `"PROD_SERVER"` |
+| `SQL_STATEMENT` | SQL queries | Multi-line SELECT/INSERT/UPDATE |
+| `KEY_VALUE` | Key-value pairs | `"key: value"`, `"key = value"` |
+| `EMAIL` | Email addresses | Standard email pattern |
+| `URL` | HTTP(S) URLs | `"https://example.com"` |
+| `ENTITY_STOPWORDS` | Set of common non-entity words to filter | `"THE"`, `"SQL"`, `"API"`, `"LLM"` |
+
+### Result Builders (`helpers/result_builders.py`)
+
+Convenience constructors for `ExtensionResult`:
+
+```python
+json_result(name, content, **metadata)   # → ExtensionResult(content_type="application/json")
+text_result(name, content, **metadata)   # → ExtensionResult(content_type="text/plain")
+error_result(name, error_msg)            # → ExtensionResult(success=False)
 ```
-
-**Categories:** Transform, Automation, Export, Visualization, Custom
 
 ---
 
 ## Extension Manager (Singleton)
 
-Discovers, loads, and manages extensions. Mirrors the `rag_template_manager.py` pattern.
+Discovers, loads, and manages extensions with four discovery modes.
 
 ```python
 manager = get_extension_manager()      # Singleton accessor
 
 manager.list_extensions()              # All extensions with metadata (for UI/autocomplete)
 manager.get_extension("json")          # Get loaded extension by name
-manager.get_all_names()                # ["json", "decision", "extract", "classify"]
+manager.get_all_names()                # ["json", "decision", "extract", "classify", "summary"]
 manager.get_extension_source("json")   # Python source code (for "View Script")
 manager.get_manifest("json")           # Full manifest dict
 manager.reload()                       # Hot-reload from disk
 ```
 
-**Discovery order:**
-1. Built-in: `extensions/builtin/`
-2. User: `~/.tda/extensions/` (overrides built-in)
+### Four Discovery Modes
 
-**Dynamic loading:** Uses `importlib.util.spec_from_file_location()` to import Python modules at runtime. Scans for `Extension` subclasses in each module.
+Discovery runs in order; later modes override earlier for the same extension ID. User directories always override builtins.
+
+**Mode A — Flat convention file (Level 0, zero friction):**
+```
+~/.tda/extensions/wordcount.py     ← just a file, not a directory
+```
+Manager calls `_try_convention_wrap()`: imports the module, reads `EXTENSION_NAME` + `transform()`, creates a `SimpleExtension` wrapper, generates in-memory manifest.
+
+**Mode B — Directory without manifest (Level 1, manifest-free):**
+```
+~/.tda/extensions/wordcount/
+    wordcount.py                   ← SimpleExtension subclass, no manifest
+```
+Manager calls `_try_auto_manifest()`: imports the `.py`, finds any `Extension`/`SimpleExtension`/`LLMExtension` subclass, instantiates it, reads class attributes (`name`, `description`, `allowed_params`), generates in-memory manifest. Tier auto-detected from class hierarchy.
+
+**Mode C — Directory with manifest (Level 1-3):**
+```
+~/.tda/extensions/myext/
+    manifest.json                  ← auto-discovered, no registry needed
+    myext.py
+```
+Standard manifest-based loading. No registry entry required for user extensions.
+
+**Mode D — Registry (builtins):**
+```
+extensions/builtin/json/           ← registered in extension_registry.json
+    manifest.json
+    json_ext.py
+```
+Registry provides display order, category, and status. Used for all built-in extensions.
+
+### Override Semantics
+
+User extensions with the same `extension_id` as a builtin override the builtin. Discovery priority within user dir: Mode A → Mode B → Mode C (first match wins per ID). User dir always overrides builtin dir.
 
 ---
 
 ## Extension Runner (Serial Execution)
 
-Orchestrates serial execution of extensions with result chaining:
+Orchestrates serial execution of extensions with result chaining and LLM config injection:
 
 ```python
 runner = ExtensionRunner(manager)
@@ -292,33 +509,117 @@ results = await runner.run(
 )
 ```
 
-**Execution flow per extension:**
+### Execution Flow Per Extension
 
 ```
 1. Lookup extension by extension_id in manager
 2. Validate parameter via ext.validate_param(param)
-3. Inject previous results: context.previous_extension_results = {prior results}
+3. Inject chain context: context.previous_extension_results = {prior results}
 4. Emit extension_start SSE event
-5. Execute: await ext.execute(context, param)
-6. Record execution_time_ms in metadata
-7. Emit extension_complete SSE event
-8. Store result keyed by activation_name
+5. [LLMExtension only] Inject LLM config from context:
+   - ext._user_uuid, ext._llm_config_id, ext._provider, ext._model
+   - Reset token accumulators to 0
+6. Execute: result = await ext.execute(context, param)
+7. Record execution_time_ms in metadata
+8. [LLMExtension only] Extract accumulated tokens:
+   - result.extension_input_tokens = ext._total_input_tokens
+   - result.extension_output_tokens = ext._total_output_tokens
+   - result.extension_cost_usd = ext._total_cost_usd
+9. Emit extension_complete SSE event (includes tokens/cost if non-zero)
+10. Store result keyed by activation_name
 ```
 
 **Error handling:** Exceptions are caught per-extension and recorded as `ExtensionResult(success=False, error=str(e))`. Extensions never break the main answer.
 
-**SSE event schema:**
+### SSE Event Schema
 
 ```json
 // extension_start
-{"type": "extension_start", "payload": {"name": "json", "param": "minimal"}}
+{"type": "extension_start", "payload": {"name": "decision", "param": "binary"}}
 
-// extension_complete
-{"type": "extension_complete", "payload": {"name": "json", "success": true, "content_type": "application/json", "output_target": "chat_append"}}
+// extension_complete (deterministic extension)
+{"type": "extension_complete", "payload": {
+  "name": "extract", "success": true, "content_type": "application/json",
+  "output_target": "silent", "execution_time_ms": 12
+}}
+
+// extension_complete (LLM extension — includes token/cost data)
+{"type": "extension_complete", "payload": {
+  "name": "decision", "success": true, "content_type": "application/json",
+  "output_target": "silent", "execution_time_ms": 1155,
+  "input_tokens": 621, "output_tokens": 68, "cost_usd": 0.000089
+}}
 
 // extension_results (combined, after all extensions)
-{"type": "extension_results", "payload": {"json": {...}, "decision": {...}}}
+{"type": "extension_results", "payload": {
+  "decision": {"content": {...}, "success": true, "output_target": "silent", ...},
+  "extract": {"content": {...}, "success": true, ...}
+}}
 ```
+
+---
+
+## Cost Tracking Integration
+
+LLM extensions automatically track token usage through the full KPI pipeline.
+
+### Token Flow
+
+```
+LLMExtension.call_llm()
+    │ Extracts usage_metadata from LLM response
+    │ Accumulates _total_input_tokens, _total_output_tokens
+    │ Calculates cost via CostManager (with warning on failure)
+    ▼
+ExtensionRunner.run()
+    │ Copies accumulated tokens to ExtensionResult
+    │ Emits extension_complete SSE with token/cost data
+    ▼
+execution_service._persist_extension_results()
+    │ Aggregates costs across all extensions in the chain
+    │ Cost fallback: recalculates via CostManager if extension cost was 0
+    │ Backfills cost into ext_results and ext_events (for session persistence)
+    │ Reads prior turn tokens from workflow_history (cumulative)
+    │ Calls session_manager.update_token_count() with cumulative totals
+    │ Emits token_update SSE event with call_id: "extensions"
+    ▼
+Frontend KPI Counters
+    │ LAST STMT: extension tokens only (621 in / 68 out)
+    │ LAST TURN: cumulative main + extension (3264 in / 552 out)
+    │ SESSION TOTAL: running session total
+    │ TURN COST / SESSION COST: accumulated cost
+    ▼
+Session Persistence
+    │ append_extension_results_to_turn() patches workflow_history
+    │ extension_results + extension_events stored per-turn
+```
+
+### Cost Fallback Mechanism
+
+When `LLMExtension.call_llm()` successfully extracts tokens but cost calculation fails silently:
+
+1. **Primary:** `call_llm()` calls `CostManager.calculate_cost()` — logs warning on failure
+2. **Fallback:** `_persist_extension_results()` detects `total_ext_cost == 0` with non-zero tokens, recalculates using the session's `provider`/`model`
+3. **Backfill:** Computed cost is written back into both `ext_results` (session file) and `ext_events` (reload renderer)
+
+This ensures cost data is available even when the LLM provider's cost lookup fails during extension execution.
+
+### token_update Event (Extensions)
+
+```json
+{
+  "call_id": "extensions",
+  "cost_usd": 0.000089,
+  "statement_input": 621,
+  "statement_output": 68,
+  "total_input": 3264,
+  "total_output": 552,
+  "turn_input": 3264,
+  "turn_output": 552
+}
+```
+
+`turn_input`/`turn_output` are **cumulative** (main execution + extensions), not extension-only. This ensures the LAST TURN KPI counter shows the complete turn total.
 
 ---
 
@@ -353,16 +654,6 @@ When activating the same extension multiple times:
 | Second | `json2` | `json` |
 | Third | `json3` | `json` |
 
-The user types `#json` or `#json2` — each resolves to the same Python extension but with potentially different `default_param`.
-
-### Activation vs Extension ID
-
-```
-activation_name = "json"       → User types #json      → Runs json extension with no default param
-activation_name = "json2"      → User types #json2     → Runs json extension with default_param="full"
-activation_name = "alertcheck" → User types #alertcheck → Runs decision extension with default_param="critical"
-```
-
 Query-time `#name:param` overrides the activation's `default_param`:
 ```
 #json:minimal  → param="minimal" (overrides default)
@@ -373,7 +664,7 @@ Query-time `#name:param` overrides the activation's `default_param`:
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/v1/extensions` | GET | List all available extensions (registry) |
+| `/v1/extensions` | GET | List all available extensions (registry + auto-discovered) |
 | `/v1/extensions/activated` | GET | List user's activated extensions |
 | `/v1/extensions/<ext_id>/activate` | POST | Activate a new instance |
 | `/v1/extensions/activations/<name>/deactivate` | POST | Soft-delete activation |
@@ -382,6 +673,41 @@ Query-time `#name:param` overrides the activation's `default_param`:
 | `/v1/extensions/activations/<name>` | DELETE | Hard-delete activation |
 | `/v1/extensions/<name>/source` | GET | Get Python source code |
 | `/v1/extensions/reload` | POST | Hot-reload from disk (admin) |
+| `/v1/extensions/scaffold` | POST | Generate extension skeleton |
+
+---
+
+## Scaffolding API
+
+Generates complete, working extension skeletons for each level.
+
+**Endpoint:** `POST /v1/extensions/scaffold`
+
+```json
+{
+  "name": "myext",
+  "level": "convention",
+  "description": "Does something useful"
+}
+```
+
+| Level | What gets created | User action after |
+|-------|-------------------|-------------------|
+| `convention` | `~/.tda/extensions/myext.py` (flat file) | Edit the `transform()` function |
+| `simple` | `~/.tda/extensions/myext/myext.py` | Edit the `transform()` method |
+| `standard` | `~/.tda/extensions/myext/myext.py` + `manifest.json` | Edit `execute()` method |
+| `llm` | `~/.tda/extensions/myext/myext.py` + `manifest.json` | Edit `execute()` + LLM prompts |
+
+**Response:**
+```json
+{
+  "path": "~/.tda/extensions/myext.py",
+  "files": ["myext.py"],
+  "level": "convention"
+}
+```
+
+After scaffolding, call `POST /v1/extensions/reload` to pick up the new extension.
 
 ---
 
@@ -414,7 +740,7 @@ async def run_agent_execution(
 ### `_run_extensions()`
 
 1. **Resolve specs:** Lookup user's activated extensions, merge `default_param` with query-time param
-2. **Build context:** Create `ExtensionContext` from `final_result_payload`
+2. **Build context:** Create `ExtensionContext` from `final_result_payload`, inject `user_uuid`, `llm_config_id`
 3. **Wrap event handler:** `collecting_event_handler` forwards events to frontend AND captures lifecycle events for persistence
 4. **Execute:** `runner.run(resolved_specs, context, collecting_handler)`
 5. **Emit combined results:** Single `extension_results` SSE event
@@ -423,66 +749,22 @@ async def run_agent_execution(
 ### `_persist_extension_results()`
 
 1. **Aggregate costs:** Sum `extension_input_tokens` / `extension_output_tokens` across all results
-2. **Update session tokens:** If non-zero, call `session_manager.update_token_count()` and emit `token_update` SSE event
-3. **Persist to session:** Call `session_manager.append_extension_results_to_turn()` — patches the already-saved turn in `workflow_history`
-
-### Resulting Session Data
-
-**User message** (in `session_history`):
-```json
-{
-  "role": "user",
-  "content": "What is the CPU usage?",
-  "source": "text",
-  "profile_tag": "OPTIM",
-  "extension_specs": [
-    {"name": "json", "param": "minimal"},
-    {"name": "decision", "param": "critical"}
-  ]
-}
-```
-
-**Turn data** (in `workflow_history`):
-```json
-{
-  "turn": 1,
-  "user_query": "What is the CPU usage?",
-  "extension_results": {
-    "json": {
-      "content": {"query": "...", "answer": "..."},
-      "content_type": "application/json",
-      "success": true,
-      "output_target": "chat_append"
-    },
-    "decision": {
-      "content": {"result": "threshold_exceeded", "severity": "critical", ...},
-      "content_type": "application/json",
-      "success": true,
-      "output_target": "silent"
-    }
-  },
-  "extension_events": [
-    {"type": "extension_start", "payload": {"name": "json", "param": "minimal"}},
-    {"type": "extension_complete", "payload": {"name": "json", "success": true}},
-    {"type": "extension_start", "payload": {"name": "decision", "param": "critical"}},
-    {"type": "extension_complete", "payload": {"name": "decision", "success": true}},
-    {"type": "extension_results", "payload": {...}}
-  ]
-}
-```
+2. **Cost fallback:** If total cost is 0 but tokens exist, recalculate via CostManager using provider/model from the turn's workflow_history
+3. **Read prior turn tokens:** From `session.last_turn_data.workflow_history[-1]` (reliable across all profile types)
+4. **Update session tokens:** Emit `token_update` SSE event with cumulative `turn_input` = prior + extension tokens
+5. **Persist to session:** Call `session_manager.append_extension_results_to_turn()` — patches the already-saved turn
 
 ---
 
 ## Built-in Extensions
 
-All built-in extensions use **deterministic processing** (no LLM calls, 0 tokens) for predictable output.
-
-### #json — Structured JSON Output
+### #json — Structured JSON Output (Tier 2: Extension)
 
 | Property | Value |
 |----------|-------|
-| Category | Transform |
+| Tier | Standard (Extension) — needs full ExtensionContext |
 | Output Target | `chat_append` (visible in chat) |
+| LLM Calls | None (deterministic) |
 | Parameters | `minimal`, `full` |
 
 Wraps the LLM answer and execution metadata into a standardized JSON structure:
@@ -501,78 +783,73 @@ Wraps the LLM answer and execution metadata into a standardized JSON structure:
   "session_id": "sess_abc123",
   "turn_id": 1,
   "profile_tag": "@OPTIM",
+  "profile_type": "tool_enabled",
   "provider": "anthropic",
   "model": "claude-3-opus",
   "tokens": {"input": 3250, "output": 187, "total_input": 5430, "total_output": 512},
   "tools_used": ["base_readQuery", "TDA_FinalReport"],
-  "timestamp": "2026-02-20T15:30:45Z"
+  "timestamp": "2026-02-20T15:30:45+00:00"
 }
 ```
 
-### #decision — Workflow Branching
+### #decision — Workflow Branching (Tier 3: LLMExtension)
 
 | Property | Value |
 |----------|-------|
-| Category | Automation |
+| Tier | LLM (LLMExtension) — calls session's configured LLM |
 | Output Target | `silent` (API-only) |
-| Parameters | `binary`, `critical`, `warning` |
+| LLM Calls | 1 per execution |
+| Parameters | `binary`, or severity focus (e.g., `critical`) |
 
-Heuristic keyword analysis to produce branching output for n8n Switch nodes:
+LLM-powered semantic analysis to produce branching output for n8n/Flowise Switch nodes.
 
-**Signal keywords:**
-
-| Severity | Keywords |
-|----------|----------|
-| Critical | critical, urgent, failure, down, outage, crash, exceeded |
-| Warning | warning, elevated, approaching, degraded, slow, spike |
-| OK | normal, healthy, stable, optimal, below threshold |
-| Action | recommend, should, suggest, action required |
-
-**Example output (multi-branch):**
+**Standard mode** (`#decision` or `#decision:critical`):
 ```json
 {
   "result": "threshold_exceeded",
   "severity": "critical",
-  "confidence": 0.78,
+  "confidence": 0.92,
   "action_recommended": true,
   "branch_key": "threshold_exceeded_critical",
-  "signal_counts": {"critical": 2, "warning": 0, "ok": 0, "action": 1},
-  "reasoning": "Analyzed 1284 chars"
+  "reasoning": "CPU usage at 94% exceeds the critical threshold of 90%",
+  "query": "What is the CPU usage?"
 }
 ```
+
+| Field | Values |
+|-------|--------|
+| `result` | `threshold_exceeded`, `approaching_threshold`, `action_required`, `nominal` |
+| `severity` | `critical`, `warning`, `info`, `ok` |
+| `branch_key` | `{result}_{severity}` (e.g., `"threshold_exceeded_critical"`) |
 
 **Binary mode** (`#decision:binary`):
 ```json
 {
   "result": "yes",
   "action_recommended": true,
-  "branch_key": "yes"
+  "branch_key": "yes",
+  "reasoning": "The answer confirms shoes are relevant for fitness"
 }
 ```
 
 **n8n integration:** Branch on `branch_key` or `severity` in Switch node.
 
-### #extract — Structured Data Extraction
+### #extract — Structured Data Extraction (Tier 1: SimpleExtension)
 
 | Property | Value |
 |----------|-------|
-| Category | Transform |
+| Tier | Simple (SimpleExtension) — deterministic regex extraction |
 | Output Target | `silent` (API-only) |
+| LLM Calls | None (deterministic, 0 tokens) |
 | Parameters | `numbers`, `percentages`, `entities` |
 
-Regex-based extraction of structured data from LLM answers:
+Regex-based extraction of structured data from LLM answers using patterns from `helpers/regex.py`:
 
-| Type | Pattern | Example Match |
-|------|---------|---------------|
-| Numbers | `label: 1,234 unit` | `{"label": "Active Connections", "value": 1234, "unit": ""}` |
-| Percentages | `\d+(\.\d+)?%` | `[87.5, 92.1]` |
-| Entities | `[A-Z][A-Z0-9_]{2,}` | `["CUSTOMER_TABLE", "SYS.ADMIN"]` |
-
-**Example output (full):**
+**Example output (full — no param):**
 ```json
 {
   "numbers": [
-    {"label": "CPU", "value": 94, "unit": "%"},
+    {"label": "CPU", "value": 94.0, "unit": "%"},
     {"label": "Memory", "value": 87.5, "unit": "GB"}
   ],
   "percentages": [94.0, 87.5],
@@ -581,36 +858,131 @@ Regex-based extraction of structured data from LLM answers:
 }
 ```
 
-### #classify — Answer Classification
+With param, returns only the specified type: `#extract:numbers` → `{"numbers": [...]}`.
+
+### #classify — Answer Classification (Tier 3: LLMExtension)
 
 | Property | Value |
 |----------|-------|
-| Category | Automation |
+| Tier | LLM (LLMExtension) — calls session's configured LLM |
 | Output Target | `silent` (API-only) |
+| LLM Calls | 1 per execution |
 | Parameters | None |
 
-Keyword-scoring classification into predefined categories:
+LLM-powered semantic classification into predefined categories:
 
-| Category | Keywords |
+| Category | Use Case |
 |----------|----------|
-| alert | critical, urgent, failure, down, outage, crash, error |
-| performance | cpu, memory, disk, throughput, latency, slow, bottleneck |
-| data_quality | missing, null, duplicate, invalid, quality, corrupt |
-| capacity | storage, space, growth, forecast, full, quota |
-| security | access, permission, unauthorized, breach, audit |
-| data_report | rows, records, table, column, query, result, count |
-| informational | (fallback — no keywords matched, confidence 0.5) |
+| `alert` | Critical issues, failures, outages, errors |
+| `performance` | CPU, memory, throughput, latency metrics |
+| `data_quality` | Missing data, nulls, duplicates, validation |
+| `capacity` | Storage, growth, forecasting, quotas |
+| `security` | Access control, permissions, audit |
+| `data_report` | Query results, tables, records, summaries |
+| `informational` | General information (fallback) |
 
 **Example output:**
 ```json
 {
   "primary_category": "performance",
-  "confidence": 0.82,
-  "all_categories": {"performance": 4, "alert": 1},
+  "confidence": 0.87,
+  "all_categories": {"performance": 8, "alert": 3, "data_report": 2},
   "branch_key": "performance",
-  "query": "What is the CPU usage?"
+  "query": "What is the CPU usage?",
+  "reasoning": "The answer discusses CPU utilization metrics and performance thresholds"
 }
 ```
+
+### #summary — Executive Summary (Tier 3: LLMExtension)
+
+| Property | Value |
+|----------|-------|
+| Tier | LLM (LLMExtension) — calls session's configured LLM |
+| Output Target | `chat_append` (visible in chat) |
+| LLM Calls | 1 per execution |
+| Parameters | `brief` (default), `detailed` |
+
+LLM-powered executive summary of the LLM answer.
+
+**Brief mode** (`#summary` or `#summary:brief`):
+```json
+{
+  "summary": "System health is nominal with CPU at 45% and memory at 62%...",
+  "key_points": [
+    "CPU usage is within normal range at 45%",
+    "Memory utilization stable at 62%",
+    "No active alerts or warnings"
+  ],
+  "action_items": []
+}
+```
+
+**Detailed mode** (`#summary:detailed`):
+```json
+{
+  "summary": "Comprehensive system analysis reveals...",
+  "key_points": ["...", "...", "...", "...", "..."],
+  "sections": {
+    "System Health": "All metrics within normal thresholds.",
+    "Performance": "CPU and memory stable, no bottlenecks detected."
+  },
+  "action_items": ["Schedule capacity review for Q3"],
+  "data_highlights": ["CPU: 45%", "Memory: 62%", "Disk: 78%"]
+}
+```
+
+---
+
+## Serial Chaining
+
+Extensions execute in the order specified. Each extension sees results from all prior extensions:
+
+```
+Query: "Check health #extract #decision:critical"
+
+1. #extract executes
+   context.previous_extension_results = {}
+   → Returns: {numbers: [...], percentages: [...], entities: [...]}
+
+2. #decision executes (LLM call)
+   context.previous_extension_results = {"extract": {content: {...}, success: true}}
+   → LLM can use extracted data to inform decision
+   → Returns: {result, severity, branch_key, ...}
+```
+
+This enables composition patterns where later extensions build on earlier results.
+
+---
+
+## Extension Manifest Schema
+
+Each extension directory may contain a `manifest.json`. Validated against `extensions/schemas/extension-manifest-schema.json`.
+
+**Required fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Kebab-case identifier (`^[a-z][a-z0-9-]*$`) |
+| `version` | string | SemVer (`^\d+\.\d+\.\d+$`) |
+| `extension_id` | string | Lowercase trigger name (`^[a-z][a-z0-9_]*$`) |
+| `display_name` | string | Human-readable name |
+| `description` | string | Short description |
+| `files.extension` | string | Python file path |
+
+**Optional fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `extension_tier` | string | `"standard"` | `convention`, `simple`, `standard`, `llm` |
+| `requires_llm` | boolean | `false` | Enables UI cost warnings |
+| `category` | string | `"General"` | Transform, Automation, Analysis, Export, Visualization, Custom |
+| `output_target` | string | `"silent"` | `silent`, `chat_append`, `status_panel` |
+| `parameters.supported` | boolean | — | Whether extension accepts parameters |
+| `parameters.allowed_values` | array | — | Restrict to specific values |
+| `parameters.examples` | array | — | Suggested values (freeform accepted) |
+| `output_schema` | object | — | JSON Schema for output validation |
+| `compatibility.min_app_version` | string | — | Minimum app version |
+| `dependencies.python_packages` | array | — | Required pip packages |
 
 ---
 
@@ -649,8 +1021,6 @@ User types in input box
 
 ### Badge Management
 
-When an extension is selected from the autocomplete, a styled amber badge appears in the input area (next to the profile badge):
-
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ [📎] [@OPTIM ×] [#json ×] [#decision ×]  Ask about...     │
@@ -659,81 +1029,49 @@ When an extension is selected from the autocomplete, a styled amber badge appear
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**State:**
-- `activeExtensions[]` — array of `{name, param}` objects
-- `window.activeExtensions` — global reference for cross-module access
-- `window.clearExtensionBadges()` — clears all badges (called after submit)
-
-**Backspace behavior (empty input):**
-1. Remove last extension badge first
-2. If no extension badges remain, remove profile badge
-
 ### Inline Parameter Editing
 
-After selecting an extension from the autocomplete, typing `:` immediately opens a **parameter picker** dropdown. The system inspects the extension's manifest `parameters` field to determine behavior:
+After selecting an extension, typing `:` opens a parameter picker:
 
 | Manifest Field | Behavior |
 |---------------|----------|
-| `supported: false` | Shows "This extension does not accept parameters" hint (auto-dismisses) |
-| `allowed_values: [...]` | **Strict mode** — dropdown shows values with amber "Required" badge. Invalid params turn the badge red with shake animation. |
-| `examples: [...]` (no `allowed_values`) | **Suggested mode** — dropdown shows values with gray "Suggested" badge. Freeform input accepted. |
-| `supported: true`, no hints | No dropdown — freeform input accepted. |
-
-**Flow:**
-
-```
-1. Select #json from autocomplete       → Badge: [#json ×]
-2. Type ":"                              → Param picker opens with: :minimal :full
-3. Type "mi"                             → Filtered to: :minimal
-4. Press Tab/Enter                       → Badge: [#json:minimal ×], input cleared
-   (or press Space to commit freeform)
-```
-
-**Visual validation:**
-
-```
-[#json:minimal ×]    ← amber (valid or no restrictions)
-[#json:foobar ×]     ← red + shake animation (invalid: not in allowed_values)
-```
-
-**Keyboard:** Arrow Up/Down to navigate, Tab/Enter to select, Escape to dismiss, Space to commit freeform.
-
-### Query Submission
-
-On submit, extensions are collected from two sources and merged:
-
-```javascript
-// Source 1: Manual #tags in message text
-"What is CPU usage? #json:full"  →  [{name: "json", param: "full"}]
-
-// Source 2: Badge-based (from autocomplete selection)
-window.activeExtensions          →  [{name: "decision", param: null}]
-
-// Merged (deduplicated by name):
-extensions: [{name: "json", param: "full"}, {name: "decision", param: null}]
-```
-
-The `#tags` are stripped from the message before sending to the LLM. Extensions are sent as a separate `extensions` array in the request body.
+| `supported: false` | Shows "does not accept parameters" hint |
+| `allowed_values: [...]` | **Strict mode** — dropdown with amber "Required" badge |
+| `examples: [...]` | **Suggested mode** — dropdown with gray "Suggested" badge |
+| `supported: true`, no hints | Freeform input accepted |
 
 ### SSE Event Rendering
 
-| Event | UI Action |
-|-------|-----------|
-| `extension_start` | Live Status: "Running extension #json:minimal" |
-| `extension_complete` | Live Status: "✓ Extension #json — Completed" |
+Events are rendered in the Live Status window using the amber-accented `_renderExtensionStep()` renderer in `ui.js`:
+
+| Event | Live Rendering |
+|-------|----------------|
+| `extension_start` | "Running extension #decision:binary" with processing indicator |
+| `extension_complete` | "Extension #decision" with tokens, cost, and timing metrics |
 | `extension_results` | Per-extension based on `output_target` |
 
-**Output target rendering:**
+**Metrics display on extension_complete (LLM extensions):**
+```
+✓ #decision — 621 in / 68 out · $0.000089 · 1155ms
+```
 
-| Target | Rendering |
-|--------|-----------|
-| `chat_append` | Appended as amber-bordered block below assistant message, with `data-ext-name` attribute |
-| `status_panel` | Rendered in Live Status window |
-| `silent` | No automatic rendering — accessible via tag click |
+**Reload rendering:** Historical extension events use `_renderExtensionEventsForReload()` in `eventHandlers.js`, which shows the same token/cost/time metrics.
+
+### REST API Notification Path
+
+When queries are submitted via REST API, extension events flow through the notification channel:
+
+```
+ExtensionRunner → execution_service → rest_routes.py event_handler
+    → notification_queues → /api/notifications/subscribe SSE
+    → notifications.js _dispatchRestEvent() → UI.updateStatusWindow('extension')
+```
+
+The `_dispatchRestEvent()` function in `notifications.js` handles all three extension event types (`extension_start`, `extension_complete`, `extension_results`) and routes them to the same amber-accented renderer used by the direct SSE stream.
 
 ### Extension Tags on Chat Messages
 
-User messages display amber clickable tags for each extension:
+User messages display amber clickable tags:
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -742,73 +1080,90 @@ User messages display amber clickable tags for each extension:
 └──────────────────────────────────────────────┘
 ```
 
-**Tag persistence:** `extension_specs` is stored on the user message object in `session_history`. On session reload, tags are re-rendered from persisted data.
-
 **Click behavior:**
 
 | Extension Target | Click Action |
 |-----------------|--------------|
-| `chat_append` | Scrolls to and flash-highlights the output block in the assistant message |
-| `silent` / `status_panel` | Fetches turn details via API, shows result in inline popover below the tag |
+| `chat_append` | Scrolls to and flash-highlights the output block |
+| `silent` / `status_panel` | Shows result in inline popover below the tag |
 
-**Popover toggle:** Clicking the same tag again removes the popover.
+### Extensions Configuration Tab
 
-### Historical Turn Recall
+The Extensions tab (`extensionHandler.js`) shows:
 
-When clicking a turn avatar to reload execution details, extension events are replayed:
+**Available extensions** with tier badges:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ [#decision]  Workflow Branching  [Automation] [Tier: LLM]    │
+│ LLM-powered binary/multi-branch decision output              │
+│ ⚠ This extension makes LLM calls and consumes tokens         │
+│                                          [+ Activate]        │
+└──────────────────────────────────────────────────────────────┘
+```
 
-1. Extension lifecycle events (`extension_start`, `extension_complete`) render in Live Status
-2. Extension results display based on their `output_target`
-3. `chat_append` results re-render below the chat message
-
-### REST API Notification Path
-
-When a REST API query completes, the `rest_task_complete` notification includes `extension_specs`:
-
-```javascript
-// Backend sends:
-{type: "rest_task_complete", payload: {user_input, final_answer, profile_tag, extension_specs}}
-
-// Frontend renders with tags:
-UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag, false, extension_specs);
+**User activations** with configuration:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ [#json]  (json)                    [View Script]  [✕]       │
+│ Default param: [minimal      ] [Save]                        │
+│ Output: chat_append  •  v1.0.0  •  Tier: Standard            │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Extensions Configuration Tab
+## Session Persistence
 
-The Extensions tab in the setup panel (`extensionHandler.js`) provides:
+### User Message
 
-### Available Extensions
-
-Cards for each extension in the registry:
-
-```
-┌──────────────────────────────────────────────────────────┐
-│ [#json]  JSON Output  [Transform]  [2 activated]         │
-│ Wraps the LLM answer into a standardized JSON structure  │
-│                                          [+ Activate]    │
-└──────────────────────────────────────────────────────────┘
-```
-
-### User Activations
-
-Cards for each of the user's activated instances:
-
-```
-┌──────────────────────────────────────────────────────────┐
-│ [#json]  (json)                    [View Script]  [✕]   │
-│ Default param: [minimal      ] [Save]                    │
-│                                                          │
-│ Output: chat_append  •  v1.0.0  •  built-in             │
-└──────────────────────────────────────────────────────────┘
+```json
+{
+  "role": "user",
+  "content": "What is the CPU usage?",
+  "source": "text",
+  "profile_tag": "OPTIM",
+  "extension_specs": [
+    {"name": "json", "param": "minimal"},
+    {"name": "decision", "param": "critical"}
+  ]
+}
 ```
 
-Features:
-- **View Script** — Opens modal with Python source code
-- **Delete** — Removes activation
-- **Default param** — Editable text field with Save button
-- **Reload** — Hot-reload extensions from disk (admin button)
+### Turn Data (workflow_history)
+
+```json
+{
+  "turn": 1,
+  "user_query": "What is the CPU usage?",
+  "extension_results": {
+    "json": {
+      "content": {"query": "...", "answer": "..."},
+      "content_type": "application/json",
+      "success": true,
+      "output_target": "chat_append",
+      "extension_input_tokens": 0,
+      "extension_output_tokens": 0,
+      "extension_cost_usd": 0.0
+    },
+    "decision": {
+      "content": {"result": "threshold_exceeded", "severity": "critical", ...},
+      "content_type": "application/json",
+      "success": true,
+      "output_target": "silent",
+      "extension_input_tokens": 621,
+      "extension_output_tokens": 68,
+      "extension_cost_usd": 0.000089
+    }
+  },
+  "extension_events": [
+    {"type": "extension_start", "payload": {"name": "json", "param": "minimal"}},
+    {"type": "extension_complete", "payload": {"name": "json", "success": true, "execution_time_ms": 5}},
+    {"type": "extension_start", "payload": {"name": "decision", "param": "critical"}},
+    {"type": "extension_complete", "payload": {"name": "decision", "success": true, "input_tokens": 621, "output_tokens": 68, "cost_usd": 0.000089, "execution_time_ms": 1155}},
+    {"type": "extension_results", "payload": {...}}
+  ]
+}
+```
 
 ---
 
@@ -823,142 +1178,76 @@ All extension UI elements use a consistent **amber/yellow accent** (`#fbbf24`):
 | Autocomplete item | `.extension-item` | 4px amber left border on highlight |
 | Result popover | `.ext-result-popover` | Dark bg, amber border |
 | Flash highlight | `.ext-highlight` | `ext-flash` keyframe animation (1.5s) |
+| Live Status step | `_renderExtensionStep()` | Amber `#fbbf24` accent, compact layout |
 
 All use `font-family: 'JetBrains Mono', monospace` for extension names.
 
 ---
 
-## Serial Chaining
-
-Extensions execute in the order specified. Each extension sees results from all prior extensions:
-
-```
-Query: "Check health #json #decision:critical"
-
-1. #json executes
-   context.previous_extension_results = {}
-   → Returns: {query, answer, tokens, ...}
-
-2. #decision executes
-   context.previous_extension_results = {"json": {content: {...}, success: true}}
-   → Can use json output to make decisions
-   → Returns: {result, severity, branch_key, ...}
-```
-
-This enables composition patterns where later extensions build on earlier results.
-
----
-
-## Cost Tracking Integration
-
-Extensions can optionally report token usage for the KPI pipeline:
-
-```python
-return ExtensionResult(
-    extension_name="schema",
-    content=transformed_output,
-    extension_input_tokens=1500,     # LLM tokens consumed
-    extension_output_tokens=800,
-    extension_cost_usd=0.003
-)
-```
-
-When non-zero:
-1. `_persist_extension_results()` aggregates costs across all extensions
-2. Calls `session_manager.update_token_count()` to update session totals
-3. Emits `token_update` SSE event with `call_id: "extensions"`
-4. Updates persisted turn data with adjusted token counts
-
-Built-in extensions are all deterministic (0 tokens). Cost tracking is designed for future LLM-calling extensions (e.g., `#schema` for custom JSON schema enforcement).
-
----
-
 ## Creating Custom Extensions
 
-### 1. Create Extension Directory
+### Quickest Path (Level 0 — Convention)
 
-```
-extensions/builtin/my_extension/
-├── manifest.json
-└── my_extension.py
-```
+1. Create `~/.tda/extensions/myext.py` with `EXTENSION_NAME` + `transform()`
+2. Call `POST /v1/extensions/reload`
+3. Activate via Extensions tab in Setup
 
-### 2. Write manifest.json
-
-```json
-{
-  "name": "my-extension",
-  "version": "1.0.0",
-  "extension_id": "myext",
-  "display_name": "My Extension",
-  "description": "Does something useful",
-  "author": "Your Name",
-  "category": "Transform",
-  "files": {"extension": "my_extension.py"},
-  "output_target": "silent",
-  "parameters": {
-    "supported": true,
-    "description": "Control behavior",
-    "examples": ["mode1", "mode2"]
-  }
-}
+Or use the scaffold API:
+```bash
+curl -X POST "http://localhost:5050/api/v1/extensions/scaffold" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "myext", "level": "convention", "description": "My extension"}'
 ```
 
-### 3. Implement Extension
+### Level 1 — SimpleExtension (No Manifest)
+
+1. Create directory `~/.tda/extensions/myext/`
+2. Create `myext.py` with a `SimpleExtension` subclass
+3. Reload + activate
+
+### Level 2-3 — With Manifest
+
+1. Create directory `~/.tda/extensions/myext/`
+2. Create `manifest.json` + `myext.py`
+3. Reload + activate
+
+### Using Helpers
 
 ```python
-from trusted_data_agent.extensions.base import Extension
-from trusted_data_agent.extensions.models import ExtensionContext, ExtensionResult, OutputTarget
+from trusted_data_agent.extensions import SimpleExtension
+from trusted_data_agent.extensions.helpers import (
+    extract_json_from_text,
+    count_words,
+    extract_sentences,
+    json_result,
+)
 
-class MyExtension(Extension):
-    @property
-    def name(self) -> str:
-        return "myext"
+class MyExtension(SimpleExtension):
+    name = "myext"
 
-    @property
-    def output_target(self) -> OutputTarget:
-        return OutputTarget.SILENT
-
-    def validate_param(self, param=None):
-        if param and param not in ("mode1", "mode2"):
-            return False, f"Invalid param '{param}'"
-        return True, None
-
-    async def execute(self, context: ExtensionContext, param=None) -> ExtensionResult:
-        output = {
-            "query": context.clean_query,
-            "result": "processed",
+    def transform(self, answer_text, param=None):
+        return {
+            "words": count_words(answer_text),
+            "sentences": len(extract_sentences(answer_text)),
         }
-        return ExtensionResult(
-            extension_name="myext",
-            content=output,
-            content_type="application/json",
-            metadata={"param": param},
-        )
 ```
 
-### 4. Register in Registry
+---
 
-Add to `extensions/extension_registry.json`:
+## Design Principles
 
-```json
-{
-  "extension_id": "myext",
-  "plugin_directory": "my_extension",
-  "status": "active",
-  "display_order": 5,
-  "category": "Transform",
-  "is_builtin": true
-}
-```
-
-### 5. Reload
-
-Either restart the application or call `POST /v1/extensions/reload` (admin).
-
-### User-Provided Extensions
-
-Place in `~/.tda/extensions/` with the same directory structure. User extensions override built-in extensions with the same `extension_id`.
+1. **Non-Breaking:** Extensions never break the main answer. Errors are isolated per-extension.
+2. **Progressive Disclosure:** Four tiers from zero-friction (drop a file) to full-power (LLM calls).
+3. **Deterministic + Semantic:** Simple extensions use regex/text analysis; LLM extensions provide real semantic understanding.
+4. **Serial Chaining:** Extensions execute in order; each sees all prior results.
+5. **Per-User Activation:** Users control which extensions are available via `#` autocomplete.
+6. **Multi-Activation:** Same extension can be activated multiple times with different default params.
+7. **Flexible Output:** Extensions declare their display target (silent, chat_append, status_panel).
+8. **Persistent:** Extension specs on messages and results on turns are persisted to session files.
+9. **Cost-Aware:** LLM extensions automatically track tokens and cost through the full KPI pipeline.
+10. **Hot-Reloadable:** Extensions can be reloaded from disk without restart.
+11. **Auto-Discovery:** User extensions don't need registry entries or even manifests.
 
 ---
 
@@ -977,51 +1266,42 @@ SESSION_ID=$(curl -s -X POST http://localhost:5050/api/v1/sessions \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" -d '{}' | jq -r '.session_id')
 
-# Submit query with extensions
+# Submit query with profile override and extensions
 TASK_ID=$(curl -s -X POST "http://localhost:5050/api/v1/sessions/$SESSION_ID/query" \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "What is the system status?",
+    "prompt": "are shoes relevant for fitness?",
+    "profile_id": "profile-default-rag",
     "extensions": [
-      {"name": "json", "param": "minimal"},
-      {"name": "decision", "param": "critical"}
+      {"name": "decision", "param": "binary"}
     ]
   }' | jq -r '.task_id')
 
-# Poll for results
-sleep 10
+# Poll for results (extension_results promoted to top-level)
+sleep 15
 curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
   -H "Authorization: Bearer $JWT" | jq '.extension_results'
 ```
+
+**Note:** The REST API does NOT parse `@TAG` or `#extension` syntax from prompt text. Use explicit `profile_id` and `extensions` parameters.
 
 ### Verification Checklist
 
 | Test | Expected |
 |------|----------|
 | Submit with `#json` | Extension result in task response + chat_append block in UI |
-| Submit with `#decision` | Extension result in task response, `output_target: silent` |
-| Serial chain `#json #decision` | Decision sees json in `previous_extension_results` |
+| Submit with `#decision` | LLM-powered analysis, tokens tracked, `output_target: silent` |
+| Submit with `#summary:detailed` | Executive summary appended to chat |
+| Serial chain `#extract #decision` | Decision sees extract in `previous_extension_results` |
 | Invalid extension name | Main answer delivered, error in extension_results |
-| Session reload | Extension tags visible on user messages |
+| Session reload | Extension tags visible, click to see results with metrics |
 | Tag click (chat_append) | Scrolls to and highlights output block |
 | Tag click (silent) | Shows inline popover with result |
-| Backspace in input | Removes last extension badge, then profile badge |
-| REST notification | Extension tags rendered on live REST messages |
-
----
-
-## Design Principles
-
-1. **Non-Breaking:** Extensions never break the main answer. Errors are isolated per-extension.
-2. **Deterministic First:** Built-in extensions use regex/keyword analysis, not LLM calls. Fast and predictable.
-3. **Serial Chaining:** Extensions execute in order; each sees all prior results.
-4. **Per-User Activation:** Users control which extensions are available via `#` autocomplete.
-5. **Multi-Activation:** Same extension can be activated multiple times with different default params.
-6. **Flexible Output:** Extensions declare their display target (silent, chat_append, status_panel).
-7. **Persistent:** Extension specs on messages and results on turns are persisted to session files.
-8. **Cost-Aware:** LLM-calling extensions can report token usage for the KPI pipeline.
-9. **Hot-Reloadable:** Extensions can be reloaded from disk without restart.
+| REST API live events | extension_start/complete appear in Live Status during execution |
+| KPI counters (LLM ext) | LAST TURN shows cumulative tokens, cost reflects extensions |
+| Convention extension | Drop `.py` in `~/.tda/extensions/`, reload, appears in list |
+| Scaffold API | `POST /v1/extensions/scaffold` creates working skeleton |
 
 ---
 
@@ -1031,16 +1311,22 @@ curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
 
 | File | Purpose |
 |------|---------|
-| `src/trusted_data_agent/extensions/__init__.py` | Public API exports |
+| `src/trusted_data_agent/extensions/__init__.py` | Public API: SimpleExtension, Extension, LLMExtension |
 | `src/trusted_data_agent/extensions/models.py` | ExtensionContext, ExtensionResult, OutputTarget |
-| `src/trusted_data_agent/extensions/base.py` | Abstract Extension base class |
-| `src/trusted_data_agent/extensions/manager.py` | Singleton manager (discovery, loading, reload) |
-| `src/trusted_data_agent/extensions/runner.py` | Serial execution orchestrator |
+| `src/trusted_data_agent/extensions/base.py` | Three-tier base classes |
+| `src/trusted_data_agent/extensions/manager.py` | Singleton manager (4 discovery modes, reload) |
+| `src/trusted_data_agent/extensions/runner.py` | Serial execution, LLM injection, token extraction |
 | `src/trusted_data_agent/extensions/db.py` | Per-user activation persistence (SQLite) |
+| `src/trusted_data_agent/extensions/scaffolds.py` | Template generators for all 4 levels |
+| `src/trusted_data_agent/extensions/helpers/__init__.py` | Helper re-exports |
+| `src/trusted_data_agent/extensions/helpers/text.py` | Text analysis utilities |
+| `src/trusted_data_agent/extensions/helpers/json_utils.py` | JSON extraction from text |
+| `src/trusted_data_agent/extensions/helpers/regex.py` | Shared regex patterns |
+| `src/trusted_data_agent/extensions/helpers/result_builders.py` | ExtensionResult convenience constructors |
 | `src/trusted_data_agent/agent/execution_service.py` | `_run_extensions()`, `_persist_extension_results()` |
-| `src/trusted_data_agent/api/rest_routes.py` | Extension REST endpoints, task result integration |
+| `src/trusted_data_agent/api/rest_routes.py` | Extension REST endpoints, scaffold, task integration |
 | `src/trusted_data_agent/api/routes.py` | SSE streaming path (extension_specs passthrough) |
-| `src/trusted_data_agent/core/session_manager.py` | `append_extension_results_to_turn()`, message persistence |
+| `src/trusted_data_agent/core/session_manager.py` | `append_extension_results_to_turn()` |
 | `src/trusted_data_agent/main.py` | ExtensionManager startup initialization |
 | `schema/12_extensions.sql` | Database schema for user_extensions table |
 
@@ -1049,21 +1335,22 @@ curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
 | File | Purpose |
 |------|---------|
 | `static/js/main.js` | `#` autocomplete, badge management, keyboard handling |
-| `static/js/eventHandlers.js` | Extension parsing, SSE events, historical recall |
-| `static/js/ui.js` | Extension tags on messages, `_showExtensionResult()` click handler |
-| `static/js/notifications.js` | REST notification path (extension_specs in payload) |
-| `static/js/handlers/extensionHandler.js` | Extensions configuration tab UI |
+| `static/js/eventHandlers.js` | Extension SSE events, historical recall, reload renderer |
+| `static/js/ui.js` | `_renderExtensionStep()`, extension tags, cost display |
+| `static/js/notifications.js` | REST notification dispatch for extension events |
+| `static/js/handlers/extensionHandler.js` | Extensions config tab, tier badges, LLM warnings |
 | `static/js/handlers/sessionManagement.js` | Session reload with extension_specs |
-| `static/css/main.css` | All extension CSS (.extension-tag, .active-extension-badge, etc.) |
-| `templates/index.html` | Extensions tab, autocomplete containers, badge container |
+| `static/css/main.css` | .extension-tag, .active-extension-badge, etc. |
+| `templates/index.html` | Extensions tab, autocomplete containers |
 
 ### Extensions
 
 | File | Purpose |
 |------|---------|
-| `extensions/extension_registry.json` | Central registry |
+| `extensions/extension_registry.json` | Central registry (5 built-in extensions) |
 | `extensions/schemas/extension-manifest-schema.json` | Manifest validation schema |
-| `extensions/builtin/json/` | #json — Structured JSON output |
-| `extensions/builtin/decision/` | #decision — Workflow branching |
-| `extensions/builtin/extract/` | #extract — Data extraction |
-| `extensions/builtin/classify/` | #classify — Answer classification |
+| `extensions/builtin/json/` | #json — Structured JSON output (Tier 2) |
+| `extensions/builtin/decision/` | #decision — LLM workflow branching (Tier 3) |
+| `extensions/builtin/extract/` | #extract — Regex data extraction (Tier 1) |
+| `extensions/builtin/classify/` | #classify — LLM semantic classification (Tier 3) |
+| `extensions/builtin/summary/` | #summary — LLM executive summary (Tier 3) |
