@@ -46,6 +46,15 @@
       "category": "Analysis",
       "is_builtin": true,
       "notes": "LLM-powered executive summary with key points and action items"
+    },
+    {
+      "extension_id": "pdf",
+      "plugin_directory": "pdf",
+      "status": "active",
+      "display_order": 6,
+      "category": "Export",
+      "is_builtin": true,
+      "notes": "Exports LLM answer as downloadable PDF with Markdown-aware formatting"
     }
   ],
   "extension_status_definitions": {

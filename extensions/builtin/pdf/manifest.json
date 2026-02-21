@@ -1,0 +1,35 @@
+{
+  "name": "pdf-export",
+  "version": "1.0.0",
+  "extension_id": "pdf",
+  "display_name": "PDF Export",
+  "description": "Exports the LLM answer as a downloadable PDF document with Markdown-aware formatting.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "category": "Export",
+  "extension_tier": "simple",
+  "requires_llm": false,
+  "keywords": ["pdf", "export", "download", "document", "report"],
+  "files": {
+    "extension": "pdf_export.py"
+  },
+  "output_target": "chat_append",
+  "parameters": {
+    "supported": true,
+    "description": "Custom document title (optional)",
+    "examples": ["Monthly Report", "Query Results"],
+    "allowed_values": null
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "data": { "type": "string", "description": "Base64-encoded PDF bytes" },
+      "filename": { "type": "string", "description": "Suggested filename" },
+      "pages": { "type": "integer", "description": "Number of pages" },
+      "size_bytes": { "type": "integer", "description": "PDF file size in bytes" }
+    }
+  },
+  "metadata": {
+    "tags": ["built-in", "export", "core"]
+  }
+}

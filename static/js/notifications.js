@@ -279,7 +279,16 @@ function _dispatchRestEvent(event, taskId) {
             const outputTarget = result.output_target || 'silent';
 
             if (outputTarget === 'chat_append' && result.content) {
-                const extHtml = `
+                // Check if binary/file download (reuses helpers from eventHandlers.js via window globals)
+                const isBinary = typeof window._isExtensionBinaryContent === 'function'
+                    ? window._isExtensionBinaryContent(result)
+                    : (result.content_type === 'application/pdf' || (result.content_type || '').startsWith('application/vnd.'));
+
+                let extHtml;
+                if (isBinary && typeof window._buildExtensionDownloadCard === 'function') {
+                    extHtml = window._buildExtensionDownloadCard(extName, result);
+                } else {
+                    extHtml = `
                     <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}" style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
                         <div class="flex items-center gap-2 mb-2">
                             <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
@@ -289,10 +298,11 @@ function _dispatchRestEvent(event, taskId) {
                             typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
                         }</pre>
                     </div>
-                `;
+                    `;
+                }
                 const chatLog = document.getElementById('chat-log');
                 if (chatLog) {
-                    const lastMsg = chatLog.querySelector('.chat-message:last-child .message-content');
+                    const lastMsg = chatLog.querySelector('.message-bubble:last-child .message-content');
                     if (lastMsg) lastMsg.insertAdjacentHTML('beforeend', extHtml);
                 }
             } else if (outputTarget === 'status_panel' && result.content) {

@@ -1144,6 +1144,7 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
     }
 
     const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
     // Render markdown for assistant messages if marked.js is available
     // Skip markdown parsing for content that is already HTML (e.g., RAG responses, formatted tool outputs)
     const isAlreadyHtml = content && (

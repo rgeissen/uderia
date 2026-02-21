@@ -39,6 +39,149 @@ import {
 } from './handlers/configManagement.js';
 
 
+// --- Binary Extension Download Helpers ---
+
+/** MIME types that trigger file download instead of text rendering. */
+const _BINARY_CONTENT_TYPES = new Set([
+    'application/pdf',
+    'application/octet-stream',
+    'application/zip',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+/** SVG icons for download cards (industrial style, 28x28). */
+const _FILE_TYPE_SVGS = {
+    'application/pdf': `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="2" width="20" height="24" rx="2" stroke="#fbbf24" stroke-width="1.5" fill="rgba(251,191,36,0.08)"/>
+        <path d="M10 2V8H4" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="14" y="19" text-anchor="middle" fill="#fbbf24" font-size="7" font-weight="600" font-family="sans-serif">PDF</text>
+    </svg>`,
+    'application/zip': `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="2" width="20" height="24" rx="2" stroke="#fbbf24" stroke-width="1.5" fill="rgba(251,191,36,0.08)"/>
+        <text x="14" y="19" text-anchor="middle" fill="#fbbf24" font-size="7" font-weight="600" font-family="sans-serif">ZIP</text>
+    </svg>`,
+    'default': `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="2" width="20" height="24" rx="2" stroke="#fbbf24" stroke-width="1.5" fill="rgba(251,191,36,0.08)"/>
+        <path d="M10 2V8H4" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="9" y1="14" x2="19" y2="14" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>
+        <line x1="9" y1="17" x2="19" y2="17" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>
+        <line x1="9" y1="20" x2="15" y2="20" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>
+    </svg>`,
+};
+
+/**
+ * Check if an extension result contains binary/file content
+ * that should trigger a download rather than text rendering.
+ */
+function _isExtensionBinaryContent(result) {
+    if (!result || !result.content_type) return false;
+    if (_BINARY_CONTENT_TYPES.has(result.content_type)) return true;
+    if (result.content_type.startsWith('application/vnd.')) return true;
+    if (result.content_type.startsWith('image/')) return true;
+    return false;
+}
+
+/**
+ * Build an HTML download card for binary extension output.
+ * Stores the base64 data in a global map and renders a download button.
+ */
+function _buildExtensionDownloadCard(extName, result) {
+    const content = result.content || {};
+    const filename = content.filename || `${extName}-output`;
+    const pages = content.pages;
+    const sizeBytes = content.size_bytes || 0;
+    const icon = _FILE_TYPE_SVGS[result.content_type] || _FILE_TYPE_SVGS['default'];
+
+    // Store binary data in global map for download handler
+    const dataKey = `${extName}_${Date.now()}`;
+    window._extensionBinaryData = window._extensionBinaryData || {};
+    window._extensionBinaryData[dataKey] = {
+        data: content.data,
+        contentType: result.content_type,
+        filename: filename,
+    };
+
+    // Format file size
+    let sizeLabel = '';
+    if (sizeBytes > 0) {
+        sizeLabel = sizeBytes < 1024
+            ? `${sizeBytes} B`
+            : sizeBytes < 1048576
+                ? `${(sizeBytes / 1024).toFixed(1)} KB`
+                : `${(sizeBytes / 1048576).toFixed(1)} MB`;
+    }
+
+    // Build meta line
+    const metaParts = [];
+    if (pages) metaParts.push(`${pages} page${pages > 1 ? 's' : ''}`);
+    if (sizeLabel) metaParts.push(sizeLabel);
+    const metaLine = metaParts.length > 0
+        ? `<span class="text-xs text-gray-500">${metaParts.join(' \u00B7 ')}</span>`
+        : '';
+
+    return `
+        <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}"
+             style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
+                      style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
+                    #${extName}
+                </span>
+                <span class="text-xs text-gray-500">${result.content_type}</span>
+            </div>
+            <div class="flex items-center gap-3 mt-1">
+                <div class="shrink-0 flex items-center justify-center" style="width:28px;height:28px;">${icon}</div>
+                <div class="flex flex-col gap-0.5 flex-1 min-w-0">
+                    <span class="text-sm text-gray-200 truncate">${filename}</span>
+                    ${metaLine}
+                </div>
+                <button onclick="window._downloadExtensionFile('${dataKey}')"
+                        class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0"
+                        style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3);"
+                        onmouseover="this.style.background='rgba(251, 191, 36, 0.25)'"
+                        onmouseout="this.style.background='rgba(251, 191, 36, 0.15)'">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px;"><path d="M7 2v8m0 0l-3-3m3 3l3-3M3 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Download
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Expose helpers on window for cross-module access (notifications.js)
+window._isExtensionBinaryContent = _isExtensionBinaryContent;
+window._buildExtensionDownloadCard = _buildExtensionDownloadCard;
+
+/**
+ * Global download handler — triggered by download buttons in extension cards.
+ * Decodes base64 data and triggers a browser file download.
+ */
+window._downloadExtensionFile = function(dataKey) {
+    const store = window._extensionBinaryData || {};
+    const entry = store[dataKey];
+    if (!entry || !entry.data) {
+        console.warn('[Extension] No binary data found for key:', dataKey);
+        return;
+    }
+    try {
+        const raw = atob(entry.data);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        const blob = new Blob([bytes], { type: entry.contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = entry.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error('[Extension] Download failed:', err);
+    }
+};
+
 // --- Stream Processing ---
 
 /**
@@ -1070,7 +1213,14 @@ async function processStream(responseBody, originSessionId) {
                             const outputTarget = result.output_target || 'silent';
 
                             if (outputTarget === 'chat_append' && result.content) {
-                                const extHtml = `
+                                // Check if this is a binary/file download (e.g. PDF)
+                                const isBinaryContent = _isExtensionBinaryContent(result);
+
+                                let extHtml;
+                                if (isBinaryContent) {
+                                    extHtml = _buildExtensionDownloadCard(extName, result);
+                                } else {
+                                    extHtml = `
                                     <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}" style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
                                         <div class="flex items-center gap-2 mb-2">
                                             <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
@@ -1080,11 +1230,12 @@ async function processStream(responseBody, originSessionId) {
                                             typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
                                         }</pre>
                                     </div>
-                                `;
+                                    `;
+                                }
                                 // Append to the last chat message
                                 const chatLog = document.getElementById('chat-log');
                                 if (chatLog) {
-                                    const lastMsg = chatLog.querySelector('.chat-message:last-child .message-content');
+                                    const lastMsg = chatLog.querySelector('.message-bubble:last-child .message-content');
                                     if (lastMsg) {
                                         lastMsg.insertAdjacentHTML('beforeend', extHtml);
                                     }
