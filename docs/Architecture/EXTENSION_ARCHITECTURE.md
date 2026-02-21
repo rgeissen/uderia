@@ -157,6 +157,33 @@ static/js/
 
 ## Four-Tier Extension Hierarchy
 
+### Input/Output Contract
+
+Every extension transforms the LLM's answer into structured output. The tiers differ in what input you receive and how much the framework handles for you:
+
+| | Level 0 (Convention) | Level 1 (Simple) | Level 2 (Standard) | Level 3 (LLM) |
+|---|---|---|---|---|
+| **You write** | A `transform()` function | A class with `transform()` | A class with async `execute()` | A class with async `execute()` + `call_llm()` |
+| **Input you receive** | `answer_text: str`, `param: str \| None` | `answer_text: str`, `param: str \| None` | `context: ExtensionContext` (full), `param: str \| None` | `context: ExtensionContext` (full), `param: str \| None` |
+| **What you return** | `dict` or `str` | `dict` or `str` | `ExtensionResult` | `ExtensionResult` |
+| **Framework handles** | Class creation, manifest, result wrapping, error handling | Result wrapping, param validation, error handling | Error handling, SSE events | LLM config injection, token tracking, cost calculation, error handling |
+| **Extra capabilities** | — | `allowed_params` set | Full context: tokens, tools, execution trace, session data | `self.call_llm()` with auto cost tracking |
+| **Needs manifest?** | No | No | Yes | Yes |
+| **Needs registry?** | No | No | No (auto-discovered) | No (auto-discovered) |
+| **Can call LLM?** | No | No | No | Yes (automatic) |
+
+**`answer_text`** is the LLM's plain-text response to the user's query, with any `#extension` tags already stripped. This is the primary input for all tiers — it's the text your extension transforms.
+
+**`param`** is the optional parameter from `#name:param` syntax (e.g., `#decision:binary` → `param="binary"`). It's `None` when the user types just `#name`.
+
+**`ExtensionContext`** (Tiers 2-3 only) wraps `answer_text` with rich metadata: session/turn IDs, profile info, provider/model, token counts, execution trace, tools used, and results from prior extensions in the chain. See [Core Data Models](#core-data-models) for the full field list.
+
+**Return values:**
+- **Tiers 0-1:** Return a `dict` (auto-serialized as JSON) or `str` (plain text). The framework wraps it into an `ExtensionResult` for you.
+- **Tiers 2-3:** Return an `ExtensionResult` directly, giving you control over `content_type`, `output_target`, `metadata`, and error reporting.
+
+---
+
 ### Level 0: Convention-Based (Zero Friction)
 
 Drop a `.py` file in `~/.tda/extensions/`. No imports, no classes, no manifest, no registry.
@@ -672,14 +699,16 @@ Query-time `#name:param` overrides the activation's `default_param`:
 | `/v1/extensions/activations/<name>/rename` | PUT | Rename activation |
 | `/v1/extensions/activations/<name>` | DELETE | Hard-delete activation |
 | `/v1/extensions/<name>/source` | GET | Get Python source code |
+| `/v1/extensions/<name>/source` | PUT | Save edited source code (user extensions only) |
 | `/v1/extensions/reload` | POST | Hot-reload from disk (admin) |
-| `/v1/extensions/scaffold` | POST | Generate extension skeleton |
+| `/v1/extensions/scaffold` | POST | Generate extension skeleton and write to disk |
+| `/v1/extensions/scaffold/preview` | POST | Preview scaffold output without writing |
 
 ---
 
-## Scaffolding API
+## Scaffolding & Editor API
 
-Generates complete, working extension skeletons for each level.
+### Scaffold — Create Extension Skeleton
 
 **Endpoint:** `POST /v1/extensions/scaffold`
 
@@ -701,13 +730,109 @@ Generates complete, working extension skeletons for each level.
 **Response:**
 ```json
 {
+  "status": "success",
   "path": "~/.tda/extensions/myext.py",
   "files": ["myext.py"],
+  "level": "convention",
+  "loaded": true
+}
+```
+
+Auto-reloads extension manager after writing — no separate reload call needed.
+
+### Preview — Generate Without Writing
+
+**Endpoint:** `POST /v1/extensions/scaffold/preview`
+
+Same request body as scaffold. Returns generated file contents **without writing to disk**. Useful for previewing code before committing.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "path": "~/.tda/extensions/myext.py",
+  "files": { "myext.py": "# Generated source code..." },
   "level": "convention"
 }
 ```
 
-After scaffolding, call `POST /v1/extensions/reload` to pick up the new extension.
+### Save Source — Edit Extension Code
+
+**Endpoint:** `PUT /v1/extensions/<name>/source`
+
+Saves edited Python source code for a user extension. Security-restricted to extensions under `~/.tda/extensions/` — built-in extensions cannot be modified.
+
+```json
+{
+  "source": "# Updated extension code...\ndef transform(answer_text, param=None):\n    ..."
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "name": "myext",
+  "loaded": true
+}
+```
+
+Auto-reloads extension manager after saving. `loaded: false` indicates a syntax or import error in the saved code.
+
+---
+
+## Extension Editor UI
+
+The frontend provides a two-phase guided editor for creating and editing extensions.
+
+### Phase 1: Configure (Create Extension Modal)
+
+- **Name input**: Live regex validation (`[a-z][a-z0-9_]*`), uniqueness check, character counter
+- **Tier selector**: 4-button grid (Convention / Simple / Standard / LLM) with tier-specific accent colors
+- **Tier info panel**: Dynamically updates when tier selection changes, showing:
+  - Three-column contract summary: **You Receive** | **You Return** | **Framework Handles**
+  - File structure preview with actual extension name
+  - Manifest required / LLM access indicators
+- **"Create & Open Editor"** button: Scaffolds files, then opens the code editor
+
+### Phase 2: Code Editor (Near-Fullscreen)
+
+Near-fullscreen overlay with three areas:
+
+**Left sidebar (220px)** — Requirements Checklist:
+- Progress bar with completion percentage
+- Tier-specific requirements validated in real-time (300ms debounce) via regex patterns against code
+- Contract summary: input types, output types, LLM availability, manifest status
+
+**Main area** — Code Editor:
+- `<textarea>` with Prism.js syntax highlighting (Python + JSON grammars)
+- Line numbers gutter with scroll sync
+- Tab key inserts 4 spaces
+- Ctrl/Cmd+S keyboard shortcut to save
+
+**Header + Footer**:
+- Extension name badge, tier badge, file path, read-only/new indicators
+- Save button (enabled only when changes detected)
+- "Unsaved changes" indicator, line count, requirements summary
+
+### Editing Existing Extensions
+
+Clicking "Script" on any activation card opens the same editor:
+- **User extensions** (`~/.tda/extensions/`): Opens read-write with Save enabled
+- **Built-in extensions** (`extensions/builtin/`): Opens read-only
+
+### Tier-Specific Requirements (Validated in Editor)
+
+| Tier | Requirements |
+|------|-------------|
+| Convention | `EXTENSION_NAME` defined, `transform()` function |
+| Simple | Extension class extending `SimpleExtension`, `name` attribute, `transform()` method |
+| Standard | Extension class extending `Extension`, `name` property/attribute, `async execute()`, returns `ExtensionResult` |
+| LLM | Extension class extending `LLMExtension`, `name` attribute, `async execute()`, uses `self.call_llm()`, returns `ExtensionResult` |
+
+Requirements are informational (green/gray checklist) — they do not block saving. The scaffold generates valid boilerplate that meets all requirements by default.
+
+**Implementation:** `static/js/handlers/extensionHandler.js` — `TIER_INFO`, `showScaffoldModal()`, `showExtensionEditor()`
 
 ---
 

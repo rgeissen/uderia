@@ -10330,6 +10330,118 @@ async def scaffold_extension():
         return jsonify({"error": f"Failed to create extension: {str(e)}"}), 500
 
 
+@rest_api_bp.route("/v1/extensions/scaffold/preview", methods=["POST"])
+async def preview_scaffold():
+    """
+    Preview scaffold output without writing to disk.
+
+    Body:
+        name:        Extension name (lowercase, underscores allowed)
+        level:       "convention" | "simple" | "standard" | "llm"
+        description: One-line description (optional)
+
+    Returns:
+        files: {filename: content} dict of generated files
+        path:  Where the files would be created
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        data = await request.get_json()
+        ext_name = data.get("name", "").strip().lower().replace(" ", "_")
+        level = data.get("level", "convention")
+        description = data.get("description", "")
+
+        if not ext_name or not ext_name.isidentifier():
+            return jsonify({"error": "Extension name must be a valid Python identifier"}), 400
+
+        valid_levels = {"convention", "simple", "standard", "llm"}
+        if level not in valid_levels:
+            return jsonify({"error": f"Invalid level '{level}'. Valid: {', '.join(sorted(valid_levels))}"}), 400
+
+        from trusted_data_agent.extensions.scaffolds import generate_scaffold
+        result = generate_scaffold(
+            name=ext_name,
+            level=level,
+            description=description,
+        )
+
+        return jsonify({
+            "status": "success",
+            "path": result["path"],
+            "files": result["files"],
+            "level": level,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to preview scaffold: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to preview scaffold: {str(e)}"}), 500
+
+
+@rest_api_bp.route("/v1/extensions/<name>/source", methods=["PUT"])
+async def save_extension_source(name: str):
+    """
+    Save edited source code for a user extension.
+
+    Only works for user extensions (under ~/.tda/extensions/), not built-ins.
+
+    Body:
+        source: The new Python source code
+
+    Returns:
+        status, name, loaded (whether extension loaded after save)
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        from pathlib import Path
+
+        manager = get_extension_manager()
+        manifest = manager.get_manifest(name)
+
+        if not manifest:
+            return jsonify({"error": f"Extension '{name}' not found."}), 404
+
+        source_path = manifest.get("_source_path")
+        if not source_path:
+            return jsonify({"error": f"No source file path for extension '{name}'."}), 404
+
+        source_path = Path(source_path)
+
+        # Security: Only allow editing user extensions (under ~/.tda/)
+        user_ext_dir = Path.home() / ".tda" / "extensions"
+        try:
+            source_path.resolve().relative_to(user_ext_dir.resolve())
+        except ValueError:
+            return jsonify({"error": "Cannot edit built-in extensions. Only user extensions in ~/.tda/extensions/ are editable."}), 403
+
+        data = await request.get_json()
+        new_source = data.get("source", "")
+        if not new_source.strip():
+            return jsonify({"error": "Source code cannot be empty."}), 400
+
+        # Write the source file
+        source_path.write_text(new_source, encoding="utf-8")
+
+        # Reload extensions
+        manager.reload()
+
+        return jsonify({
+            "status": "success",
+            "name": name,
+            "loaded": name in manager.extensions,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to save extension source for '{name}': {e}", exc_info=True)
+        return jsonify({"error": f"Failed to save extension source: {str(e)}"}), 500
+
+
 @rest_api_bp.route("/v1/extensions/<name>/source", methods=["GET"])
 async def get_extension_source(name: str):
     """

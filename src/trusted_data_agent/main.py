@@ -205,9 +205,9 @@ def create_app():
         csp_policy = [
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net", # Allow inline scripts for auth pages + marked.js
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", # Allow inline styles for G2Plot tooltips etc.
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net", # Allow inline styles for G2Plot tooltips etc. + Prism.js
             "font-src 'self' https://fonts.gstatic.com",
-            "connect-src 'self' *.googleapis.com https://*.withgoogle.com https://unpkg.com https://api.github.com", # Added unpkg and GitHub API
+            "connect-src 'self' *.googleapis.com https://*.withgoogle.com https://unpkg.com https://api.github.com https://cdn.jsdelivr.net", # Added unpkg, GitHub API, and jsdelivr (Prism.js sourcemaps)
             "worker-src 'self' blob:",
             "img-src 'self' data:",
             "media-src 'self' blob:" # Allow media from blobs for TTS audio

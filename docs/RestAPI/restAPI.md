@@ -7030,7 +7030,184 @@ Frontend can use this endpoint to:
 
 ---
 
-### 3.20. Admin Endpoints
+### 3.20. Extension Management
+
+Manage post-processing extensions — list, activate, deactivate, scaffold, and edit.
+
+#### List All Extensions
+
+```bash
+curl -X GET http://localhost:5050/api/v1/extensions \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "extensions": [
+    {
+      "extension_id": "json",
+      "display_name": "JSON Formatter",
+      "description": "Formats LLM answers as structured JSON",
+      "extension_tier": "standard",
+      "requires_llm": false,
+      "output_target": "chat_append",
+      "version": "1.0.0",
+      "category": "Formatting",
+      "is_builtin": true
+    }
+  ]
+}
+```
+
+#### List Activated Extensions
+
+```bash
+curl -X GET http://localhost:5050/api/v1/extensions/activated \
+  -H "Authorization: Bearer $JWT"
+```
+
+#### Activate Extension
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/json/activate \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"default_param": "minimal"}'
+```
+
+#### Deactivate Extension
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/activations/json/deactivate \
+  -H "Authorization: Bearer $JWT"
+```
+
+#### Delete Activation
+
+```bash
+curl -X DELETE http://localhost:5050/api/v1/extensions/activations/json2 \
+  -H "Authorization: Bearer $JWT"
+```
+
+#### Update Activation Config
+
+```bash
+curl -X PUT http://localhost:5050/api/v1/extensions/activations/json/config \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"default_param": "full"}'
+```
+
+#### Rename Activation
+
+```bash
+curl -X PUT http://localhost:5050/api/v1/extensions/activations/json2/rename \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"new_name": "json_full"}'
+```
+
+#### Get Extension Source Code
+
+```bash
+curl -X GET http://localhost:5050/api/v1/extensions/json/source \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "name": "json",
+  "source": "# Python source code...",
+  "manifest": { "extension_tier": "standard", ... }
+}
+```
+
+#### Save Extension Source Code
+
+Saves edited source code for user extensions (under `~/.tda/extensions/`). Built-in extensions return `403`.
+
+```bash
+curl -X PUT http://localhost:5050/api/v1/extensions/my_ext/source \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "EXTENSION_NAME = \"my_ext\"\n\ndef transform(answer_text, param=None):\n    return {\"length\": len(answer_text)}\n"}'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "name": "my_ext",
+  "loaded": true
+}
+```
+
+#### Scaffold Extension (Create from Template)
+
+Creates a new extension skeleton and writes it to `~/.tda/extensions/`.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/scaffold \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my_ext", "level": "convention", "description": "Custom extension"}'
+```
+
+| Level | Files Created |
+|-------|--------------|
+| `convention` | `~/.tda/extensions/my_ext.py` |
+| `simple` | `~/.tda/extensions/my_ext/my_ext.py` |
+| `standard` | `~/.tda/extensions/my_ext/my_ext.py` + `manifest.json` |
+| `llm` | `~/.tda/extensions/my_ext/my_ext.py` + `manifest.json` |
+
+**Response:**
+```json
+{
+  "status": "success",
+  "path": "/Users/you/.tda/extensions/my_ext.py",
+  "files": ["my_ext.py"],
+  "level": "convention",
+  "loaded": true
+}
+```
+
+#### Preview Scaffold (Without Writing)
+
+Returns generated file contents without writing to disk.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/scaffold/preview \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my_ext", "level": "simple", "description": "Preview test"}'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "path": "/Users/you/.tda/extensions/my_ext",
+  "files": {
+    "my_ext.py": "\"\"\"\\n#my_ext extension — Preview test\\n..."
+  },
+  "level": "simple"
+}
+```
+
+#### Reload Extensions
+
+Hot-reload all extensions from disk.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/reload \
+  -H "Authorization: Bearer $JWT"
+```
+
+---
+
+### 3.21. Admin Endpoints
 
 Admin-only endpoints for system management and maintenance operations.
 
