@@ -2582,6 +2582,10 @@ async def save_skill_settings_endpoint():
         if 'disabled_skills' in data and not isinstance(data['disabled_skills'], list):
             return jsonify({'status': 'error', 'message': 'disabled_skills must be a list'}), 400
 
+        # Validate marketplace setting
+        if 'user_skills_marketplace_enabled' in data and not isinstance(data['user_skills_marketplace_enabled'], bool):
+            return jsonify({'status': 'error', 'message': 'user_skills_marketplace_enabled must be boolean'}), 400
+
         admin_user = get_current_user_from_request()
         admin_uuid = admin_user.id if admin_user else 'unknown'
 

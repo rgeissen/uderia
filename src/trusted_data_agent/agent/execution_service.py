@@ -119,6 +119,82 @@ async def _run_extensions(
             llm_config_id=llm_config_id,
         )
 
+        # Build GenieContext for genie coordinator profiles
+        if final_payload.get("genie_coordination"):
+            from trusted_data_agent.extensions.models import GenieContext, GenieChildResult
+
+            genie_events = final_payload.get("genie_events", [])
+
+            # Extract available_profiles from genie_coordination_start event
+            available_profiles = []
+            for evt in genie_events:
+                if evt.get("type") == "genie_coordination_start":
+                    available_profiles = evt.get("payload", {}).get("slave_profiles", [])
+                    break
+
+            # Extract child queries from genie_slave_invoked and results from genie_slave_completed
+            child_queries = {}   # tag → {query, profile_id}
+            child_results = {}   # tag → GenieChildResult
+            for evt in genie_events:
+                payload = evt.get("payload", {})
+                evt_type = evt.get("type")
+
+                if evt_type == "genie_slave_invoked":
+                    child_queries[payload.get("profile_tag")] = {
+                        "query": payload.get("query", ""),
+                        "profile_id": payload.get("profile_id", ""),
+                    }
+                elif evt_type == "genie_slave_completed":
+                    tag = payload.get("profile_tag", "")
+                    invoked = child_queries.get(tag, {})
+                    # Resolve profile_type from available_profiles
+                    child_profile_type = "unknown"
+                    for ap in available_profiles:
+                        if ap.get("tag") == tag:
+                            child_profile_type = ap.get("profile_type", "unknown")
+                            break
+                    child_results[tag] = GenieChildResult(
+                        profile_tag=tag,
+                        profile_id=invoked.get("profile_id", ""),
+                        profile_type=child_profile_type,
+                        session_id=payload.get("slave_session_id", ""),
+                        query=invoked.get("query", ""),
+                        response=payload.get("result", ""),
+                        duration_ms=payload.get("duration_ms", 0),
+                        success=payload.get("success", False),
+                        error=payload.get("error"),
+                    )
+
+            # Extract coordination metrics
+            coordination_duration_ms = 0
+            coordinator_llm_steps = 0
+            profiles_invoked = []
+            for evt in genie_events:
+                payload = evt.get("payload", {})
+                if evt.get("type") == "genie_coordination_complete":
+                    coordination_duration_ms = payload.get("total_duration_ms", 0)
+                    profiles_invoked = payload.get("profiles_used", [])
+                elif evt.get("type") == "genie_llm_step":
+                    coordinator_llm_steps += 1
+
+            context.genie = GenieContext(
+                coordinator_response=final_payload.get("final_answer_text") or "",
+                coordinator_profile_tag=final_payload.get("profile_tag", "GENIE"),
+                available_profiles=available_profiles,
+                profiles_invoked=profiles_invoked,
+                child_results=child_results,
+                slave_sessions=final_payload.get("slave_sessions_used", {}),
+                coordination_events=genie_events,
+                coordination_duration_ms=coordination_duration_ms,
+                coordinator_llm_steps=coordinator_llm_steps,
+            )
+
+            app_logger.info(
+                f"Built GenieContext: {len(child_results)} child results, "
+                f"{len(profiles_invoked)} profiles invoked, "
+                f"{coordinator_llm_steps} LLM steps"
+            )
+
         # Wrap event_handler to collect extension lifecycle events for persistence
         collected_events = []
 
@@ -776,6 +852,10 @@ async def _run_genie_execution(
         input_tokens = result.get('input_tokens', 0) or 0
         output_tokens = result.get('output_tokens', 0) or 0
 
+        # Initialize session totals (updated inside the if-block, used in final_payload)
+        session_input_tokens = 0
+        session_output_tokens = 0
+
         # Update session token counts and emit token_update event IMMEDIATELY
         # This ensures the status window shows correct tokens during live execution
         if input_tokens > 0 or output_tokens > 0:
@@ -946,16 +1026,27 @@ async def _run_genie_execution(
         except Exception as log_error:
             app_logger.error(f"Failed to log Genie session data: {log_error}")
 
-        # Send final answer event with proper fields for frontend
+        # Send final answer event with proper fields for frontend and extensions
         final_payload = {
             "final_answer": coordinator_response,  # Required by eventHandlers.js
+            "final_answer_text": coordinator_response,  # Plain text for extensions (ExtensionContext.answer_text)
             "html_response": coordinator_response,
             "raw_response": coordinator_response,
             "turn_id": turn_number,  # Required for turn numbering in UI
             "session_id": session_id,  # Include session_id for filtering when switching sessions
             "profile_tag": profile_tag,
+            "profile_type": "genie",
+            "provider": provider,
+            "model": model,
+            "turn_input_tokens": input_tokens,
+            "turn_output_tokens": output_tokens,
+            "total_input_tokens": session_input_tokens,
+            "total_output_tokens": session_output_tokens,
+            "execution_trace": result.get('genie_events', []),
+            "tools_used": result.get('tools_used', []),
             "genie_coordination": True,
-            "slave_sessions_used": result.get('slave_sessions', {})
+            "slave_sessions_used": result.get('slave_sessions', {}),
+            "genie_events": result.get('genie_events', []),  # Full event list for GenieContext
         }
         await event_handler(final_payload, "final_answer")
 

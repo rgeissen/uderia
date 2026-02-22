@@ -16,8 +16,16 @@ Endpoints:
 - GET  /v1/skills/<skill_id>/content             — Get skill content (for editor)
 - PUT  /v1/skills/<skill_id>                     — Update/create skill (save)
 - DELETE /v1/skills/<skill_id>                   — Delete user-created skill
-- POST /v1/skills/<skill_id>/export              — Export skill as .zip
-- POST /v1/skills/import                         — Import skill from .zip
+- POST /v1/skills/<skill_id>/export              — Export skill as .skill (Claude Code compatible)
+- POST /v1/skills/import                         — Import skill from .skill/.zip
+
+Marketplace:
+- POST /v1/skills/<skill_id>/publish             — Publish skill to marketplace
+- GET  /v1/marketplace/skills                     — Browse marketplace
+- GET  /v1/marketplace/skills/<id>                — Skill detail + ratings
+- POST /v1/marketplace/skills/<id>/install        — Install from marketplace
+- POST /v1/marketplace/skills/<id>/rate           — Rate/review
+- DELETE /v1/marketplace/skills/<id>              — Unpublish
 """
 
 import json
@@ -81,6 +89,7 @@ async def list_skills():
             "skills": skills,
             "_settings": {
                 "user_skills_enabled": settings.get("user_skills_enabled", True),
+                "user_skills_marketplace_enabled": settings.get("user_skills_marketplace_enabled", True),
             }
         }), 200
 
@@ -512,7 +521,7 @@ async def export_skill_endpoint(skill_id: str):
 
         # Create ZIP in temp directory
         tmp_dir = tempfile.mkdtemp()
-        zip_filename = f"{skill_id}.zip"
+        zip_filename = f"{skill_id}.skill"
         zip_path = Path(tmp_dir) / zip_filename
 
         with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
@@ -636,3 +645,542 @@ async def import_skill_endpoint():
                 tmp_path.unlink()
             except Exception:
                 pass
+
+
+# ============================================================================
+# SKILL MARKETPLACE ENDPOINTS
+# ============================================================================
+
+@skills_api_bp.route("/v1/skills/<skill_id>/publish", methods=["POST"])
+async def publish_skill(skill_id: str):
+    """
+    Publish a user-created skill to the marketplace.
+
+    Body (JSON, optional):
+    {
+        "visibility": "public" | "targeted",
+        "user_ids": ["uuid1", "uuid2"]  (required if targeted)
+    }
+    """
+    import hashlib
+    import sqlite3
+    import uuid as _uuid
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.skills.settings import is_skill_marketplace_enabled
+        if not is_skill_marketplace_enabled():
+            return jsonify({"error": "Skill marketplace has been disabled by the administrator."}), 403
+
+        from trusted_data_agent.skills.manager import get_skill_manager
+        manager = get_skill_manager()
+        manifest = manager.get_skill_manifest(skill_id)
+        if not manifest:
+            return jsonify({"error": f"Skill '{skill_id}' not found."}), 404
+
+        # Only user-created skills can be published
+        if not manifest.get("_is_user"):
+            return jsonify({"error": "Only user-created skills can be published."}), 400
+
+        data = (await request.get_json()) or {}
+        visibility = data.get("visibility", "public")
+        user_ids = data.get("user_ids", [])
+
+        if visibility not in ("public", "targeted"):
+            return jsonify({"error": "Visibility must be 'public' or 'targeted'"}), 400
+        if visibility == "targeted" and not user_ids:
+            return jsonify({"error": "Targeted publish requires at least one user"}), 400
+
+        # Get content for hashing
+        content = manager.get_skill_full_content(skill_id) or ""
+        content_hash = hashlib.sha256(content.encode()).hexdigest()
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Check if already published by this user
+        cursor.execute(
+            "SELECT id FROM marketplace_skills WHERE skill_id = ? AND publisher_user_id = ?",
+            (skill_id, user_uuid),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"error": "This skill is already published", "marketplace_id": existing["id"]}), 409
+
+        marketplace_id = str(_uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Store manifest JSON for preview (strip internal keys)
+        clean_manifest = {k: v for k, v in manifest.items() if not k.startswith("_")}
+
+        # Extract skill-specific metadata
+        uderia_section = manifest.get("uderia", {})
+        injection_target = uderia_section.get("injection_target", "system_prompt")
+        allowed_params = uderia_section.get("allowed_params", [])
+        tags = manifest.get("tags", [])
+
+        cursor.execute(
+            """INSERT INTO marketplace_skills
+               (id, skill_id, name, description, version, author,
+                injection_target, has_params, tags_json,
+                publisher_user_id, visibility, manifest_json, content_hash,
+                download_count, install_count, published_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)""",
+            (
+                marketplace_id, skill_id,
+                manifest.get("name", skill_id),
+                manifest.get("description", ""),
+                manifest.get("version", "1.0.0"),
+                manifest.get("author", "Unknown"),
+                injection_target,
+                1 if allowed_params else 0,
+                json.dumps(tags),
+                user_uuid, visibility,
+                json.dumps(clean_manifest), content_hash,
+                now, now,
+            ),
+        )
+
+        # Store files in marketplace_data directory (Claude Code compatible format)
+        marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "skills" / marketplace_id
+        marketplace_data.mkdir(parents=True, exist_ok=True)
+        main_file = manifest.get("main_file", f"{skill_id}.md")
+        (marketplace_data / "skill.json").write_text(json.dumps(clean_manifest, indent=2), encoding="utf-8")
+        (marketplace_data / main_file).write_text(content, encoding="utf-8")
+
+        # Targeted sharing grants
+        if visibility == "targeted" and user_ids:
+            for uid in user_ids:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO marketplace_sharing_grants "
+                    "(id, resource_type, resource_id, grantor_user_id, grantee_user_id, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (str(_uuid.uuid4()), "skill", marketplace_id, user_uuid, uid, now),
+                )
+
+        conn.commit()
+        conn.close()
+
+        app_logger.info(f"Skill '{skill_id}' published to marketplace (id={marketplace_id}, visibility={visibility})")
+        return jsonify({
+            "status": "success",
+            "marketplace_id": marketplace_id,
+            "message": "Skill published to marketplace",
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Skill publish failed: {e}", exc_info=True)
+        return jsonify({"error": f"Publish failed: {e}"}), 500
+
+
+@skills_api_bp.route("/v1/marketplace/skills", methods=["GET"])
+async def browse_marketplace_skills():
+    """
+    Browse published skills with pagination, search, and sorting.
+
+    Query params: page, per_page, search, sort_by, injection_target
+    """
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 12)), 50)
+        search = request.args.get("search", "").strip()
+        sort_by = request.args.get("sort_by", "recent")
+        injection_target = request.args.get("injection_target", "all")
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+
+        # Visibility filter: public + targeted for current user
+        where_clauses = [
+            "(s.visibility = 'public' OR (s.visibility = 'targeted' AND s.id IN "
+            "(SELECT resource_id FROM marketplace_sharing_grants WHERE resource_type = 'skill' AND grantee_user_id = ?)))"
+        ]
+        params = [user_uuid]
+
+        if injection_target != "all":
+            where_clauses.append("s.injection_target = ?")
+            params.append(injection_target)
+
+        if search:
+            where_clauses.append("(s.name LIKE ? OR s.description LIKE ? OR s.skill_id LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like, like])
+
+        where_sql = " AND ".join(where_clauses)
+
+        sort_map = {
+            "downloads": "s.download_count DESC",
+            "installs": "s.install_count DESC",
+            "rating": "avg_rating DESC",
+            "recent": "s.published_at DESC",
+            "name": "s.name ASC",
+        }
+        order_sql = sort_map.get(sort_by, "s.published_at DESC")
+
+        cursor = conn.cursor()
+
+        # Total count
+        cursor.execute(f"SELECT COUNT(*) FROM marketplace_skills s WHERE {where_sql}", params)
+        total = cursor.fetchone()[0]
+        total_pages = max(1, (total + per_page - 1) // per_page)
+
+        # Fetch page with ratings JOIN
+        offset = (page - 1) * per_page
+        query = f"""
+            SELECT s.*,
+                   u.username AS publisher_username,
+                   u.display_name AS publisher_display_name,
+                   COALESCE(r.avg_rating, 0) AS avg_rating,
+                   COALESCE(r.rating_count, 0) AS rating_count
+            FROM marketplace_skills s
+            LEFT JOIN users u ON s.publisher_user_id = u.id
+            LEFT JOIN (
+                SELECT skill_marketplace_id, AVG(rating) AS avg_rating, COUNT(*) AS rating_count
+                FROM skill_ratings
+                GROUP BY skill_marketplace_id
+            ) r ON r.skill_marketplace_id = s.id
+            WHERE {where_sql}
+            ORDER BY {order_sql}
+            LIMIT ? OFFSET ?
+        """
+        cursor.execute(query, params + [per_page, offset])
+        rows = cursor.fetchall()
+
+        skills = []
+        for row in rows:
+            skill = {
+                "id": row["id"],
+                "skill_id": row["skill_id"],
+                "name": row["name"],
+                "description": row["description"],
+                "version": row["version"],
+                "author": row["author"],
+                "injection_target": row["injection_target"],
+                "has_params": bool(row["has_params"]),
+                "tags": json.loads(row["tags_json"]) if row["tags_json"] else [],
+                "publisher_username": row["publisher_display_name"] or row["publisher_username"],
+                "download_count": row["download_count"],
+                "install_count": row["install_count"],
+                "average_rating": round(row["avg_rating"], 1),
+                "rating_count": row["rating_count"],
+                "visibility": row["visibility"],
+                "published_at": row["published_at"],
+                "is_publisher": row["publisher_user_id"] == user_uuid,
+            }
+            skills.append(skill)
+
+        conn.close()
+
+        return jsonify({
+            "status": "success",
+            "skills": skills,
+            "total": total,
+            "total_pages": total_pages,
+            "page": page,
+            "per_page": per_page,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Browse marketplace skills failed: {e}", exc_info=True)
+        return jsonify({"error": f"Browse failed: {e}"}), 500
+
+
+@skills_api_bp.route("/v1/marketplace/skills/<marketplace_id>", methods=["GET"])
+async def get_marketplace_skill_detail(marketplace_id: str):
+    """Get detail for a single marketplace skill."""
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """SELECT s.*,
+                      u.username AS publisher_username,
+                      u.display_name AS publisher_display_name,
+                      COALESCE(r.avg_rating, 0) AS avg_rating,
+                      COALESCE(r.rating_count, 0) AS rating_count
+               FROM marketplace_skills s
+               LEFT JOIN users u ON s.publisher_user_id = u.id
+               LEFT JOIN (
+                   SELECT skill_marketplace_id, AVG(rating) AS avg_rating, COUNT(*) AS rating_count
+                   FROM skill_ratings GROUP BY skill_marketplace_id
+               ) r ON r.skill_marketplace_id = s.id
+               WHERE s.id = ?""",
+            (marketplace_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Skill not found"}), 404
+
+        # Get user's own rating
+        cursor.execute(
+            "SELECT rating, comment FROM skill_ratings WHERE skill_marketplace_id = ? AND user_id = ?",
+            (marketplace_id, user_uuid),
+        )
+        user_rating_row = cursor.fetchone()
+
+        conn.close()
+
+        skill = {
+            "id": row["id"],
+            "skill_id": row["skill_id"],
+            "name": row["name"],
+            "description": row["description"],
+            "version": row["version"],
+            "author": row["author"],
+            "injection_target": row["injection_target"],
+            "has_params": bool(row["has_params"]),
+            "tags": json.loads(row["tags_json"]) if row["tags_json"] else [],
+            "manifest_json": json.loads(row["manifest_json"]) if row["manifest_json"] else {},
+            "publisher_username": row["publisher_display_name"] or row["publisher_username"],
+            "download_count": row["download_count"],
+            "install_count": row["install_count"],
+            "average_rating": round(row["avg_rating"], 1),
+            "rating_count": row["rating_count"],
+            "visibility": row["visibility"],
+            "published_at": row["published_at"],
+            "is_publisher": row["publisher_user_id"] == user_uuid,
+            "user_rating": dict(user_rating_row) if user_rating_row else None,
+        }
+
+        return jsonify({"status": "success", "skill": skill}), 200
+
+    except Exception as e:
+        app_logger.error(f"Get marketplace skill detail failed: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get skill detail: {e}"}), 500
+
+
+@skills_api_bp.route("/v1/marketplace/skills/<marketplace_id>/install", methods=["POST"])
+async def install_marketplace_skill(marketplace_id: str):
+    """
+    Install a marketplace skill into the user's ~/.tda/skills/ directory.
+    Copies skill.json + .md content, hot-reloads the skill manager, increments install_count.
+    """
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.skills.settings import is_skill_marketplace_enabled
+        if not is_skill_marketplace_enabled():
+            return jsonify({"error": "Skill marketplace has been disabled by the administrator."}), 403
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM marketplace_skills WHERE id = ?", (marketplace_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Skill not found in marketplace"}), 404
+
+        skill_id = row["skill_id"]
+
+        # Read files from marketplace_data (Claude Code compatible format)
+        marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "skills" / marketplace_id
+        manifest_path = marketplace_data / "skill.json"
+
+        if not manifest_path.exists():
+            conn.close()
+            return jsonify({"error": "Skill manifest not found"}), 404
+
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+        manifest = json.loads(manifest_text)
+
+        # Find the .md content file
+        main_file = manifest.get("main_file", f"{skill_id}.md")
+        content_path = marketplace_data / main_file
+        if not content_path.exists():
+            # Try any .md file in the directory
+            md_files = list(marketplace_data.glob("*.md"))
+            if md_files:
+                content_path = md_files[0]
+                main_file = content_path.name
+            else:
+                conn.close()
+                return jsonify({"error": "Skill content not found"}), 404
+
+        content = content_path.read_text(encoding="utf-8")
+
+        # Save to ~/.tda/skills/<skill_id>/ using the skill manager
+        from trusted_data_agent.skills.manager import get_skill_manager
+        manager = get_skill_manager()
+        manager.save_skill(skill_id, content, manifest)
+
+        # Hot-reload
+        manager.reload()
+
+        # Increment install_count
+        cursor.execute(
+            "UPDATE marketplace_skills SET install_count = install_count + 1 WHERE id = ?",
+            (marketplace_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        app_logger.info(f"User {user_uuid} installed marketplace skill '{skill_id}' (marketplace_id={marketplace_id})")
+        return jsonify({
+            "status": "success",
+            "skill_id": skill_id,
+            "message": f"Skill '{row['name']}' installed successfully",
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Install marketplace skill failed: {e}", exc_info=True)
+        return jsonify({"error": f"Install failed: {e}"}), 500
+
+
+@skills_api_bp.route("/v1/marketplace/skills/<marketplace_id>/rate", methods=["POST"])
+async def rate_marketplace_skill(marketplace_id: str):
+    """
+    Rate a marketplace skill.
+
+    Body (JSON): {"rating": 5, "comment": "Great skill!"}
+    """
+    import sqlite3
+    import uuid as _uuid
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        data = await request.get_json()
+        if not data or "rating" not in data:
+            return jsonify({"error": "rating is required"}), 400
+
+        rating = int(data["rating"])
+        if rating < 1 or rating > 5:
+            return jsonify({"error": "rating must be between 1 and 5"}), 400
+
+        comment = data.get("comment", "").strip() or None
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Verify skill exists
+        cursor.execute("SELECT id, publisher_user_id FROM marketplace_skills WHERE id = ?", (marketplace_id,))
+        skill_row = cursor.fetchone()
+        if not skill_row:
+            conn.close()
+            return jsonify({"error": "Skill not found"}), 404
+
+        # Cannot rate own skill
+        if skill_row["publisher_user_id"] == user_uuid:
+            conn.close()
+            return jsonify({"error": "Cannot rate your own skill"}), 400
+
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute(
+            "SELECT id FROM skill_ratings WHERE skill_marketplace_id = ? AND user_id = ?",
+            (marketplace_id, user_uuid),
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute(
+                "UPDATE skill_ratings SET rating = ?, comment = ?, updated_at = ? WHERE id = ?",
+                (rating, comment, now, existing["id"]),
+            )
+            rating_id = existing["id"]
+            message = "Rating updated successfully"
+            status_code = 200
+        else:
+            rating_id = str(_uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO skill_ratings (id, skill_marketplace_id, user_id, rating, comment, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (rating_id, marketplace_id, user_uuid, rating, comment, now, now),
+            )
+            message = "Rating submitted successfully"
+            status_code = 201
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "success", "rating_id": rating_id, "message": message}), status_code
+
+    except Exception as e:
+        app_logger.error(f"Skill rating failed: {e}", exc_info=True)
+        return jsonify({"error": f"Rating failed: {e}"}), 500
+
+
+@skills_api_bp.route("/v1/marketplace/skills/<marketplace_id>", methods=["DELETE"])
+async def unpublish_skill(marketplace_id: str):
+    """Unpublish a skill from the marketplace (publisher only)."""
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id, skill_id FROM marketplace_skills WHERE id = ? AND publisher_user_id = ?",
+            (marketplace_id, user_uuid),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Skill not found or you are not the publisher"}), 404
+
+        # Delete sharing grants
+        cursor.execute(
+            "DELETE FROM marketplace_sharing_grants WHERE resource_type = 'skill' AND resource_id = ?",
+            (marketplace_id,),
+        )
+        # Delete ratings
+        cursor.execute(
+            "DELETE FROM skill_ratings WHERE skill_marketplace_id = ?",
+            (marketplace_id,),
+        )
+        # Delete marketplace record
+        cursor.execute("DELETE FROM marketplace_skills WHERE id = ?", (marketplace_id,))
+
+        conn.commit()
+        conn.close()
+
+        # Clean up marketplace_data files
+        marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "skills" / marketplace_id
+        if marketplace_data.exists():
+            import shutil
+            shutil.rmtree(marketplace_data, ignore_errors=True)
+
+        app_logger.info(f"Skill '{row['skill_id']}' unpublished from marketplace (id={marketplace_id})")
+        return jsonify({"status": "success", "message": "Skill unpublished"}), 200
+
+    except Exception as e:
+        app_logger.error(f"Unpublish skill failed: {e}", exc_info=True)
+        return jsonify({"error": f"Unpublish failed: {e}"}), 500

@@ -114,6 +114,9 @@ def init_database():
         # Create skill settings table (admin governance)
         _create_skill_settings_table()
 
+        # Create marketplace skills tables
+        _create_marketplace_skills_tables()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -465,6 +468,12 @@ def _create_extensions_table():
             logger.info("Created extensions table (inline fallback)")
 
         conn.commit()
+
+        # Verify table was created successfully
+        cursor.execute("SELECT COUNT(*) FROM user_extensions LIMIT 1")
+        cursor.fetchone()
+        logger.debug("Verified: user_extensions table is accessible")
+
         conn.close()
 
     except Exception as e:
@@ -527,17 +536,32 @@ def _create_extension_settings_table():
                             str_value = json.dumps(value)
                         else:
                             str_value = str(value)
-                        # Only update if the current value is still the SQL default
-                        # (don't overwrite admin changes)
+                        # Insert new keys, or update existing keys only if not admin-modified
                         cursor.execute(
-                            "UPDATE extension_settings SET setting_value = ? "
-                            "WHERE setting_key = ? AND updated_by IS NULL",
-                            (str_value, key)
+                            """
+                            INSERT INTO extension_settings (setting_key, setting_value)
+                            VALUES (?, ?)
+                            ON CONFLICT(setting_key) DO UPDATE
+                            SET setting_value = excluded.setting_value
+                            WHERE extension_settings.updated_by IS NULL
+                            """,
+                            (key, str_value)
                         )
+                        if cursor.rowcount > 0:
+                            logger.debug(f"Synced extension setting '{key}' from tda_config.json")
             except Exception as cfg_err:
                 logger.warning(f"Could not bootstrap extension settings from tda_config.json: {cfg_err}")
 
         conn.commit()
+
+        # Verify table was created successfully and has expected default rows
+        cursor.execute("SELECT COUNT(*) FROM extension_settings")
+        row_count = cursor.fetchone()[0]
+        if row_count == 0:
+            logger.warning("extension_settings table created but contains no default rows")
+        else:
+            logger.debug(f"Verified: extension_settings table accessible with {row_count} setting(s)")
+
         conn.close()
 
     except Exception as e:
@@ -665,6 +689,7 @@ def _create_skill_settings_table():
     Create the skill_settings table for admin skill governance.
     Safe to call multiple times (won't recreate if exists).
     """
+    import json
     import sqlite3
     from pathlib import Path
 
@@ -697,11 +722,115 @@ def _create_skill_settings_table():
             """)
             logger.info("Created skill_settings table (inline fallback)")
 
+        # Bootstrap from tda_config.json if values differ from SQL defaults
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                skill_settings = config.get("skill_settings", {})
+                if skill_settings:
+                    for key, value in skill_settings.items():
+                        if isinstance(value, bool):
+                            str_value = 'true' if value else 'false'
+                        elif isinstance(value, list):
+                            str_value = json.dumps(value)
+                        else:
+                            str_value = str(value)
+                        cursor.execute(
+                            """
+                            INSERT INTO skill_settings (setting_key, setting_value)
+                            VALUES (?, ?)
+                            ON CONFLICT(setting_key) DO UPDATE
+                            SET setting_value = excluded.setting_value
+                            """,
+                            (key, str_value)
+                        )
+                        if cursor.rowcount > 0:
+                            logger.debug(f"Synced skill setting '{key}' from tda_config.json")
+            except Exception as cfg_err:
+                logger.warning(f"Could not bootstrap skill settings from tda_config.json: {cfg_err}")
+
         conn.commit()
         conn.close()
 
     except Exception as e:
         logger.error(f"Error creating skill_settings table: {e}", exc_info=True)
+
+
+def _create_marketplace_skills_tables():
+    """
+    Create marketplace_skills and skill_ratings tables.
+    Safe to call multiple times (won't recreate if exists).
+    Mirrors _create_marketplace_extensions_tables().
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "17_marketplace_skills.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 17_marketplace_skills.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS marketplace_skills (
+                    id VARCHAR(36) PRIMARY KEY,
+                    skill_id VARCHAR(100) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    version VARCHAR(50),
+                    author VARCHAR(255),
+                    injection_target VARCHAR(20) DEFAULT 'system_prompt',
+                    has_params BOOLEAN DEFAULT 0,
+                    tags_json TEXT,
+                    publisher_user_id VARCHAR(36) NOT NULL,
+                    visibility VARCHAR(20) DEFAULT 'public',
+                    manifest_json TEXT,
+                    content_hash VARCHAR(64),
+                    download_count INTEGER DEFAULT 0,
+                    install_count INTEGER DEFAULT 0,
+                    published_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    FOREIGN KEY (publisher_user_id) REFERENCES users(id)
+                );
+                CREATE TABLE IF NOT EXISTS skill_ratings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    skill_marketplace_id VARCHAR(36) NOT NULL,
+                    user_id VARCHAR(36) NOT NULL,
+                    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+                    comment TEXT,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    FOREIGN KEY (skill_marketplace_id) REFERENCES marketplace_skills(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_marketplace_skill_publisher
+                    ON marketplace_skills(publisher_user_id);
+                CREATE INDEX IF NOT EXISTS idx_marketplace_skill_visibility
+                    ON marketplace_skills(visibility);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_ratings_unique
+                    ON skill_ratings(skill_marketplace_id, user_id);
+            """)
+            logger.info("Created marketplace_skills tables (inline fallback)")
+
+        # Ensure marketplace setting exists in skill_settings
+        cursor.execute(
+            "INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) "
+            "VALUES ('user_skills_marketplace_enabled', 'true')"
+        )
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating marketplace_skills tables: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

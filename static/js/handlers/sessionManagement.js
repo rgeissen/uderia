@@ -751,6 +751,58 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
                 }
             }
             // --- MODIFICATION END ---
+
+            // --- Re-render extension download cards for chat_append results ---
+            // Extension cards (e.g., #pdf download) are rendered into the DOM during
+            // live execution but NOT persisted in session_history messages. The data IS
+            // persisted in workflow_history[turn].extension_results. Re-render them here
+            // so download cards survive page reloads and session switches.
+            const wfHistory = data.workflow_history || [];
+            for (const turn of wfHistory) {
+                const extResults = turn.extension_results;
+                if (!extResults || typeof extResults !== 'object') continue;
+
+                const turnId = turn.turn || turn.turn_id || turn.turn_number;
+                if (!turnId) continue;
+
+                for (const [extName, result] of Object.entries(extResults)) {
+                    if (!result.success || !result.content) continue;
+                    const target = result.output_target || 'silent';
+                    if (target !== 'chat_append') continue;
+
+                    // Find the assistant message bubble for this turn via its badge.
+                    // Note: .clickable-avatar[data-turn-id] matches the USER avatar (not assistant).
+                    // The assistant badge (.assistant-badge) is appended to the assistant's wrapper.
+                    const badge = DOM.chatLog.querySelector(`.assistant-badge[data-turn-id="${turnId}"]`);
+                    if (!badge) continue;
+                    const msgBubble = badge.closest('.message-bubble');
+                    const msgContent = msgBubble?.querySelector('.message-content');
+                    if (!msgContent) continue;
+
+                    // Use the existing card builder (exposed on window by eventHandlers.js)
+                    if (window._isExtensionBinaryContent && window._isExtensionBinaryContent(result)) {
+                        const cardHtml = window._buildExtensionDownloadCard(extName, result);
+                        msgContent.insertAdjacentHTML('beforeend', cardHtml);
+                    } else {
+                        // Non-binary chat_append (e.g., JSON text output)
+                        const cardHtml = `
+                            <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}"
+                                 style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
+                                          style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
+                                    <span class="text-xs text-gray-500">${result.content_type}</span>
+                                </div>
+                                <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48"
+                                     style="font-family: 'JetBrains Mono', monospace;">${
+                                    typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
+                                }</pre>
+                            </div>`;
+                        msgContent.insertAdjacentHTML('beforeend', cardHtml);
+                    }
+                }
+            }
+
         } else {
              UI.addMessage('assistant', "I'm ready to help. How can I assist you with your Teradata system today?");
         }

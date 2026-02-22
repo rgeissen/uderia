@@ -1,23 +1,23 @@
 {
   "name": "pdf-export",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "extension_id": "pdf",
   "display_name": "PDF Export",
-  "description": "Exports the LLM answer as a downloadable PDF document with Markdown-aware formatting.",
+  "description": "Exports the LLM answer as a downloadable PDF document with Markdown-aware formatting. Genie-aware: supports scope-based multi-section PDFs.",
   "author": "TDA Core Team",
   "license": "MIT",
   "category": "Export",
-  "extension_tier": "simple",
+  "extension_tier": "standard",
   "requires_llm": false,
-  "keywords": ["pdf", "export", "download", "document", "report"],
+  "keywords": ["pdf", "export", "download", "document", "report", "genie"],
   "files": {
     "extension": "pdf_export.py"
   },
   "output_target": "chat_append",
   "parameters": {
     "supported": true,
-    "description": "Custom document title (optional)",
-    "examples": ["Monthly Report", "Query Results"],
+    "description": "Scope for genie profiles (coordinator, children, all) or custom document title",
+    "examples": ["all", "coordinator", "children", "Monthly Report"],
     "allowed_values": null
   },
   "output_schema": {
@@ -30,6 +30,6 @@
     }
   },
   "metadata": {
-    "tags": ["built-in", "export", "core"]
+    "tags": ["built-in", "export", "core", "genie-aware"]
   }
 }

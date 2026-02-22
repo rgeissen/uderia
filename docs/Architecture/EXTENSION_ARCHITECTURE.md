@@ -1421,6 +1421,105 @@ Extension creation/import/duplicate can be disabled by administrators via `are_u
 
 ---
 
+## Genie-Aware Extensions
+
+When a query is executed through a **genie coordinator profile**, the `ExtensionContext` includes a `genie` field with structured access to the full coordination layer. This enables extensions that leverage multi-expert responses.
+
+### Detection
+
+```python
+async def execute(self, context: ExtensionContext, param=None):
+    if context.genie:
+        # Genie coordination — access child profile results
+        ...
+    else:
+        # Non-genie profile — single answer in context.answer_text
+        ...
+```
+
+### Data Model
+
+**`GenieContext`** (`context.genie`) provides:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `coordinator_response` | `str` | The coordinator's final synthesized answer |
+| `coordinator_profile_tag` | `str` | Genie profile tag (e.g., `"VAT"`) |
+| `available_profiles` | `list[dict]` | All configured child profiles `[{tag, id, name, profile_type}]` |
+| `profiles_invoked` | `list[str]` | Profile tags actually called this turn |
+| `child_results` | `dict[str, GenieChildResult]` | Per-child results keyed by profile tag |
+| `slave_sessions` | `dict[str, str]` | Profile tag → child session ID |
+| `coordination_events` | `list[dict]` | Full genie event timeline |
+| `coordination_duration_ms` | `int` | Total coordination wall-clock time |
+| `coordinator_llm_steps` | `int` | Number of LLM reasoning steps |
+
+**`GenieChildResult`** (per-child invocation):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `profile_tag` | `str` | Child profile tag (e.g., `"CHAT"`) |
+| `profile_id` | `str` | Child profile UUID |
+| `profile_type` | `str` | `tool_enabled`, `llm_only`, `rag_focused`, `genie` |
+| `session_id` | `str` | Child session ID |
+| `query` | `str` | Query sent to this child |
+| `response` | `str` | Full response text |
+| `duration_ms` | `int` | Execution time |
+| `success` | `bool` | Whether child completed successfully |
+| `error` | `str?` | Error message if failed |
+
+### Scope-Based Content Access
+
+The `get_content(scope)` method returns ordered `GenieContentNode` objects for the requested scope:
+
+| Scope | Returns |
+|-------|---------|
+| `"coordinator"` | Single node: coordinator's synthesized response |
+| `"children"` | One node per invoked child profile (invocation order) |
+| `"all"` | Children first, then coordinator synthesis last |
+
+Each `GenieContentNode` has: `label`, `text`, `node_type` ("coordinator" or "child"), `profile_tag`, `profile_type`, `duration_ms`, `success`, `metadata`.
+
+### Example: Scope-Aware PDF Extension
+
+```python
+async def execute(self, context: ExtensionContext, param=None):
+    if context.genie:
+        scope = param or "all"
+        nodes = context.genie.get_content(scope=scope)
+        for node in nodes:
+            pdf.add_section(
+                title=node.label,        # "@CHAT Response" or "Coordinator Synthesis"
+                content=node.text,
+                badge=node.profile_tag,
+            )
+    else:
+        pdf.add_section(title="Response", content=context.answer_text)
+```
+
+### Convenience Methods
+
+```python
+# Get a specific child's response (None if not invoked)
+rag_answer = context.genie.get_child_response("RAG")
+
+# Get all successful child responses as {tag: text}
+all_answers = context.genie.get_all_responses()
+
+# Filter children by profile type
+rag_children = context.genie.get_children_by_type("rag_focused")
+```
+
+### Notes
+
+- `context.answer_text` always contains the coordinator's synthesized response (same as `context.genie.coordinator_response`)
+- `context.execution_trace` contains genie coordination events (not phase traces from tool_enabled profiles)
+- `context.profile_type` is `"genie"` for genie profiles
+- Extensions that don't check `context.genie` still work — they process the coordinator's synthesis via `answer_text`
+
+**Files:** `src/trusted_data_agent/extensions/models.py` (GenieContext, GenieChildResult, GenieContentNode)
+
+---
+
 ## Design Principles
 
 1. **Non-Breaking:** Extensions never break the main answer. Errors are isolated per-extension.

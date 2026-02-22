@@ -10,6 +10,7 @@
 
 let _allSkills = [];
 let _allActivations = [];
+let _skillSettings = {};
 let _searchQuery = '';
 let _activeTag = 'all';
 let _activeSource = 'all';
@@ -37,8 +38,7 @@ function _notify(type, message) {
 async function _fetchSkills() {
     const res = await fetch('/api/v1/skills', { headers: _authHeaders() });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return data.skills || [];
+    return await res.json();
 }
 
 async function _fetchActivated() {
@@ -104,7 +104,7 @@ async function _exportSkill(skillId) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${skillId}.zip`;
+    a.download = `${skillId}.skill`;
     a.click();
     URL.revokeObjectURL(url);
 }
@@ -128,22 +128,34 @@ async function _importSkillFile(file) {
 // ── Data Refresh ─────────────────────────────────────────────────────────────
 
 async function _refreshSkillData() {
-    [_allSkills, _allActivations] = await Promise.all([
+    const [skillsResp, activations] = await Promise.all([
         _fetchSkills(),
         _fetchActivated(),
     ]);
+    _allSkills = skillsResp.skills || [];
+    _skillSettings = skillsResp._settings || {};
+    _allActivations = activations;
     _rebuildTagPills();
     renderSkillGrid();
 }
+
+// ── Tag Color Config ────────────────────────────────────────────────────────
+
+const TAG_COLOR = { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.18)' };
+
+const INJECTION_TARGET_CONFIG = {
+    system_prompt: { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.25)', label: 'System Prompt' },
+    user_context:  { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.25)',  label: 'User Context' },
+};
 
 // ── Card Rendering ───────────────────────────────────────────────────────────
 
 function _createSkillCard(skill, activation) {
     const card = document.createElement('div');
     card.className = 'glass-panel rounded-lg p-4 transition-all duration-200';
-    card.style.border = activation
-        ? '1px solid rgba(16, 185, 129, 0.3)'
-        : '1px solid var(--border-secondary)';
+    card.style.cssText = activation
+        ? 'border: 1px solid rgba(16,185,129,0.3); border-left: 3px solid rgba(16,185,129,0.5);'
+        : 'border: 1px solid var(--border-secondary); border-left: 3px solid rgba(148,163,184,0.15);';
 
     const isBuiltin = skill.is_builtin;
     const activationName = activation?.activation_name || skill.skill_id;
@@ -159,9 +171,7 @@ function _createSkillCard(skill, activation) {
 
     const badge = document.createElement('span');
     badge.className = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded';
-    badge.style.cssText = activation
-        ? 'background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);'
-        : 'background: rgba(148,163,184,0.1); color: #9ca3af; border: 1px solid rgba(148,163,184,0.2);';
+    badge.style.cssText = 'background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);';
     badge.textContent = `!${activationName}`;
     left.appendChild(badge);
 
@@ -170,6 +180,20 @@ function _createSkillCard(skill, activation) {
     nameEl.style.color = 'var(--text-primary)';
     nameEl.textContent = skill.name || skill.skill_id;
     left.appendChild(nameEl);
+
+    // Spacer to push target badge + actions to the right
+    const spacer = document.createElement('div');
+    spacer.style.flex = '1';
+    left.appendChild(spacer);
+
+    // Injection target badge (in header, right-aligned)
+    const target = skill.injection_target || 'system_prompt';
+    const targetCfg = INJECTION_TARGET_CONFIG[target] || INJECTION_TARGET_CONFIG.system_prompt;
+    const targetBadge = document.createElement('span');
+    targetBadge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap';
+    targetBadge.style.cssText = `background: ${targetCfg.bg}; color: ${targetCfg.color}; border: 1px solid ${targetCfg.border};`;
+    targetBadge.textContent = targetCfg.label;
+    left.appendChild(targetBadge);
 
     header.appendChild(left);
 
@@ -241,12 +265,48 @@ function _createSkillCard(skill, activation) {
     exportBtn.addEventListener('click', async () => {
         try {
             await _exportSkill(skill.skill_id);
-            _notify('success', `Skill exported as ${skill.skill_id}.zip`);
+            _notify('success', `Skill exported as ${skill.skill_id}.skill`);
         } catch (err) {
             _notify('error', `Export failed: ${err.message}`);
         }
     });
     actions.appendChild(exportBtn);
+
+    // Publish button (user-created only, marketplace enabled)
+    if (!isBuiltin && _skillSettings.user_skills_marketplace_enabled !== false) {
+        const publishBtn = document.createElement('button');
+        publishBtn.className = 'p-1 rounded transition-colors';
+        publishBtn.style.cssText = 'color: var(--text-muted);';
+        publishBtn.title = 'Publish to marketplace';
+        publishBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>';
+        const _pubIcon = publishBtn.innerHTML;
+        publishBtn.addEventListener('click', async () => {
+            try {
+                publishBtn.disabled = true;
+                publishBtn.textContent = '...';
+                const res = await fetch(`/api/v1/skills/${skill.skill_id}/publish`, {
+                    method: 'POST',
+                    headers: _authHeaders(),
+                    body: JSON.stringify({ visibility: 'public' }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    _notify('success', data.message || 'Published to marketplace');
+                    publishBtn.textContent = 'Published';
+                    publishBtn.disabled = true;
+                } else {
+                    _notify('error', data.error || 'Publish failed');
+                    publishBtn.disabled = false;
+                    publishBtn.innerHTML = _pubIcon;
+                }
+            } catch (err) {
+                _notify('error', 'Publish failed: ' + err.message);
+                publishBtn.disabled = false;
+                publishBtn.innerHTML = _pubIcon;
+            }
+        });
+        actions.appendChild(publishBtn);
+    }
 
     // Delete button (user-created only)
     if (!isBuiltin) {
@@ -286,9 +346,10 @@ function _createSkillCard(skill, activation) {
         const tagContainer = document.createElement('div');
         tagContainer.className = 'flex flex-wrap gap-1 mb-2';
         tags.forEach(t => {
+            const tc = TAG_COLOR;
             const tag = document.createElement('span');
             tag.className = 'text-[10px] px-1.5 py-0.5 rounded';
-            tag.style.cssText = 'background: rgba(148,163,184,0.08); color: #9ca3af; border: 1px solid rgba(148,163,184,0.15);';
+            tag.style.cssText = `background: ${tc.bg}; color: ${tc.color}; border: 1px solid ${tc.border};`;
             tag.textContent = t;
             tagContainer.appendChild(tag);
         });
@@ -307,8 +368,8 @@ function _createSkillCard(skill, activation) {
 
         params.forEach(p => {
             const paramBadge = document.createElement('span');
-            paramBadge.className = 'font-mono px-1 py-0.5 rounded';
-            paramBadge.style.cssText = 'background: rgba(16,185,129,0.08); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.15);';
+            paramBadge.className = 'font-mono font-semibold px-1 py-0.5 rounded';
+            paramBadge.style.cssText = 'background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3);';
             paramBadge.textContent = p;
             paramRow.appendChild(paramBadge);
         });
@@ -316,23 +377,29 @@ function _createSkillCard(skill, activation) {
         card.appendChild(paramRow);
     }
 
-    // Footer: source + injection target
+    // Footer: source badge (left) + param count (right)
     const footer = document.createElement('div');
     footer.className = 'flex items-center justify-between mt-2 pt-2';
     footer.style.borderTop = '1px solid rgba(148,163,184,0.08)';
 
-    const sourceLabel = document.createElement('span');
-    sourceLabel.className = 'text-[10px]';
-    sourceLabel.style.color = '#6b7280';
-    sourceLabel.textContent = isBuiltin ? 'Built-in' : 'User';
-    footer.appendChild(sourceLabel);
+    const sourceBadge = document.createElement('span');
+    sourceBadge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded';
+    if (isBuiltin) {
+        sourceBadge.style.cssText = 'background: rgba(148,163,184,0.06); color: var(--text-subtle);';
+        sourceBadge.textContent = 'Built-in';
+    } else {
+        sourceBadge.style.cssText = 'background: rgba(16,185,129,0.08); color: #34d399; border: 1px solid rgba(16,185,129,0.15);';
+        sourceBadge.textContent = 'User';
+    }
+    footer.appendChild(sourceBadge);
 
-    const target = skill.injection_target || 'system_prompt';
-    const targetLabel = document.createElement('span');
-    targetLabel.className = 'text-[10px] font-mono';
-    targetLabel.style.color = '#6b7280';
-    targetLabel.textContent = target === 'system_prompt' ? 'System Prompt' : 'User Context';
-    footer.appendChild(targetLabel);
+    if (params.length > 0) {
+        const paramCount = document.createElement('span');
+        paramCount.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded';
+        paramCount.style.cssText = 'background: rgba(16,185,129,0.12); color: #34d399;';
+        paramCount.textContent = `${params.length} param${params.length > 1 ? 's' : ''}`;
+        footer.appendChild(paramCount);
+    }
 
     card.appendChild(footer);
 
@@ -591,7 +658,7 @@ function setupSkillFilters() {
 function handleImportSkill() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.zip';
+    input.accept = '.skill,.zip';
 
     // iOS fix: remove accept attribute for iPadOS
     if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
@@ -613,6 +680,487 @@ function handleImportSkill() {
     });
 
     input.click();
+}
+
+// ── Marketplace Modal ────────────────────────────────────────────────────────
+
+let _mktPage = 1;
+let _mktSearch = '';
+let _mktSort = 'recent';
+let _mktTotalPages = 1;
+
+function _escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function _starsHtml(rating) {
+    return Array.from({ length: 5 }, (_, i) =>
+        `<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" style="color: ${i < Math.round(rating) ? '#facc15' : '#4b5563'}">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>`
+    ).join('');
+}
+
+function _createMktSkillCard(skill) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3';
+    card.style.cssText = 'border: 1px solid rgba(255,255,255,0.1); transition: border-color 0.2s;';
+    card.addEventListener('mouseenter', () => card.style.borderColor = 'rgba(16,185,129,0.5)');
+    card.addEventListener('mouseleave', () => card.style.borderColor = 'rgba(255,255,255,0.1)');
+
+    const isPublisher = skill.is_publisher || false;
+    const rating = skill.average_rating || 0;
+    const target = skill.injection_target || 'system_prompt';
+    const targetCfg = INJECTION_TARGET_CONFIG[target] || INJECTION_TARGET_CONFIG.system_prompt;
+    const tags = (() => { try { return JSON.parse(skill.tags_json || '[]'); } catch { return []; } })();
+
+    card.innerHTML = `
+        <!-- Header -->
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+            <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <h3 style="font-size:1rem; font-weight:600; color:var(--text-primary); margin:0;">${_escHtml(skill.name)}</h3>
+                    ${skill.version ? `<span style="font-size:11px; padding:1px 6px; border-radius:9999px; background:rgba(255,255,255,0.1); color:#d1d5db;">v${_escHtml(skill.version)}</span>` : ''}
+                    <span style="font-size:11px; padding:1px 6px; border-radius:9999px; background:${targetCfg.bg}; color:${targetCfg.color}; border:1px solid ${targetCfg.border};">${targetCfg.label}</span>
+                    ${skill.has_params ? '<span style="font-size:11px; padding:1px 6px; border-radius:9999px; background:rgba(16,185,129,0.1); color:#34d399;">Params</span>' : ''}
+                </div>
+                ${skill.author ? `<p style="font-size:13px; color:#9ca3af; margin-top:2px;">by ${_escHtml(skill.author)}</p>` : ''}
+            </div>
+        </div>
+
+        <!-- Description -->
+        ${skill.description ? `<p style="font-size:13px; color:#d1d5db; margin:0;">${_escHtml(skill.description)}</p>` : ''}
+
+        <!-- Tags -->
+        ${tags.length > 0 ? `
+            <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                ${tags.map(t => {
+                    const tc = TAG_COLOR;
+                    return `<span style="font-size:10px; padding:1px 6px; border-radius:4px; background:${tc.bg}; color:${tc.color}; border:1px solid ${tc.border};">${_escHtml(t)}</span>`;
+                }).join('')}
+                <span style="font-size:10px; padding:1px 6px; border-radius:4px; background:rgba(255,255,255,0.06); color:#9ca3af; font-family:monospace;">#${_escHtml(skill.skill_id)}</span>
+            </div>
+        ` : ''}
+
+        <!-- Publisher -->
+        ${skill.publisher_username ? `
+            <div style="display:flex; align-items:center; gap:6px; font-size:13px; color:#9ca3af;">
+                <svg style="width:16px; height:16px; flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                <span style="color:#d1d5db;">${_escHtml(skill.publisher_username)}</span>
+            </div>
+        ` : ''}
+
+        <!-- Stats -->
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:16px; font-size:13px; color:#d1d5db;">
+            <div style="display:flex; align-items:center; gap:3px;">
+                ${_starsHtml(rating)}
+                <span style="margin-left:4px; color:#9ca3af;">${rating.toFixed(1)} (${skill.rating_count || 0})</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:5px;">
+                <svg style="width:16px; height:16px; color:#9ca3af;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                <span>${skill.install_count || 0} installs</span>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display:flex; align-items:center; gap:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.05);">
+            ${isPublisher ? `
+                <button class="skill-mkt-unpublish" style="flex:1; padding:6px 12px; font-size:12px; font-weight:500; border-radius:8px; background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.2); cursor:pointer; transition:background 0.2s;">
+                    Unpublish
+                </button>
+            ` : `
+                <button class="skill-mkt-install" style="flex:1; padding:6px 12px; font-size:12px; font-weight:500; border-radius:8px; background:rgba(16,185,129,0.1); color:#34d399; border:1px solid rgba(16,185,129,0.2); cursor:pointer; transition:background 0.2s;">
+                    Install
+                </button>
+            `}
+            <button class="skill-mkt-rate" style="padding:6px 12px; font-size:12px; font-weight:500; border-radius:8px; background:rgba(250,204,21,0.08); color:#facc15; border:1px solid rgba(250,204,21,0.2); cursor:pointer; transition:background 0.2s;">
+                Rate
+            </button>
+        </div>
+    `;
+
+    // Wire install button
+    const installBtn = card.querySelector('.skill-mkt-install');
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            installBtn.disabled = true;
+            installBtn.textContent = 'Installing...';
+            try {
+                const res = await fetch(`/api/v1/marketplace/skills/${skill.id}/install`, {
+                    method: 'POST',
+                    headers: _authHeaders(),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    _notify('success', data.message || 'Skill installed');
+                    installBtn.textContent = 'Installed';
+                    installBtn.style.color = '#34d399';
+                    installBtn.style.borderColor = 'rgba(16,185,129,0.3)';
+                    installBtn.style.background = 'rgba(16,185,129,0.15)';
+                    // Refresh local skills list
+                    await _refreshSkillData();
+                    if (window.loadActivatedSkills) window.loadActivatedSkills();
+                } else {
+                    _notify('error', data.error || 'Install failed');
+                    installBtn.textContent = 'Install';
+                    installBtn.disabled = false;
+                }
+            } catch (err) {
+                _notify('error', 'Install failed: ' + err.message);
+                installBtn.textContent = 'Install';
+                installBtn.disabled = false;
+            }
+        });
+    }
+
+    // Wire unpublish button
+    const unpubBtn = card.querySelector('.skill-mkt-unpublish');
+    if (unpubBtn) {
+        unpubBtn.addEventListener('click', async () => {
+            if (!confirm(`Unpublish "${skill.name}" from the marketplace?`)) return;
+            unpubBtn.disabled = true;
+            unpubBtn.textContent = 'Removing...';
+            try {
+                const res = await fetch(`/api/v1/marketplace/skills/${skill.id}`, {
+                    method: 'DELETE',
+                    headers: _authHeaders(),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    _notify('success', data.message || 'Skill unpublished');
+                    _loadMktSkills();
+                } else {
+                    _notify('error', data.error || 'Unpublish failed');
+                    unpubBtn.textContent = 'Unpublish';
+                    unpubBtn.disabled = false;
+                }
+            } catch (err) {
+                _notify('error', 'Unpublish failed: ' + err.message);
+                unpubBtn.textContent = 'Unpublish';
+                unpubBtn.disabled = false;
+            }
+        });
+    }
+
+    // Wire rate button
+    const rateBtn = card.querySelector('.skill-mkt-rate');
+    if (rateBtn) {
+        rateBtn.addEventListener('click', () => _openRateModal(skill));
+    }
+
+    return card;
+}
+
+async function _loadMktSkills() {
+    const grid = document.getElementById('skill-mkt-grid');
+    const loading = document.getElementById('skill-mkt-loading');
+    const empty = document.getElementById('skill-mkt-empty');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+    if (loading) loading.classList.remove('hidden');
+    if (empty) empty.classList.add('hidden');
+
+    try {
+        const params = new URLSearchParams({
+            page: _mktPage,
+            per_page: 12,
+            sort_by: _mktSort,
+        });
+        if (_mktSearch) params.append('search', _mktSearch);
+
+        const res = await fetch(`/api/v1/marketplace/skills?${params}`, { headers: _authHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const skills = data.skills || [];
+        _mktTotalPages = data.total_pages || 1;
+
+        if (loading) loading.classList.add('hidden');
+
+        if (skills.length === 0) {
+            if (empty) {
+                empty.classList.remove('hidden');
+                empty.textContent = _mktSearch ? 'No skills match your search.' : 'No skills published yet.';
+            }
+        } else {
+            for (const s of skills) {
+                grid.appendChild(_createMktSkillCard(s));
+            }
+        }
+
+        // Update pagination
+        _updateMktPagination(data);
+    } catch (err) {
+        if (loading) loading.classList.add('hidden');
+        grid.innerHTML = `<p style="color:#f87171; font-size:13px; grid-column:1/-1; text-align:center;">Failed to load marketplace: ${_escHtml(err.message)}</p>`;
+    }
+}
+
+function _updateMktPagination(data) {
+    const pagination = document.getElementById('skill-mkt-pagination');
+    const prevBtn = document.getElementById('skill-mkt-prev');
+    const nextBtn = document.getElementById('skill-mkt-next');
+    const info = document.getElementById('skill-mkt-page-info');
+    if (!pagination) return;
+
+    if ((data.total_pages || 1) > 1) {
+        pagination.classList.remove('hidden');
+        if (prevBtn) prevBtn.disabled = _mktPage <= 1;
+        if (nextBtn) nextBtn.disabled = _mktPage >= data.total_pages;
+        if (info) info.textContent = `Page ${_mktPage} of ${data.total_pages} (${data.total_count || 0} total)`;
+    } else {
+        pagination.classList.add('hidden');
+    }
+}
+
+function _showSkillMarketplace() {
+    // Remove existing overlay if any
+    const existing = document.getElementById('skill-mkt-overlay');
+    if (existing) existing.remove();
+
+    _mktPage = 1;
+    _mktSearch = '';
+    _mktSort = 'recent';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'skill-mkt-overlay';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'width:90vw; max-width:960px; max-height:85vh; background:var(--card-bg, #1e293b); border:1px solid var(--border-primary, rgba(148,163,184,0.2)); border-radius:16px; display:flex; flex-direction:column; transform:scale(0.95); opacity:0; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), opacity 0.2s;';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'padding:20px 24px 16px; border-bottom:1px solid rgba(148,163,184,0.1); display:flex; align-items:center; justify-content:space-between; flex-shrink:0;';
+    header.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;">
+            <svg style="width:22px; height:22px; color:#34d399;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/>
+            </svg>
+            <h2 style="font-size:1.125rem; font-weight:600; color:var(--text-primary); margin:0;">Skill Marketplace</h2>
+        </div>
+        <button id="skill-mkt-close" style="padding:6px; border-radius:8px; background:transparent; border:none; color:#9ca3af; cursor:pointer; transition:color 0.2s;" title="Close">
+            <svg style="width:20px; height:20px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+
+    // Toolbar: search + sort
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'padding:12px 24px; display:flex; align-items:center; gap:8px; flex-shrink:0;';
+    toolbar.innerHTML = `
+        <div style="flex:1; display:flex; align-items:center; gap:8px;">
+            <input id="skill-mkt-search" type="text" placeholder="Search skills..." style="flex:1; padding:6px 12px; font-size:13px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(148,163,184,0.2); color:var(--text-primary); outline:none; transition:border-color 0.2s;" />
+            <button id="skill-mkt-search-btn" style="padding:6px 14px; font-size:12px; font-weight:500; border-radius:8px; background:rgba(16,185,129,0.1); color:#34d399; border:1px solid rgba(16,185,129,0.2); cursor:pointer; transition:background 0.2s;">Search</button>
+        </div>
+        <select id="skill-mkt-sort" style="padding:6px 10px; font-size:12px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(148,163,184,0.2); color:var(--text-primary); cursor:pointer;">
+            <option value="recent">Most Recent</option>
+            <option value="rating">Top Rated</option>
+            <option value="installs">Most Installs</option>
+            <option value="downloads">Most Downloads</option>
+            <option value="name">Name A-Z</option>
+        </select>
+    `;
+
+    // Content
+    const content = document.createElement('div');
+    content.style.cssText = 'flex:1; overflow-y:auto; padding:16px 24px;';
+    content.innerHTML = `
+        <div id="skill-mkt-loading" style="text-align:center; padding:40px 0; color:#9ca3af; font-size:13px;">Loading marketplace...</div>
+        <div id="skill-mkt-empty" class="hidden" style="text-align:center; padding:40px 0; color:#9ca3af; font-size:13px;"></div>
+        <div id="skill-mkt-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:12px;"></div>
+    `;
+
+    // Pagination
+    const pagination = document.createElement('div');
+    pagination.id = 'skill-mkt-pagination';
+    pagination.className = 'hidden';
+    pagination.style.cssText = 'padding:12px 24px 16px; border-top:1px solid rgba(148,163,184,0.1); display:flex; align-items:center; justify-content:center; gap:12px; flex-shrink:0;';
+    pagination.innerHTML = `
+        <button id="skill-mkt-prev" style="padding:4px 12px; font-size:12px; border-radius:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(148,163,184,0.2); color:var(--text-primary); cursor:pointer;">Prev</button>
+        <span id="skill-mkt-page-info" style="font-size:12px; color:#9ca3af;">Page 1 of 1</span>
+        <button id="skill-mkt-next" style="padding:4px 12px; font-size:12px; border-radius:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(148,163,184,0.2); color:var(--text-primary); cursor:pointer;">Next</button>
+    `;
+
+    modal.append(header, toolbar, content, pagination);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        modal.style.transform = 'scale(1)';
+        modal.style.opacity = '1';
+    });
+
+    // Close handlers
+    const close = () => {
+        overlay.style.opacity = '0';
+        modal.style.transform = 'scale(0.95)';
+        modal.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 200);
+    };
+    overlay.querySelector('#skill-mkt-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Search
+    const searchInput = overlay.querySelector('#skill-mkt-search');
+    const searchBtn = overlay.querySelector('#skill-mkt-search-btn');
+    searchBtn.addEventListener('click', () => {
+        _mktPage = 1;
+        _mktSearch = searchInput.value.trim();
+        _loadMktSkills();
+    });
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            _mktPage = 1;
+            _mktSearch = searchInput.value.trim();
+            _loadMktSkills();
+        }
+    });
+
+    // Sort
+    overlay.querySelector('#skill-mkt-sort').addEventListener('change', (e) => {
+        _mktPage = 1;
+        _mktSort = e.target.value;
+        _loadMktSkills();
+    });
+
+    // Pagination
+    overlay.querySelector('#skill-mkt-prev').addEventListener('click', () => {
+        if (_mktPage > 1) { _mktPage--; _loadMktSkills(); }
+    });
+    overlay.querySelector('#skill-mkt-next').addEventListener('click', () => {
+        if (_mktPage < _mktTotalPages) { _mktPage++; _loadMktSkills(); }
+    });
+
+    // Initial load
+    _loadMktSkills();
+}
+
+// ── Rating Modal ─────────────────────────────────────────────────────────────
+
+function _openRateModal(skill) {
+    const existing = document.getElementById('skill-rate-overlay');
+    if (existing) existing.remove();
+
+    let selectedRating = 0;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'skill-rate-overlay';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'width:90vw; max-width:420px; background:var(--card-bg, #1e293b); border:1px solid var(--border-primary, rgba(148,163,184,0.2)); border-radius:16px; padding:24px; transform:scale(0.95); opacity:0; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), opacity 0.2s;';
+
+    modal.innerHTML = `
+        <h3 style="font-size:1rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">Rate Skill</h3>
+        <p style="font-size:13px; color:#9ca3af; margin:0 0 16px 0;">${_escHtml(skill.name)}</p>
+
+        <div id="skill-rate-stars" style="display:flex; gap:6px; justify-content:center; margin-bottom:16px; cursor:pointer;">
+            ${Array.from({ length: 5 }, (_, i) => `
+                <svg data-star="${i + 1}" style="width:32px; height:32px; color:#4b5563; transition:color 0.15s; cursor:pointer;" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                </svg>
+            `).join('')}
+        </div>
+
+        <textarea id="skill-rate-comment" placeholder="Leave a comment (optional)..." rows="3" style="width:100%; padding:8px 12px; font-size:13px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(148,163,184,0.2); color:var(--text-primary); resize:vertical; outline:none; margin-bottom:16px;"></textarea>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="skill-rate-cancel" style="padding:6px 16px; font-size:13px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(148,163,184,0.2); color:#9ca3af; cursor:pointer;">Cancel</button>
+            <button id="skill-rate-submit" style="padding:6px 16px; font-size:13px; font-weight:500; border-radius:8px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; cursor:pointer;">Submit</button>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        modal.style.transform = 'scale(1)';
+        modal.style.opacity = '1';
+    });
+
+    const close = () => {
+        overlay.style.opacity = '0';
+        modal.style.transform = 'scale(0.95)';
+        modal.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 200);
+    };
+
+    // Star interaction
+    const starsContainer = modal.querySelector('#skill-rate-stars');
+    const stars = starsContainer.querySelectorAll('svg');
+    const updateStars = (rating) => {
+        stars.forEach((s, idx) => {
+            s.style.color = idx < rating ? '#facc15' : '#4b5563';
+        });
+    };
+    starsContainer.addEventListener('click', (e) => {
+        const star = e.target.closest('svg[data-star]');
+        if (star) {
+            selectedRating = parseInt(star.dataset.star);
+            updateStars(selectedRating);
+        }
+    });
+    starsContainer.addEventListener('mouseover', (e) => {
+        const star = e.target.closest('svg[data-star]');
+        if (star) updateStars(parseInt(star.dataset.star));
+    });
+    starsContainer.addEventListener('mouseleave', () => {
+        updateStars(selectedRating);
+    });
+
+    // Close
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    modal.querySelector('#skill-rate-cancel').addEventListener('click', close);
+
+    // Submit
+    modal.querySelector('#skill-rate-submit').addEventListener('click', async () => {
+        if (selectedRating < 1) {
+            _notify('error', 'Please select a rating');
+            return;
+        }
+        const submitBtn = modal.querySelector('#skill-rate-submit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+
+        try {
+            const body = { rating: selectedRating };
+            const comment = modal.querySelector('#skill-rate-comment').value.trim();
+            if (comment) body.comment = comment;
+
+            const res = await fetch(`/api/v1/marketplace/skills/${skill.id}/rate`, {
+                method: 'POST',
+                headers: _authHeaders(),
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                _notify('success', 'Rating submitted');
+                close();
+                _loadMktSkills();
+            } else {
+                _notify('error', data.error || 'Rating failed');
+                submitBtn.textContent = 'Submit';
+                submitBtn.disabled = false;
+            }
+        } catch (err) {
+            _notify('error', 'Rating failed: ' + err.message);
+            submitBtn.textContent = 'Submit';
+            submitBtn.disabled = false;
+        }
+    });
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -669,6 +1217,12 @@ export function initializeSkillHandlers() {
 
     // Edit buttons on cards — wired dynamically in _createSkillCard
     // (uses window.openSkillEditor)
+
+    // Marketplace button
+    const mktBtn = document.getElementById('browse-skill-marketplace-btn');
+    if (mktBtn) {
+        mktBtn.addEventListener('click', () => _showSkillMarketplace());
+    }
 
     // Reload button
     const reloadBtn = document.getElementById('reload-skills-btn');

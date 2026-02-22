@@ -88,21 +88,23 @@
 
         /* Extension card theme-aware classes */
         .ext-id-badge {
-            background: rgba(148,163,184,0.08);
-            border: 1px solid rgba(148,163,184,0.15);
-            color: #94a3b8;
+            background: rgba(251,191,36,0.12);
+            border: 1px solid rgba(251,191,36,0.25);
+            color: #fbbf24;
         }
         [data-theme="light"] .ext-id-badge {
-            background: var(--bg-tertiary);
-            border-color: var(--border-secondary);
-            color: var(--text-secondary);
+            background: rgba(217,119,6,0.12);
+            border-color: rgba(217,119,6,0.25);
+            color: #b45309;
         }
         .ext-cat-tag {
-            background: rgba(148,163,184,0.06);
-            color: #6b7280;
+            background: rgba(148,163,184,0.10);
+            border: 1px solid rgba(148,163,184,0.18);
+            color: #94a3b8;
         }
         [data-theme="light"] .ext-cat-tag {
             background: var(--bg-tertiary);
+            border: 1px solid var(--border-secondary);
             color: var(--text-tertiary);
         }
         .ext-builtin-tag {
@@ -896,6 +898,24 @@
                                             <div class="grid md:grid-cols-2 gap-x-12 gap-y-6 relative">
                                                 <!-- Timeline connector line for desktop -->
                                                 <div class="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-white/10 welcome-timeline-item"></div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">22-Feb-2026</p>
+                                                            <p class="text-base text-white font-medium">Extensions - Post-processing transformations with # trigger, 6 built-in extensions, four-tier custom framework, and serial chaining for workflow automation</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">22-Feb-2026</p>
+                                                            <p class="text-base text-white font-medium">Skills - Pre-processing context injection with ! trigger, 5 built-in skills, parameterizable behavior, and visual editor</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                                 <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
                                                     <div class="flex items-start gap-3">
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
@@ -2962,6 +2982,12 @@
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                                                 Reload
                                             </button>
+                                            <button id="browse-skill-marketplace-btn" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200"
+                                                    style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #34d399;"
+                                                    title="Browse skill marketplace">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                                                Marketplace
+                                            </button>
                                         </div>
                                     </div>
 
@@ -3998,6 +4024,20 @@
                                                     <div class="flex-1">
                                                         <label for="skill-user-skills-enabled" class="block text-sm font-semibold text-white cursor-pointer">Allow users to create custom skills</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, users can create their own prompt injection skills. When disabled, the Create button is hidden in the Skills tab.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Skill Marketplace Toggle -->
+                                            <div class="glass-panel rounded-lg p-4">
+                                                <div class="flex items-start gap-3">
+                                                    <label class="ind-toggle">
+                                                        <input type="checkbox" id="skill-marketplace-enabled" checked>
+                                                        <span class="ind-track"></span>
+                                                    </label>
+                                                    <div class="flex-1">
+                                                        <label for="skill-marketplace-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable skill marketplace</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, users can publish custom skills to the marketplace and install skills shared by others.</p>
                                                     </div>
                                                 </div>
                                             </div>

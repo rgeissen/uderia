@@ -4,16 +4,17 @@
 
 The Intelligence Marketplace is a comprehensive feature enabling users to share, discover, and leverage community-curated RAG (Retrieval-Augmented Generation) collections. This marketplace transforms isolated knowledge bases into a collaborative ecosystem where users benefit from proven execution patterns and domain expertise.
 
-The marketplace supports **two distinct repository types:**
+The marketplace supports **three distinct product types:**
 - **Planner Repositories:** Execution patterns and strategies for proven task completion
 - **Knowledge Repositories:** Reference documents and domain knowledge for planning context
+- **Skills:** Pre-processing prompt injections for modifying LLM behavior (Claude Code compatible format)
 
-Both types can be published, subscribed to, forked, and rated through a unified marketplace interface with visual separation for clarity.
+All types can be published, browsed, installed/subscribed, and rated through the marketplace interface with visual separation for clarity.
 
-**Implementation Date:** 2024  
-**Total Implementation:** 4 Phases  
-**Lines of Code:** ~3,500 lines (backend + frontend)  
-**Status:** ✅ Complete (pending final testing)
+**Implementation Date:** 2024 (Phase 1-4), February 2026 (Phase 5: Skills)
+**Total Implementation:** 5 Phases
+**Lines of Code:** ~4,200 lines (backend + frontend)
+**Status:** ✅ Complete
 
 ---
 
@@ -28,6 +29,7 @@ Both types can be published, subscribed to, forked, and rated through a unified 
 7. [Security & Privacy](#security--privacy)
 8. [Performance & Scalability](#performance--scalability)
 9. [Future Roadmap](#future-roadmap)
+10. [Skills Marketplace (Phase 5)](#skills-marketplace-phase-5)
 
 ---
 
@@ -833,6 +835,148 @@ The Intelligence Marketplace transforms the Uderia Platform from a single-user t
 
 ---
 
+## Skills Marketplace (Phase 5)
+
+**Implementation Date:** February 2026
+**Status:** ✅ Complete
+
+### Overview
+
+The Skills Marketplace extends the marketplace ecosystem to support sharing of pre-processing prompt injections. Skills modify LLM behavior before query execution — for example, enforcing SQL best practices, requiring concise responses, or enabling chain-of-thought reasoning.
+
+Skills use the **standard Claude Code skill format** (`skill.json` + `<name>.md`), with an optional `uderia` section for platform-specific features (allowed params, injection target). A skill exported from the marketplace can be placed directly in `.claude/skills/` and work natively.
+
+### Architecture
+
+```
+User creates skill → Publish to marketplace → Other users browse → Install → Activate with !name
+     ↓                      ↓                       ↓                 ↓
+  skill.json + .md    marketplace_skills       Search/Sort/Rate    ~/.tda/skills/
+                      + skill_ratings          + Pagination        + hot-reload
+                      + marketplace_data/
+```
+
+### Skill Format (Claude Code Compatible)
+
+```
+skill-name/
+├── skill.json      ← Manifest (name, version, description, author, tags, main_file)
+└── skill-name.md   ← Pure markdown content
+```
+
+Optional Uderia enhancement in `skill.json`:
+```json
+{
+  "name": "sql-expert",
+  "version": "1.0.0",
+  "description": "SQL optimization guidance",
+  "author": "admin",
+  "tags": ["sql", "database"],
+  "main_file": "sql-expert.md",
+  "uderia": {
+    "allowed_params": ["strict", "lenient"],
+    "param_descriptions": { "strict": "Enforce strict SQL standards" },
+    "injection_target": "system_prompt",
+    "icon": "database"
+  }
+}
+```
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `marketplace_skills` | Published skill metadata (name, version, author, tags, visibility, install count) |
+| `skill_ratings` | Per-user ratings (1-5 stars + comment), unique per user per skill |
+| `marketplace_sharing_grants` | Targeted visibility grants (reused, `resource_type='skill'`) |
+
+Schema: `schema/17_marketplace_skills.sql`
+
+### Marketplace Lifecycle
+
+**Publishing:**
+1. User creates a skill via the Skill Editor
+2. Clicks "Publish" button on the skill card
+3. Backend validates: user-created, marketplace enabled, not already published
+4. Stores `skill.json` + `.md` in `marketplace_data/skills/{marketplace_id}/`
+5. Inserts record into `marketplace_skills` table
+6. Optionally sets targeted visibility via `marketplace_sharing_grants`
+
+**Browsing:**
+1. Click "Marketplace" button in Skills tab toolbar
+2. Modal opens with search bar, sort options, and paginated grid
+3. Each card shows: name, version, author, injection target badge, tags, star rating, install count
+4. Sort by: Most Recent, Top Rated, Most Installs, Most Downloads, Name A-Z
+
+**Installing:**
+1. Click "Install" on a marketplace skill card
+2. Backend reads `skill.json` + `.md` from marketplace storage
+3. Saves to `~/.tda/skills/{skill_id}/` via skill manager
+4. Hot-reloads skill manager
+5. Increments `install_count`
+6. Skill appears in local skills list, ready to activate with `!name`
+
+**Rating:**
+1. Click "Rate" on a marketplace skill card
+2. Select 1-5 stars, optionally add a comment
+3. Upsert into `skill_ratings` table (one rating per user per skill)
+4. Average rating updates on the marketplace card
+
+**Unpublishing:**
+1. Publisher clicks "Unpublish" on their own skill card
+2. Removes from `marketplace_skills`, `skill_ratings`, and sharing grants
+3. Cleans up files from `marketplace_data/skills/{id}/`
+4. Does not affect users who already installed the skill
+
+### Admin Governance
+
+The `user_skills_marketplace_enabled` setting in `skill_settings` controls marketplace access:
+- When `true`: Publish button visible, marketplace browsable, install available
+- When `false`: Publish returns 403, marketplace button hidden, install returns 403
+
+Managed via: Administration → App Config → Skill Settings
+
+### REST API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `POST /v1/skills/{skill_id}/publish` | POST | Publish user skill |
+| `GET /v1/marketplace/skills` | GET | Browse with search/sort/paginate |
+| `GET /v1/marketplace/skills/{id}` | GET | Skill detail + ratings |
+| `POST /v1/marketplace/skills/{id}/install` | POST | Install from marketplace |
+| `POST /v1/marketplace/skills/{id}/rate` | POST | Rate (1-5 stars + comment) |
+| `DELETE /v1/marketplace/skills/{id}` | DELETE | Unpublish (publisher only) |
+
+Full endpoint documentation: `docs/RestAPI/restAPI.md` Section 3.21.
+
+### Frontend Implementation
+
+The marketplace UI is implemented in `static/js/handlers/skillHandler.js`:
+- **Publish button**: Added to user-created skill cards (cloud-upload icon)
+- **Marketplace button**: In skills tab toolbar, opens browsing modal
+- **Browse modal**: Full-screen overlay with search, sort dropdown, paginated grid
+- **Skill cards**: Glass-panel cards with emerald accent, colored tags, star ratings
+- **Rating modal**: Interactive star selection with hover preview, comment field
+
+### Export Format
+
+Skills export as `.skill` files (ZIP containing `skill.json` + `<name>.md`). Import accepts both `.skill` and `.zip` for backward compatibility.
+
+### Files Modified/Created
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `schema/17_marketplace_skills.sql` | Created | Marketplace + ratings tables |
+| `schema/16_skill_settings.sql` | Modified | Added `user_skills_marketplace_enabled` |
+| `src/trusted_data_agent/skills/settings.py` | Modified | `is_skill_marketplace_enabled()` predicate |
+| `src/trusted_data_agent/auth/database.py` | Modified | Bootstrap schema 17 |
+| `src/trusted_data_agent/api/skills_routes.py` | Modified | 6 marketplace endpoints + `.skill` export |
+| `src/trusted_data_agent/api/admin_routes.py` | Modified | Marketplace setting validation |
+| `static/js/handlers/skillHandler.js` | Modified | Publish, browse, install, rate UI |
+| `templates/index.html` | Modified | Marketplace button in skills toolbar |
+
+---
+
 ## Support & Resources
 
 **Documentation:**
@@ -846,8 +990,10 @@ The Intelligence Marketplace transforms the Uderia Platform from a single-user t
 - UI Tests: `test/test_marketplace_phase4_ui.md`
 
 **Code:**
-- Backend: `src/trusted_data_agent/api/rest_routes.py` (~450 lines)
-- Frontend: `static/js/handlers/marketplaceHandler.js` (~765 lines)
+- Backend (Collections): `src/trusted_data_agent/api/rest_routes.py` (~450 lines)
+- Backend (Skills): `src/trusted_data_agent/api/skills_routes.py` (~350 lines marketplace)
+- Frontend (Collections): `static/js/handlers/marketplaceHandler.js` (~765 lines)
+- Frontend (Skills): `static/js/handlers/skillHandler.js` (marketplace modal + rating UI)
 
 **Contact:**
 - Project Repo: [uderia](https://github.com/your-org/uderia)
@@ -856,6 +1002,6 @@ The Intelligence Marketplace transforms the Uderia Platform from a single-user t
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2024  
+**Document Version:** 1.1
+**Last Updated:** February 2026
 **Maintainer:** Development Team

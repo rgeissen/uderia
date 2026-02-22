@@ -343,6 +343,107 @@ def ensure_user_default_collection(user_id: str):
         logger.error(f"Failed to ensure default collections for user {user_id}: {e}", exc_info=True)
 
 
+def ensure_user_default_extensions(user_uuid: str):
+    """
+    Ensure a user has all built-in extensions activated on first login.
+    Bootstraps from extension_registry.json — only activates built-in, active extensions.
+    Skips if user already has any extension activations (active or inactive).
+    """
+    try:
+        from trusted_data_agent.extensions.db import get_all_user_extensions, activate_extension
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        from trusted_data_agent.extensions.settings import is_extension_available
+
+        # Skip if user already has ANY activations (active or inactive)
+        existing = get_all_user_extensions(user_uuid)
+        if existing:
+            logger.debug(
+                f"User {user_uuid} already has {len(existing)} extension activation(s) — skipping bootstrap"
+            )
+            return
+
+        # Get built-in extensions from the loaded extension manager
+        manager = get_extension_manager()
+        registry_entries = manager.registry.get("extensions", [])
+
+        activated_count = 0
+        for entry in registry_entries:
+            ext_id = entry.get("extension_id")
+            if not entry.get("is_builtin") or entry.get("status") != "active":
+                continue
+
+            # Respect admin governance (skip disabled extensions)
+            if not is_extension_available(ext_id):
+                logger.debug(f"Skipping disabled extension '{ext_id}' during bootstrap for user {user_uuid}")
+                continue
+
+            # Verify extension is actually loaded in the manager
+            if manager.get_extension(ext_id) is None:
+                logger.warning(f"Extension '{ext_id}' in registry but not loaded — skipping bootstrap activation")
+                continue
+
+            success, _ = activate_extension(user_uuid, ext_id)
+            if success:
+                activated_count += 1
+            else:
+                logger.warning(f"Failed to activate built-in extension '{ext_id}' for user {user_uuid}")
+
+        logger.info(f"Bootstrapped {activated_count} built-in extension(s) for user {user_uuid}")
+
+    except Exception as e:
+        logger.error(f"Failed to bootstrap extensions for user {user_uuid}: {e}", exc_info=True)
+
+
+def ensure_user_default_skills(user_uuid: str):
+    """
+    Ensure a user has all built-in skills activated on first login.
+    Bootstraps from skill_registry.json — only activates active skills.
+    Skips if user already has any skill activations (active or inactive).
+    """
+    try:
+        from trusted_data_agent.skills.db import get_all_user_skills, activate_skill
+        from trusted_data_agent.skills.manager import get_skill_manager
+        from trusted_data_agent.skills.settings import is_skill_available
+
+        # Skip if user already has ANY activations
+        existing = get_all_user_skills(user_uuid)
+        if existing:
+            logger.debug(
+                f"User {user_uuid} already has {len(existing)} skill activation(s) — skipping bootstrap"
+            )
+            return
+
+        manager = get_skill_manager()
+        registry_entries = manager.registry.get("skills", [])
+
+        activated_count = 0
+        for entry in registry_entries:
+            skill_id = entry.get("skill_id")
+            if entry.get("status") != "active":
+                continue
+
+            # Respect admin governance (skip disabled skills)
+            if not is_skill_available(skill_id):
+                logger.debug(f"Skipping disabled skill '{skill_id}' during bootstrap for user {user_uuid}")
+                continue
+
+            # Verify skill is actually loaded in the manager
+            if skill_id not in manager.manifests:
+                logger.warning(f"Skill '{skill_id}' in registry but not loaded — skipping bootstrap activation")
+                continue
+
+            success, _ = activate_skill(user_uuid, skill_id)
+            if success:
+                activated_count += 1
+            else:
+                logger.warning(f"Failed to activate built-in skill '{skill_id}' for user {user_uuid}")
+
+        logger.info(f"Bootstrapped {activated_count} built-in skill(s) for user {user_uuid}")
+
+    except Exception as e:
+        logger.error(f"Failed to bootstrap skills for user {user_uuid}: {e}", exc_info=True)
+
+
 def log_audit_event(user_id: str, action: str, details: str, success: bool = True):
     """Helper to log audit events"""
     try:
@@ -502,7 +603,13 @@ async def register():
         
         # Create default collection for new user
         ensure_user_default_collection(user_uuid)
-        
+
+        # Activate built-in extensions for new user
+        ensure_user_default_extensions(user_uuid)
+
+        # Activate built-in skills for new user
+        ensure_user_default_skills(user_uuid)
+
         return jsonify({
             'status': 'success',
             'message': 'User registered successfully. Please check your email to verify your account.',
@@ -1119,7 +1226,13 @@ async def login():
         
         # Ensure user has a default collection
         ensure_user_default_collection(user_uuid)
-        
+
+        # Activate built-in extensions for new user
+        ensure_user_default_extensions(user_uuid)
+
+        # Activate built-in skills for new user
+        ensure_user_default_skills(user_uuid)
+
         return jsonify({
             'status': 'success',
             'message': 'Login successful',
@@ -2717,6 +2830,8 @@ async def oauth_callback(provider):
                 logger.info(f"New user {user_id} created via OAuth, ensuring default profile and collection.")
                 ensure_user_default_profile(user_id)
                 ensure_user_default_collection(user_id)
+                ensure_user_default_extensions(user_id)
+                ensure_user_default_skills(user_id)
             else:
                 logger.warning("A new user was created via OAuth, but no user_id was found in the user dictionary.")
 

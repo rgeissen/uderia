@@ -7205,9 +7205,562 @@ curl -X POST http://localhost:5050/api/v1/extensions/reload \
   -H "Authorization: Bearer $JWT"
 ```
 
+#### Export Extension
+
+Export an extension as a downloadable `.extension` ZIP file. Works for both built-in and user-created extensions.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/json/export \
+  -H "Authorization: Bearer $JWT" \
+  --output json.extension
+```
+
+**Response:** Binary ZIP file download containing `manifest.json` + `source.py`.
+
+The manifest includes `export_format_version` and `exported_at` metadata. Internal fields (`_is_user`, `_source_path`, etc.) are stripped.
+
+#### Import Extension
+
+Import an extension from an uploaded `.extension` or `.zip` file.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/import \
+  -H "Authorization: Bearer $JWT" \
+  -F "file=@my_ext.extension"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "extension_id": "my_ext",
+  "name": "My Extension",
+  "message": "Extension 'my_ext' imported successfully."
+}
+```
+
+**Notes:**
+- ZIP must contain `source.py` and optionally `manifest.json`
+- Extension ID is sanitized (alphanumeric + underscore only)
+- Returns `403` if admin has disabled custom extension creation
+
+#### Duplicate Extension
+
+Duplicate any extension (built-in or user-created) into a new user extension.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/extensions/json/duplicate \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response (201):**
+```json
+{
+  "status": "success",
+  "extension_id": "json_copy",
+  "display_name": "JSON Output (Copy)",
+  "message": "Extension duplicated as \"json_copy\"."
+}
+```
+
+**Notes:**
+- Generates unique ID: `{id}_copy`, `{id}_copy_2`, etc.
+- Rewrites name references in Python source
+- Returns `403` if admin has disabled custom extension creation
+- Returns `404` if source extension not found
+
+#### Delete Extension
+
+Delete a user-created extension. Built-in extensions cannot be deleted.
+
+```bash
+curl -X DELETE http://localhost:5050/api/v1/extensions/my_ext \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "deleted",
+  "extension_id": "my_ext"
+}
+```
+
+**Error responses:**
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| `403` | Built-in extension | `{"error": "Built-in extensions cannot be deleted"}` |
+| `409` | Has active activations | `{"error": "Extension has active activations. Deactivate them first."}` |
+| `404` | Extension not found | `{"error": "Extension 'xyz' not found"}` |
+
+**Notes:**
+- Only user-created extensions can be deleted
+- All activations must be deactivated before deletion
+- Inactive activation rows are cleaned up automatically
+
 ---
 
-### 3.21. Admin Endpoints
+### 3.21. Skill Management
+
+Skills are pre-processing prompt injections that modify LLM behavior before query execution. The skill system supports discovery, activation, creation, import/export, and a marketplace for sharing skills across users.
+
+**Authentication Required:** All endpoints require JWT authentication.
+
+**Skill Format:** Claude Code compatible — each skill is a `skill.json` manifest + `<name>.md` content file. An optional `uderia` section in the manifest provides platform-specific features (params, injection target).
+
+---
+
+#### 3.21.1. List Available Skills
+
+**Endpoint:** `GET /v1/skills`
+
+**Purpose:** List all available skills (built-in + user-created), filtered by admin governance settings.
+
+**Success Response:**
+```json
+{
+  "skills": [
+    {
+      "skill_id": "sql-expert",
+      "name": "SQL Expert",
+      "description": "SQL best practices and optimization guidance",
+      "is_builtin": true,
+      "injection_target": "system_prompt",
+      "tags": ["sql", "database", "best-practices"],
+      "allowed_params": ["strict", "lenient"],
+      "keywords": ["sql", "query"]
+    }
+  ],
+  "_settings": {
+    "user_skills_enabled": true,
+    "user_skills_marketplace_enabled": true,
+    "skills_mode": "all"
+  }
+}
+```
+
+---
+
+#### 3.21.2. Reload Skills from Disk
+
+**Endpoint:** `POST /v1/skills/reload`
+
+**Purpose:** Hot-reload skills from the filesystem (picks up new/modified skill files).
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Skills reloaded",
+  "count": 8
+}
+```
+
+---
+
+#### 3.21.3. Get Skill Content
+
+**Endpoint:** `GET /v1/skills/{skill_id}/content`
+
+**Purpose:** Get full skill content and manifest for the editor.
+
+**Success Response:**
+```json
+{
+  "skill_id": "sql-expert",
+  "content": "# SQL Expert\n\nYou are an SQL optimization expert...",
+  "manifest": {
+    "name": "sql-expert",
+    "version": "1.0.0",
+    "description": "SQL best practices",
+    "tags": ["sql", "database"],
+    "main_file": "sql-expert.md",
+    "uderia": {
+      "allowed_params": ["strict", "lenient"],
+      "injection_target": "system_prompt"
+    }
+  }
+}
+```
+
+---
+
+#### 3.21.4. Create/Update User Skill
+
+**Endpoint:** `PUT /v1/skills/{skill_id}`
+
+**Request Body:**
+```json
+{
+  "content": "# My Skill\n\nSkill instructions here...",
+  "manifest": {
+    "name": "my-skill",
+    "description": "Custom skill description",
+    "tags": ["custom"],
+    "version": "1.0.0"
+  }
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "skill_id": "my-skill",
+  "message": "Skill saved"
+}
+```
+
+---
+
+#### 3.21.5. Delete User Skill
+
+**Endpoint:** `DELETE /v1/skills/{skill_id}`
+
+**Purpose:** Delete a user-created skill from disk (built-in skills cannot be deleted).
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Skill deleted"
+}
+```
+
+---
+
+#### 3.21.6. Export Skill
+
+**Endpoint:** `POST /v1/skills/{skill_id}/export`
+
+**Purpose:** Export a skill as a `.skill` file (ZIP containing `skill.json` + `<name>.md`).
+
+**Response:** Binary `.skill` file download.
+
+**Response Headers:**
+```
+Content-Type: application/zip
+Content-Disposition: attachment; filename="sql-expert.skill"
+```
+
+---
+
+#### 3.21.7. Import Skill
+
+**Endpoint:** `POST /v1/skills/import`
+
+**Purpose:** Import a skill from a `.skill` or `.zip` file.
+
+**Request:** `multipart/form-data` with `file` field.
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "skill_id": "imported-skill",
+  "message": "Skill imported: imported-skill"
+}
+```
+
+---
+
+#### 3.21.8. List Activated Skills
+
+**Endpoint:** `GET /v1/skills/activated`
+
+**Purpose:** Get the current user's activated skills (for `!` autocomplete).
+
+**Success Response:**
+```json
+{
+  "skills": [
+    {
+      "skill_id": "sql-expert",
+      "activation_name": "sql-expert",
+      "is_active": true,
+      "default_param": "strict"
+    }
+  ]
+}
+```
+
+---
+
+#### 3.21.9. Activate Skill
+
+**Endpoint:** `POST /v1/skills/{skill_id}/activate`
+
+**Request Body:**
+```json
+{
+  "activation_name": "my-sql"
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "activation_name": "my-sql"
+}
+```
+
+---
+
+#### 3.21.10. Deactivate Skill
+
+**Endpoint:** `POST /v1/skills/activations/{name}/deactivate`
+
+**Purpose:** Soft-deactivate a skill (sets `is_active=0`).
+
+---
+
+#### 3.21.11. Publish Skill to Marketplace
+
+**Endpoint:** `POST /v1/skills/{skill_id}/publish`
+
+**Purpose:** Publish a user-created skill to the marketplace for sharing.
+
+**Prerequisites:**
+- Skill must be user-created (not built-in)
+- Marketplace must be enabled (`user_skills_marketplace_enabled = true`)
+
+**Request Body:**
+```json
+{
+  "visibility": "public",
+  "targeted_user_ids": []
+}
+```
+
+**Parameters:**
+- `visibility` (string, optional) — `public` (default) or `targeted`
+- `targeted_user_ids` (array, optional) — For targeted visibility, list of user UUIDs
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "marketplace_id": "a1b2c3d4-...",
+  "message": "Skill 'my-skill' published to marketplace"
+}
+```
+
+**Error Responses:**
+| Code | Condition | Example |
+|------|-----------|---------|
+| `400` | Skill is built-in | `{"error": "Only user-created skills can be published"}` |
+| `403` | Marketplace disabled | `{"error": "Skill marketplace is not enabled"}` |
+| `409` | Already published | `{"error": "Skill already published by you"}` |
+| `404` | Skill not found | `{"error": "Skill not found"}` |
+
+---
+
+#### 3.21.12. Browse Marketplace Skills
+
+**Endpoint:** `GET /v1/marketplace/skills`
+
+**Purpose:** Browse published skills in the marketplace with search, sort, filter, and pagination.
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 1 | Page number |
+| `per_page` | integer | 20 | Results per page (max 100) |
+| `search` | string | — | Search name, description, tags |
+| `sort_by` | string | `recent` | Sort: `recent`, `rating`, `installs`, `downloads`, `name` |
+| `injection_target` | string | — | Filter: `system_prompt` or `user_context` |
+
+**Success Response:**
+```json
+{
+  "skills": [
+    {
+      "id": "a1b2c3d4-...",
+      "skill_id": "my-skill",
+      "name": "My Skill",
+      "description": "A useful skill",
+      "version": "1.0.0",
+      "author": "admin",
+      "injection_target": "system_prompt",
+      "has_params": false,
+      "tags_json": "[\"sql\", \"database\"]",
+      "publisher_username": "admin",
+      "visibility": "public",
+      "average_rating": 4.5,
+      "rating_count": 12,
+      "install_count": 45,
+      "download_count": 0,
+      "published_at": "2026-02-22T10:00:00",
+      "is_publisher": false
+    }
+  ],
+  "page": 1,
+  "per_page": 20,
+  "total_count": 1,
+  "total_pages": 1
+}
+```
+
+---
+
+#### 3.21.13. Get Marketplace Skill Detail
+
+**Endpoint:** `GET /v1/marketplace/skills/{marketplace_id}`
+
+**Purpose:** Get detailed information about a marketplace skill including ratings and manifest.
+
+**Success Response:**
+```json
+{
+  "skill": {
+    "id": "a1b2c3d4-...",
+    "skill_id": "my-skill",
+    "name": "My Skill",
+    "description": "A useful skill",
+    "version": "1.0.0",
+    "author": "admin",
+    "injection_target": "system_prompt",
+    "has_params": false,
+    "tags_json": "[\"sql\"]",
+    "manifest_json": "{...}",
+    "publisher_username": "admin",
+    "average_rating": 4.5,
+    "rating_count": 12,
+    "install_count": 45,
+    "download_count": 0,
+    "published_at": "2026-02-22T10:00:00",
+    "user_rating": 5,
+    "user_comment": "Excellent!"
+  }
+}
+```
+
+---
+
+#### 3.21.14. Install Skill from Marketplace
+
+**Endpoint:** `POST /v1/marketplace/skills/{marketplace_id}/install`
+
+**Purpose:** Install a marketplace skill to the local skills directory.
+
+**Behavior:**
+1. Reads `skill.json` + `.md` from marketplace storage
+2. Saves to `~/.tda/skills/{skill_id}/` via skill manager
+3. Hot-reloads skill manager
+4. Increments install count
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "skill_id": "my-skill",
+  "message": "Skill 'My Skill' installed from marketplace"
+}
+```
+
+**Error Responses:**
+| Code | Condition | Example |
+|------|-----------|---------|
+| `403` | Marketplace disabled | `{"error": "Skill marketplace is not enabled"}` |
+| `404` | Not found | `{"error": "Marketplace skill not found"}` |
+
+---
+
+#### 3.21.15. Rate Marketplace Skill
+
+**Endpoint:** `POST /v1/marketplace/skills/{marketplace_id}/rate`
+
+**Purpose:** Submit a 1-5 star rating with optional comment for a marketplace skill.
+
+**Request Body:**
+```json
+{
+  "rating": 5,
+  "comment": "Excellent skill, very useful!"
+}
+```
+
+**Parameters:**
+- `rating` (integer, required) — 1 to 5
+- `comment` (string, optional) — Review text
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Rating submitted"
+}
+```
+
+**Error Responses:**
+| Code | Condition | Example |
+|------|-----------|---------|
+| `400` | Invalid rating | `{"error": "Rating must be between 1 and 5"}` |
+| `400` | Self-rating | `{"error": "Cannot rate your own skill"}` |
+| `403` | Marketplace disabled | `{"error": "Skill marketplace is not enabled"}` |
+| `404` | Not found | `{"error": "Marketplace skill not found"}` |
+
+---
+
+#### 3.21.16. Unpublish Skill from Marketplace
+
+**Endpoint:** `DELETE /v1/marketplace/skills/{marketplace_id}`
+
+**Purpose:** Remove a skill from the marketplace (publisher only). Does not affect users who already installed it.
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Skill unpublished from marketplace"
+}
+```
+
+**Error Responses:**
+| Code | Condition | Example |
+|------|-----------|---------|
+| `403` | Not the publisher | `{"error": "Only the publisher can unpublish"}` |
+| `404` | Not found | `{"error": "Marketplace skill not found"}` |
+
+---
+
+#### 3.21.17. Admin Skill Settings
+
+**Endpoint:** `GET /v1/admin/skill-settings`
+
+**Purpose:** Get governance settings including marketplace enabled flag.
+
+**Success Response:**
+```json
+{
+  "settings": {
+    "skills_mode": "all",
+    "disabled_skills": "[]",
+    "user_skills_enabled": "true",
+    "auto_skills_enabled": "false",
+    "user_skills_marketplace_enabled": "true"
+  },
+  "builtin_skills": [...]
+}
+```
+
+**Endpoint:** `POST /v1/admin/skill-settings`
+
+**Purpose:** Update governance settings.
+
+**Request Body:**
+```json
+{
+  "user_skills_enabled": true,
+  "user_skills_marketplace_enabled": false
+}
+```
+
+---
+
+### 3.22. Admin Endpoints
 
 Admin-only endpoints for system management and maintenance operations.
 
@@ -7220,7 +7773,7 @@ Admin-only endpoints for system management and maintenance operations.
 
 ---
 
-#### 3.20.1. Clear Prompt Cache
+#### 3.22.1. Clear Prompt Cache
 
 **Endpoint:** `POST /v1/admin/prompts/clear-cache`
 
@@ -8527,6 +9080,6 @@ The user UUID is now automatically extracted from your token. Remove the `X-TDA-
 
 ---
 
-**Last Updated:** November 26, 2025  
-**API Version:** v1  
-**Document Version:** 2.1.0
+**Last Updated:** February 22, 2026
+**API Version:** v1
+**Document Version:** 2.2.0

@@ -463,9 +463,59 @@ CREATE TABLE IF NOT EXISTS skill_settings (
 INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) VALUES
     ('skills_mode', 'all'),             -- 'all' | 'selective'
     ('disabled_skills', '[]'),          -- JSON array of skill_ids
-    ('user_skills_enabled', 'true'),    -- Can users create skills?
-    ('auto_skills_enabled', 'false');   -- Phase 2: automatic skill selection
+    ('user_skills_enabled', 'true'),              -- Can users create skills?
+    ('auto_skills_enabled', 'false'),              -- Phase 2: automatic skill selection
+    ('user_skills_marketplace_enabled', 'true');   -- Enable skill marketplace
 ```
+
+### Marketplace Tables
+
+```sql
+-- schema/17_marketplace_skills.sql
+
+CREATE TABLE IF NOT EXISTS marketplace_skills (
+    id                VARCHAR(36)  PRIMARY KEY,
+    skill_id          VARCHAR(100) NOT NULL,
+    name              VARCHAR(255) NOT NULL,
+    description       TEXT,
+    version           VARCHAR(50),
+    author            VARCHAR(255),
+    injection_target  VARCHAR(20)  DEFAULT 'system_prompt',
+    has_params        BOOLEAN      DEFAULT 0,
+    tags_json         TEXT,                    -- JSON array of tags
+    publisher_user_id VARCHAR(36)  NOT NULL,
+    visibility        VARCHAR(20)  DEFAULT 'public',  -- 'public' | 'targeted'
+    manifest_json     TEXT,                    -- Full skill.json for preview
+    content_hash      VARCHAR(64),             -- SHA256 of .md content
+    download_count    INTEGER      DEFAULT 0,
+    install_count     INTEGER      DEFAULT 0,
+    published_at      DATETIME     NOT NULL,
+    updated_at        DATETIME     NOT NULL,
+    FOREIGN KEY (publisher_user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS skill_ratings (
+    id                        VARCHAR(36) PRIMARY KEY,
+    skill_marketplace_id      VARCHAR(36) NOT NULL,
+    user_id                   VARCHAR(36) NOT NULL,
+    rating                    INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment                   TEXT,
+    created_at                DATETIME NOT NULL,
+    updated_at                DATETIME NOT NULL,
+    FOREIGN KEY (skill_marketplace_id) REFERENCES marketplace_skills(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_marketplace_skill_publisher    ON marketplace_skills(publisher_user_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_skill_visibility   ON marketplace_skills(visibility);
+CREATE INDEX IF NOT EXISTS idx_marketplace_skill_published_at ON marketplace_skills(published_at);
+CREATE INDEX IF NOT EXISTS idx_skill_ratings_skill            ON skill_ratings(skill_marketplace_id);
+CREATE INDEX IF NOT EXISTS idx_skill_ratings_user             ON skill_ratings(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_ratings_unique    ON skill_ratings(skill_marketplace_id, user_id);
+```
+
+Targeted visibility reuses the existing `marketplace_sharing_grants` table (from `schema/11_marketplace_sharing.sql`) with `resource_type = 'skill'`.
 
 ### Schema Files
 
@@ -473,6 +523,7 @@ INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) VALUES
 |------|-------|
 | `schema/15_skills.sql` | `user_skills` |
 | `schema/16_skill_settings.sql` | `skill_settings` |
+| `schema/17_marketplace_skills.sql` | `marketplace_skills`, `skill_ratings` |
 
 ---
 
@@ -487,8 +538,8 @@ INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) VALUES
 | `/v1/skills/{skill_id}/content` | GET | Full content + manifest (for editor) |
 | `/v1/skills/{skill_id}` | PUT | Create or update user skill |
 | `/v1/skills/{skill_id}` | DELETE | Delete user-created skill |
-| `/v1/skills/{skill_id}/export` | POST | Export skill as `.zip` |
-| `/v1/skills/import` | POST | Import skill from `.zip` file |
+| `/v1/skills/{skill_id}/export` | POST | Export skill as `.skill` (ZIP) |
+| `/v1/skills/import` | POST | Import skill from `.skill` or `.zip` file |
 
 ### User Activations
 
@@ -506,7 +557,18 @@ INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) VALUES
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/v1/admin/skill-settings` | GET | Get governance settings + builtin skill list |
-| `/v1/admin/skill-settings` | POST | Save governance (disabled_skills, user_skills_enabled) |
+| `/v1/admin/skill-settings` | POST | Save governance (disabled_skills, user_skills_enabled, user_skills_marketplace_enabled) |
+
+### Marketplace
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/skills/{skill_id}/publish` | POST | Publish user skill to marketplace |
+| `/v1/marketplace/skills` | GET | Browse marketplace (search, sort, paginate) |
+| `/v1/marketplace/skills/{id}` | GET | Get marketplace skill detail + ratings |
+| `/v1/marketplace/skills/{id}/install` | POST | Install skill from marketplace |
+| `/v1/marketplace/skills/{id}/rate` | POST | Rate marketplace skill (1-5 stars + comment) |
+| `/v1/marketplace/skills/{id}` | DELETE | Unpublish from marketplace (publisher only) |
 
 ### Query Execution with Skills
 
@@ -859,3 +921,4 @@ Skills (emerald):     Extensions (amber):
 |------|-------|
 | `schema/15_skills.sql` | `user_skills` |
 | `schema/16_skill_settings.sql` | `skill_settings` |
+| `schema/17_marketplace_skills.sql` | `marketplace_skills`, `skill_ratings` |

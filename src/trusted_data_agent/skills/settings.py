@@ -58,6 +58,7 @@ def get_skill_settings() -> dict:
             "disabled_skills": [],
             "user_skills_enabled": True,
             "auto_skills_enabled": False,
+            "user_skills_marketplace_enabled": True,
         }
 
 
@@ -139,3 +140,8 @@ def are_user_skills_enabled() -> bool:
 def are_auto_skills_enabled() -> bool:
     """Check whether automatic skill selection is enabled (Phase 2)."""
     return get_skill_settings().get("auto_skills_enabled", False)
+
+
+def is_skill_marketplace_enabled() -> bool:
+    """Check whether the skill marketplace is enabled."""
+    return get_skill_settings().get("user_skills_marketplace_enabled", True)

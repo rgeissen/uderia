@@ -20,7 +20,8 @@ INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) VALUES
     ('skills_mode', 'all'),                      -- 'all' | 'selective'
     ('disabled_skills', '[]'),                   -- JSON array of skill_ids
     ('user_skills_enabled', 'true'),             -- 'true' | 'false'
-    ('auto_skills_enabled', 'false');            -- 'true' | 'false' (Phase 2)
+    ('auto_skills_enabled', 'false'),            -- 'true' | 'false' (Phase 2)
+    ('user_skills_marketplace_enabled', 'true'); -- 'true' | 'false'
 
 -- Index for quick lookups
 CREATE INDEX IF NOT EXISTS idx_skill_settings_key

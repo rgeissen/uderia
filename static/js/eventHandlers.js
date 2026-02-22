@@ -1902,7 +1902,7 @@ function _renderExtensionEventsForReload(turnData, container) {
     // --- Show result summaries for silent/status_panel extensions ---
     for (const [name, result] of Object.entries(extResults)) {
         const target = result.output_target || 'silent';
-        if (target === 'chat_append') continue; // Chat output visible in chat log already
+        if (target === 'chat_append') continue; // Handled separately below (rendered into chat pane)
 
         if (result.success && result.content) {
             const contentPreview = typeof result.content === 'object'
@@ -1919,6 +1919,49 @@ function _renderExtensionEventsForReload(turnData, container) {
                     <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                 </details>`;
             container.appendChild(resultEl);
+        }
+    }
+
+    // --- Re-render chat_append extension cards into the chat message bubble ---
+    // After a reload, chat_append cards are NOT in the chat log (they were only
+    // inserted into the DOM during live execution). Re-render them here from
+    // persisted extension_results so download buttons survive page reloads.
+    const reloadTurnId = turnData.turn || turnData.turn_id;
+    if (reloadTurnId) {
+        for (const [name, result] of Object.entries(extResults)) {
+            const target = result.output_target || 'silent';
+            if (target !== 'chat_append' || !result.success || !result.content) continue;
+
+            // Use .assistant-badge (not .clickable-avatar) to find the assistant bubble.
+            // .clickable-avatar[data-turn-id] matches the USER avatar, not the assistant's.
+            const chatLog = document.getElementById('chat-log');
+            const badge = chatLog?.querySelector(`.assistant-badge[data-turn-id="${reloadTurnId}"]`);
+            if (!badge) continue;
+            const msgContent = badge.closest('.message-bubble')?.querySelector('.message-content');
+            if (!msgContent) continue;
+
+            // Skip if card already rendered (avoid duplicates on repeated clicks)
+            if (msgContent.querySelector(`.extension-output[data-ext-name="${name}"]`)) continue;
+
+            if (window._isExtensionBinaryContent && window._isExtensionBinaryContent(result)) {
+                msgContent.insertAdjacentHTML('beforeend', window._buildExtensionDownloadCard(name, result));
+            } else {
+                // Non-binary chat_append (e.g., JSON text output)
+                const cardHtml = `
+                    <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${name}"
+                         style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
+                                  style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${name}</span>
+                            <span class="text-xs text-gray-500">${result.content_type}</span>
+                        </div>
+                        <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48"
+                             style="font-family: 'JetBrains Mono', monospace;">${
+                            typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
+                        }</pre>
+                    </div>`;
+                msgContent.insertAdjacentHTML('beforeend', cardHtml);
+            }
         }
     }
 }

@@ -2378,7 +2378,7 @@ const AdminManager = {
     setupFeaturesChangeListeners() {
         const fields = ['enable-rag-system', 'enable-charting-system', 'tts-mode-select',
                         'ext-user-extensions-enabled', 'ext-marketplace-enabled',
-                        'skill-user-skills-enabled'];
+                        'skill-user-skills-enabled', 'skill-marketplace-enabled'];
         fields.forEach(fieldId => {
             const el = document.getElementById(fieldId);
             if (el) {
@@ -2750,6 +2750,10 @@ const AdminManager = {
             const userSkillCb = document.getElementById('skill-user-skills-enabled');
             if (userSkillCb) userSkillCb.checked = settings.user_skills_enabled !== false;
 
+            // Marketplace toggle
+            const mktCb = document.getElementById('skill-marketplace-enabled');
+            if (mktCb) mktCb.checked = settings.user_skills_marketplace_enabled !== false;
+
         } catch (err) {
             console.error('[AdminManager] Error loading skill settings:', err);
         }
@@ -2763,11 +2767,13 @@ const AdminManager = {
 
             const allRadio = document.getElementById('skill-mode-all');
             const userSkillCb = document.getElementById('skill-user-skills-enabled');
+            const mktCb = document.getElementById('skill-marketplace-enabled');
 
             const payload = {
                 skills_mode: allRadio && allRadio.checked ? 'all' : 'selective',
                 disabled_skills: this._getDisabledSkills(),
-                user_skills_enabled: userSkillCb ? userSkillCb.checked : true
+                user_skills_enabled: userSkillCb ? userSkillCb.checked : true,
+                user_skills_marketplace_enabled: mktCb ? mktCb.checked : true
             };
 
             const resp = await fetch('/api/v1/admin/skill-settings', {
