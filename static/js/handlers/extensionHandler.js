@@ -55,6 +55,19 @@ function _createLlmWarning() {
     return span;
 }
 
+// ── Filter/sort state ────────────────────────────────────────────────────────
+
+let _activeCategory = 'all';
+let _activeLevel = 'all';
+let _activeStatus = 'all';
+let _searchQuery = '';
+let _sortMode = 'default';
+let _allExtensions = [];
+let _allActivations = [];
+let _expandedExtId = null;
+
+const LEVEL_ORDER = { convention: 0, simple: 1, standard: 2, llm: 3 };
+
 // ── Tier contract data (drives info panel + requirements checklist) ──────────
 
 const TIER_INFO = {
@@ -493,190 +506,304 @@ function showScaffoldModal() {
     setTimeout(() => nameInput?.focus(), 100);
 }
 
-// ── Available Extension Card (registry item with Activate button) ────────────
+// ── Extension Grid Card (compact, with expand-to-detail) ─────────────────────
 
-function createAvailableExtensionCard(ext, activationCount) {
+function createExtensionGridCard(ext, activations, activationCount) {
+    const isExpanded = _expandedExtId === ext.extension_id;
+    const tierCfg = TIER_CONFIG[ext.extension_tier] || TIER_CONFIG.standard;
+
     const card = document.createElement('div');
-    card.className = 'glass-panel rounded-xl p-4 transition-all duration-300';
-    card.style.borderLeft = '3px solid rgba(148, 163, 184, 0.2)';
+    card.className = 'glass-panel rounded-xl transition-all duration-300';
+    card.style.cssText = `border-left: 3px solid ${activationCount > 0 ? 'rgba(251,191,36,0.5)' : tierCfg.border}; cursor: pointer;`;
+    card.dataset.category = ext.category || '';
+    card.dataset.level = ext.extension_tier || '';
+    card.dataset.extId = ext.extension_id;
 
-    const header = document.createElement('div');
-    header.className = 'flex items-center justify-between';
+    if (isExpanded) {
+        card.style.gridColumn = '1 / -1';
+        card.style.cursor = 'default';
+    }
 
-    const headerLeft = document.createElement('div');
-    headerLeft.className = 'flex items-center gap-3';
+    // ── Compact section (always visible) ──
+    const compact = document.createElement('div');
+    compact.className = 'p-3.5';
+
+    // Row 1: badge + name + tier + category
+    const row1 = document.createElement('div');
+    row1.className = 'flex items-center flex-wrap gap-2 mb-2';
 
     const badge = document.createElement('span');
-    badge.className = 'inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded';
-    badge.style.cssText = 'background: rgba(148, 163, 184, 0.1); border: 1px solid rgba(148, 163, 184, 0.2); color: #9ca3af; font-family: "JetBrains Mono", "Fira Code", monospace;';
+    badge.className = 'ext-id-badge inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded';
+    badge.style.fontFamily = '"JetBrains Mono","Fira Code",monospace';
     badge.textContent = `#${ext.extension_id}`;
-    headerLeft.appendChild(badge);
+    row1.appendChild(badge);
 
-    const name = document.createElement('span');
-    name.className = 'text-white font-medium text-sm';
-    name.textContent = ext.display_name || ext.extension_id;
-    headerLeft.appendChild(name);
+    const displayName = document.createElement('span');
+    displayName.className = 'font-medium text-sm leading-tight';
+    displayName.style.color = 'var(--text-primary)';
+    displayName.textContent = ext.display_name || ext.extension_id;
+    row1.appendChild(displayName);
 
-    if (ext.extension_tier) {
-        headerLeft.appendChild(_createTierBadge(ext.extension_tier));
-    }
+    // Spacer to push badges right
+    const spacer = document.createElement('div');
+    spacer.className = 'flex-1';
+    row1.appendChild(spacer);
 
-    if (ext.requires_llm && ext.extension_tier !== 'llm') {
-        headerLeft.appendChild(_createLlmWarning());
-    }
-
+    if (ext.extension_tier) row1.appendChild(_createTierBadge(ext.extension_tier));
     if (ext.category) {
         const cat = document.createElement('span');
-        cat.className = 'text-xs px-2 py-0.5 rounded-full';
-        cat.style.cssText = 'background: rgba(148, 163, 184, 0.1); color: #9ca3af;';
+        cat.className = 'ext-cat-tag text-[10px] px-1.5 py-0.5 rounded';
         cat.textContent = ext.category;
-        headerLeft.appendChild(cat);
+        row1.appendChild(cat);
     }
+    compact.appendChild(row1);
+
+    // Row 2: description (2-line clamp)
+    if (ext.description) {
+        const desc = document.createElement('p');
+        desc.className = 'text-[11px] mb-3 leading-relaxed';
+        desc.style.cssText = 'display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-muted);';
+        desc.textContent = ext.description;
+        compact.appendChild(desc);
+    }
+
+    // Row 3: footer — version, built-in, LLM warning, activation count, activate button
+    const footer = document.createElement('div');
+    footer.className = 'flex items-center gap-2';
+
+    const metaLeft = document.createElement('div');
+    metaLeft.className = 'flex items-center gap-2 flex-1 min-w-0';
+
+    if (ext.version) {
+        const ver = document.createElement('span');
+        ver.className = 'text-[10px]';
+        ver.style.color = 'var(--text-subtle)';
+        ver.textContent = `v${ext.version}`;
+        metaLeft.appendChild(ver);
+    }
+    if (ext.is_builtin) {
+        const builtin = document.createElement('span');
+        builtin.className = 'ext-builtin-tag text-[10px] px-1 py-px rounded';
+        builtin.style.color = 'var(--text-subtle)';
+        builtin.textContent = 'built-in';
+        metaLeft.appendChild(builtin);
+    }
+    if (ext.requires_llm) {
+        metaLeft.appendChild(_createLlmWarning());
+    }
+    footer.appendChild(metaLeft);
 
     if (activationCount > 0) {
-        const count = document.createElement('span');
-        count.className = 'text-xs px-1.5 py-0.5 rounded-full';
-        count.style.cssText = 'background: rgba(251, 191, 36, 0.15); color: #fbbf24;';
-        count.textContent = `${activationCount} active`;
-        headerLeft.appendChild(count);
+        const countBadge = document.createElement('span');
+        countBadge.className = 'ext-count-badge text-[10px] font-medium px-1.5 py-0.5 rounded';
+        countBadge.textContent = `${activationCount}`;
+        countBadge.title = `${activationCount} active activation${activationCount > 1 ? 's' : ''}`;
+        footer.appendChild(countBadge);
     }
 
-    header.appendChild(headerLeft);
-
-    // Activate button (+ icon)
     const activateBtn = document.createElement('button');
-    activateBtn.className = 'ind-button ind-button--secondary ind-button--sm';
-    activateBtn.style.cssText = 'border-color: rgba(251, 191, 36, 0.3); color: #fbbf24;';
-    activateBtn.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
-        Activate
-    `;
-    activateBtn.addEventListener('click', async () => {
+    activateBtn.className = 'ext-amber-btn inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200';
+    activateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Activate`;
+    activateBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         try {
             activateBtn.disabled = true;
+            activateBtn.textContent = '...';
             const result = await activateExtension(ext.extension_id);
-            _notify('success', `Extension activated as #${result.activation_name}`);
-            await loadExtensions();
+            _notify('success', `Activated as #${result.activation_name}`);
+            _expandedExtId = ext.extension_id; // auto-expand to show new activation
+            await _refreshExtensionData();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
         } catch (err) {
             _notify('error', err.message);
         } finally {
             activateBtn.disabled = false;
+            activateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Activate`;
         }
     });
-    header.appendChild(activateBtn);
-    card.appendChild(header);
+    footer.appendChild(activateBtn);
 
-    // Description + footer on one line
-    if (ext.description) {
-        const desc = document.createElement('p');
-        desc.className = 'text-xs text-gray-500 mt-2';
-        desc.textContent = ext.description;
-        card.appendChild(desc);
+    compact.appendChild(footer);
+    card.appendChild(compact);
+
+    // ── Click to expand/collapse ──
+    compact.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return; // ignore button clicks
+        if (_expandedExtId === ext.extension_id) {
+            _expandedExtId = null;
+        } else {
+            _expandedExtId = ext.extension_id;
+        }
+        renderExtensionGrid();
+    });
+
+    // ── Expanded detail panel ──
+    if (isExpanded) {
+        card.appendChild(_buildCardDetailPanel(ext, activations));
     }
 
     return card;
 }
 
-// ── Activation Card (user's activated instance) ──────────────────────────────
+// ── Card Detail Panel (expanded section with inline activations) ─────────────
 
-function createActivationCard(activation, extInfo) {
-    const card = document.createElement('div');
-    card.className = 'glass-panel rounded-xl p-4 transition-all duration-300';
-    card.style.borderLeft = '3px solid rgba(251, 191, 36, 0.6)';
+function _buildCardDetailPanel(ext, activations) {
+    const panel = document.createElement('div');
+    panel.className = 'px-3.5 pb-3.5';
+    panel.style.cssText = 'border-top: 1px solid var(--border-subtle); animation: extDetailFadeIn 200ms ease-out;';
 
-    // Header: activation badge + extension name + actions
+    // Metadata row
+    const meta = document.createElement('div');
+    meta.className = 'flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 mb-3 text-[10px]';
+    meta.style.color = 'var(--text-muted)';
+
+    if (ext.output_target) {
+        const ot = document.createElement('span');
+        ot.innerHTML = `<span style="color: var(--text-subtle);">Output:</span> ${ext.output_target}`;
+        meta.appendChild(ot);
+    }
+    if (ext.keywords && ext.keywords.length > 0) {
+        const kw = document.createElement('span');
+        kw.innerHTML = `<span style="color: var(--text-subtle);">Keywords:</span> ${ext.keywords.join(', ')}`;
+        meta.appendChild(kw);
+    }
+    if (ext.author) {
+        const auth = document.createElement('span');
+        auth.innerHTML = `<span style="color: var(--text-subtle);">Author:</span> ${ext.author}`;
+        meta.appendChild(auth);
+    }
+    panel.appendChild(meta);
+
+    // Activations section
+    if (activations.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'text-[10px] font-semibold uppercase tracking-wider mb-2';
+        header.style.color = 'var(--text-muted)';
+        header.textContent = `Your Activations (${activations.length})`;
+        panel.appendChild(header);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid gap-2 mb-3';
+        grid.style.cssText = 'grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));';
+
+        for (const act of activations) {
+            grid.appendChild(_buildActivationSubCard(act, ext));
+        }
+        panel.appendChild(grid);
+    } else {
+        const empty = document.createElement('p');
+        empty.className = 'text-[10px] mb-3';
+        empty.style.color = 'var(--text-subtle)';
+        empty.textContent = 'No activations yet. Click Activate to create one.';
+        panel.appendChild(empty);
+    }
+
+    // + Add Another Activation button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'ext-amber-btn-dashed inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200';
+    addBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Add Another Activation`;
+    addBtn.addEventListener('click', async () => {
+        try {
+            addBtn.disabled = true;
+            addBtn.textContent = 'Creating...';
+            const result = await activateExtension(ext.extension_id);
+            _notify('success', `Activated as #${result.activation_name}`);
+            await _refreshExtensionData();
+            if (window.loadActivatedExtensions) window.loadActivatedExtensions();
+        } catch (err) {
+            _notify('error', err.message);
+        } finally {
+            addBtn.disabled = false;
+            addBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Add Another Activation`;
+        }
+    });
+    panel.appendChild(addBtn);
+
+    return panel;
+}
+
+// ── Activation Sub-Card (inside expanded detail) ─────────────────────────────
+
+function _buildActivationSubCard(activation, extInfo) {
+    const sub = document.createElement('div');
+    sub.className = 'ext-activation-card rounded-lg p-2.5 transition-all duration-200';
+
+    // Header: badge + actions
     const header = document.createElement('div');
     header.className = 'flex items-center justify-between mb-2';
 
-    const headerLeft = document.createElement('div');
-    headerLeft.className = 'flex items-center gap-3';
-
     const badge = document.createElement('span');
-    badge.className = 'inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded';
-    badge.style.cssText = 'background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: #fbbf24; font-family: "JetBrains Mono", "Fira Code", monospace;';
+    badge.className = 'ext-activation-badge inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded';
+    badge.style.fontFamily = '"JetBrains Mono","Fira Code",monospace';
     badge.textContent = `#${activation.activation_name}`;
-    headerLeft.appendChild(badge);
+    header.appendChild(badge);
 
-    // Show base extension name if activation_name differs
-    if (activation.activation_name !== activation.extension_id) {
-        const baseName = document.createElement('span');
-        baseName.className = 'text-xs text-gray-500';
-        baseName.textContent = `(${extInfo?.display_name || activation.extension_id})`;
-        headerLeft.appendChild(baseName);
-    } else {
-        const displayName = document.createElement('span');
-        displayName.className = 'text-sm text-gray-300 font-medium';
-        displayName.textContent = extInfo?.display_name || activation.extension_id;
-        headerLeft.appendChild(displayName);
-    }
-
-    header.appendChild(headerLeft);
-
-    // Action buttons
     const actions = document.createElement('div');
-    actions.className = 'flex items-center gap-2';
+    actions.className = 'flex items-center gap-1.5';
 
-    // View Script
-    const viewBtn = document.createElement('button');
-    viewBtn.className = 'text-xs text-gray-500 hover:text-white transition-colors';
-    viewBtn.textContent = 'Script';
-    viewBtn.addEventListener('click', () => showExtensionSource(activation.extension_id, extInfo?.display_name || activation.extension_id));
-    actions.appendChild(viewBtn);
+    // Script button
+    const scriptBtn = document.createElement('button');
+    scriptBtn.className = 'text-[10px] transition-colors px-1';
+    scriptBtn.style.color = 'var(--text-muted)';
+    scriptBtn.addEventListener('mouseover', () => { scriptBtn.style.color = 'var(--text-primary)'; });
+    scriptBtn.addEventListener('mouseout', () => { scriptBtn.style.color = 'var(--text-muted)'; });
+    scriptBtn.textContent = 'Script';
+    scriptBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showExtensionSource(activation.extension_id, extInfo?.display_name || activation.extension_id);
+    });
+    actions.appendChild(scriptBtn);
 
     // Delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'text-xs text-gray-500 hover:text-red-400 transition-colors';
-    deleteBtn.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-    `;
-    deleteBtn.title = 'Remove activation';
-    deleteBtn.addEventListener('click', async () => {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'hover:text-red-400 transition-colors p-0.5';
+    delBtn.style.color = 'var(--text-subtle)';
+    delBtn.title = 'Remove activation';
+    delBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+    delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         try {
             await deleteActivation(activation.activation_name);
             _notify('success', `#${activation.activation_name} removed`);
-            await loadExtensions();
+            await _refreshExtensionData();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
         } catch (err) {
             _notify('error', err.message);
         }
     });
-    actions.appendChild(deleteBtn);
+    actions.appendChild(delBtn);
 
     header.appendChild(actions);
-    card.appendChild(header);
+    sub.appendChild(header);
 
-    // Default parameter editor
+    // Param row
     const paramRow = document.createElement('div');
-    paramRow.className = 'flex items-center gap-2';
+    paramRow.className = 'flex items-center gap-1.5';
 
     const label = document.createElement('span');
-    label.className = 'text-xs text-gray-500 whitespace-nowrap';
-    label.textContent = 'Default param:';
+    label.className = 'text-[10px] whitespace-nowrap';
+    label.style.color = 'var(--text-subtle)';
+    label.textContent = 'Param:';
     paramRow.appendChild(label);
 
     const input = document.createElement('input');
     input.type = 'text';
     input.value = activation.default_param || '';
     input.placeholder = 'none';
-    input.className = 'flex-1 text-xs px-2 py-1 rounded border bg-transparent text-gray-300 focus:outline-none';
-    input.style.cssText = 'border-color: rgba(148, 163, 184, 0.2); max-width: 200px;';
-    input.addEventListener('focus', () => { input.style.borderColor = 'rgba(251, 191, 36, 0.4)'; });
-    input.addEventListener('blur', () => { input.style.borderColor = 'rgba(148, 163, 184, 0.2)'; });
+    input.className = 'flex-1 text-[10px] px-1.5 py-0.5 rounded border bg-transparent focus:outline-none';
+    input.style.cssText = 'border-color: var(--border-secondary); min-width: 0; color: var(--text-secondary);';
+    input.addEventListener('focus', () => { input.style.borderColor = 'rgba(251,191,36,0.3)'; });
+    input.addEventListener('blur', () => { input.style.borderColor = 'var(--border-secondary)'; });
     paramRow.appendChild(input);
 
     const saveBtn = document.createElement('button');
-    saveBtn.className = 'text-xs px-2 py-1 rounded';
-    saveBtn.style.cssText = 'background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3);';
+    saveBtn.className = 'ext-save-btn text-[10px] px-1.5 py-0.5 rounded transition-all duration-200';
     saveBtn.textContent = 'Save';
-    saveBtn.addEventListener('click', async () => {
+    saveBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         try {
             await updateConfig(activation.activation_name, input.value || null, null);
-            _notify('success', `Default param updated for #${activation.activation_name}`);
+            _notify('success', `Param updated for #${activation.activation_name}`);
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
         } catch (err) {
             _notify('error', err.message);
@@ -684,40 +811,8 @@ function createActivationCard(activation, extInfo) {
     });
     paramRow.appendChild(saveBtn);
 
-    card.appendChild(paramRow);
-
-    // Footer: tier badge + LLM warning + output target + version
-    if (extInfo) {
-        const footer = document.createElement('div');
-        footer.className = 'flex items-center gap-3 text-xs text-gray-600 mt-2 pt-2';
-        footer.style.borderTop = '1px solid rgba(148, 163, 184, 0.06)';
-
-        if (extInfo.extension_tier) {
-            footer.appendChild(_createTierBadge(extInfo.extension_tier));
-        }
-        if (extInfo.requires_llm && extInfo.extension_tier !== 'llm') {
-            footer.appendChild(_createLlmWarning());
-        }
-        if (extInfo.output_target) {
-            const target = document.createElement('span');
-            target.textContent = `Output: ${extInfo.output_target}`;
-            footer.appendChild(target);
-        }
-        if (extInfo.version) {
-            const ver = document.createElement('span');
-            ver.textContent = `v${extInfo.version}`;
-            footer.appendChild(ver);
-        }
-        if (extInfo.is_builtin) {
-            const builtin = document.createElement('span');
-            builtin.style.cssText = 'background: rgba(148, 163, 184, 0.08); padding: 1px 6px; border-radius: 4px;';
-            builtin.textContent = 'built-in';
-            footer.appendChild(builtin);
-        }
-        card.appendChild(footer);
-    }
-
-    return card;
+    sub.appendChild(paramRow);
+    return sub;
 }
 
 // ── Extension Editor (Phase 2 — full code editor with requirements) ─────────
@@ -1102,85 +1197,30 @@ async function showExtensionSource(extId, displayName) {
     }
 }
 
+// ── Data Refresh (fetch + re-render) ─────────────────────────────────────────
+
+async function _refreshExtensionData() {
+    const [all, activated] = await Promise.all([
+        fetchAllExtensions(),
+        fetchActivatedExtensions(),
+    ]);
+    _allExtensions = all;
+    _allActivations = activated;
+    renderExtensionGrid();
+}
+
 // ── Main Load Function ───────────────────────────────────────────────────────
 
 export async function loadExtensions() {
-    const container = document.getElementById('extensions-list');
+    const container = document.getElementById('extensions-grid');
     if (!container) return;
 
     try {
-        const [all, activated] = await Promise.all([
-            fetchAllExtensions(),
-            fetchActivatedExtensions(),
-        ]);
-
-        // Build ext info lookup (registry)
-        const extInfoLookup = {};
-        for (const ext of all) {
-            extInfoLookup[ext.extension_id] = ext;
-        }
-
-        // Count activations per extension_id
-        const activationCounts = {};
-        for (const act of activated) {
-            activationCounts[act.extension_id] = (activationCounts[act.extension_id] || 0) + 1;
-        }
-
-        container.innerHTML = '';
-
-        if (all.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-8">
-                    <p class="text-gray-400 text-sm">No extensions available.</p>
-                    <p class="text-gray-500 text-xs mt-1">Extensions are loaded from the extensions/ directory.</p>
-                </div>
-            `;
-            return;
-        }
-
-        // Section 1: Available Extensions (from registry) with Create button
-        const availableHeader = document.createElement('div');
-        availableHeader.className = 'flex items-center justify-between mb-3';
-        availableHeader.innerHTML = `
-            <div>
-                <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Available Extensions</h4>
-                <p class="text-xs text-gray-600 mt-0.5">Click Activate to create a new instance</p>
-            </div>
-        `;
-        const createBtn = document.createElement('button');
-        createBtn.className = 'ind-button ind-button--sm';
-        createBtn.style.cssText = 'background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; font-size: 0.75rem;';
-        createBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>Create Extension`;
-        createBtn.addEventListener('click', () => showScaffoldModal());
-        availableHeader.appendChild(createBtn);
-        container.appendChild(availableHeader);
-
-        for (const ext of all) {
-            container.appendChild(createAvailableExtensionCard(ext, activationCounts[ext.extension_id] || 0));
-        }
-
-        // Section 2: User's Activations
-        if (activated.length > 0) {
-            const activationsHeader = document.createElement('div');
-            activationsHeader.className = 'mt-6 mb-3';
-            activationsHeader.innerHTML = `
-                <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Your Activations</h4>
-                <p class="text-xs text-gray-600 mt-0.5">These are the #names you can use in the query box</p>
-            `;
-            container.appendChild(activationsHeader);
-
-            for (const act of activated) {
-                const extInfo = extInfoLookup[act.extension_id] || null;
-                container.appendChild(createActivationCard(act, extInfo));
-            }
-        }
-
+        await _refreshExtensionData();
     } catch (err) {
         console.error('[Extensions] Load failed:', err);
         container.innerHTML = `
-            <div class="text-center py-8">
+            <div class="text-center py-8" style="grid-column: 1 / -1;">
                 <p class="text-red-400 text-sm">Failed to load extensions.</p>
                 <p class="text-gray-500 text-xs mt-1">${err.message}</p>
             </div>
@@ -1188,14 +1228,211 @@ export async function loadExtensions() {
     }
 }
 
-// ── Reload Button ────────────────────────────────────────────────────────────
+// ── Render Grid (apply filters + sort + build cards) ─────────────────────────
+
+function renderExtensionGrid() {
+    const container = document.getElementById('extensions-grid');
+    if (!container) return;
+
+    // Build activation lookup
+    const activationsByExt = {};
+    const activationCounts = {};
+    for (const act of _allActivations) {
+        if (!activationsByExt[act.extension_id]) activationsByExt[act.extension_id] = [];
+        activationsByExt[act.extension_id].push(act);
+        activationCounts[act.extension_id] = (activationCounts[act.extension_id] || 0) + 1;
+    }
+
+    // Filter
+    let filtered = _allExtensions.filter(ext => {
+        // Category filter
+        if (_activeCategory !== 'all' && (ext.category || '') !== _activeCategory) return false;
+        // Level filter
+        if (_activeLevel !== 'all' && (ext.extension_tier || '') !== _activeLevel) return false;
+        // Status filter
+        const count = activationCounts[ext.extension_id] || 0;
+        if (_activeStatus === 'active' && count === 0) return false;
+        if (_activeStatus === 'inactive' && count > 0) return false;
+        // Search filter
+        if (_searchQuery) {
+            const q = _searchQuery.toLowerCase();
+            const searchable = [
+                ext.extension_id,
+                ext.display_name || '',
+                ext.description || '',
+                ...(ext.keywords || []),
+            ].join(' ').toLowerCase();
+            if (!searchable.includes(q)) return false;
+        }
+        return true;
+    });
+
+    // Sort
+    filtered = [...filtered];
+    switch (_sortMode) {
+        case 'az':
+            filtered.sort((a, b) => (a.display_name || a.extension_id).localeCompare(b.display_name || b.extension_id));
+            break;
+        case 'category':
+            filtered.sort((a, b) => (a.category || '').localeCompare(b.category || '') || (a.display_name || '').localeCompare(b.display_name || ''));
+            break;
+        case 'level':
+            filtered.sort((a, b) => (LEVEL_ORDER[a.extension_tier] ?? 9) - (LEVEL_ORDER[b.extension_tier] ?? 9));
+            break;
+        case 'active':
+            filtered.sort((a, b) => (activationCounts[b.extension_id] || 0) - (activationCounts[a.extension_id] || 0) || (a.display_name || '').localeCompare(b.display_name || ''));
+            break;
+        default:
+            // keep API order (display_order)
+            break;
+    }
+
+    container.innerHTML = '';
+
+    if (_allExtensions.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8" style="grid-column: 1 / -1;">
+                <p class="text-gray-400 text-sm">No extensions available.</p>
+                <p class="text-gray-500 text-xs mt-1">Extensions are loaded from the extensions/ directory.</p>
+            </div>
+        `;
+        return;
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8" style="grid-column: 1 / -1;">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <p class="text-gray-500 text-sm">No extensions match your filters.</p>
+                <button class="text-[11px] mt-2 px-2 py-1 rounded transition-colors" style="color: #fbbf24; background: rgba(251,191,36,0.08);"
+                        onclick="document.querySelectorAll('.ext-filter-pill[data-value=all]').forEach(b => b.click()); document.getElementById('ext-search').value = '';">
+                    Clear filters
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    for (const ext of filtered) {
+        const acts = activationsByExt[ext.extension_id] || [];
+        const count = activationCounts[ext.extension_id] || 0;
+        container.appendChild(createExtensionGridCard(ext, acts, count));
+    }
+}
+
+// ── Filter Setup ─────────────────────────────────────────────────────────────
+
+function _updatePillStyles(pill, isActive) {
+    const tierColor = pill.dataset.tierColor;
+    if (isActive && tierColor) {
+        // Level pill — use tier color
+        pill.style.background = `${tierColor}1a`; // 10% opacity
+        pill.style.color = tierColor;
+        pill.style.borderColor = `${tierColor}40`; // 25% opacity
+    } else if (isActive) {
+        // Default amber active
+        pill.style.background = '';
+        pill.style.color = '';
+        pill.style.borderColor = '';
+    } else {
+        // Inactive — clear overrides, CSS handles it
+        pill.style.background = '';
+        pill.style.color = '';
+        pill.style.borderColor = '';
+    }
+}
+
+function setupExtensionFilters() {
+    // Category, Level, Status pills
+    document.querySelectorAll('.ext-filter-pill').forEach(pill => {
+        // Apply initial styles for already-active pills
+        if (pill.classList.contains('active')) _updatePillStyles(pill, true);
+
+        pill.addEventListener('click', () => {
+            const filterType = pill.dataset.filter;
+            const value = pill.dataset.value;
+
+            // Update active state within the same filter group
+            document.querySelectorAll(`.ext-filter-pill[data-filter="${filterType}"]`).forEach(p => {
+                p.classList.remove('active');
+                _updatePillStyles(p, false);
+            });
+            pill.classList.add('active');
+            _updatePillStyles(pill, true);
+
+            // Update state
+            if (filterType === 'category') _activeCategory = value;
+            else if (filterType === 'level') _activeLevel = value;
+            else if (filterType === 'status') _activeStatus = value;
+
+            renderExtensionGrid();
+        });
+    });
+
+    // Search
+    const searchInput = document.getElementById('ext-search');
+    if (searchInput) {
+        let searchTimer = null;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                _searchQuery = searchInput.value.trim();
+                renderExtensionGrid();
+            }, 150);
+        });
+    }
+
+    // Sort — custom dropdown
+    const sortTrigger = document.getElementById('ext-sort-trigger');
+    const sortMenu = document.getElementById('ext-sort-menu');
+    const sortLabel = document.getElementById('ext-sort-label');
+
+    if (sortTrigger && sortMenu) {
+        sortTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sortMenu.classList.toggle('hidden');
+        });
+
+        sortMenu.querySelectorAll('.ext-sort-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _sortMode = opt.dataset.value;
+                if (sortLabel) sortLabel.textContent = opt.textContent;
+                sortMenu.querySelectorAll('.ext-sort-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                sortMenu.classList.add('hidden');
+                renderExtensionGrid();
+            });
+        });
+
+        // Mark default as selected initially
+        const defaultOpt = sortMenu.querySelector('[data-value="default"]');
+        if (defaultOpt) defaultOpt.classList.add('selected');
+
+        // Close on outside click
+        document.addEventListener('click', () => sortMenu.classList.add('hidden'));
+    }
+}
+
+// ── Initialization ───────────────────────────────────────────────────────────
 
 export function initializeExtensionHandlers() {
+    // Filter pills, search, sort
+    setupExtensionFilters();
+
+    // Create Extension button
+    const createBtn = document.getElementById('create-ext-btn');
+    if (createBtn) {
+        createBtn.addEventListener('click', () => showScaffoldModal());
+    }
+
+    // Reload button
     const reloadBtn = document.getElementById('reload-extensions-btn');
     if (reloadBtn) {
         reloadBtn.addEventListener('click', async () => {
             try {
                 reloadBtn.disabled = true;
+                reloadBtn.style.opacity = '0.5';
                 await reloadExtensionsAPI();
                 await loadExtensions();
                 if (window.loadActivatedExtensions) window.loadActivatedExtensions();
@@ -1204,6 +1441,7 @@ export function initializeExtensionHandlers() {
                 _notify('error', `Reload failed: ${err.message}`);
             } finally {
                 reloadBtn.disabled = false;
+                reloadBtn.style.opacity = '1';
             }
         });
     }

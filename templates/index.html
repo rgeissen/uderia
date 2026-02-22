@@ -19,6 +19,180 @@
         :root {
             --tw-ring-shadow: 0 0 0 0 rgb(59 130 246 / 0);
         }
+
+        /* Extension filter pills */
+        .ext-filter-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 4px;
+            border: 1px solid var(--border-subtle);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 150ms;
+            white-space: nowrap;
+        }
+        .ext-filter-pill:hover {
+            background: var(--hover-bg);
+            color: var(--text-secondary);
+            border-color: var(--border-secondary);
+        }
+        .ext-filter-pill.active {
+            background: rgba(251,191,36,0.1);
+            color: #fbbf24;
+            border-color: rgba(251,191,36,0.25);
+        }
+        [data-theme="light"] .ext-filter-pill.active {
+            background: rgba(217,119,6,0.1);
+            color: #b45309;
+            border-color: rgba(217,119,6,0.3);
+        }
+        /* Extension detail panel fade-in */
+        @keyframes extDetailFadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom sort dropdown menu */
+        .ext-sort-menu {
+            background: rgba(15,23,42,0.95);
+            border: 1px solid rgba(148,163,184,0.15);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        [data-theme="light"] .ext-sort-menu {
+            background: var(--card-bg);
+            border: 1px solid var(--border-primary);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        .ext-sort-option {
+            color: var(--text-muted);
+        }
+        .ext-sort-option:hover {
+            background: rgba(251,191,36,0.1);
+            color: #fbbf24 !important;
+        }
+        .ext-sort-option.selected {
+            color: #fbbf24 !important;
+        }
+        [data-theme="light"] .ext-sort-option:hover {
+            background: rgba(217,119,6,0.08);
+            color: #b45309 !important;
+        }
+        [data-theme="light"] .ext-sort-option.selected {
+            color: #b45309 !important;
+        }
+
+        /* Extension card theme-aware classes */
+        .ext-id-badge {
+            background: rgba(148,163,184,0.08);
+            border: 1px solid rgba(148,163,184,0.15);
+            color: #94a3b8;
+        }
+        [data-theme="light"] .ext-id-badge {
+            background: var(--bg-tertiary);
+            border-color: var(--border-secondary);
+            color: var(--text-secondary);
+        }
+        .ext-cat-tag {
+            background: rgba(148,163,184,0.06);
+            color: #6b7280;
+        }
+        [data-theme="light"] .ext-cat-tag {
+            background: var(--bg-tertiary);
+            color: var(--text-tertiary);
+        }
+        .ext-builtin-tag {
+            background: rgba(148,163,184,0.06);
+        }
+        [data-theme="light"] .ext-builtin-tag {
+            background: var(--bg-tertiary);
+        }
+        .ext-count-badge {
+            background: rgba(251,191,36,0.12);
+            color: #fbbf24;
+        }
+        [data-theme="light"] .ext-count-badge {
+            background: rgba(217,119,6,0.12);
+            color: #b45309;
+        }
+        .ext-amber-btn {
+            background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.2);
+            color: #fbbf24;
+        }
+        .ext-amber-btn:hover {
+            background: rgba(251,191,36,0.18);
+            border-color: rgba(251,191,36,0.35);
+        }
+        [data-theme="light"] .ext-amber-btn {
+            background: rgba(217,119,6,0.08);
+            border-color: rgba(217,119,6,0.25);
+            color: #b45309;
+        }
+        [data-theme="light"] .ext-amber-btn:hover {
+            background: rgba(217,119,6,0.15);
+            border-color: rgba(217,119,6,0.4);
+        }
+        .ext-amber-btn-dashed {
+            background: rgba(251,191,36,0.06);
+            border: 1px dashed rgba(251,191,36,0.2);
+            color: #b5941c;
+        }
+        .ext-amber-btn-dashed:hover {
+            background: rgba(251,191,36,0.12);
+            border-color: rgba(251,191,36,0.35);
+            color: #fbbf24;
+        }
+        [data-theme="light"] .ext-amber-btn-dashed {
+            background: rgba(217,119,6,0.04);
+            border-color: rgba(217,119,6,0.2);
+            color: #92400e;
+        }
+        [data-theme="light"] .ext-amber-btn-dashed:hover {
+            background: rgba(217,119,6,0.1);
+            border-color: rgba(217,119,6,0.35);
+            color: #b45309;
+        }
+        .ext-activation-card {
+            background: rgba(251,191,36,0.03);
+            border: 1px solid rgba(251,191,36,0.1);
+        }
+        [data-theme="light"] .ext-activation-card {
+            background: rgba(217,119,6,0.04);
+            border-color: rgba(217,119,6,0.15);
+        }
+        .ext-activation-badge {
+            background: rgba(251,191,36,0.12);
+            border: 1px solid rgba(251,191,36,0.2);
+            color: #fbbf24;
+        }
+        [data-theme="light"] .ext-activation-badge {
+            background: rgba(217,119,6,0.1);
+            border-color: rgba(217,119,6,0.2);
+            color: #b45309;
+        }
+        .ext-save-btn {
+            background: rgba(251,191,36,0.1);
+            color: #b5941c;
+            border: 1px solid rgba(251,191,36,0.15);
+        }
+        .ext-save-btn:hover {
+            background: rgba(251,191,36,0.18);
+            color: #fbbf24;
+        }
+        [data-theme="light"] .ext-save-btn {
+            background: rgba(217,119,6,0.08);
+            color: #92400e;
+            border-color: rgba(217,119,6,0.2);
+        }
+        [data-theme="light"] .ext-save-btn:hover {
+            background: rgba(217,119,6,0.15);
+            color: #b45309;
+        }
     </style>
     <script src="https://unpkg.com/@antv/g2plot@latest/dist/g2plot.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
@@ -2662,19 +2836,80 @@
                         <div id="extensions-tab" class="config-tab-content hidden">
                             <div class="space-y-6">
                                 <div class="glass-panel rounded-xl p-6">
-                                    <div class="flex items-center justify-between mb-6">
+                                    <!-- Header -->
+                                    <div class="flex items-center justify-between mb-4">
                                         <div>
-                                            <h3 class="text-xl font-bold text-white">Extensions</h3>
-                                            <p class="text-sm text-gray-400 mt-1">Post-processing extensions for structured output (#json, #decision, ...)</p>
+                                            <h3 class="text-xl font-bold" style="color: var(--text-primary);">Extensions</h3>
+                                            <p class="text-sm mt-1" style="color: var(--text-muted);">Post-processing extensions for structured output (#json, #decision, ...)</p>
                                         </div>
-                                        <button id="reload-extensions-btn" class="ind-button ind-button--secondary ind-button--sm" title="Reload extensions from disk">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                            </svg>
-                                            Reload
-                                        </button>
+                                        <div class="flex items-center gap-2">
+                                            <button id="create-ext-btn" class="ext-amber-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                Create
+                                            </button>
+                                            <button id="reload-extensions-btn" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200"
+                                                    style="background: var(--hover-bg); border: 1px solid var(--border-subtle); color: var(--text-muted);"
+                                                    title="Reload extensions from disk">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                                Reload
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div id="extensions-list" class="space-y-4">
+
+                                    <!-- Search bar -->
+                                    <div class="relative mb-3">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                        </svg>
+                                        <input id="ext-search" type="text" placeholder="Filter extensions..."
+                                               class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border bg-transparent focus:outline-none transition-colors"
+                                               style="border-color: var(--border-secondary); color: var(--text-primary);"
+                                               onfocus="this.style.borderColor='rgba(251,191,36,0.3)'"
+                                               onblur="this.style.borderColor='var(--border-secondary)'">
+                                    </div>
+
+                                    <!-- Filter pills -->
+                                    <div id="ext-filters" class="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4 text-[11px]">
+                                        <span style="color: var(--text-muted);" class="font-medium">Category</span>
+                                        <button class="ext-filter-pill active" data-filter="category" data-value="all">All</button>
+                                        <button class="ext-filter-pill" data-filter="category" data-value="Transform">Transform</button>
+                                        <button class="ext-filter-pill" data-filter="category" data-value="Automation">Automation</button>
+                                        <button class="ext-filter-pill" data-filter="category" data-value="Analysis">Analysis</button>
+                                        <button class="ext-filter-pill" data-filter="category" data-value="Export">Export</button>
+
+                                        <span style="color: var(--border-primary);" class="mx-1">|</span>
+                                        <span style="color: var(--text-muted);" class="font-medium">Level</span>
+                                        <button class="ext-filter-pill active" data-filter="level" data-value="all">All</button>
+                                        <button class="ext-filter-pill" data-filter="level" data-value="convention" data-tier-color="#9ca3af">L0</button>
+                                        <button class="ext-filter-pill" data-filter="level" data-value="simple" data-tier-color="#60a5fa">L1</button>
+                                        <button class="ext-filter-pill" data-filter="level" data-value="standard" data-tier-color="#a78bfa">L2</button>
+                                        <button class="ext-filter-pill" data-filter="level" data-value="llm" data-tier-color="#f472b6">L3</button>
+
+                                        <span style="color: var(--border-primary);" class="mx-1">|</span>
+                                        <span style="color: var(--text-muted);" class="font-medium">Status</span>
+                                        <button class="ext-filter-pill active" data-filter="status" data-value="all">All</button>
+                                        <button class="ext-filter-pill" data-filter="status" data-value="active">Active</button>
+                                        <button class="ext-filter-pill" data-filter="status" data-value="inactive">Inactive</button>
+
+                                        <span style="color: var(--border-primary);" class="mx-1">|</span>
+                                        <span style="color: var(--text-muted);" class="font-medium">Sort</span>
+                                        <div id="ext-sort-wrapper" class="relative inline-block">
+                                            <button id="ext-sort-trigger" class="ext-filter-pill inline-flex items-center gap-1" style="padding-right: 18px;">
+                                                <span id="ext-sort-label">Default</span>
+                                                <svg class="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none" style="color: var(--text-muted);" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                                            </button>
+                                            <div id="ext-sort-menu" class="ext-sort-menu hidden absolute left-0 top-full mt-1 z-50 rounded-lg py-1 min-w-[120px]">
+                                                <button class="ext-sort-option w-full text-left px-3 py-1.5 text-[11px] transition-colors" data-value="default">Default</button>
+                                                <button class="ext-sort-option w-full text-left px-3 py-1.5 text-[11px] transition-colors" data-value="az">A — Z</button>
+                                                <button class="ext-sort-option w-full text-left px-3 py-1.5 text-[11px] transition-colors" data-value="category">Category</button>
+                                                <button class="ext-sort-option w-full text-left px-3 py-1.5 text-[11px] transition-colors" data-value="level">Level</button>
+                                                <button class="ext-sort-option w-full text-left px-3 py-1.5 text-[11px] transition-colors" data-value="active">Most Active</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Grid container -->
+                                    <div id="extensions-grid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
                                         <!-- Extension cards rendered by extensionHandler.js -->
                                     </div>
                                 </div>
