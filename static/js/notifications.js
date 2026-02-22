@@ -251,6 +251,17 @@ function _dispatchRestEvent(event, taskId) {
         return;
     }
 
+    // --- Skill events (pre-processing, all profile types) ---
+    if (eventType === 'skills_applied') {
+        const payload = event.payload || {};
+        UI.updateStatusWindow({
+            step: 'Skills applied',
+            details: payload,
+            type: 'skills_applied'
+        }, false, 'skills');
+        return;
+    }
+
     // --- Extension events (all profile types) ---
     if (eventType === 'extension_start') {
         const payload = event.payload || {};
@@ -549,7 +560,7 @@ export function subscribeToNotifications() {
                 break;
             }
             case 'rest_task_complete': {
-                const { session_id, turn_id, user_input, final_answer, profile_tag, extension_specs } = data.payload;
+                const { session_id, turn_id, user_input, final_answer, profile_tag, extension_specs, skill_specs } = data.payload;
 
                 // --- Definitive cleanup for REST session tracking ---
                 state.activeRestSessions.delete(session_id);
@@ -559,7 +570,7 @@ export function subscribeToNotifications() {
 
                 if (session_id === state.currentSessionId) {
                     // User is viewing this session — render Q&A and clean up
-                    UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag, false, extension_specs || null);
+                    UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag, false, extension_specs || null, skill_specs || null);
                     UI.addMessage('assistant', final_answer, turn_id, true);
                     UI.moveSessionToTop(session_id);
                     UI.setExecutionState(false);

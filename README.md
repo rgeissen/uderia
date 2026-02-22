@@ -25,14 +25,17 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
 
 1. [Core Principles: A Superior Approach](#core-principles-a-superior-approach)
 2. [Key Features](#-key-features)
-3. [Profile Classes: The IFOC Workflow](#-profile-classes-the-ifoc-workflow)
-4. [The Heart of the Application - The Engine & its Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
-5. [Retrieval-Augmented Generation (RAG) for Self-Improving AI](#-retrieval-augmented-generation-rag-for-self-improving-ai)
-6. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
-7. [Installation and Setup Guide](#-installation-and-setup-guide)
-8. [Model Selection: Recommended vs All Models](#model-selection-recommended-vs-all-models)
-9. [Command Line Options](#command-line-options)
-10. [User Guide](#-user-guide)
+3. [Core Components](#-core-components)
+   - [Profile Classes: The IFOC Workflow](#-profile-classes-the-ifoc-workflow)
+   - [The Fusion Optimizer](#-the-heart-of-the-application---the-engine--its-fusion-optimizer)
+   - [Retrieval-Augmented Generation (RAG)](#-retrieval-augmented-generation-rag-for-self-improving-ai)
+   - [Skills: Pre-Processing Context Injection](#-skills-pre-processing-context-injection)
+   - [Extensions: Post-Processing Transformations](#-extensions-post-processing-transformations)
+4. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
+5. [Installation and Setup Guide](#-installation-and-setup-guide)
+   - [Model Selection: Recommended vs All Models](#model-selection-recommended-vs-all-models)
+   - [Command Line Options](#command-line-options)
+6. [User Guide](#-user-guide)
    - [Getting Started](#getting-started)
    - [Using the Interface](#using-the-interface)
    - [Advanced Context Management](#advanced-context-management)
@@ -40,10 +43,10 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
    - [Real-Time Monitoring](#real-time-monitoring)
    - [Operationalization](#operationalization)
    - [Troubleshooting](#troubleshooting)
-11. [Docker Deployment](#docker-deployment)
-12. [License](#license)
-13. [Author & Contributions](#author-contributions)
-14. [Appendix: Feature Update List](#appendix-feature-update-list)
+7. [Docker Deployment](#docker-deployment)
+8. [License](#license)
+9. [Author & Contributions](#author-contributions)
+10. [Appendix: Feature Update List](#appendix-feature-update-list)
 
 
 ---
@@ -542,11 +545,17 @@ Each user provides their own Gemini API key through the `env` field, enabling pe
 
 ---
 
-## 🎭 Profile Classes: The IFOC Workflow
+## 🧩 Core Components
+
+The platform's capabilities are built on five core components that work together across all profile types — from execution methodology and optimization engine to knowledge retrieval, pre-processing skills, and post-processing extensions.
+
+---
+
+### 🎭 Profile Classes: The IFOC Workflow
 
 The Uderia Platform introduces the **IFOC Workflow**—four distinct execution modes that mirror how experts actually solve problems. From creative exploration to coordinated execution, these modes transform how organizations leverage AI.
 
-### The IFOC Philosophy: Ideate → Focus → Optimize → Coordinate
+#### The IFOC Philosophy: Ideate → Focus → Optimize → Coordinate
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -569,7 +578,7 @@ Every profile belongs to one of four classes, each designed for a specific phase
 
 ---
 
-#### 1. 🟢 IDEATE - Conversation Focused (LLM)
+##### 1. 🟢 IDEATE - Conversation Focused (LLM)
 
 **Philosophy: Creative exploration without constraints**
 
@@ -614,7 +623,7 @@ Transform your LLM into a trusted thought partner. Explore possibilities, brains
 
 ---
 
-#### 2. 🔵 FOCUS - Knowledge Focused (RAG)
+##### 2. 🔵 FOCUS - Knowledge Focused (RAG)
 
 **Philosophy: Grounded answers from verified sources**
 
@@ -666,7 +675,7 @@ Eliminate hallucinations entirely. The **Focus** phase grounds every answer in y
 
 ---
 
-#### 3. 🟠 OPTIMIZE - Efficiency Focused (Tool)
+##### 3. 🟠 OPTIMIZE - Efficiency Focused (Tool)
 
 **Philosophy: Strategic execution that learns and heals**
 
@@ -732,7 +741,7 @@ This is **where ideas become reality**. The **Optimize** phase is powered by the
 
 ---
 
-#### 4. 🟣 COORDINATE - Genie (Multi-Profile)
+##### 4. 🟣 COORDINATE - Genie (Multi-Profile)
 
 **Philosophy: Autonomous orchestration at scale**
 
@@ -837,7 +846,7 @@ Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate 
 
 ---
 
-### IFOC Selection Guide: Choose the Right Phase
+#### IFOC Selection Guide: Choose the Right Phase
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
@@ -868,7 +877,7 @@ Where `CFO_GENIE` and `CTO_GENIE` are themselves Genie profiles that coordinate 
 └──────────────┴────────────────┴───────────────┴──────────────┴─────────────────────────┘
 ```
 
-### IFOC Workflow Patterns
+#### IFOC Workflow Patterns
 
 **Pattern 1: Ideate → Focus → Optimize**
 ```
@@ -903,7 +912,7 @@ Result: Complete board deck in minutes, not days
 4. 🟠 @PROD     "Deploy to production"       ← OPTIMIZE: Controlled rollout
 ```
 
-### Why IFOC Matters
+#### Why IFOC Matters
 
 **Traditional AI Assistants:**
 - One-size-fits-all approach
@@ -920,7 +929,7 @@ Result: Complete board deck in minutes, not days
 **The Bottom Line:**
 Stop treating AI as a single assistant. The IFOC workflow mirrors how experts actually work: **Ideate** possibilities, **Focus** on verified knowledge, **Optimize** execution, and **Coordinate** complex multi-domain work. Build an AI organization where specialized experts collaborate intelligently.
 
-#### 5. **Strategic Planner Intelligence**
+##### 5. **Strategic Planner Intelligence**
 
 The strategic planner understands profile class context and adapts behavior:
 
@@ -931,9 +940,9 @@ The strategic planner understands profile class context and adapts behavior:
 
 This prevents the planner from executing the wrong query when users switch from `@CHAT` to `@GOGET`.
 
-### Profile Class Specifications
+#### Profile Class Specifications
 
-#### Session Metadata Tracking
+##### Session Metadata Tracking
 
 Every turn in a session records:
 
@@ -963,7 +972,7 @@ Every turn in a session records:
 - `knowledge_retrieval_event` - Document retrieval details (only in rag_focused)
 - `genie_metadata` - Coordination details and child sessions (only in genie)
 
-#### Profile Classification Modes
+##### Profile Classification Modes
 
 Profiles can be classified as:
 
@@ -979,7 +988,7 @@ Profiles can be classified as:
 
 **Note:** Classification only applies to MCP-enabled profiles with multiple tools/prompts available.
 
-#### Session Primer - Automatic Context Initialization
+##### Session Primer - Automatic Context Initialization
 
 **The Value:**
 Session Primer allows each profile to automatically execute an initialization question when a new session starts, pre-populating the context window with domain-specific knowledge. This transforms generic AI agents into **instantly educated specialists**.
@@ -1054,9 +1063,9 @@ Execution Flow:
 - **Genie profiles**: Prime with team structure and delegation guidelines
 - **Conversation profiles**: Prime with domain terminology and business rules
 
-### Real-World Usage Patterns
+#### Real-World Usage Patterns
 
-#### Pattern 1: Learn, Then Execute
+##### Pattern 1: Learn, Then Execute
 
 ```
 @CHAT: "How do I calculate the average sale price by region?"
@@ -1066,7 +1075,7 @@ Execution Flow:
   → Agent runs the query against live database (Efficiency Focused)
 ```
 
-#### Pattern 2: Review Before Production
+##### Pattern 2: Review Before Production
 
 ```
 @CHAT: "Write a query to delete inactive customers"
@@ -1078,7 +1087,7 @@ Execution Flow:
   → Agent executes against production database with audit trail (Efficiency Focused)
 ```
 
-#### Pattern 3: Document-Driven Decisions
+##### Pattern 3: Document-Driven Decisions
 
 ```
 @RAG: "What are our approved customer retention strategies?"
@@ -1091,7 +1100,7 @@ Execution Flow:
   → Agent runs the query against live database (Efficiency Focused)
 ```
 
-#### Pattern 4: Compliance and Policy Verification
+##### Pattern 4: Compliance and Policy Verification
 
 ```
 @RAG: "What does our security policy say about API key rotation?"
@@ -1101,7 +1110,7 @@ Execution Flow:
   → Agent queries credential store via MCP tools (Efficiency Focused)
 ```
 
-### Implementation Details
+#### Implementation Details
 
 **Profile Switching:**
 - Type `@` in chat input to see all available profiles
@@ -1126,7 +1135,7 @@ Execution Flow:
 - `knowledge_retrieval_event` - Document sources and relevance scores (RAG profiles)
 - Complete audit trail for cost attribution
 
-### Best Practices
+#### Best Practices
 
 1. **Start Conversational:** Use Conversation Focused profiles to explore, learn, and draft queries
 2. **Verify with Documents:** Use Knowledge Focused profiles for policy, compliance, and reference lookups
@@ -1136,14 +1145,17 @@ Execution Flow:
 6. **Security:** Restrict MCP-enabled profiles to authorized users via role-based access
 7. **Knowledge Quality:** Ensure Knowledge Focused profiles have well-curated knowledge collections
 
+For Genie coordinator architecture and nested multi-level coordination, see:
+[**Nested Genie Upgrade Guide (docs/Architecture/NESTED_GENIE_UPGRADE_GUIDE.md)**](docs/Architecture/NESTED_GENIE_UPGRADE_GUIDE.md)
+
 [⬆️ Back to Table of Contents](#table-of-contents)
 
 
-## 🎯 The Heart of the Application - The Engine & its Fusion Optimizer
+### 🎯 The Heart of the Application - The Engine & its Fusion Optimizer
 
 The Uderia Platform is engineered to be far more than a simple LLM wrapper. Its revolutionary core is the **Fusion Optimizer**, a multi-layered engine designed for resilient, intelligent, and efficient task execution in complex enterprise environments. It transforms the agent from a mere tool into a reliable analytical partner.
 
-### 🧠 The Multi-Layered Planning Process
+#### 🧠 The Multi-Layered Planning Process
 
 The Optimizer deconstructs every user request into a sophisticated, hierarchical plan.
 
@@ -1153,7 +1165,7 @@ The Optimizer deconstructs every user request into a sophisticated, hierarchical
 
 3. **Recursive Delegation**: The Planner is fully recursive. A single phase in a high-level plan can delegate its execution to a new, subordinate instance of the Planner. This allows the agent to solve complex problems by breaking them down into smaller, self-contained sub-tasks, executing them, and then returning the results to the parent process.
 
-#### 💎 Dual-Model Architecture for Cost Optimization
+##### 💎 Dual-Model Architecture for Cost Optimization
 
 The Fusion Optimizer supports **heterogeneous model assignment** across planning layers, enabling sophisticated cost-performance trade-offs:
 
@@ -1187,7 +1199,7 @@ This architecture is particularly effective for:
 - Multi-turn sessions with shared strategic context
 - Budget-conscious deployments requiring predictable costs
 
-### 🔧 Proactive Optimization Engine
+#### 🔧 Proactive Optimization Engine
 
 Before and during execution, the Optimizer actively seeks to enhance performance and efficiency.
 
@@ -1199,7 +1211,7 @@ Before and during execution, the Optimizer actively seeks to enhance performance
 
 * **Context Distillation**: To prevent context window overflow with large datasets, the agent automatically distills large tool outputs into concise metadata summaries before passing them to the LLM for planning, ensuring robust performance even with enterprise-scale data.
 
-### 📚 Continuous Improvement through Champion Case Learning
+#### 📚 Continuous Improvement through Champion Case Learning
 
 The agent learns from every successful interaction, building an ever-growing repository of "champion" strategies that guide future planning. This closed-loop learning system transforms individual successes into organizational knowledge.
 
@@ -1237,7 +1249,7 @@ The agent learns from every successful interaction, building an ever-growing rep
   - No blocking operations on critical path
   - Graceful degradation if learning system unavailable
 
-### 📊 Performance Metrics and Resource Limits
+#### 📊 Performance Metrics and Resource Limits
 
 The engine provides comprehensive observability and built-in safeguards against runaway execution.
 
@@ -1271,7 +1283,7 @@ The engine provides comprehensive observability and built-in safeguards against 
 * **Timeout Enforcement**: Configurable query timeout with graceful degradation
 * **Error Accumulation Threshold**: Abort after N consecutive tool failures to prevent thrashing
 
-### 🔄 Autonomous Self-Correction & Healing
+#### 🔄 Autonomous Self-Correction & Healing
 
 When errors occur, the Optimizer initiates a sophisticated, multi-tiered recovery process.
 
@@ -1283,7 +1295,7 @@ When errors occur, the Optimizer initiates a sophisticated, multi-tiered recover
 
 4. **Strategic Correction with Learning System**: The integrated **champion case learning system** provides the highest level of self-healing. By retrieving proven strategies from past successes, the agent can discard a flawed or inefficient plan entirely and adopt a proven, optimal approach, learning from its own history to correct its course.
 
-### 🛡️ Robust Safeguards
+#### 🛡️ Robust Safeguards
 
 The Optimizer is built with enterprise-grade reliability in mind.
 
@@ -1293,11 +1305,14 @@ The Optimizer is built with enterprise-grade reliability in mind.
 
 * **Definitive Error Handling**: The agent recognizes unrecoverable errors (e.g., database permission denied) and halts execution immediately, providing a clear explanation to the user instead of wasting resources on futile retry attempts.
 
+For context window management and token optimization strategies, see:
+[**Context Window Architecture (docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)**](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)
+
 [⬆️ Back to Table of Contents](#table-of-contents)
 
 ---
 
-## 🧬 Retrieval-Augmented Generation (RAG) for Self-Improving AI
+### 🧬 Retrieval-Augmented Generation (RAG) for Self-Improving AI
 
 The Uderia Platform integrates a powerful **Retrieval-Augmented Generation (RAG)** system designed to create a self-improving agent. This closed-loop feedback mechanism allows the agent's Planner to learn from its own past successes, continuously enhancing its decision-making capabilities over time.
 
@@ -1310,11 +1325,11 @@ The core value of this RAG implementation is its ability to automatically identi
 
 This process guides the Planner to generate higher-quality, more efficient plans based on proven, successful strategies, reducing token consumption and improving response quality without manual intervention. The entire process runs asynchronously in the background to ensure no impact on user-facing performance.
 
-### Two-Tier Repository Architecture
+#### Two-Tier Repository Architecture
 
 The application supports two distinct types of repositories, each serving a different purpose in the AI agent ecosystem:
 
-#### Planner Repositories
+##### Planner Repositories
 **Purpose:** Store execution strategies and planning patterns
 - Capture successful agent interactions as few-shot learning examples
 - Contain SQL query patterns, API workflows, and proven execution traces
@@ -1324,7 +1339,7 @@ The application supports two distinct types of repositories, each serving a diff
 - Enable the agent to learn from past successes and improve over time
 - **Available in Intelligence Marketplace** for community sharing and discovery
 
-#### Knowledge Repositories
+##### Knowledge Repositories
 **Purpose:** Provide reference documentation and domain knowledge
 - Store general documents, technical manuals, and business context
 - Support for PDF, TXT, DOCX, MD, and other document formats
@@ -1335,7 +1350,7 @@ The application supports two distinct types of repositories, each serving a diff
 - **Available in Intelligence Marketplace** for community sharing and discovery
 - **Feature Status:** ✅ Fully integrated (Phase 1 complete - Nov 2025)
 
-#### Intelligence Marketplace
+##### Intelligence Marketplace
 
 The **Intelligence Marketplace** enables users to share, discover, and leverage both repository types:
 
@@ -1348,7 +1363,7 @@ The **Intelligence Marketplace** enables users to share, discover, and leverage 
 
 This separation ensures that execution patterns (how to accomplish tasks) remain distinct from domain knowledge (what the agent needs to know), while both can be leveraged through the unified RAG system and shared via the marketplace.
 
-### Planner Repository Constructors: Modular Plugin System (New - Nov 2025)
+#### Planner Repository Constructors: Modular Plugin System (New - Nov 2025)
 
 The RAG system now features a **modular template architecture** that enables domain-specific customization and extensibility:
 
@@ -1361,11 +1376,11 @@ The RAG system now features a **modular template architecture** that enables dom
 
 This modular approach allows organizations to extend the RAG system with custom templates tailored to their specific data patterns, query types, and business domains without modifying core agent code.
 
-### Knowledge Retrieval: Grounded Intelligence for the Focus Profile Class
+#### Knowledge Retrieval: Grounded Intelligence for the Focus Profile Class
 
 While Planner Repositories power the self-improving Optimizer, **Knowledge Repositories** serve an entirely different purpose: they deliver **grounded, hallucination-free answers** from verified documents. This is the engine behind the **Focus** profile class (🔵 `rag_focused`).
 
-#### The Value Proposition
+##### The Value Proposition
 
 Traditional LLMs generate answers from training data — a black box of uncertain provenance. Knowledge Retrieval inverts this model:
 
@@ -1374,7 +1389,7 @@ Traditional LLMs generate answers from training data — a black box of uncertai
 * **Source Traceability**: Every answer includes citations back to specific documents, chunks, and metadata. Auditors and compliance teams can verify any claim.
 * **Freshness-Aware Ranking**: Documents are scored using a hybrid of semantic relevance and temporal freshness, ensuring recent updates rank appropriately against older but relevant content.
 
-#### How Knowledge Retrieval Works
+##### How Knowledge Retrieval Works
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -1422,7 +1437,7 @@ Traditional LLMs generate answers from training data — a black box of uncertai
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Key Differentiators from Planner Repositories
+##### Key Differentiators from Planner Repositories
 
 | Aspect | Planner Repositories | Knowledge Repositories |
 |--------|---------------------|----------------------|
@@ -1433,7 +1448,7 @@ Traditional LLMs generate answers from training data — a black box of uncertai
 | **Tool Execution** | Yes — full MCP tool calling | None — pure retrieval + synthesis |
 | **Hallucination Risk** | Mitigated via proven patterns | Eliminated by design |
 
-#### Configuration
+##### Configuration
 
 Knowledge retrieval behavior is controlled through a **three-tier configuration resolution**:
 
@@ -1451,7 +1466,7 @@ Knowledge retrieval behavior is controlled through a **three-tier configuration 
 | `freshnessDecayRate` | Exponential decay rate for age penalty | 0.005 |
 | `synthesisPromptOverride` | Custom system prompt for LLM synthesis | (none) |
 
-#### Document Ingestion & Chunking
+##### Document Ingestion & Chunking
 
 Knowledge Repositories support multiple document formats (PDF, DOCX, TXT, Markdown) with configurable chunking strategies:
 
@@ -1468,6 +1483,86 @@ For the comprehensive architecture deep-dive including scoring algorithms, execu
 For a comprehensive overview of the RAG architecture, template development, and maintenance utilities, please see the detailed documentation:
 [**RAG System Documentation (docs/RAG/RAG.md)**](docs/RAG/RAG.md)
 [**RAG Template Plugin Development (rag_templates/README.md)**](rag_templates/README.md)
+
+[⬆️ Back to Table of Contents](#table-of-contents)
+
+---
+
+### 📘 Skills: Pre-Processing Context Injection
+
+Skills are reusable markdown instruction sets that shape how the agent reasons, responds, and formats — injected into LLM context **before** query execution. They provide transparent, auditable control over agent behavior without modifying system prompts permanently.
+
+**How it works:** Type `!` in the chat input to trigger autocomplete, select a skill, and optionally add a parameter with `:param` syntax (e.g., `!sql-expert:strict`). Skills appear as emerald-green badges in the input area and on chat messages.
+
+**Built-in skills:**
+
+| Skill | Purpose | Parameters |
+|-------|---------|------------|
+| `!sql-expert` | SQL best practices, optimization, and conventions | `:strict` (enforce ANSI compliance), `:lenient` (accept valid SQL) |
+| `!table-format` | Format all data responses as clean Markdown tables | — |
+| `!concise` | Brief, focused responses without preamble or filler | — |
+| `!detailed` | Thorough analysis with reasoning, context, and alternatives | — |
+| `!step-by-step` | Chain-of-thought reasoning with numbered steps | — |
+
+**Key characteristics:**
+- **Fully transient** — skill content is injected per-request into local LLM context variables, never stored in conversation history. Deactivating a skill means complete elimination from all future context
+- **Works across all profile types** — Optimizer, Conversation, Knowledge, and Genie profiles all support skill injection at the appropriate execution point
+- **Parameterizable** — skills support runtime parameters via `<!-- param:name -->` blocks for fine-grained behavior variants within a single skill
+- **Create your own** — via the visual Skill Editor (three levels: Citizen, Intermediate, Expert) or drop a `.md` file into `~/.tda/skills/` for zero-friction authoring
+- **Portable** — export/import as `.zip` for sharing across environments
+- **Admin-governed** — administrators can disable specific skills, control user skill creation, and manage availability globally
+- **Transparent** — `skills_applied` events in the Live Status Window show which skills were injected and their estimated token cost
+
+Architecture details: [**Skill Architecture (docs/Architecture/SKILL_ARCHITECTURE.md)**](docs/Architecture/SKILL_ARCHITECTURE.md)
+
+[⬆️ Back to Table of Contents](#table-of-contents)
+
+---
+
+### ⚡ Extensions: Post-Processing Transformations
+
+Extensions transform LLM answers into structured, machine-parseable output for downstream automation. While Skills inject context **before** the query, Extensions run **after** the answer is received — converting non-deterministic LLM output into deterministic formats for workflow tools like n8n, Airflow, and Flowise.
+
+```
+User Query → LLM Answer → #Extension Post-Processing → Structured Output → n8n / Airflow / API
+```
+
+**How it works:** Type `#` in the chat input to trigger autocomplete, select an extension, and optionally add a parameter (e.g., `#decision:critical`). Multiple extensions can be chained in a single query — they execute serially, each receiving results from prior extensions.
+
+**Built-in extensions:**
+
+| Extension | Purpose | LLM Cost | Output |
+|-----------|---------|----------|--------|
+| `#json` | Wraps answer + metadata into standardized JSON for APIs | No | Chat |
+| `#decision` | Semantic analysis for workflow branching (binary or severity-based) | Yes | Silent |
+| `#extract` | Regex-based extraction of numbers, percentages, entities | No | Silent |
+| `#classify` | Semantic categorization (alert, performance, data quality, security) | Yes | Silent |
+| `#summary` | Executive summary with key points and action items | Yes | Chat |
+| `#pdf` | Downloadable PDF export with Markdown-aware formatting | No | Chat |
+
+**Key characteristics:**
+- **Deterministic output** — transforms natural-language answers into structured formats that workflow tools can reliably parse and branch on
+- **Four-tier extension framework** — from zero-friction Convention (drop a `.py` file) through Simple and Standard tiers to LLM-powered extensions with automatic token tracking
+- **Serial chaining** — compose extensions (`#extract #decision:critical`) where each extension accesses prior results for progressive data refinement
+- **Isolated error handling** — extension failures never break the main LLM answer; each extension succeeds or fails independently
+- **Create your own** — via the UI scaffold (generates tier-appropriate Python boilerplate with real-time validation), REST API, or manual file drop to `~/.tda/extensions/`
+- **Portable** — export/import as `.extension` zip for sharing across environments
+- **Admin-governed** — administrators control whether users can create custom extensions
+- **Automatic cost tracking** — LLM-powered extensions (Tiers 2-3) automatically track input/output tokens and cost, integrated into session totals
+
+**REST API example:**
+```json
+{
+  "prompt": "What is the CPU usage?",
+  "extensions": [
+    {"name": "decision", "param": "critical"}
+  ]
+}
+```
+
+The `#decision` extension produces `{result, severity, branch_key}` — exactly what n8n Switch nodes need for deterministic routing (e.g., `threshold_exceeded_critical` → PagerDuty, `nominal_ok` → log only).
+
+Architecture details: [**Extension Architecture (docs/Architecture/EXTENSION_ARCHITECTURE.md)**](docs/Architecture/EXTENSION_ARCHITECTURE.md)
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
@@ -1946,7 +2041,7 @@ python -m trusted_data_agent.main
 
 ---
 
-## Model Selection: Recommended vs All Models
+### Model Selection: Recommended vs All Models
 
 When adding or editing LLM configurations, you can switch between **Recommended** and **All** models using the toggle in the model selection UI:
 
@@ -1959,11 +2054,11 @@ When adding or editing LLM configurations, you can switch between **Recommended*
 
 ---
 
-## Command Line Options
+### Command Line Options
 
 The Uderia Platform supports several command-line options for different deployment scenarios and operational modes:
 
-### Available Options
+#### Available Options
 
 ```bash
 python -m trusted_data_agent.main [OPTIONS]
@@ -1976,7 +2071,7 @@ python -m trusted_data_agent.main [OPTIONS]
 | `--nogitcall` | Disable GitHub API calls to fetch repository star count. | Enabled |
 | `--offline` | Use cached HuggingFace models only (skip remote version checks). Useful when internet is slow or unavailable. | Disabled |
 
-### Usage Examples
+#### Usage Examples
 
 **Standard production deployment:**
 ```bash
@@ -1998,7 +2093,7 @@ python -m trusted_data_agent.main --host 0.0.0.0 --port 5050
 python -m trusted_data_agent.main --offline --nogitcall
 ```
 
-### Offline Mode Details
+#### Offline Mode Details
 
 The `--offline` flag is particularly useful when:
 - Internet connection is slow or unreliable
@@ -2963,6 +3058,8 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **22-Feb-2026:** Extensions - Post-processing transformation pipeline with `#` trigger, 6 built-in extensions (json, decision, extract, classify, summary, pdf), four-tier custom extension framework, and serial chaining for workflow automation
+*   **22-Feb-2026:** Skills - Pre-processing prompt injections with `!` trigger, 5 built-in skills, parameterizable behavior, visual editor, and admin governance for transparent LLM context control
 *   **12-Feb-2026:** Dual-Model Cost Breakdown - Live Status displays strategic vs tactical costs for Fusion Optimizer dual-model executions with color-coded visualization
 *   **11-Feb-2026:** Theme-Aware Token/Cost KPIs - Live Status token and cost displays now adapt to both dark and light themes with consistent visibility
 *   **09-Feb-2026:** n8n Integration - Visual workflow automation with three production-ready templates (Simple Query, Scheduled Reports, Slack Integration) and comprehensive deployment guides

@@ -970,7 +970,7 @@ function _showExtensionResult(tagEl, messageBubble) {
 }
 
 
-export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false, extensionSpecs = null) { // eslint-disable-line no-unused-vars
+export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false, extensionSpecs = null, skillSpecs = null) { // eslint-disable-line no-unused-vars
     // Normalize content - Google Gemini may return content as an array of parts
     if (Array.isArray(content)) {
         content = content.map(part => {
@@ -1122,6 +1122,17 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         primerTag.textContent = 'Primer';
         primerTag.title = 'Session initialization message';
         author.appendChild(primerTag);
+    }
+
+    // Render skill tags for user messages (emerald badges like !sql-expert, !concise)
+    if (role === 'user' && skillSpecs && skillSpecs.length > 0) {
+        skillSpecs.forEach(spec => {
+            const skillTag = document.createElement('span');
+            skillTag.className = 'skill-tag';
+            skillTag.textContent = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            skillTag.title = `Skill: ${spec.name}${spec.param ? ' (' + spec.param + ')' : ''}`;
+            author.appendChild(skillTag);
+        });
     }
 
     // Render extension tags for user messages (amber badges like #json, #decision:critical)
@@ -3279,6 +3290,7 @@ function _renderContextOptimizationDetails(details) {
 // Extension events are visually distinct from the main execution pipeline.
 
 let _extensionDividerAdded = false;
+let _skillDividerAdded = false;
 
 function _ensureExtensionDivider(parentContainer) {
     if (_extensionDividerAdded) return;
@@ -3367,6 +3379,54 @@ function _renderExtensionStep(eventData, parentContainer) {
                 parentContainer.appendChild(resultEl);
             }
         }
+    }
+}
+
+// ── Skill Step Renderer (emerald green, pre-processing transparency) ──────────
+
+function _ensureSkillDivider(parentContainer) {
+    if (_skillDividerAdded) return;
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+    divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #34d399;">Skills</span>`;
+    parentContainer.appendChild(divider);
+    _skillDividerAdded = true;
+}
+
+function _renderSkillStep(eventData, parentContainer) {
+    const { details } = eventData;
+    const payload = typeof details === 'object' ? (details || {}) : {};
+    const skills = payload.skills || [];
+    const totalTokens = payload.total_estimated_tokens || 0;
+
+    if (skills.length === 0) return;
+
+    _ensureSkillDivider(parentContainer);
+
+    // Render each skill as a compact row
+    skills.forEach(skill => {
+        const nameDisplay = skill.param ? `!${skill.name}:${skill.param}` : `!${skill.name}`;
+        const target = skill.injection_target === 'user_context' ? 'user context' : 'system prompt';
+        const tokens = skill.estimated_tokens || 0;
+
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #34d399;">&#10038;</span>
+                <span class="text-xs text-gray-300"><span class="font-medium" style="color: #6ee7b7;">${nameDisplay}</span> &rarr; ${target}</span>
+                <span class="text-xs text-gray-500 ml-auto">~${tokens.toLocaleString()} tokens</span>
+            </div>`;
+        parentContainer.appendChild(stepEl);
+    });
+
+    // Total overhead summary
+    if (skills.length > 1) {
+        const totalEl = document.createElement('div');
+        totalEl.className = 'px-4 py-1';
+        totalEl.innerHTML = `<span class="text-xs text-gray-500">Skill context: ~${totalTokens.toLocaleString()} tokens added to prompt</span>`;
+        parentContainer.appendChild(totalEl);
     }
 }
 
@@ -3608,6 +3668,7 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
 export function resetStatusWindowForNewTask() {
     DOM.statusWindowContent.innerHTML = '';
     _extensionDividerAdded = false; // Reset extension divider flag for new task
+    _skillDividerAdded = false; // Reset skill divider flag for new task
     // Remove any existing scroll spacer
     const existingSpacer = document.getElementById('status-scroll-spacer');
     if (existingSpacer) existingSpacer.remove();
@@ -3756,6 +3817,13 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
         // Don't change status title — session name generation is a background activity
         // that shouldn't override the current execution context title
         _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'skills') {
+        // Skill events — emerald green renderer for pre-processing transparency
+        _renderSkillStep(eventData, DOM.statusWindowContent);
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }

@@ -1,0 +1,26 @@
+{
+  "name": "sql-expert",
+  "version": "1.0.0",
+  "description": "SQL best practices, optimization techniques, and database conventions for writing efficient, correct queries.",
+  "author": "Uderia",
+  "tags": ["sql", "database", "best-practices", "optimization"],
+  "keywords": ["sql", "query", "select", "join", "table", "database", "index", "where", "group by", "having", "subquery", "cte"],
+  "use_cases": [
+    "Writing SQL queries against relational databases",
+    "Optimizing slow queries",
+    "Choosing appropriate join types",
+    "Following SQL coding conventions",
+    "Avoiding common SQL pitfalls"
+  ],
+  "main_file": "sql-expert.md",
+  "last_updated": "2026-02-22",
+  "uderia": {
+    "allowed_params": ["strict", "lenient"],
+    "param_descriptions": {
+      "strict": "Enforce all SQL standards strictly — flag any deviation",
+      "lenient": "Suggest improvements but accept any valid SQL"
+    },
+    "injection_target": "system_prompt",
+    "icon": "database"
+  }
+}

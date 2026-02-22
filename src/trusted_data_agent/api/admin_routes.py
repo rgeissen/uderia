@@ -2504,3 +2504,95 @@ async def save_extension_settings_endpoint():
     except Exception as e:
         logger.error(f"Error saving extension settings: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Skill Governance Settings (mirrors extension settings above)
+# ---------------------------------------------------------------------------
+
+@admin_api_bp.route('/v1/admin/skill-settings', methods=['GET'])
+@require_admin
+async def get_skill_settings_endpoint():
+    """
+    Get current skill governance settings plus the list of built-in skills.
+
+    Returns:
+    {
+        "status": "success",
+        "settings": { ... },
+        "builtin_skills": [ { skill_id, name, description, tags }, ... ]
+    }
+    """
+    try:
+        from trusted_data_agent.skills.settings import get_skill_settings
+        from trusted_data_agent.skills.manager import get_skill_manager
+
+        settings = get_skill_settings()
+        manager = get_skill_manager()
+
+        # Provide the list of built-in skills so the admin UI can render checkboxes
+        builtin = [
+            {
+                "skill_id": s["skill_id"],
+                "name": s.get("name", s["skill_id"]),
+                "description": s.get("description", ""),
+                "tags": s.get("tags", []),
+            }
+            for s in manager.list_skills()
+            if s.get("is_builtin")
+        ]
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings,
+            'builtin_skills': builtin,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting skill settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/skill-settings', methods=['POST'])
+@require_admin
+async def save_skill_settings_endpoint():
+    """
+    Save skill governance settings (admin only).
+
+    Body (all fields optional — only supplied keys are updated):
+    {
+        "skills_mode": "all" | "selective",
+        "disabled_skills": ["classify-intent"],
+        "user_skills_enabled": true | false,
+        "auto_skills_enabled": true | false
+    }
+    """
+    try:
+        from trusted_data_agent.skills.settings import save_skill_settings, get_skill_settings
+
+        data = await request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        # Validate skills_mode
+        if 'skills_mode' in data and data['skills_mode'] not in ('all', 'selective'):
+            return jsonify({'status': 'error', 'message': "skills_mode must be 'all' or 'selective'"}), 400
+
+        # Validate disabled_skills is a list
+        if 'disabled_skills' in data and not isinstance(data['disabled_skills'], list):
+            return jsonify({'status': 'error', 'message': 'disabled_skills must be a list'}), 400
+
+        admin_user = get_current_user_from_request()
+        admin_uuid = admin_user.id if admin_user else 'unknown'
+
+        save_skill_settings(data, admin_uuid)
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Skill settings updated successfully',
+            'settings': get_skill_settings(),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error saving skill settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

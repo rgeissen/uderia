@@ -2295,6 +2295,8 @@ async def ask_stream():
     attachments = data.get("attachments")  # Optional list of [{file_id, filename, ...}]
     # --- Post-processing extensions ---
     extension_specs = data.get("extensions")  # Optional list of [{"name": "json", "param": null}]
+    # --- Pre-processing skills ---
+    skill_specs = data.get("skills")  # Optional list of [{"name": "sql-expert", "param": "strict"}]
 
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
@@ -2580,7 +2582,8 @@ async def ask_stream():
                         profile_override_id=profile_override_id, # Pass the profile override
                         is_session_primer=is_session_primer, # Pass the session primer flag
                         attachments=attachments,  # Pass document upload attachments
-                        extension_specs=extension_specs  # Pass post-processing extensions
+                        extension_specs=extension_specs,  # Pass post-processing extensions
+                        skill_specs=skill_specs  # Pass pre-processing skills
                     )
                 )
                 # --- MODIFICATION END ---

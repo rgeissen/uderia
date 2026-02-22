@@ -108,6 +108,12 @@ def init_database():
         # Create marketplace extensions tables
         _create_marketplace_extensions_tables()
 
+        # Create skills activation table (per-user skill enablement)
+        _create_skills_table()
+
+        # Create skill settings table (admin governance)
+        _create_skill_settings_table()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -604,6 +610,98 @@ def _create_marketplace_extensions_tables():
 
     except Exception as e:
         logger.error(f"Error creating marketplace_extensions tables: {e}", exc_info=True)
+
+
+def _create_skills_table():
+    """
+    Create the per-user skill activation table.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "15_skills.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 15_skills.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS user_skills (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_uuid VARCHAR(36) NOT NULL,
+                    skill_id VARCHAR(100) NOT NULL,
+                    activation_name VARCHAR(100) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    default_param VARCHAR(255),
+                    config_json TEXT,
+                    activated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_uuid) REFERENCES users(id),
+                    UNIQUE(user_uuid, activation_name)
+                );
+                CREATE INDEX IF NOT EXISTS idx_user_skills_user
+                    ON user_skills(user_uuid, is_active);
+                CREATE INDEX IF NOT EXISTS idx_user_skills_name
+                    ON user_skills(user_uuid, activation_name);
+            """)
+            logger.info("Created skills table (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating skills table: {e}", exc_info=True)
+
+
+def _create_skill_settings_table():
+    """
+    Create the skill_settings table for admin skill governance.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "16_skill_settings.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 16_skill_settings.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS skill_settings (
+                    id INTEGER PRIMARY KEY,
+                    setting_key TEXT NOT NULL UNIQUE,
+                    setting_value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT OR IGNORE INTO skill_settings (setting_key, setting_value) VALUES
+                    ('skills_mode', 'all'),
+                    ('disabled_skills', '[]'),
+                    ('user_skills_enabled', 'true'),
+                    ('auto_skills_enabled', 'false');
+                CREATE INDEX IF NOT EXISTS idx_skill_settings_key
+                    ON skill_settings(setting_key);
+            """)
+            logger.info("Created skill_settings table (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating skill_settings table: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

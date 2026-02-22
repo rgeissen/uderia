@@ -2273,6 +2273,9 @@ async def execute_query(session_id: str):
     # Post-processing extensions [{"name": "json", "param": null}]
     extension_specs = data.get("extensions")
 
+    # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
+    skill_specs = data.get("skills")
+
     # --- MODIFICATION START: Validate session for this user ---
     if not await session_manager.get_session(user_uuid, session_id):
         app_logger.warning(f"REST API: Session '{session_id}' not found for user '{user_uuid}'.")
@@ -2397,7 +2400,8 @@ async def execute_query(session_id: str):
                 profile_override_id=profile_id_override, # Pass profile override for per-message tracking
                 is_session_primer=is_session_primer, # Pass session primer flag
                 attachments=attachments,  # File attachments (uploaded via /api/v1/chat/upload)
-                extension_specs=extension_specs  # Post-processing extensions
+                extension_specs=extension_specs,  # Post-processing extensions
+                skill_specs=skill_specs  # Pre-processing skills
             )
 
             if task_status_dict:
@@ -2448,7 +2452,8 @@ async def execute_query(session_id: str):
                             "user_input": prompt,
                             "final_answer": final_result_payload.get("final_answer"),
                             "profile_tag": profile_tag,
-                            "extension_specs": extension_specs
+                            "extension_specs": extension_specs,
+                            "skill_specs": skill_specs
                         }
                     }
                     for queue in notification_queues:

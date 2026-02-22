@@ -1,0 +1,19 @@
+{
+  "name": "table-format",
+  "version": "1.0.0",
+  "description": "Instructs the LLM to format all data responses as clean Markdown tables.",
+  "author": "Uderia",
+  "tags": ["formatting", "table", "markdown"],
+  "keywords": ["table", "format", "markdown", "columns", "rows", "grid", "data", "structured"],
+  "use_cases": [
+    "Getting query results as formatted tables",
+    "Comparing data side by side",
+    "Creating structured data summaries"
+  ],
+  "main_file": "table-format.md",
+  "last_updated": "2026-02-22",
+  "uderia": {
+    "injection_target": "system_prompt",
+    "icon": "table"
+  }
+}

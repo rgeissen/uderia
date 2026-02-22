@@ -1090,6 +1090,14 @@ async function processStream(responseBody, originSessionId) {
                                 type: eventData.type,
                                 metadata: eventData.metadata
                             }, isFinal, 'lifecycle');
+                        } else if (eventData.type === 'skills_applied') {
+                            // Skill pre-processing transparency — emerald green
+                            const skillsPayload = eventData.payload || {};
+                            UI.updateStatusWindow({
+                                step: 'Skills applied',
+                                details: skillsPayload,
+                                type: 'skills_applied'
+                            }, false, 'skills');
                         } else if (eventData.type === 'extension_start') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
@@ -1499,7 +1507,7 @@ export async function handleStreamRequest(endpoint, body) {
                 const chipHtml = renderAttachmentChips(body.attachments);
                 displayMessage = body.message + chipHtml;
             }
-            UI.addMessage('user', displayMessage, null, true, 'text', profileTag, body.is_session_primer || false, body.extensions || null);
+            UI.addMessage('user', displayMessage, null, true, 'text', profileTag, body.is_session_primer || false, body.extensions || null, body.skills || null);
         } else {
         }
     } else {
@@ -1625,6 +1633,33 @@ export async function handleChatSubmit(e, source = 'text') {
         console.log('ℹ️  No @TAG detected or profiles not loaded');
     }
     
+    // Check for !skill:param directives in text (manual typing)
+    let skillSpecs = [];
+    const skillRegex = /!(\w[\w-]*)(?::(\S+))?/g;
+    let skillMatch;
+    while ((skillMatch = skillRegex.exec(cleanedMessage)) !== null) {
+        skillSpecs.push({
+            name: skillMatch[1].toLowerCase(),
+            param: skillMatch[2] || null
+        });
+    }
+    // Strip !skill tags from message sent to LLM
+    if (skillSpecs.length > 0) {
+        cleanedMessage = cleanedMessage.replace(/!\w[\w-]*(?::\S+)?/g, '').trim();
+    }
+
+    // Merge badge-based skills (from autocomplete selection)
+    const badgeSkills = window.activeSkills || [];
+    for (const skill of badgeSkills) {
+        if (!skillSpecs.find(s => s.name === skill.name)) {
+            skillSpecs.push({ name: skill.name, param: skill.param || null });
+        }
+    }
+
+    if (skillSpecs.length > 0) {
+        console.log(`✦ Skills: ${skillSpecs.map(s => '!' + s.name + (s.param ? ':' + s.param : '')).join(' ')}`);
+    }
+
     // Check for #extension:param directives in text (manual typing)
     let extensionSpecs = [];
     const extensionRegex = /#(\w+)(?::(\S+))?/g;
@@ -1660,12 +1695,16 @@ export async function handleChatSubmit(e, source = 'text') {
         session_id: state.currentSessionId,
         source: source,
         profile_override_id: profileOverrideId,
+        skills: skillSpecs.length > 0 ? skillSpecs : undefined,
         extensions: extensionSpecs.length > 0 ? extensionSpecs : undefined,
         attachments: attachments.length > 0 ? attachments : undefined
         // is_replay is implicitly false here
     });
 
-    // Clear extension badges after sending
+    // Clear skill and extension badges after sending
+    if (window.clearSkillBadges) {
+        window.clearSkillBadges();
+    }
     if (window.clearExtensionBadges) {
         window.clearExtensionBadges();
     }
@@ -1755,6 +1794,45 @@ function forceResetExecutionState() {
  * @param {Object} turnData - The turn data from the API (contains extension_events + extension_results)
  * @param {HTMLElement} container - The DOM container to append extension rendering to
  */
+function _renderSkillEventsForReload(turnData, container) {
+    const skills = turnData.skills_applied || [];
+    if (skills.length === 0) return;
+
+    // --- Emerald divider ---
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+    divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #34d399;">Skills</span>`;
+    container.appendChild(divider);
+
+    // --- Render each skill ---
+    let totalTokens = 0;
+    skills.forEach(skill => {
+        const nameDisplay = skill.param ? `!${skill.name}:${skill.param}` : `!${skill.name}`;
+        const target = skill.injection_target === 'user_context' ? 'user context' : 'system prompt';
+        const tokens = skill.estimated_tokens || 0;
+        totalTokens += tokens;
+
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #34d399;">&#10038;</span>
+                <span class="text-xs text-gray-300"><span class="font-medium" style="color: #6ee7b7;">${nameDisplay}</span> &rarr; ${target}</span>
+                <span class="text-xs text-gray-500 ml-auto">~${tokens.toLocaleString()} tokens</span>
+            </div>`;
+        container.appendChild(stepEl);
+    });
+
+    // Total overhead summary (only if multiple skills)
+    if (skills.length > 1) {
+        const totalEl = document.createElement('div');
+        totalEl.className = 'px-4 py-1';
+        totalEl.innerHTML = `<span class="text-xs text-gray-500">Skill context: ~${totalTokens.toLocaleString()} tokens added to prompt</span>`;
+        container.appendChild(totalEl);
+    }
+}
+
 function _renderExtensionEventsForReload(turnData, container) {
     const extEvents = turnData.extension_events || [];
     const extResults = turnData.extension_results || {};
@@ -1978,6 +2056,9 @@ export async function handleReloadPlanClick(element) {
         if (turnData && (turnData.genie_coordination || turnData.profile_type === 'genie')) {
             DOM.statusWindowContent.innerHTML = '';
 
+            // Render skill events at the top (pre-processing, before main execution)
+            _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
             // If we have detailed genie_events, replay them for full UI experience
             const genieEvents = turnData.genie_events || [];
             if (genieEvents.length > 0) {
@@ -2095,6 +2176,9 @@ export async function handleReloadPlanClick(element) {
         // Check if this is a conversation_with_tools profile (LangChain agent)
         if (turnData && turnData.profile_type === 'conversation_with_tools') {
             DOM.statusWindowContent.innerHTML = '';
+
+            // Render skill events at the top (pre-processing, before main execution)
+            _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
 
             // If we have detailed conversation_agent_events, replay them for full UI experience
             const agentEvents = turnData.conversation_agent_events || [];
@@ -2250,6 +2334,10 @@ export async function handleReloadPlanClick(element) {
         // Check if this is an llm_only or rag_focused profile (non-tool profiles)
         if (turnData && (turnData.profile_type === 'llm_only' || turnData.profile_type === 'rag_focused')) {
             DOM.statusWindowContent.innerHTML = '';
+
+            // Render skill events at the top (pre-processing, before main execution)
+            _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
             const isRagFocused = turnData.profile_type === 'rag_focused';
 
             // Check for detailed knowledge events (similar to genie_events and conversation_agent_events)
@@ -2482,6 +2570,9 @@ export async function handleReloadPlanClick(element) {
             planning_phase: turnData.planning_phase,
             perModelBreakdown: perModelBreakdown
         }, true);
+
+        // Render skill events if present (pre-processing, before extensions)
+        _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
 
         // Render extension events if present
         _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);

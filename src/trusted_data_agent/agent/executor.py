@@ -382,7 +382,7 @@ class PlanExecutor:
         return None
 
     # --- MODIFICATION START: Add plan_to_execute and is_replay ---
-    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None):
+    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None):
         self.session_id = session_id
         self.user_uuid = user_uuid
         self.event_handler = event_handler
@@ -615,6 +615,8 @@ class PlanExecutor:
         self.attachments = attachments or []
         self.document_context = None  # Will be populated from extracted text if attachments present
         self.multimodal_content = None  # Will be populated with native multimodal blocks if provider supports it
+        # --- Pre-processing skill injections ---
+        self.skill_result = skill_result  # SkillResult from skills module (or None)
 
         self.turn_input_tokens = 0
         self.turn_output_tokens = 0
@@ -1906,7 +1908,9 @@ class PlanExecutor:
                 "knowledge_accessed": knowledge_accessed,
                 "knowledge_retrieval_event": knowledge_retrieval_event_data,
                 # UI-only: Full document chunks for plan reload display (not sent to LLM)
-                "knowledge_chunks_ui": knowledge_chunks if knowledge_enabled else []
+                "knowledge_chunks_ui": knowledge_chunks if knowledge_enabled else [],
+                # Pre-processing skills applied to this turn
+                "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -1958,7 +1962,8 @@ class PlanExecutor:
                 "turn_output_tokens": self.turn_output_tokens,
                 "turn_cost": turn_cost,  # NEW - Cost at time of error
                 "session_cost_usd": session_cost_usd,  # NEW - Cumulative cost snapshot
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
 
@@ -2646,6 +2651,12 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
                 app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
 
+            # --- Inject skill content (pre-processing) ---
+            if self.skill_result and self.skill_result.has_content:
+                sp_block = self.skill_result.get_system_prompt_block()
+                if sp_block:
+                    system_prompt = f"{system_prompt}\n\n{sp_block}"
+
             # Load document context from uploaded files
             doc_context = None
             if self.attachments:
@@ -2660,6 +2671,12 @@ The following domain knowledge may be relevant to this conversation:
                 knowledge_context=knowledge_context_str,
                 document_context=doc_context
             )
+
+            # Inject user_context skill content into user message
+            if self.skill_result and self.skill_result.has_content:
+                uc_block = self.skill_result.get_user_context_block()
+                if uc_block:
+                    user_message = f"{uc_block}\n\n{user_message}"
 
             # NOW emit llm_execution event with complete information
             event_data = {
@@ -2991,7 +3008,8 @@ The following domain knowledge may be relevant to this conversation:
                     "enabled": knowledge_enabled,
                     "retrieved": len(knowledge_accessed) > 0,
                     "document_count": len(knowledge_accessed)
-                } if knowledge_enabled else None
+                } if knowledge_enabled else None,
+                "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -3369,7 +3387,8 @@ The following domain knowledge may be relevant to this conversation:
                         "summary": f"Searched {len(collection_names)} collection(s), no relevant documents found"
                     },
                     "knowledge_events": knowledge_events,
-                    "system_events": system_events
+                    "system_events": system_events,
+                    "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
                 }
 
                 # Save turn data to workflow_history
@@ -3541,6 +3560,12 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = synthesis_prompt_override.strip()
                 app_logger.info(f"[RAG] Using synthesis prompt override ({len(system_prompt)} chars)")
 
+            # --- Inject skill content (pre-processing) ---
+            if self.skill_result and self.skill_result.has_content:
+                sp_block = self.skill_result.get_system_prompt_block()
+                if sp_block:
+                    system_prompt = f"{system_prompt}\n\n{sp_block}"
+
             # Load document context from uploaded files
             rag_doc_context = None
             if self.attachments:
@@ -3554,6 +3579,12 @@ The following domain knowledge may be relevant to this conversation:
                 knowledge_context=knowledge_context,
                 document_context=rag_doc_context
             )
+
+            # Inject user_context skill content into user message
+            if self.skill_result and self.skill_result.has_content:
+                uc_block = self.skill_result.get_user_context_block()
+                if uc_block:
+                    user_message = f"{uc_block}\n\n{user_message}"
 
             # Emit "Calling LLM" event with call_id for token tracking
             call_id = str(uuid.uuid4())
@@ -3852,7 +3883,8 @@ The following domain knowledge may be relevant to this conversation:
                 },
                 # UI-only: Full document chunks for plan reload display (not sent to LLM)
                 "knowledge_chunks_ui": knowledge_chunks,
-                "system_events": system_events
+                "system_events": system_events,
+                "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -4946,6 +4978,7 @@ The following domain knowledge may be relevant to this conversation:
                     "is_partial": False,
                     # Duration tracking for tool_enabled profile (calculated from start time)
                     "duration_ms": int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0,
+                    "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
                 }
                 # --- MODIFICATION END ---
                 await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
@@ -5064,6 +5097,7 @@ The following domain knowledge may be relevant to this conversation:
                 "error_message": error_message,
                 "error_details": error_details,
                 "is_partial": True,  # Flag to indicate incomplete execution
+                "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)

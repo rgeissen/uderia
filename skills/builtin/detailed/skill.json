@@ -1,0 +1,19 @@
+{
+  "name": "detailed",
+  "version": "1.0.0",
+  "description": "Thorough analysis with reasoning, context, alternatives, and implications.",
+  "author": "Uderia",
+  "tags": ["style", "thorough", "analysis"],
+  "keywords": ["detailed", "thorough", "comprehensive", "analysis", "reasoning", "explain", "deep"],
+  "use_cases": [
+    "Deep analysis of query results",
+    "Understanding complex data relationships",
+    "Decision support with alternatives"
+  ],
+  "main_file": "detailed.md",
+  "last_updated": "2026-02-22",
+  "uderia": {
+    "injection_target": "system_prompt",
+    "icon": "book-open"
+  }
+}

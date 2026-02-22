@@ -184,6 +184,7 @@ def create_app():
     from trusted_data_agent.api.knowledge_routes import knowledge_api_bp
     from trusted_data_agent.api.contact_routes import contact_bp
     from trusted_data_agent.api.agent_pack_routes import agent_pack_bp
+    from trusted_data_agent.api.skills_routes import skills_api_bp
 
     app.register_blueprint(api_bp)
     app.register_blueprint(rest_api_bp, url_prefix="/api")
@@ -193,6 +194,7 @@ def create_app():
     app.register_blueprint(knowledge_api_bp, url_prefix="/api")  # Knowledge repository endpoints
     app.register_blueprint(contact_bp)  # Contact form endpoint for promotional website
     app.register_blueprint(agent_pack_bp, url_prefix="/api")  # Agent pack management
+    app.register_blueprint(skills_api_bp, url_prefix="/api")  # Skills management
 
     @app.route('/favicon.ico')
     async def favicon():

@@ -747,7 +747,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
                     if (msg.attachments && msg.attachments.length > 0) {
                         displayContent = msg.content + renderAttachmentChips(msg.attachments);
                     }
-                    UI.addMessage(msg.role, displayContent, null, isValid, msg.source, profileTag, isSessionPrimer, msg.extension_specs || null);
+                    UI.addMessage(msg.role, displayContent, null, isValid, msg.source, profileTag, isSessionPrimer, msg.extension_specs || null, msg.skill_specs || null);
                 }
             }
             // --- MODIFICATION END ---

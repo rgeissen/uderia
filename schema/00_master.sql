@@ -47,6 +47,8 @@ INSERT OR IGNORE INTO schema_version (version, description) VALUES
 -- 12. 12_extensions.sql             - Per-user extension activations
 -- 13. 13_extension_settings.sql     - Admin extension governance settings
 -- 14. 14_marketplace_extensions.sql - Marketplace extensions + ratings
+-- 15. 15_skills.sql                - Per-user skill activations
+-- 16. 16_skill_settings.sql        - Admin skill governance settings
 
 -- ============================================================================
 -- Alternatively, use the Python validation script to build the database

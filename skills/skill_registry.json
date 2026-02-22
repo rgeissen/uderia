@@ -1,0 +1,37 @@
+{
+  "registry_version": "1.0.0",
+  "last_updated": "2026-02-22",
+  "description": "Built-in skills for the Uderia platform. Each skill is a Claude Code-compatible markdown knowledge document that gets injected into the LLM context when activated.",
+  "skills": [
+    {
+      "skill_id": "sql-expert",
+      "plugin_directory": "sql-expert",
+      "status": "active",
+      "category": "Database"
+    },
+    {
+      "skill_id": "table-format",
+      "plugin_directory": "table-format",
+      "status": "active",
+      "category": "Formatting"
+    },
+    {
+      "skill_id": "concise",
+      "plugin_directory": "concise",
+      "status": "active",
+      "category": "Style"
+    },
+    {
+      "skill_id": "detailed",
+      "plugin_directory": "detailed",
+      "status": "active",
+      "category": "Style"
+    },
+    {
+      "skill_id": "step-by-step",
+      "plugin_directory": "step-by-step",
+      "status": "active",
+      "category": "Reasoning"
+    }
+  ]
+}

@@ -284,6 +284,15 @@ async function initializeRAGAutoCompletion() {
     let activeExtensions = [];  // [{name, param}] — active extension badges
     window.activeExtensions = activeExtensions;
 
+    // --- Skill badge system (mirrors extension badges, emerald green, ! trigger) ---
+    const skillSelector = document.getElementById('skill-selector');
+    const activeSkillTagsContainer = document.getElementById('active-skill-tags');
+    let currentSkills = [];
+    let skillSelectedIndex = -1;
+    let isShowingSkillSelector = false;
+    let activeSkills = [];  // [{name, param}] — active skill badges
+    window.activeSkills = activeSkills;
+
     // Prevent scroll events from propagating to parent when scrolling inside dropdown
     profileTagSelector.addEventListener('wheel', (e) => {
         const { scrollTop, scrollHeight, clientHeight } = profileTagSelector;
@@ -1027,6 +1036,289 @@ async function initializeRAGAutoCompletion() {
     }
     window.clearExtensionBadges = clearExtensionBadges;
 
+    // --- Skill badge functions (mirrors extension badges, emerald green) ---
+
+    function showSkillSelector(skills) {
+        currentSkills = skills;
+        skillSelectedIndex = skills.length > 0 ? 0 : -1;
+        isShowingSkillSelector = true;
+
+        if (skills.length === 0) {
+            skillSelector.innerHTML = '';
+            skillSelector.classList.add('hidden');
+            return;
+        }
+
+        skillSelector.innerHTML = '';
+
+        skills.forEach((skill, index) => {
+            const item = document.createElement('div');
+            item.className = 'skill-item';
+            if (index === 0) item.classList.add('skill-highlighted');
+
+            const header = document.createElement('div');
+            header.className = 'skill-item-header';
+
+            const activationName = skill.activation_name || skill.skill_id;
+
+            const badge = document.createElement('span');
+            badge.className = 'skill-item-badge';
+            badge.textContent = `!${activationName}`;
+            header.appendChild(badge);
+
+            const name = document.createElement('span');
+            name.className = 'skill-item-name';
+            name.textContent = skill.name || skill.skill_id;
+            header.appendChild(name);
+
+            item.appendChild(header);
+
+            if (skill.description) {
+                const desc = document.createElement('div');
+                desc.className = 'skill-item-description';
+                desc.textContent = skill.description;
+                item.appendChild(desc);
+            }
+
+            if (skill.default_param) {
+                const param = document.createElement('div');
+                param.className = 'skill-item-param';
+                param.textContent = `Default: ${skill.default_param}`;
+                item.appendChild(param);
+            }
+
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectSkill(index);
+                userInput.focus();
+            });
+            item.addEventListener('mouseenter', () => {
+                skillSelectedIndex = index;
+                highlightSkill(index);
+            });
+
+            skillSelector.appendChild(item);
+        });
+
+        skillSelector.classList.remove('hidden');
+    }
+
+    function hideSkillSelector() {
+        skillSelector.innerHTML = '';
+        skillSelector.classList.add('hidden');
+        currentSkills = [];
+        skillSelectedIndex = -1;
+        isShowingSkillSelector = false;
+    }
+
+    function highlightSkill(index) {
+        const items = skillSelector.querySelectorAll('.skill-item');
+        items.forEach((item, idx) => {
+            item.classList.toggle('skill-highlighted', idx === index);
+        });
+    }
+
+    function selectSkill(index) {
+        if (index >= 0 && index < currentSkills.length) {
+            const skill = currentSkills[index];
+            const activationName = skill.activation_name || skill.skill_id;
+
+            // Remove the partial !tag from input text
+            const currentValue = userInput.value;
+            const bangMatch = currentValue.match(/!(\w*)$/);
+            if (bangMatch) {
+                const beforeBang = currentValue.substring(0, bangMatch.index);
+                isUpdatingInput = true;
+                userInput.value = beforeBang.trimEnd();
+                isUpdatingInput = false;
+            }
+
+            // Add as visual badge (skip if already active)
+            if (!activeSkills.find(s => s.name === activationName)) {
+                const defaultParam = skill.default_param || null;
+                addSkillBadge(activationName, defaultParam);
+            }
+
+            hideSkillSelector();
+            userInput.focus();
+        }
+    }
+
+    function addSkillBadge(name, param) {
+        activeSkills.push({ name, param });
+        window.activeSkills = activeSkills;
+        _renderSkillBadges();
+    }
+
+    function removeSkillBadge(name) {
+        activeSkills = activeSkills.filter(s => s.name !== name);
+        window.activeSkills = activeSkills;
+        _renderSkillBadges();
+        userInput.focus();
+    }
+
+    function clearSkillBadges() {
+        activeSkills = [];
+        window.activeSkills = activeSkills;
+        activeSkillTagsContainer.innerHTML = '';
+    }
+    window.clearSkillBadges = clearSkillBadges;
+
+    function _getSkillMeta(activationName) {
+        return (window.skillState?.activated || []).find(
+            s => (s.activation_name || s.skill_id) === activationName
+        );
+    }
+
+    function _validateSkillParam(activationName, paramValue) {
+        const meta = _getSkillMeta(activationName);
+        if (!meta) return 'none';
+        const allowed = meta.allowed_params || [];
+        if (allowed.length === 0) return 'none'; // no param restrictions
+        if (!paramValue) return 'none';
+        return allowed.includes(paramValue) ? 'valid' : 'invalid';
+    }
+
+    function _renderSkillBadges() {
+        activeSkillTagsContainer.innerHTML = '';
+        activeSkills.forEach(spec => {
+            const badge = document.createElement('span');
+            badge.className = 'active-skill-badge';
+
+            const validation = spec.param ? _validateSkillParam(spec.name, spec.param) : 'none';
+            if (validation === 'invalid') {
+                badge.classList.add('active-skill-badge--invalid');
+            }
+
+            const label = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            badge.innerHTML = `<span>${label}</span><span class="active-skill-badge__remove" title="Remove skill">×</span>`;
+            badge.querySelector('.active-skill-badge__remove').addEventListener('click', () => {
+                removeSkillBadge(spec.name);
+            });
+            activeSkillTagsContainer.appendChild(badge);
+        });
+    }
+
+    // --- Skill param picker (reuses skillSelector dropdown) ---
+    let isShowingSkillParamPicker = false;
+    let skillParamPickerValues = [];
+    let skillParamPickerIndex = -1;
+
+    function showSkillParamPicker(hints, typedPrefix) {
+        const filtered = typedPrefix
+            ? hints.filter(v => v.toLowerCase().startsWith(typedPrefix.toLowerCase()))
+            : hints;
+
+        skillParamPickerValues = filtered;
+        skillParamPickerIndex = filtered.length > 0 ? 0 : -1;
+        isShowingSkillParamPicker = true;
+
+        skillSelector.innerHTML = '';
+
+        const meta = activeSkills.length > 0 ? _getSkillMeta(activeSkills[activeSkills.length - 1].name) : null;
+        const desc = meta?.param_descriptions ? 'Parameter' : 'Parameter';
+
+        const header = document.createElement('div');
+        header.className = 'skill-param-picker-header';
+        const descSpan = document.createElement('span');
+        descSpan.textContent = desc;
+        header.appendChild(descSpan);
+        skillSelector.appendChild(header);
+
+        if (filtered.length === 0 && typedPrefix) {
+            const noMatch = document.createElement('div');
+            noMatch.className = 'skill-param-picker-no-params';
+            noMatch.textContent = `"${typedPrefix}" is not a valid parameter`;
+            skillSelector.appendChild(noMatch);
+            skillSelector.classList.remove('hidden');
+            return;
+        }
+
+        filtered.forEach((val, index) => {
+            const item = document.createElement('div');
+            item.className = 'skill-item';
+            if (index === 0) item.classList.add('skill-highlighted');
+
+            const itemHeader = document.createElement('div');
+            itemHeader.className = 'skill-item-header';
+
+            const badge = document.createElement('span');
+            badge.className = 'skill-item-badge';
+            badge.textContent = `:${val}`;
+            itemHeader.appendChild(badge);
+
+            // Show param description if available
+            if (meta?.param_descriptions?.[val]) {
+                const paramDesc = document.createElement('span');
+                paramDesc.className = 'skill-item-name';
+                paramDesc.textContent = meta.param_descriptions[val];
+                itemHeader.appendChild(paramDesc);
+            }
+
+            item.appendChild(itemHeader);
+
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectSkillParamValue(val);
+            });
+            item.addEventListener('mouseenter', () => {
+                skillParamPickerIndex = index;
+                _highlightSkillParamPicker(index);
+            });
+
+            skillSelector.appendChild(item);
+        });
+
+        skillSelector.classList.remove('hidden');
+    }
+
+    function showNoSkillParamsHint() {
+        isShowingSkillParamPicker = true;
+        skillParamPickerValues = [];
+        skillParamPickerIndex = -1;
+        skillSelector.innerHTML = '';
+
+        const hint = document.createElement('div');
+        hint.className = 'skill-param-picker-no-params';
+        hint.textContent = 'This skill does not accept parameters';
+        skillSelector.appendChild(hint);
+        skillSelector.classList.remove('hidden');
+
+        setTimeout(() => {
+            if (isShowingSkillParamPicker && skillParamPickerValues.length === 0) {
+                hideSkillParamPicker();
+            }
+        }, 1500);
+    }
+
+    function _highlightSkillParamPicker(index) {
+        const items = skillSelector.querySelectorAll('.skill-item');
+        items.forEach((item, idx) => {
+            item.classList.toggle('skill-highlighted', idx === index);
+        });
+    }
+
+    function selectSkillParamValue(val) {
+        if (activeSkills.length > 0) {
+            activeSkills[activeSkills.length - 1].param = val;
+            window.activeSkills = activeSkills;
+            _renderSkillBadges();
+        }
+        isUpdatingInput = true;
+        userInput.value = '';
+        isUpdatingInput = false;
+        hideSkillParamPicker();
+        userInput.focus();
+    }
+
+    function hideSkillParamPicker() {
+        skillSelector.innerHTML = '';
+        skillSelector.classList.add('hidden');
+        isShowingSkillParamPicker = false;
+        skillParamPickerValues = [];
+        skillParamPickerIndex = -1;
+    }
+
     /**
      * Lookup manifest metadata for an activation name.
      * Returns the merged activation+manifest object from window.extensionState.activated.
@@ -1326,36 +1618,69 @@ async function initializeRAGAutoCompletion() {
                 hideProfileSelector();
             }
 
-            // Check if user is typing :param for the last extension badge
+            // Check if user is typing :param for the last skill or extension badge
             const colonMatch = inputValue.match(/^:(\S*)$/);
-            if (colonMatch && activeExtensions.length > 0) {
-                const last = activeExtensions[activeExtensions.length - 1];
+            if (colonMatch) {
                 const typedPrefix = colonMatch[1] || '';
 
-                // Live-update the badge
-                last.param = typedPrefix || null;
-                _renderExtensionBadges();
+                // Priority: check skills first (most recently added badge), then extensions
+                if (activeSkills.length > 0) {
+                    const last = activeSkills[activeSkills.length - 1];
+                    last.param = typedPrefix || null;
+                    _renderSkillBadges();
 
-                // Show param picker or "no params" hint
-                const meta = _getExtensionMeta(last.name);
-                const paramDef = meta?.parameters || {};
-                if (paramDef.supported === false) {
-                    // Extension doesn't accept params at all
-                    if (!isShowingParamPicker) showNoParamsHint();
-                } else {
-                    const allowed = paramDef.allowed_values || null;
-                    const hints = allowed || paramDef.examples || [];
-                    if (hints.length > 0) {
-                        showParamPicker(hints, typedPrefix, !!allowed);
-                    } else if (isShowingParamPicker) {
-                        hideParamPicker();
+                    const meta = _getSkillMeta(last.name);
+                    const allowed = meta?.allowed_params || [];
+                    if (allowed.length === 0) {
+                        if (!isShowingSkillParamPicker) showNoSkillParamsHint();
+                    } else {
+                        showSkillParamPicker(allowed, typedPrefix);
                     }
+                    return;
+                } else if (activeExtensions.length > 0) {
+                    const last = activeExtensions[activeExtensions.length - 1];
+                    last.param = typedPrefix || null;
+                    _renderExtensionBadges();
+
+                    const meta = _getExtensionMeta(last.name);
+                    const paramDef = meta?.parameters || {};
+                    if (paramDef.supported === false) {
+                        if (!isShowingParamPicker) showNoParamsHint();
+                    } else {
+                        const allowed = paramDef.allowed_values || null;
+                        const hints = allowed || paramDef.examples || [];
+                        if (hints.length > 0) {
+                            showParamPicker(hints, typedPrefix, !!allowed);
+                        } else if (isShowingParamPicker) {
+                            hideParamPicker();
+                        }
+                    }
+                    return;
                 }
-                return;
             }
-            // Hide param picker if not in :param mode
+            // Hide param pickers if not in :param mode
             if (isShowingParamPicker) {
                 hideParamPicker();
+            }
+            if (isShowingSkillParamPicker) {
+                hideSkillParamPicker();
+            }
+
+            // Check if user is typing !skill (show skill autocomplete)
+            const bangMatch = inputValue.match(/!(\w*)$/);
+            if (bangMatch && window.skillState?.activated?.length > 0) {
+                const prefix = bangMatch[1].toLowerCase();
+                const filtered = window.skillState.activated.filter(s =>
+                    (s.activation_name || s.skill_id).toLowerCase().startsWith(prefix)
+                );
+                if (filtered.length > 0) {
+                    showSkillSelector(filtered);
+                    return;
+                }
+            }
+            // Hide skill selector if not typing !
+            if (isShowingSkillSelector) {
+                hideSkillSelector();
             }
 
             // Check if user is typing #extension (show extension autocomplete)
@@ -1387,6 +1712,28 @@ async function initializeRAGAutoCompletion() {
         });
 
         userInput.addEventListener('keydown', (e) => {
+            // Handle skill param picker navigation and commit
+            if (isShowingSkillParamPicker && skillParamPickerValues.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    skillParamPickerIndex = (skillParamPickerIndex + 1) % skillParamPickerValues.length;
+                    _highlightSkillParamPicker(skillParamPickerIndex);
+                    return;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    skillParamPickerIndex = (skillParamPickerIndex - 1 + skillParamPickerValues.length) % skillParamPickerValues.length;
+                    _highlightSkillParamPicker(skillParamPickerIndex);
+                    return;
+                } else if ((e.key === 'Tab' || e.key === 'Enter') && skillParamPickerIndex >= 0) {
+                    e.preventDefault();
+                    selectSkillParamValue(skillParamPickerValues[skillParamPickerIndex]);
+                    return;
+                } else if (e.key === 'Escape') {
+                    hideSkillParamPicker();
+                    return;
+                }
+            }
+
             // Handle param picker navigation and commit
             if (isShowingParamPicker && paramPickerValues.length > 0) {
                 if (e.key === 'ArrowDown') {
@@ -1409,24 +1756,38 @@ async function initializeRAGAutoCompletion() {
                 }
             }
 
-            // Commit :param to last extension badge on Space or Tab (no picker match)
+            // Commit :param to last skill or extension badge on Space or Tab (no picker match)
             const paramInput = userInput.value.match(/^:(\S+)$/);
-            if (paramInput && activeExtensions.length > 0 && (e.key === ' ' || e.key === 'Tab')) {
-                e.preventDefault();
-                // Param is already applied live via input handler — just clear input
-                isUpdatingInput = true;
-                userInput.value = '';
-                isUpdatingInput = false;
-                hideParamPicker();
-                return;
+            if (paramInput && (e.key === ' ' || e.key === 'Tab')) {
+                if (activeSkills.length > 0) {
+                    e.preventDefault();
+                    isUpdatingInput = true;
+                    userInput.value = '';
+                    isUpdatingInput = false;
+                    hideSkillParamPicker();
+                    return;
+                } else if (activeExtensions.length > 0) {
+                    e.preventDefault();
+                    isUpdatingInput = true;
+                    userInput.value = '';
+                    isUpdatingInput = false;
+                    hideParamPicker();
+                    return;
+                }
             }
 
-            // Handle backspace on empty input: remove last extension badge first, then profile tag
+            // Handle backspace on empty input: remove last extension badge, then skill badge, then profile tag
             if (e.key === 'Backspace' && userInput.value === '') {
                 if (activeExtensions.length > 0) {
                     e.preventDefault();
                     const last = activeExtensions[activeExtensions.length - 1];
                     removeExtensionBadge(last.name);
+                    return;
+                }
+                if (activeSkills.length > 0) {
+                    e.preventDefault();
+                    const last = activeSkills[activeSkills.length - 1];
+                    removeSkillBadge(last.name);
                     return;
                 }
                 if (activeTagPrefix) {
@@ -1490,6 +1851,25 @@ async function initializeRAGAutoCompletion() {
                     }
                 } else if (e.key === 'Escape') {
                     hideProfileSelector();
+                }
+                return;
+            }
+
+            // Handle skill selector navigation
+            if (isShowingSkillSelector && currentSkills.length > 0) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    skillSelectedIndex = (skillSelectedIndex + 1) % currentSkills.length;
+                    highlightSkill(skillSelectedIndex);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    skillSelectedIndex = (skillSelectedIndex - 1 + currentSkills.length) % currentSkills.length;
+                    highlightSkill(skillSelectedIndex);
+                } else if ((e.key === 'Tab' || e.key === 'Enter') && skillSelectedIndex >= 0) {
+                    e.preventDefault();
+                    selectSkill(skillSelectedIndex);
+                } else if (e.key === 'Escape') {
+                    hideSkillSelector();
                 }
                 return;
             }
@@ -1573,6 +1953,32 @@ async function loadActivatedExtensions() {
 }
 // Expose for refresh from Extensions config tab
 window.loadActivatedExtensions = loadActivatedExtensions;
+
+/**
+ * Load activated skills from the API for ! autocomplete.
+ * Stores results in window.skillState.activated for access by the input handler.
+ */
+async function loadActivatedSkills() {
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        if (!token) return;
+
+        const response = await fetch('/api/v1/skills/activated', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            window.skillState = { activated: data.skills || [] };
+            console.log(`[Skills] Loaded ${window.skillState.activated.length} activated skill(s)`);
+        }
+    } catch (err) {
+        console.warn('[Skills] Failed to load activated skills:', err);
+        window.skillState = { activated: [] };
+    }
+}
+// Expose for refresh from Skills config tab
+window.loadActivatedSkills = loadActivatedSkills;
 
 /**
  * Extract user ID from JWT authentication for SSE notifications.
@@ -1820,6 +2226,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load activated extensions for # autocomplete
     loadActivatedExtensions();
+
+    // Load activated skills for ! autocomplete
+    loadActivatedSkills();
 
     // Hide prompt editor menu item if it exists (may be removed from UI)
     if (DOM.promptEditorButton?.parentElement) {

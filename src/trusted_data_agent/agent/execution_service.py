@@ -256,7 +256,8 @@ async def run_agent_execution(
     profile_override_id: str = None, # Add profile override parameter
     is_session_primer: bool = False, # Session primer flag - marks messages as initialization
     attachments: list = None,  # Document upload attachments [{file_id, filename, ...}]
-    extension_specs: list = None  # Post-processing extensions [{"name": "json", "param": null}]
+    extension_specs: list = None,  # Post-processing extensions [{"name": "json", "param": null}]
+    skill_specs: list = None  # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
 ):
 # --- MODIFICATION END ---
     """
@@ -318,7 +319,8 @@ async def run_agent_execution(
                 profile_tag=profile_tag,
                 is_session_primer=is_session_primer,
                 attachments=attachments,
-                extension_specs=extension_specs
+                extension_specs=extension_specs,
+                skill_specs=skill_specs
             )
             app_logger.debug(f"Added user message to session_history for {session_id}: '{message_to_save}' with profile_tag: {profile_tag}, is_session_primer: {is_session_primer}")
 
@@ -450,6 +452,47 @@ async def run_agent_execution(
             return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
 
+        # --- SKILL RESOLUTION: Resolve pre-processing skills before executor ---
+        skill_result = None
+        if skill_specs:
+            try:
+                from trusted_data_agent.skills.manager import get_skill_manager
+                from trusted_data_agent.skills.models import SkillSpec, SkillResult
+                from trusted_data_agent.skills.settings import is_skill_available
+
+                skill_manager = get_skill_manager()
+                # Build SkillSpec list, filtering by admin governance
+                resolved_specs = []
+                for spec in skill_specs:
+                    name = spec.get("name", "")
+                    if not is_skill_available(name):
+                        app_logger.warning(f"Skill '{name}' is disabled by admin — skipping")
+                        continue
+                    resolved_specs.append(SkillSpec(
+                        name=name,
+                        param=spec.get("param"),
+                    ))
+
+                if resolved_specs:
+                    skill_result = skill_manager.resolve_skills(resolved_specs)
+                    if skill_result and skill_result.has_content:
+                        # Emit skills_applied SSE event for transparency
+                        applied_list = skill_result.to_applied_list()
+                        await event_handler({
+                            "type": "skills_applied",
+                            "payload": {
+                                "skills": applied_list,
+                                "total_estimated_tokens": skill_result.total_estimated_tokens,
+                            }
+                        }, "notification")
+                        app_logger.info(
+                            f"Skills applied: {[s['name'] for s in applied_list]} "
+                            f"(~{skill_result.total_estimated_tokens} tokens)"
+                        )
+            except Exception as e:
+                app_logger.error(f"Failed to resolve skills: {e}", exc_info=True)
+                skill_result = None
+
         # --- MODIFICATION START: Pass new parameters to PlanExecutor ---
         executor = PlanExecutor(
             user_uuid=user_uuid,
@@ -467,7 +510,8 @@ async def run_agent_execution(
             profile_override_id=profile_override_id, # Pass the profile override
             event_handler=event_handler,
             is_session_primer=is_session_primer, # Pass the session primer flag
-            attachments=attachments  # Pass document upload attachments
+            attachments=attachments,  # Pass document upload attachments
+            skill_result=skill_result  # Pass pre-processing skill content
         )
         # --- MODIFICATION END ---
 

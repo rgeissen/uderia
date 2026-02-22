@@ -2377,7 +2377,8 @@ const AdminManager = {
      */
     setupFeaturesChangeListeners() {
         const fields = ['enable-rag-system', 'enable-charting-system', 'tts-mode-select',
-                        'ext-user-extensions-enabled', 'ext-marketplace-enabled'];
+                        'ext-user-extensions-enabled', 'ext-marketplace-enabled',
+                        'skill-user-skills-enabled'];
         fields.forEach(fieldId => {
             const el = document.getElementById(fieldId);
             if (el) {
@@ -2390,10 +2391,22 @@ const AdminManager = {
             const el = document.getElementById(id);
             if (el) {
                 el.addEventListener('change', () => {
-                    // Toggle checklist visibility
                     const container = document.getElementById('ext-checklist-container');
                     if (container) {
                         container.classList.toggle('hidden', id === 'ext-mode-all');
+                    }
+                    this.checkFeaturesDirty();
+                });
+            }
+        });
+        // Skill mode radio buttons
+        ['skill-mode-all', 'skill-mode-selective'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', () => {
+                    const container = document.getElementById('skill-checklist-container');
+                    if (container) {
+                        container.classList.toggle('hidden', id === 'skill-mode-all');
                     }
                     this.checkFeaturesDirty();
                 });
@@ -2528,13 +2541,19 @@ const AdminManager = {
             charting_enabled: 'enable-charting-system',
             tts_mode: 'tts-mode-select',
             ext_user_extensions: 'ext-user-extensions-enabled',
-            ext_marketplace: 'ext-marketplace-enabled'
+            ext_marketplace: 'ext-marketplace-enabled',
+            skill_user_skills: 'skill-user-skills-enabled'
         });
         // Extension mode radio
         const allRadio = document.getElementById('ext-mode-all');
         base.ext_mode = allRadio && allRadio.checked ? 'all' : 'selective';
         // Disabled extensions (dynamic checkboxes)
         base.ext_disabled = JSON.stringify(this._getDisabledExtensions());
+        // Skill mode radio
+        const skillAllRadio = document.getElementById('skill-mode-all');
+        base.skill_mode = skillAllRadio && skillAllRadio.checked ? 'all' : 'selective';
+        // Disabled skills (dynamic checkboxes)
+        base.skill_disabled = JSON.stringify(this._getDisabledSkills());
         return base;
     },
     checkFeaturesDirty() {
@@ -2658,6 +2677,118 @@ const AdminManager = {
             return true;
         } catch (err) {
             console.error('[AdminManager] Error saving extension settings:', err);
+            return false;
+        }
+    },
+
+    // --- Skill Governance ---
+
+    _getDisabledSkills() {
+        const disabled = [];
+        const container = document.getElementById('skill-checklist');
+        if (!container) return disabled;
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            if (!cb.checked) disabled.push(cb.dataset.skillId);
+        });
+        return disabled;
+    },
+
+    /** Load skill governance settings from the admin API */
+    async loadSkillSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return;
+
+            const resp = await fetch('/api/v1/admin/skill-settings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) return;
+
+            const data = await resp.json();
+            if (data.status !== 'success') return;
+
+            const settings = data.settings || {};
+            const builtins = data.builtin_skills || [];
+
+            // Mode radio buttons
+            const allRadio = document.getElementById('skill-mode-all');
+            const selRadio = document.getElementById('skill-mode-selective');
+            if (allRadio && selRadio) {
+                allRadio.checked = settings.skills_mode !== 'selective';
+                selRadio.checked = settings.skills_mode === 'selective';
+            }
+
+            // Show/hide checklist
+            const checklistContainer = document.getElementById('skill-checklist-container');
+            if (checklistContainer) {
+                checklistContainer.classList.toggle('hidden', settings.skills_mode !== 'selective');
+            }
+
+            // Render built-in skill checklist
+            const checklist = document.getElementById('skill-checklist');
+            if (checklist) {
+                const disabledList = settings.disabled_skills || [];
+                checklist.innerHTML = builtins.map(skill => `
+                    <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-600/30">
+                        <input type="checkbox" data-skill-id="${skill.skill_id}"
+                            ${disabledList.includes(skill.skill_id) ? '' : 'checked'}
+                            class="rounded text-emerald-500 focus:ring-emerald-500 bg-gray-700 border-gray-500">
+                        <div class="flex-1 flex items-center justify-between">
+                            <span class="text-sm text-white">${skill.name}</span>
+                            <span class="text-xs text-gray-400">${skill.description || ''}</span>
+                        </div>
+                    </label>
+                `).join('');
+
+                // Add change listeners for dynamic checkboxes
+                checklist.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.addEventListener('change', () => this.checkFeaturesDirty());
+                });
+            }
+
+            // Custom skills toggle
+            const userSkillCb = document.getElementById('skill-user-skills-enabled');
+            if (userSkillCb) userSkillCb.checked = settings.user_skills_enabled !== false;
+
+        } catch (err) {
+            console.error('[AdminManager] Error loading skill settings:', err);
+        }
+    },
+
+    /** Save skill governance settings to the admin API */
+    async saveSkillSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return true;
+
+            const allRadio = document.getElementById('skill-mode-all');
+            const userSkillCb = document.getElementById('skill-user-skills-enabled');
+
+            const payload = {
+                skills_mode: allRadio && allRadio.checked ? 'all' : 'selective',
+                disabled_skills: this._getDisabledSkills(),
+                user_skills_enabled: userSkillCb ? userSkillCb.checked : true
+            };
+
+            const resp = await fetch('/api/v1/admin/skill-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', data.message || 'Failed to save skill settings');
+                }
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.error('[AdminManager] Error saving skill settings:', err);
             return false;
         }
     },
@@ -3275,6 +3406,9 @@ const AdminManager = {
             // Load extension governance settings (populates UI before snapshot)
             await this.loadExtensionSettings();
 
+            // Load skill governance settings (populates UI before snapshot)
+            await this.loadSkillSettings();
+
             // Store original values for dirty tracking - Features tab
             this.featuresOriginal = this.getFeaturesSnapshot();
             this.featuresDirty = false;
@@ -3521,6 +3655,10 @@ const AdminManager = {
             // Save extension governance settings
             const extOk = await this.saveExtensionSettings();
             if (!extOk) return;
+
+            // Save skill governance settings
+            const skillOk = await this.saveSkillSettings();
+            if (!skillOk) return;
 
             // Reset dirty state
             this.featuresOriginal = this.getFeaturesSnapshot();

@@ -2749,6 +2749,15 @@ CRITICAL REQUIREMENTS:
             available_prompts=prompts_context  # Pass prompts context
         )
 
+        # --- Inject skill content into planning prompt (pre-processing) ---
+        if self.executor.skill_result and self.executor.skill_result.has_content:
+            sp_block = self.executor.skill_result.get_system_prompt_block()
+            if sp_block:
+                planning_prompt = f"{planning_prompt}\n\n{sp_block}"
+            uc_block = self.executor.skill_result.get_user_context_block()
+            if uc_block:
+                planning_prompt = f"{uc_block}\n\n{planning_prompt}"
+
         yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
         # Use strategic model for meta-planning (dual-model feature)

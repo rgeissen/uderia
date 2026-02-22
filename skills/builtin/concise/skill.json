@@ -1,0 +1,19 @@
+{
+  "name": "concise",
+  "version": "1.0.0",
+  "description": "Brief, focused responses without preamble or filler text.",
+  "author": "Uderia",
+  "tags": ["style", "brevity", "concise"],
+  "keywords": ["concise", "brief", "short", "direct", "no preamble", "minimal"],
+  "use_cases": [
+    "Getting quick answers without explanation overhead",
+    "Batch processing where brevity matters",
+    "Dashboard summaries"
+  ],
+  "main_file": "concise.md",
+  "last_updated": "2026-02-22",
+  "uderia": {
+    "injection_target": "system_prompt",
+    "icon": "zap"
+  }
+}
