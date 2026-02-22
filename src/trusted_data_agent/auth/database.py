@@ -102,6 +102,12 @@ def init_database():
         # Create extensions activation table (per-user extension enablement)
         _create_extensions_table()
 
+        # Create extension settings table (admin governance)
+        _create_extension_settings_table()
+
+        # Create marketplace extensions tables
+        _create_marketplace_extensions_tables()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -457,6 +463,147 @@ def _create_extensions_table():
 
     except Exception as e:
         logger.error(f"Error creating extensions table: {e}", exc_info=True)
+
+
+def _create_extension_settings_table():
+    """
+    Create the extension_settings table for admin extension governance.
+    Bootstraps defaults from tda_config.json if available.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    import json
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "13_extension_settings.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 13_extension_settings.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS extension_settings (
+                    id INTEGER PRIMARY KEY,
+                    setting_key TEXT NOT NULL UNIQUE,
+                    setting_value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                );
+                INSERT OR IGNORE INTO extension_settings (setting_key, setting_value) VALUES
+                    ('extensions_mode', 'all'),
+                    ('disabled_extensions', '[]'),
+                    ('user_extensions_enabled', 'true'),
+                    ('user_extensions_marketplace_enabled', 'true');
+                CREATE INDEX IF NOT EXISTS idx_extension_settings_key
+                    ON extension_settings(setting_key);
+            """)
+            logger.info("Created extension_settings table (inline fallback)")
+
+        # Bootstrap from tda_config.json if values differ from SQL defaults
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                ext_settings = config.get("extension_settings", {})
+                if ext_settings:
+                    for key, value in ext_settings.items():
+                        # Convert Python types to string storage
+                        if isinstance(value, bool):
+                            str_value = 'true' if value else 'false'
+                        elif isinstance(value, list):
+                            str_value = json.dumps(value)
+                        else:
+                            str_value = str(value)
+                        # Only update if the current value is still the SQL default
+                        # (don't overwrite admin changes)
+                        cursor.execute(
+                            "UPDATE extension_settings SET setting_value = ? "
+                            "WHERE setting_key = ? AND updated_by IS NULL",
+                            (str_value, key)
+                        )
+            except Exception as cfg_err:
+                logger.warning(f"Could not bootstrap extension settings from tda_config.json: {cfg_err}")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating extension_settings table: {e}", exc_info=True)
+
+
+def _create_marketplace_extensions_tables():
+    """
+    Create the marketplace_extensions and extension_ratings tables.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "14_marketplace_extensions.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 14_marketplace_extensions.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS marketplace_extensions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    extension_id VARCHAR(100) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    version VARCHAR(50),
+                    author VARCHAR(255),
+                    extension_tier VARCHAR(20),
+                    category VARCHAR(50),
+                    requires_llm BOOLEAN DEFAULT 0,
+                    publisher_user_id VARCHAR(36) NOT NULL,
+                    visibility VARCHAR(20) DEFAULT 'public',
+                    manifest_json TEXT,
+                    source_hash VARCHAR(64),
+                    download_count INTEGER DEFAULT 0,
+                    install_count INTEGER DEFAULT 0,
+                    published_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    FOREIGN KEY (publisher_user_id) REFERENCES users(id)
+                );
+                CREATE TABLE IF NOT EXISTS extension_ratings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    extension_marketplace_id VARCHAR(36) NOT NULL,
+                    user_id VARCHAR(36) NOT NULL,
+                    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+                    comment TEXT,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    FOREIGN KEY (extension_marketplace_id) REFERENCES marketplace_extensions(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_marketplace_ext_publisher
+                    ON marketplace_extensions(publisher_user_id);
+                CREATE INDEX IF NOT EXISTS idx_marketplace_ext_visibility
+                    ON marketplace_extensions(visibility);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_ext_ratings_unique
+                    ON extension_ratings(extension_marketplace_id, user_id);
+            """)
+            logger.info("Created marketplace_extensions tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating marketplace_extensions tables: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

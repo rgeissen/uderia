@@ -62,6 +62,14 @@ export function initializeMarketplace() {
             switchRepositoryType('agent-packs');
         });
     }
+
+    // Extensions type tab
+    const extensionsTypeTab = document.getElementById('marketplace-repo-type-extensions');
+    if (extensionsTypeTab) {
+        extensionsTypeTab.addEventListener('click', () => {
+            switchRepositoryType('extensions');
+        });
+    }
     
     // Search and filter handlers
     const searchBtn = document.getElementById('marketplace-search-btn');
@@ -178,11 +186,13 @@ function switchRepositoryType(type) {
         planner: document.getElementById('marketplace-repo-type-planner'),
         knowledge: document.getElementById('marketplace-repo-type-knowledge'),
         'agent-packs': document.getElementById('marketplace-repo-type-agent-packs'),
+        extensions: document.getElementById('marketplace-repo-type-extensions'),
     };
     const descs = {
         planner: document.getElementById('planner-description'),
         knowledge: document.getElementById('knowledge-description'),
         'agent-packs': document.getElementById('agent-packs-description'),
+        extensions: document.getElementById('extensions-description'),
     };
 
     for (const [key, tab] of Object.entries(tabs)) {
@@ -207,6 +217,8 @@ function switchRepositoryType(type) {
 function loadMarketplaceContent() {
     if (currentRepositoryType === 'agent-packs') {
         loadMarketplaceAgentPacks();
+    } else if (currentRepositoryType === 'extensions') {
+        loadMarketplaceExtensions();
     } else {
         loadMarketplaceCollections();
     }
@@ -298,6 +310,213 @@ async function loadMarketplaceAgentPacks() {
         showNotification('error', 'Failed to load agent packs: ' + error.message);
     }
 }
+
+/**
+ * Load marketplace extensions from API
+ */
+async function loadMarketplaceExtensions() {
+    const container = document.getElementById('marketplace-collections-list');
+    const loading = document.getElementById('marketplace-loading');
+    const empty = document.getElementById('marketplace-empty');
+    const pagination = document.getElementById('marketplace-pagination');
+
+    if (!container) return;
+
+    if (loading) loading.classList.remove('hidden');
+    if (empty) empty.classList.add('hidden');
+    container.innerHTML = '';
+    if (pagination) pagination.classList.add('hidden');
+
+    try {
+        const token = await window.authClient.getToken();
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const params = new URLSearchParams({
+            page: currentPage,
+            per_page: 12,
+            sort_by: currentSortBy === 'subscribers' ? 'recent' : currentSortBy,
+        });
+        if (currentSearch) params.append('search', currentSearch);
+
+        const response = await fetch(`/api/v1/marketplace/extensions?${params}`, { headers });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+        const data = await response.json();
+        const extensions = data.extensions || [];
+        totalPages = data.total_pages || 1;
+        updatePaginationUI(data);
+
+        if (loading) loading.classList.add('hidden');
+
+        if (extensions.length === 0) {
+            if (empty) {
+                empty.classList.remove('hidden');
+                const emptyTitle = empty.querySelector('h3');
+                const emptyDesc = empty.querySelector('p');
+                if (emptyTitle) emptyTitle.textContent = 'No Extensions Found';
+                if (emptyDesc) emptyDesc.textContent = currentSearch
+                    ? 'Try adjusting your search'
+                    : 'No extensions have been published to the marketplace yet';
+            }
+            return;
+        }
+
+        extensions.forEach(ext => {
+            container.appendChild(createExtensionMarketplaceCard(ext));
+        });
+
+    } catch (error) {
+        console.error('Failed to load marketplace extensions:', error);
+        if (loading) loading.classList.add('hidden');
+        showNotification('error', 'Failed to load extensions: ' + error.message);
+    }
+}
+
+/**
+ * Create an extension marketplace card
+ */
+function createExtensionMarketplaceCard(ext) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-cyan-500/50 transition-colors';
+
+    const isPublisher = ext.is_publisher || false;
+    const rating = ext.average_rating || 0;
+
+    // Tier badge
+    const tierBadges = {
+        convention: { bg: 'bg-gray-500/20', text: 'text-gray-400', label: 'Convention' },
+        simple:     { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Simple' },
+        standard:   { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Standard' },
+        llm:        { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'LLM' },
+    };
+    const badge = tierBadges[ext.extension_tier] || tierBadges.standard;
+
+    // Star rating HTML
+    const starsHtml = Array.from({length: 5}, (_, i) =>
+        `<svg class="w-3.5 h-3.5 ${i < Math.round(rating) ? 'text-yellow-400' : 'text-gray-600'}" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>`
+    ).join('');
+
+    card.innerHTML = `
+        <!-- Header -->
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-lg font-semibold text-white">${escapeHtml(ext.name)}</h2>
+                    ${ext.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(ext.version)}</span>` : ''}
+                    <span class="px-2 py-0.5 text-xs rounded-full ${badge.bg} ${badge.text}">${badge.label}</span>
+                    ${ext.requires_llm ? `<span class="px-2 py-0.5 text-xs rounded-full bg-purple-500/10 text-purple-400">LLM Required</span>` : ''}
+                </div>
+                ${ext.author ? `<p class="text-sm text-gray-400 mt-0.5">by ${escapeHtml(ext.author)}</p>` : ''}
+            </div>
+        </div>
+
+        <!-- Description -->
+        ${ext.description ? `<p class="text-sm text-gray-300">${escapeHtml(ext.description)}</p>` : ''}
+
+        <!-- Category + Extension ID -->
+        <div class="flex flex-wrap gap-1.5">
+            ${ext.category ? `<span class="px-1.5 py-0.5 text-xs rounded bg-cyan-500/10 text-cyan-400">${escapeHtml(ext.category)}</span>` : ''}
+            <span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">#${escapeHtml(ext.extension_id)}</span>
+        </div>
+
+        <!-- Publisher -->
+        ${ext.publisher_username ? `
+            <div class="flex items-center gap-1.5 text-sm text-gray-400">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                </svg>
+                <span class="text-gray-300">${escapeHtml(ext.publisher_username)}</span>
+            </div>
+        ` : ''}
+
+        <!-- Stats -->
+        <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-300">
+            <div class="flex items-center gap-1">${starsHtml}
+                <span class="ml-1 text-gray-400">${rating.toFixed(1)} (${ext.rating_count || 0})</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>${ext.install_count || 0} installs</span>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2 pt-1 border-t border-white/5">
+            ${isPublisher ? `
+                <button class="ext-mkt-unpublish flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+                    Unpublish
+                </button>
+            ` : `
+                <button class="ext-mkt-install flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors">
+                    Install
+                </button>
+            `}
+        </div>
+    `;
+
+    // Wire action buttons
+    const installBtn = card.querySelector('.ext-mkt-install');
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            installBtn.disabled = true;
+            installBtn.textContent = 'Installing...';
+            try {
+                const token = await window.authClient.getToken();
+                const resp = await fetch(`/api/v1/marketplace/extensions/${ext.id}/install`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showNotification('success', data.message || 'Extension installed');
+                    installBtn.textContent = 'Installed';
+                    installBtn.classList.replace('text-cyan-400', 'text-green-400');
+                    installBtn.classList.replace('border-cyan-500/20', 'border-green-500/20');
+                    installBtn.classList.replace('bg-cyan-500/10', 'bg-green-500/10');
+                } else {
+                    showNotification('error', data.error || 'Install failed');
+                    installBtn.textContent = 'Install';
+                    installBtn.disabled = false;
+                }
+            } catch (err) {
+                showNotification('error', 'Install failed: ' + err.message);
+                installBtn.textContent = 'Install';
+                installBtn.disabled = false;
+            }
+        });
+    }
+
+    const unpublishBtn = card.querySelector('.ext-mkt-unpublish');
+    if (unpublishBtn) {
+        unpublishBtn.addEventListener('click', async () => {
+            if (!confirm('Unpublish this extension from the marketplace? Existing installations will remain.')) return;
+            try {
+                const token = await window.authClient.getToken();
+                const resp = await fetch(`/api/v1/marketplace/extensions/${ext.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (resp.ok) {
+                    showNotification('success', 'Extension unpublished');
+                    loadMarketplaceExtensions(); // refresh
+                } else {
+                    const data = await resp.json();
+                    showNotification('error', data.error || 'Unpublish failed');
+                }
+            } catch (err) {
+                showNotification('error', 'Unpublish failed: ' + err.message);
+            }
+        });
+    }
+
+    return card;
+}
+
 
 /**
  * Create an agent pack marketplace card

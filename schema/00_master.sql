@@ -41,6 +41,12 @@ INSERT OR IGNORE INTO schema_version (version, description) VALUES
 -- 8. 08_genie_global_settings.sql - Three-tier configuration settings
 --    Note: This is auto-created by database.py bootstrap process.
 --    Manual execution only needed for existing installations.
+-- 9. 09_agent_packs.sql            - Agent pack installations
+-- 10. 10_marketplace_agent_packs.sql - Marketplace agent packs
+-- 11. 11_marketplace_sharing.sql    - Marketplace sharing grants
+-- 12. 12_extensions.sql             - Per-user extension activations
+-- 13. 13_extension_settings.sql     - Admin extension governance settings
+-- 14. 14_marketplace_extensions.sql - Marketplace extensions + ratings
 
 -- ============================================================================
 -- Alternatively, use the Python validation script to build the database

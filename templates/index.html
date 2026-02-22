@@ -1878,12 +1878,21 @@
                                     <span>Agent Packs</span>
                                 </div>
                             </button>
+                            <button id="marketplace-repo-type-extensions" class="marketplace-repo-type-tab ind-tab ind-tab--pill flex-1">
+                                <div class="flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                                    </svg>
+                                    <span>Extensions</span>
+                                </div>
+                            </button>
                         </div>
                         <div class="mt-3 px-2">
                             <p id="marketplace-repo-type-description" class="text-xs text-gray-500">
                                 <span id="planner-description" class="">Execution patterns and strategies for proven task completion</span>
                                 <span id="knowledge-description" class="hidden">Reference documents and domain knowledge for planning context</span>
                                 <span id="agent-packs-description" class="hidden">Pre-built profile bundles with knowledge repositories for instant deployment</span>
+                                <span id="extensions-description" class="hidden">User-created post-processing extensions for structured output</span>
                             </p>
                         </div>
                     </div>
@@ -3742,6 +3751,88 @@
                                         </div>
                                     </details>
                                 </div>
+
+                                <!-- Extension Management -->
+                                <div class="glass-panel rounded-xl p-6">
+                                    <details class="group">
+                                        <summary class="flex justify-between items-center cursor-pointer list-none">
+                                            <div class="flex items-center gap-3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                                                </svg>
+                                                <div>
+                                                    <h3 class="text-lg font-bold text-white">Extension Management</h3>
+                                                    <p class="text-sm text-gray-400">Control extension availability and custom extensions</p>
+                                                </div>
+                                            </div>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </summary>
+                                        <div class="mt-6 pl-9 space-y-4">
+
+                                            <!-- Extension Availability Mode -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <h4 class="text-sm font-semibold text-white mb-3">Extension Availability</h4>
+                                                <div class="space-y-3">
+                                                    <label class="flex items-center gap-3 cursor-pointer">
+                                                        <input type="radio" name="ext-mode" id="ext-mode-all" value="all" class="text-cyan-500 focus:ring-cyan-500" checked>
+                                                        <div>
+                                                            <span class="text-sm text-white">All extensions available</span>
+                                                            <p class="text-xs text-gray-400">All built-in extensions are available to users (default)</p>
+                                                        </div>
+                                                    </label>
+                                                    <label class="flex items-center gap-3 cursor-pointer">
+                                                        <input type="radio" name="ext-mode" id="ext-mode-selective" value="selective" class="text-cyan-500 focus:ring-cyan-500">
+                                                        <div>
+                                                            <span class="text-sm text-white">Selective</span>
+                                                            <p class="text-xs text-gray-400">Choose which built-in extensions are available to users</p>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <!-- Built-in Extension Checklist (shown only in selective mode) -->
+                                            <div id="ext-checklist-container" class="p-4 bg-gray-700/50 rounded-lg hidden">
+                                                <h4 class="text-sm font-semibold text-white mb-3">Built-in Extensions</h4>
+                                                <p class="text-xs text-gray-400 mb-3">Uncheck extensions you want to hide from users</p>
+                                                <div id="ext-checklist" class="space-y-2">
+                                                    <!-- Dynamically populated by adminManager.js -->
+                                                </div>
+                                            </div>
+
+                                            <!-- Custom Extensions Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <label class="ind-toggle">
+                                                        <input type="checkbox" id="ext-user-extensions-enabled" checked>
+                                                        <span class="ind-track"></span>
+                                                    </label>
+                                                    <div class="flex-1">
+                                                        <label for="ext-user-extensions-enabled" class="block text-sm font-semibold text-white cursor-pointer">Allow users to create custom extensions</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, users can scaffold and create their own post-processing extensions. When disabled, the Create button is hidden.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Extension Marketplace Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <label class="ind-toggle">
+                                                        <input type="checkbox" id="ext-marketplace-enabled" checked>
+                                                        <span class="ind-track"></span>
+                                                    </label>
+                                                    <div class="flex-1">
+                                                        <label for="ext-marketplace-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable extension marketplace</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, users can publish custom extensions to the marketplace and install extensions shared by others.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </details>
+                                </div>
+
                                     <!-- Tab Save Button: Features -->
                                     <div class="flex justify-end pt-6 mt-6 border-t border-gray-700">
                                         <button type="button" id="save-features-settings-btn" disabled

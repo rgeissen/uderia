@@ -2376,12 +2376,27 @@ const AdminManager = {
      * Setup change listeners for Features tab fields
      */
     setupFeaturesChangeListeners() {
-        const fields = ['enable-rag-system', 'enable-charting-system', 'tts-mode-select'];
+        const fields = ['enable-rag-system', 'enable-charting-system', 'tts-mode-select',
+                        'ext-user-extensions-enabled', 'ext-marketplace-enabled'];
         fields.forEach(fieldId => {
             const el = document.getElementById(fieldId);
             if (el) {
                 const eventType = el.type === 'checkbox' ? 'change' : el.tagName === 'SELECT' ? 'change' : 'input';
                 el.addEventListener(eventType, () => this.checkFeaturesDirty());
+            }
+        });
+        // Extension mode radio buttons
+        ['ext-mode-all', 'ext-mode-selective'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', () => {
+                    // Toggle checklist visibility
+                    const container = document.getElementById('ext-checklist-container');
+                    if (container) {
+                        container.classList.toggle('hidden', id === 'ext-mode-all');
+                    }
+                    this.checkFeaturesDirty();
+                });
             }
         });
     },
@@ -2508,15 +2523,143 @@ const AdminManager = {
 
     // --- Features Tab ---
     getFeaturesSnapshot() {
-        return this._snapshotFields({
+        const base = this._snapshotFields({
             rag_enabled: 'enable-rag-system',
             charting_enabled: 'enable-charting-system',
-            tts_mode: 'tts-mode-select'
+            tts_mode: 'tts-mode-select',
+            ext_user_extensions: 'ext-user-extensions-enabled',
+            ext_marketplace: 'ext-marketplace-enabled'
         });
+        // Extension mode radio
+        const allRadio = document.getElementById('ext-mode-all');
+        base.ext_mode = allRadio && allRadio.checked ? 'all' : 'selective';
+        // Disabled extensions (dynamic checkboxes)
+        base.ext_disabled = JSON.stringify(this._getDisabledExtensions());
+        return base;
     },
     checkFeaturesDirty() {
         this.featuresDirty = this._isDirty(this.getFeaturesSnapshot(), this.featuresOriginal);
         this._updateSaveButton('save-features-settings-btn', this.featuresDirty);
+    },
+
+    /** Get list of extension_ids that are UNCHECKED (disabled) in the admin checklist */
+    _getDisabledExtensions() {
+        const disabled = [];
+        const container = document.getElementById('ext-checklist');
+        if (!container) return disabled;
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            if (!cb.checked) disabled.push(cb.dataset.extId);
+        });
+        return disabled;
+    },
+
+    /** Load extension settings from the admin API and populate the UI */
+    async loadExtensionSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return;
+
+            const resp = await fetch('/api/v1/admin/extension-settings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) return;
+
+            const data = await resp.json();
+            if (data.status !== 'success') return;
+
+            const settings = data.settings || {};
+            const builtins = data.builtin_extensions || [];
+
+            // Mode radio buttons
+            const allRadio = document.getElementById('ext-mode-all');
+            const selRadio = document.getElementById('ext-mode-selective');
+            if (allRadio && selRadio) {
+                allRadio.checked = settings.extensions_mode !== 'selective';
+                selRadio.checked = settings.extensions_mode === 'selective';
+            }
+
+            // Show/hide checklist
+            const checklistContainer = document.getElementById('ext-checklist-container');
+            if (checklistContainer) {
+                checklistContainer.classList.toggle('hidden', settings.extensions_mode !== 'selective');
+            }
+
+            // Render built-in extension checklist
+            const checklist = document.getElementById('ext-checklist');
+            if (checklist) {
+                const disabledList = settings.disabled_extensions || [];
+                checklist.innerHTML = builtins.map(ext => `
+                    <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-600/30">
+                        <input type="checkbox" data-ext-id="${ext.extension_id}"
+                            ${disabledList.includes(ext.extension_id) ? '' : 'checked'}
+                            class="rounded text-cyan-500 focus:ring-cyan-500 bg-gray-700 border-gray-500">
+                        <div class="flex-1 flex items-center justify-between">
+                            <span class="text-sm text-white">${ext.display_name}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">${ext.category}</span>
+                                <span class="text-xs px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">${ext.extension_tier}</span>
+                            </div>
+                        </div>
+                    </label>
+                `).join('');
+
+                // Add change listeners for dynamic checkboxes
+                checklist.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.addEventListener('change', () => this.checkFeaturesDirty());
+                });
+            }
+
+            // Custom extensions toggle
+            const userExtCb = document.getElementById('ext-user-extensions-enabled');
+            if (userExtCb) userExtCb.checked = settings.user_extensions_enabled !== false;
+
+            // Marketplace toggle
+            const marketplaceCb = document.getElementById('ext-marketplace-enabled');
+            if (marketplaceCb) marketplaceCb.checked = settings.user_extensions_marketplace_enabled !== false;
+
+        } catch (err) {
+            console.error('[AdminManager] Error loading extension settings:', err);
+        }
+    },
+
+    /** Save extension governance settings to the admin API */
+    async saveExtensionSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return true; // nothing to save
+
+            const allRadio = document.getElementById('ext-mode-all');
+            const userExtCb = document.getElementById('ext-user-extensions-enabled');
+            const marketplaceCb = document.getElementById('ext-marketplace-enabled');
+
+            const payload = {
+                extensions_mode: allRadio && allRadio.checked ? 'all' : 'selective',
+                disabled_extensions: this._getDisabledExtensions(),
+                user_extensions_enabled: userExtCb ? userExtCb.checked : true,
+                user_extensions_marketplace_enabled: marketplaceCb ? marketplaceCb.checked : true
+            };
+
+            const resp = await fetch('/api/v1/admin/extension-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', data.message || 'Failed to save extension settings');
+                }
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.error('[AdminManager] Error saving extension settings:', err);
+            return false;
+        }
     },
 
     // --- AI & Knowledge Tab ---
@@ -3129,6 +3272,9 @@ const AdminManager = {
                 this._updateSaveButton('save-system-operations-btn', false);
             }
 
+            // Load extension governance settings (populates UI before snapshot)
+            await this.loadExtensionSettings();
+
             // Store original values for dirty tracking - Features tab
             this.featuresOriginal = this.getFeaturesSnapshot();
             this.featuresDirty = false;
@@ -3371,6 +3517,10 @@ const AdminManager = {
                     }
                 } catch (e) { console.error('[AdminManager] Error syncing voice button visibility:', e); }
             }
+
+            // Save extension governance settings
+            const extOk = await this.saveExtensionSettings();
+            if (!extOk) return;
 
             // Reset dirty state
             this.featuresOriginal = this.getFeaturesSnapshot();

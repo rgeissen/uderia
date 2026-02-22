@@ -2412,3 +2412,95 @@ async def clear_prompt_cache():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ==============================================================================
+# EXTENSION GOVERNANCE SETTINGS
+# ==============================================================================
+
+@admin_api_bp.route('/v1/admin/extension-settings', methods=['GET'])
+@require_admin
+async def get_extension_settings_endpoint():
+    """
+    Get current extension governance settings plus the list of built-in extensions.
+
+    Returns:
+    {
+        "status": "success",
+        "settings": { ... },
+        "builtin_extensions": [ { extension_id, display_name, category, extension_tier }, ... ]
+    }
+    """
+    try:
+        from trusted_data_agent.extensions.settings import get_extension_settings
+        from trusted_data_agent.extensions.manager import get_extension_manager
+
+        settings = get_extension_settings()
+        manager = get_extension_manager()
+
+        # Provide the list of built-in extensions so the admin UI can render checkboxes
+        builtin = [
+            {
+                "extension_id": e["extension_id"],
+                "display_name": e["display_name"],
+                "category": e.get("category", "General"),
+                "extension_tier": e.get("extension_tier", "standard"),
+            }
+            for e in manager.list_extensions()
+            if e.get("is_builtin")
+        ]
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings,
+            'builtin_extensions': builtin,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting extension settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/extension-settings', methods=['POST'])
+@require_admin
+async def save_extension_settings_endpoint():
+    """
+    Save extension governance settings (admin only).
+
+    Body (all fields optional — only supplied keys are updated):
+    {
+        "extensions_mode": "all" | "selective",
+        "disabled_extensions": ["classify", "summary"],
+        "user_extensions_enabled": true | false,
+        "user_extensions_marketplace_enabled": true | false
+    }
+    """
+    try:
+        from trusted_data_agent.extensions.settings import save_extension_settings, get_extension_settings
+
+        data = await request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        # Validate extensions_mode
+        if 'extensions_mode' in data and data['extensions_mode'] not in ('all', 'selective'):
+            return jsonify({'status': 'error', 'message': "extensions_mode must be 'all' or 'selective'"}), 400
+
+        # Validate disabled_extensions is a list
+        if 'disabled_extensions' in data and not isinstance(data['disabled_extensions'], list):
+            return jsonify({'status': 'error', 'message': 'disabled_extensions must be a list'}), 400
+
+        admin_user = get_current_user_from_request()
+        admin_uuid = admin_user.id if admin_user else 'unknown'
+
+        save_extension_settings(data, admin_uuid)
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Extension settings updated successfully',
+            'settings': get_extension_settings(),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error saving extension settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

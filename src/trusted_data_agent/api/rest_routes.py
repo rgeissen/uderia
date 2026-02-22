@@ -10233,9 +10233,26 @@ async def list_extensions():
             return jsonify({"error": "Authentication required"}), 401
 
         from trusted_data_agent.extensions.manager import get_extension_manager
+        from trusted_data_agent.extensions.settings import get_extension_settings, is_extension_available
+
         manager = get_extension_manager()
         extensions = manager.list_extensions()
-        return jsonify({"extensions": extensions}), 200
+
+        # Enforce admin extension governance
+        settings = get_extension_settings()
+        extensions = [e for e in extensions if is_extension_available(e['extension_id'])]
+
+        # If user extensions disabled, hide user-created extensions
+        if not settings.get('user_extensions_enabled', True):
+            extensions = [e for e in extensions if e.get('is_builtin')]
+
+        return jsonify({
+            "extensions": extensions,
+            "_settings": {
+                "user_extensions_enabled": settings.get("user_extensions_enabled", True),
+                "marketplace_enabled": settings.get("user_extensions_marketplace_enabled", True),
+            }
+        }), 200
 
     except Exception as e:
         app_logger.error(f"Failed to list extensions: {e}", exc_info=True)
@@ -10287,6 +10304,11 @@ async def scaffold_extension():
         user_uuid = _get_user_uuid_from_request()
         if not user_uuid:
             return jsonify({"error": "Authentication required"}), 401
+
+        # Enforce admin governance: block scaffold when user extensions disabled
+        from trusted_data_agent.extensions.settings import are_user_extensions_enabled
+        if not are_user_extensions_enabled():
+            return jsonify({"error": "Custom extension creation has been disabled by the administrator."}), 403
 
         data = await request.get_json()
         ext_name = data.get("name", "").strip().lower().replace(" ", "_")
@@ -10485,14 +10507,17 @@ async def get_activated_extensions():
 
         from trusted_data_agent.extensions.db import get_user_activated_extensions
         from trusted_data_agent.extensions.manager import get_extension_manager
+        from trusted_data_agent.extensions.settings import is_extension_available
 
         activations = get_user_activated_extensions(user_uuid)
         manager = get_extension_manager()
 
-        # Merge activation data with manifest metadata
+        # Merge activation data with manifest metadata, filtering out disabled extensions
         result = []
         for activation in activations:
             ext_id = activation["extension_id"]
+            if not is_extension_available(ext_id):
+                continue  # Skip activations of now-disabled extensions
             ext_info = next(
                 (e for e in manager.list_extensions() if e["extension_id"] == ext_id),
                 None,
@@ -10531,6 +10556,11 @@ async def activate_extension_endpoint(ext_id: str):
 
         from trusted_data_agent.extensions.db import activate_extension
         from trusted_data_agent.extensions.manager import get_extension_manager
+        from trusted_data_agent.extensions.settings import is_extension_available
+
+        # Enforce admin governance: reject disabled extensions
+        if not is_extension_available(ext_id):
+            return jsonify({"error": f"Extension '{ext_id}' has been disabled by the administrator."}), 403
 
         # Validate extension exists in registry
         manager = get_extension_manager()
@@ -10669,3 +10699,529 @@ async def delete_extension_activation_endpoint(activation_name: str):
     except Exception as e:
         app_logger.error(f"Failed to delete extension '{activation_name}': {e}", exc_info=True)
         return jsonify({"error": "Failed to delete extension activation."}), 500
+
+
+# ============================================================================
+# EXTENSION MARKETPLACE ENDPOINTS
+# ============================================================================
+
+@rest_api_bp.route("/v1/extensions/<ext_id>/publish", methods=["POST"])
+async def publish_extension(ext_id: str):
+    """
+    Publish a user-created extension to the marketplace.
+
+    Body (JSON, optional):
+    {
+        "visibility": "public" | "targeted",
+        "user_ids": ["uuid1", "uuid2"]  (required if targeted)
+    }
+    """
+    import hashlib
+    import sqlite3
+    import uuid as _uuid
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.settings import is_marketplace_enabled
+        if not is_marketplace_enabled():
+            return jsonify({"error": "Extension marketplace has been disabled by the administrator."}), 403
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        manifest = manager.get_manifest(ext_id)
+        if not manifest:
+            return jsonify({"error": f"Extension '{ext_id}' not found."}), 404
+
+        # Only user-created extensions can be published
+        if not manifest.get("_is_user"):
+            return jsonify({"error": "Only user-created extensions can be published."}), 400
+
+        data = (await request.get_json()) or {}
+        visibility = data.get("visibility", "public")
+        user_ids = data.get("user_ids", [])
+
+        if visibility not in ("public", "targeted"):
+            return jsonify({"error": "Visibility must be 'public' or 'targeted'"}), 400
+        if visibility == "targeted" and not user_ids:
+            return jsonify({"error": "Targeted publish requires at least one user"}), 400
+
+        # Get source for hashing
+        source = manager.get_extension_source(ext_id) or ""
+        source_hash = hashlib.sha256(source.encode()).hexdigest()
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Check if already published by this user
+        cursor.execute(
+            "SELECT id FROM marketplace_extensions WHERE extension_id = ? AND publisher_user_id = ?",
+            (ext_id, user_uuid),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"error": "This extension is already published", "marketplace_id": existing["id"]}), 409
+
+        marketplace_id = str(_uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Store manifest JSON for preview (strip internal keys)
+        clean_manifest = {k: v for k, v in manifest.items() if not k.startswith("_")}
+
+        cursor.execute(
+            """INSERT INTO marketplace_extensions
+               (id, extension_id, name, description, version, author,
+                extension_tier, category, requires_llm, publisher_user_id,
+                visibility, manifest_json, source_hash,
+                download_count, install_count, published_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)""",
+            (
+                marketplace_id, ext_id,
+                manifest.get("display_name", ext_id),
+                manifest.get("description", ""),
+                manifest.get("version", "0.0.0"),
+                manifest.get("author", "Unknown"),
+                manifest.get("extension_tier", "standard"),
+                manifest.get("category", "General"),
+                1 if manifest.get("requires_llm") else 0,
+                user_uuid, visibility,
+                json.dumps(clean_manifest), source_hash,
+                now, now,
+            ),
+        )
+
+        # Store source in marketplace_data directory
+        marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "extensions" / marketplace_id
+        marketplace_data.mkdir(parents=True, exist_ok=True)
+        (marketplace_data / "source.py").write_text(source, encoding="utf-8")
+        (marketplace_data / "manifest.json").write_text(json.dumps(clean_manifest, indent=2), encoding="utf-8")
+
+        # Targeted sharing grants
+        if visibility == "targeted" and user_ids:
+            for uid in user_ids:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO marketplace_sharing_grants "
+                    "(id, resource_type, resource_id, grantor_user_id, grantee_user_id, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (str(_uuid.uuid4()), "extension", marketplace_id, user_uuid, uid, now),
+                )
+
+        conn.commit()
+        conn.close()
+
+        app_logger.info(f"Extension '{ext_id}' published to marketplace (id={marketplace_id}, visibility={visibility})")
+        return jsonify({
+            "status": "success",
+            "marketplace_id": marketplace_id,
+            "message": "Extension published to marketplace",
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Extension publish failed: {e}", exc_info=True)
+        return jsonify({"error": f"Publish failed: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/extensions", methods=["GET"])
+async def browse_marketplace_extensions():
+    """
+    Browse published extensions with pagination, search, and sorting.
+
+    Query params: page, per_page, search, sort_by, category, tier
+    """
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 12)), 50)
+        search = request.args.get("search", "").strip()
+        sort_by = request.args.get("sort_by", "recent")
+        category = request.args.get("category", "all")
+        tier = request.args.get("tier", "all")
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+
+        # Visibility filter: public + targeted for current user
+        where_clauses = [
+            "(e.visibility = 'public' OR (e.visibility = 'targeted' AND e.id IN "
+            "(SELECT resource_id FROM marketplace_sharing_grants WHERE resource_type = 'extension' AND grantee_user_id = ?)))"
+        ]
+        params = [user_uuid]
+
+        if category != "all":
+            where_clauses.append("e.category = ?")
+            params.append(category)
+
+        if tier != "all":
+            where_clauses.append("e.extension_tier = ?")
+            params.append(tier)
+
+        if search:
+            where_clauses.append("(e.name LIKE ? OR e.description LIKE ? OR e.extension_id LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like, like])
+
+        where_sql = " AND ".join(where_clauses)
+
+        sort_map = {
+            "downloads": "e.download_count DESC",
+            "installs": "e.install_count DESC",
+            "rating": "avg_rating DESC",
+            "recent": "e.published_at DESC",
+            "name": "e.name ASC",
+        }
+        order_sql = sort_map.get(sort_by, "e.published_at DESC")
+
+        cursor = conn.cursor()
+
+        # Total count
+        cursor.execute(f"SELECT COUNT(*) FROM marketplace_extensions e WHERE {where_sql}", params)
+        total = cursor.fetchone()[0]
+        total_pages = max(1, (total + per_page - 1) // per_page)
+
+        # Fetch page with ratings JOIN
+        offset = (page - 1) * per_page
+        query = f"""
+            SELECT e.*,
+                   u.username AS publisher_username,
+                   u.display_name AS publisher_display_name,
+                   COALESCE(r.avg_rating, 0) AS avg_rating,
+                   COALESCE(r.rating_count, 0) AS rating_count
+            FROM marketplace_extensions e
+            LEFT JOIN users u ON e.publisher_user_id = u.id
+            LEFT JOIN (
+                SELECT extension_marketplace_id, AVG(rating) AS avg_rating, COUNT(*) AS rating_count
+                FROM extension_ratings
+                GROUP BY extension_marketplace_id
+            ) r ON r.extension_marketplace_id = e.id
+            WHERE {where_sql}
+            ORDER BY {order_sql}
+            LIMIT ? OFFSET ?
+        """
+        cursor.execute(query, params + [per_page, offset])
+        rows = cursor.fetchall()
+
+        extensions = []
+        for row in rows:
+            ext = {
+                "id": row["id"],
+                "extension_id": row["extension_id"],
+                "name": row["name"],
+                "description": row["description"],
+                "version": row["version"],
+                "author": row["author"],
+                "extension_tier": row["extension_tier"],
+                "category": row["category"],
+                "requires_llm": bool(row["requires_llm"]),
+                "publisher_username": row["publisher_display_name"] or row["publisher_username"],
+                "download_count": row["download_count"],
+                "install_count": row["install_count"],
+                "average_rating": round(row["avg_rating"], 1),
+                "rating_count": row["rating_count"],
+                "visibility": row["visibility"],
+                "published_at": row["published_at"],
+                "is_publisher": row["publisher_user_id"] == user_uuid,
+            }
+            extensions.append(ext)
+
+        conn.close()
+
+        return jsonify({
+            "status": "success",
+            "extensions": extensions,
+            "total": total,
+            "total_pages": total_pages,
+            "page": page,
+            "per_page": per_page,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Browse marketplace extensions failed: {e}", exc_info=True)
+        return jsonify({"error": f"Browse failed: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/extensions/<marketplace_id>", methods=["GET"])
+async def get_marketplace_extension_detail(marketplace_id: str):
+    """Get detail for a single marketplace extension."""
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """SELECT e.*,
+                      u.username AS publisher_username,
+                      u.display_name AS publisher_display_name,
+                      COALESCE(r.avg_rating, 0) AS avg_rating,
+                      COALESCE(r.rating_count, 0) AS rating_count
+               FROM marketplace_extensions e
+               LEFT JOIN users u ON e.publisher_user_id = u.id
+               LEFT JOIN (
+                   SELECT extension_marketplace_id, AVG(rating) AS avg_rating, COUNT(*) AS rating_count
+                   FROM extension_ratings GROUP BY extension_marketplace_id
+               ) r ON r.extension_marketplace_id = e.id
+               WHERE e.id = ?""",
+            (marketplace_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Extension not found"}), 404
+
+        # Get user's own rating
+        cursor.execute(
+            "SELECT rating, comment FROM extension_ratings WHERE extension_marketplace_id = ? AND user_id = ?",
+            (marketplace_id, user_uuid),
+        )
+        user_rating_row = cursor.fetchone()
+
+        conn.close()
+
+        ext = {
+            "id": row["id"],
+            "extension_id": row["extension_id"],
+            "name": row["name"],
+            "description": row["description"],
+            "version": row["version"],
+            "author": row["author"],
+            "extension_tier": row["extension_tier"],
+            "category": row["category"],
+            "requires_llm": bool(row["requires_llm"]),
+            "manifest_json": json.loads(row["manifest_json"]) if row["manifest_json"] else {},
+            "publisher_username": row["publisher_display_name"] or row["publisher_username"],
+            "download_count": row["download_count"],
+            "install_count": row["install_count"],
+            "average_rating": round(row["avg_rating"], 1),
+            "rating_count": row["rating_count"],
+            "visibility": row["visibility"],
+            "published_at": row["published_at"],
+            "is_publisher": row["publisher_user_id"] == user_uuid,
+            "user_rating": dict(user_rating_row) if user_rating_row else None,
+        }
+
+        return jsonify({"status": "success", "extension": ext}), 200
+
+    except Exception as e:
+        app_logger.error(f"Get marketplace extension detail failed: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get extension detail: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/extensions/<marketplace_id>/install", methods=["POST"])
+async def install_marketplace_extension(marketplace_id: str):
+    """
+    Install a marketplace extension into the user's ~/.tda/extensions/ directory.
+    Copies source + manifest, hot-reloads the extension manager, increments install_count.
+    """
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.settings import is_marketplace_enabled
+        if not is_marketplace_enabled():
+            return jsonify({"error": "Extension marketplace has been disabled by the administrator."}), 403
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM marketplace_extensions WHERE id = ?", (marketplace_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Extension not found in marketplace"}), 404
+
+        ext_id = row["extension_id"]
+
+        # Read source from marketplace_data
+        marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "extensions" / marketplace_id
+        source_path = marketplace_data / "source.py"
+        manifest_path = marketplace_data / "manifest.json"
+
+        if not source_path.exists():
+            conn.close()
+            return jsonify({"error": "Extension source not found"}), 404
+
+        source = source_path.read_text(encoding="utf-8")
+        manifest_text = manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else "{}"
+
+        # Copy to ~/.tda/extensions/<extension_id>/
+        user_ext_dir = Path.home() / ".tda" / "extensions" / ext_id
+        user_ext_dir.mkdir(parents=True, exist_ok=True)
+        (user_ext_dir / f"{ext_id}.py").write_text(source, encoding="utf-8")
+        (user_ext_dir / "manifest.json").write_text(manifest_text, encoding="utf-8")
+
+        # Hot-reload extension manager
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        manager.reload()
+
+        # Increment install_count
+        cursor.execute(
+            "UPDATE marketplace_extensions SET install_count = install_count + 1 WHERE id = ?",
+            (marketplace_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        app_logger.info(f"User {user_uuid} installed marketplace extension '{ext_id}' (marketplace_id={marketplace_id})")
+        return jsonify({
+            "status": "success",
+            "extension_id": ext_id,
+            "message": f"Extension '{row['name']}' installed successfully",
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Install marketplace extension failed: {e}", exc_info=True)
+        return jsonify({"error": f"Install failed: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/extensions/<marketplace_id>/rate", methods=["POST"])
+async def rate_marketplace_extension(marketplace_id: str):
+    """
+    Rate a marketplace extension.
+
+    Body (JSON): {"rating": 5, "comment": "Great extension!"}
+    """
+    import sqlite3
+    import uuid as _uuid
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        data = await request.get_json()
+        if not data or "rating" not in data:
+            return jsonify({"error": "rating is required"}), 400
+
+        rating = int(data["rating"])
+        if rating < 1 or rating > 5:
+            return jsonify({"error": "rating must be between 1 and 5"}), 400
+
+        comment = data.get("comment", "").strip() or None
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Verify extension exists
+        cursor.execute("SELECT id, publisher_user_id FROM marketplace_extensions WHERE id = ?", (marketplace_id,))
+        ext_row = cursor.fetchone()
+        if not ext_row:
+            conn.close()
+            return jsonify({"error": "Extension not found"}), 404
+
+        # Cannot rate own extension
+        if ext_row["publisher_user_id"] == user_uuid:
+            conn.close()
+            return jsonify({"error": "Cannot rate your own extension"}), 400
+
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute(
+            "SELECT id FROM extension_ratings WHERE extension_marketplace_id = ? AND user_id = ?",
+            (marketplace_id, user_uuid),
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute(
+                "UPDATE extension_ratings SET rating = ?, comment = ?, updated_at = ? WHERE id = ?",
+                (rating, comment, now, existing["id"]),
+            )
+            rating_id = existing["id"]
+            message = "Rating updated successfully"
+            status_code = 200
+        else:
+            rating_id = str(_uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO extension_ratings (id, extension_marketplace_id, user_id, rating, comment, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (rating_id, marketplace_id, user_uuid, rating, comment, now, now),
+            )
+            message = "Rating submitted successfully"
+            status_code = 201
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "success", "rating_id": rating_id, "message": message}), status_code
+
+    except Exception as e:
+        app_logger.error(f"Extension rating failed: {e}", exc_info=True)
+        return jsonify({"error": f"Rating failed: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/marketplace/extensions/<marketplace_id>", methods=["DELETE"])
+async def unpublish_extension(marketplace_id: str):
+    """Unpublish an extension from the marketplace (publisher only)."""
+    import sqlite3
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id, extension_id FROM marketplace_extensions WHERE id = ? AND publisher_user_id = ?",
+            (marketplace_id, user_uuid),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Extension not found or you are not the publisher"}), 404
+
+        # Delete sharing grants
+        cursor.execute(
+            "DELETE FROM marketplace_sharing_grants WHERE resource_type = 'extension' AND resource_id = ?",
+            (marketplace_id,),
+        )
+        # Delete ratings
+        cursor.execute(
+            "DELETE FROM extension_ratings WHERE extension_marketplace_id = ?",
+            (marketplace_id,),
+        )
+        # Delete marketplace record
+        cursor.execute("DELETE FROM marketplace_extensions WHERE id = ?", (marketplace_id,))
+
+        conn.commit()
+        conn.close()
+
+        # Clean up marketplace_data files
+        marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "extensions" / marketplace_id
+        if marketplace_data.exists():
+            import shutil
+            shutil.rmtree(marketplace_data, ignore_errors=True)
+
+        app_logger.info(f"Extension '{row['extension_id']}' unpublished from marketplace (id={marketplace_id})")
+        return jsonify({"status": "success", "message": "Extension unpublished"}), 200
+
+    except Exception as e:
+        app_logger.error(f"Extension unpublish failed: {e}", exc_info=True)
+        return jsonify({"error": f"Unpublish failed: {e}"}), 500

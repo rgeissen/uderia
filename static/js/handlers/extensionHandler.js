@@ -64,6 +64,7 @@ let _searchQuery = '';
 let _sortMode = 'default';
 let _allExtensions = [];
 let _allActivations = [];
+let _extensionSettings = {};  // Admin governance settings from API
 let _expandedExtId = null;
 
 const LEVEL_ORDER = { convention: 0, simple: 1, standard: 2, llm: 3 };
@@ -194,6 +195,8 @@ async function fetchAllExtensions() {
     const res = await fetch('/api/v1/extensions', { headers: _headers(false) });
     if (!res.ok) throw new Error(`Failed to fetch extensions: ${res.status}`);
     const data = await res.json();
+    // Capture admin governance settings for conditional UI
+    _extensionSettings = data._settings || {};
     return data.extensions || [];
 }
 
@@ -719,6 +722,48 @@ function _buildCardDetailPanel(ext, activations) {
     });
     panel.appendChild(addBtn);
 
+    // Publish to Marketplace button (user-created extensions only, when marketplace enabled)
+    if (ext.is_user && _extensionSettings.marketplace_enabled !== false) {
+        const publishRow = document.createElement('div');
+        publishRow.className = 'mt-3 pt-3';
+        publishRow.style.borderTop = '1px solid var(--border-subtle)';
+
+        const publishBtn = document.createElement('button');
+        publishBtn.className = 'ext-amber-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium rounded-md transition-all duration-200';
+        publishBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish to Marketplace`;
+        publishBtn.addEventListener('click', async () => {
+            try {
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+                const token = localStorage.getItem('tda_auth_token');
+                const resp = await fetch(`/api/v1/extensions/${ext.extension_id}/publish`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ visibility: 'public' }),
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    _notify('success', data.message || 'Published to marketplace');
+                    publishBtn.textContent = 'Published';
+                    publishBtn.disabled = true;
+                } else {
+                    _notify('error', data.error || 'Publish failed');
+                    publishBtn.disabled = false;
+                    publishBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish to Marketplace`;
+                }
+            } catch (err) {
+                _notify('error', 'Publish failed: ' + err.message);
+                publishBtn.disabled = false;
+                publishBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish to Marketplace`;
+            }
+        });
+        publishRow.appendChild(publishBtn);
+        panel.appendChild(publishRow);
+    }
+
     return panel;
 }
 
@@ -1206,6 +1251,13 @@ async function _refreshExtensionData() {
     ]);
     _allExtensions = all;
     _allActivations = activated;
+
+    // Toggle Create button visibility based on admin governance
+    const createBtn = document.getElementById('create-ext-btn');
+    if (createBtn) {
+        createBtn.style.display = _extensionSettings.user_extensions_enabled === false ? 'none' : '';
+    }
+
     renderExtensionGrid();
 }
 

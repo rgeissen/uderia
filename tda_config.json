@@ -2739,5 +2739,11 @@
   },
   "master_classification_profile_ids": {
     "1763483266562-a6kulj4xc": "profile-1764006444002-z0hdduce9"
+  },
+  "extension_settings": {
+    "extensions_mode": "all",
+    "disabled_extensions": [],
+    "user_extensions_enabled": true,
+    "user_extensions_marketplace_enabled": true
   }
 }
