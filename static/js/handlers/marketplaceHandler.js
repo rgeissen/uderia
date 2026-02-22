@@ -332,20 +332,31 @@ async function loadMarketplaceExtensions() {
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const params = new URLSearchParams({
-            page: currentPage,
-            per_page: 12,
-            sort_by: currentSortBy === 'subscribers' ? 'recent' : currentSortBy,
-        });
-        if (currentSearch) params.append('search', currentSearch);
+        let extensions = [];
 
-        const response = await fetch(`/api/v1/marketplace/extensions?${params}`, { headers });
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (currentTab === 'my-collections') {
+            // My Assets — show user's own (user-created) extensions
+            const response = await fetch('/api/v1/extensions', { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const data = await response.json();
+            extensions = (data.extensions || []).filter(e => e.is_user === true);
+        } else {
+            // Browse Marketplace — show published extensions
+            const params = new URLSearchParams({
+                page: currentPage,
+                per_page: 12,
+                sort_by: currentSortBy === 'subscribers' ? 'recent' : currentSortBy,
+            });
+            if (currentSearch) params.append('search', currentSearch);
 
-        const data = await response.json();
-        const extensions = data.extensions || [];
-        totalPages = data.total_pages || 1;
-        updatePaginationUI(data);
+            const response = await fetch(`/api/v1/marketplace/extensions?${params}`, { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+            const data = await response.json();
+            extensions = data.extensions || [];
+            totalPages = data.total_pages || 1;
+            updatePaginationUI(data);
+        }
 
         if (loading) loading.classList.add('hidden');
 
@@ -354,20 +365,29 @@ async function loadMarketplaceExtensions() {
                 empty.classList.remove('hidden');
                 const emptyTitle = empty.querySelector('h3');
                 const emptyDesc = empty.querySelector('p');
-                if (emptyTitle) emptyTitle.textContent = 'No Extensions Found';
-                if (emptyDesc) emptyDesc.textContent = currentSearch
-                    ? 'Try adjusting your search'
-                    : 'No extensions have been published to the marketplace yet';
+                if (currentTab === 'my-collections') {
+                    if (emptyTitle) emptyTitle.textContent = 'No Extensions';
+                    if (emptyDesc) emptyDesc.textContent = 'Create custom extensions from Setup \u2192 Extensions, or install from the Browse tab';
+                } else {
+                    if (emptyTitle) emptyTitle.textContent = 'No Extensions Found';
+                    if (emptyDesc) emptyDesc.textContent = currentSearch
+                        ? 'Try adjusting your search'
+                        : 'No extensions have been published to the marketplace yet';
+                }
             }
             return;
         }
 
         extensions.forEach(ext => {
-            container.appendChild(createExtensionMarketplaceCard(ext));
+            if (currentTab === 'my-collections') {
+                container.appendChild(createMyExtensionCard(ext));
+            } else {
+                container.appendChild(createExtensionMarketplaceCard(ext));
+            }
         });
 
     } catch (error) {
-        console.error('Failed to load marketplace extensions:', error);
+        console.error('Failed to load extensions:', error);
         if (loading) loading.classList.add('hidden');
         showNotification('error', 'Failed to load extensions: ' + error.message);
     }
@@ -510,6 +530,148 @@ function createExtensionMarketplaceCard(ext) {
                 }
             } catch (err) {
                 showNotification('error', 'Unpublish failed: ' + err.message);
+            }
+        });
+    }
+
+    return card;
+}
+
+/**
+ * Create a "My Assets" extension card (user-created extensions).
+ * Pattern follows createMyAgentPackCard().
+ */
+function createMyExtensionCard(ext) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-amber-500/50 transition-colors';
+
+    // Tier badge
+    const tierBadges = {
+        convention: { bg: 'bg-gray-500/20', text: 'text-gray-400', label: 'Convention' },
+        simple:     { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Simple' },
+        standard:   { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Standard' },
+        llm:        { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'LLM' },
+    };
+    const badge = tierBadges[ext.extension_tier] || tierBadges.standard;
+
+    card.innerHTML = `
+        <!-- Header -->
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-lg font-semibold text-white">${escapeHtml(ext.display_name || ext.name || ext.extension_id)}</h2>
+                    ${ext.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(ext.version)}</span>` : ''}
+                    <span class="px-2 py-0.5 text-xs rounded-full ${badge.bg} ${badge.text}">${badge.label}</span>
+                </div>
+                ${ext.author ? `<p class="text-xs text-gray-500 mt-0.5">by ${escapeHtml(ext.author)}</p>` : ''}
+            </div>
+            <div class="flex flex-col items-end gap-1">
+                <span class="px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-400">Custom</span>
+            </div>
+        </div>
+
+        <!-- Description -->
+        ${ext.description ? `<p class="text-xs text-gray-400">${escapeHtml(ext.description)}</p>` : ''}
+
+        <!-- Metadata row -->
+        <div class="flex items-center gap-4 text-xs text-gray-500">
+            <div class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                </svg>
+                <span class="text-gray-300 font-mono">#${escapeHtml(ext.extension_id)}</span>
+            </div>
+            ${ext.category ? `
+                <div class="flex items-center gap-1">
+                    <span class="px-1.5 py-0.5 text-xs rounded bg-amber-500/10 text-amber-400">${escapeHtml(ext.category)}</span>
+                </div>
+            ` : ''}
+            ${ext.requires_llm ? `
+                <span class="px-1.5 py-0.5 text-xs rounded bg-purple-500/10 text-purple-400">LLM Required</span>
+            ` : ''}
+        </div>
+
+        <!-- Actions -->
+        <div class="mt-2 flex gap-2 flex-wrap">
+            <button class="my-ext-publish-btn card-btn card-btn--success">
+                Publish
+            </button>
+            <button class="my-ext-export-btn card-btn card-btn--secondary">
+                Export
+            </button>
+        </div>
+    `;
+
+    // Wire publish button
+    const publishBtn = card.querySelector('.my-ext-publish-btn');
+    if (publishBtn) {
+        publishBtn.addEventListener('click', async () => {
+            try {
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+                const token = await window.authClient.getToken();
+                const resp = await fetch(`/api/v1/extensions/${ext.extension_id}/publish`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ visibility: 'public' }),
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showNotification('success', data.message || 'Published to marketplace');
+                    publishBtn.textContent = 'Published';
+                    publishBtn.disabled = true;
+                } else {
+                    showNotification('error', data.error || 'Publish failed');
+                    publishBtn.textContent = 'Publish';
+                    publishBtn.disabled = false;
+                }
+            } catch (err) {
+                showNotification('error', 'Publish failed: ' + err.message);
+                publishBtn.textContent = 'Publish';
+                publishBtn.disabled = false;
+            }
+        });
+    }
+
+    // Wire export button
+    const exportBtn = card.querySelector('.my-ext-export-btn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+            try {
+                exportBtn.disabled = true;
+                exportBtn.textContent = 'Exporting...';
+                const token = await window.authClient.getToken();
+                const res = await fetch(`/api/v1/extensions/${ext.extension_id}/export`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || `Export failed (${res.status})`);
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${ext.extension_id}.extension`;
+                const cd = res.headers.get('content-disposition');
+                if (cd) {
+                    const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (match) a.download = match[1].replace(/['"]/g, '');
+                }
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                showNotification('success', 'Extension exported');
+            } catch (err) {
+                showNotification('error', 'Export failed: ' + err.message);
+            } finally {
+                exportBtn.textContent = 'Export';
+                exportBtn.disabled = false;
             }
         });
     }

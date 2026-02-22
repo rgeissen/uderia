@@ -19,8 +19,10 @@ import importlib.util
 import inspect
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -662,6 +664,122 @@ class ExtensionManager:
     def get_manifest(self, name: str) -> Optional[Dict[str, Any]]:
         """Get the full manifest for an extension."""
         return self.manifests.get(name)
+
+    def delete_extension(self, ext_id: str) -> bool:
+        """Delete a user-created extension from disk and reload.
+
+        Raises ValueError if the extension is built-in or not found.
+        Returns True on success.
+        """
+        manifest = self.get_manifest(ext_id)
+        if not manifest:
+            raise ValueError(f"Extension '{ext_id}' not found")
+        if not manifest.get("_is_user"):
+            raise ValueError("Only user-created extensions can be deleted")
+
+        ext_dir = manifest.get("_dir")
+        source_path = manifest.get("_source_path")
+
+        if ext_dir and Path(ext_dir).is_dir():
+            shutil.rmtree(ext_dir)
+            logger.info(f"Deleted extension directory: {ext_dir}")
+        elif source_path and Path(source_path).is_file():
+            Path(source_path).unlink()
+            logger.info(f"Deleted extension file: {source_path}")
+        else:
+            raise ValueError(f"Could not locate files for extension '{ext_id}'")
+
+        self.reload()
+        return True
+
+    def duplicate_extension(self, ext_id: str) -> Dict[str, Any]:
+        """Duplicate an extension (built-in or user) into a new user extension.
+
+        Creates a copy under ~/.tda/extensions/{new_id}/ with a unique ID
+        and rewritten source name references.
+
+        Returns dict with extension_id and display_name of the new copy.
+        Raises ValueError if the source extension is not found.
+        """
+        manifest = self.get_manifest(ext_id)
+        if not manifest:
+            raise ValueError(f"Extension '{ext_id}' not found")
+
+        source = self.get_extension_source(ext_id)
+        if not source:
+            raise ValueError(f"Could not read source for extension '{ext_id}'")
+
+        # Generate unique ID and display name
+        new_id = self._generate_unique_copy_id(ext_id)
+        orig_display = manifest.get("display_name") or manifest.get("name") or ext_id
+        new_display = f"{orig_display} (Copy)"
+        # Check if display name also needs a suffix
+        existing_names = {m.get("display_name", "") for m in self.manifests.values()}
+        if new_display in existing_names:
+            counter = 2
+            while f"{orig_display} (Copy {counter})" in existing_names:
+                counter += 1
+            new_display = f"{orig_display} (Copy {counter})"
+
+        # Rewrite name references in source
+        rewritten_source = self._rewrite_extension_name(source, ext_id, new_id)
+
+        # Build cleaned manifest for the copy
+        new_manifest = {}
+        internal_keys = {"_is_user", "_source_path", "_dir", "_auto_generated",
+                         "_convention_based", "export_format_version", "exported_at"}
+        for k, v in manifest.items():
+            if k not in internal_keys:
+                new_manifest[k] = v
+        new_manifest["extension_id"] = new_id
+        new_manifest["name"] = new_id
+        new_manifest["display_name"] = new_display
+        new_manifest["files"] = {"extension": f"{new_id}.py"}
+
+        # Write to user directory
+        target_dir = self.user_dir / new_id
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        (target_dir / f"{new_id}.py").write_text(rewritten_source, encoding="utf-8")
+        (target_dir / "manifest.json").write_text(
+            json.dumps(new_manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+        logger.info(f"Duplicated extension '{ext_id}' → '{new_id}' at {target_dir}")
+        self.reload()
+
+        return {"extension_id": new_id, "display_name": new_display}
+
+    def _generate_unique_copy_id(self, base_id: str) -> str:
+        """Generate a unique extension ID for a copy."""
+        candidate = f"{base_id}_copy"
+        if candidate not in self.manifests:
+            return candidate
+        counter = 2
+        while f"{candidate}_{counter}" in self.manifests:
+            counter += 1
+        return f"{candidate}_{counter}"
+
+    @staticmethod
+    def _rewrite_extension_name(source: str, old_id: str, new_id: str) -> str:
+        """Best-effort rewrite of extension name references in Python source."""
+        escaped = re.escape(old_id)
+        # Pattern A: return "old_id" (in @property def name)
+        source = re.sub(
+            r'(return\s+["\'])' + escaped + r'(["\'])',
+            rf'\g<1>{new_id}\g<2>', source, count=1,
+        )
+        # Pattern B: name = "old_id" (class attribute)
+        source = re.sub(
+            r'(name\s*=\s*["\'])' + escaped + r'(["\'])',
+            rf'\g<1>{new_id}\g<2>', source, count=1,
+        )
+        # Pattern C: EXTENSION_NAME = "old_id" (module constant)
+        source = re.sub(
+            r'(EXTENSION_NAME\s*=\s*["\'])' + escaped + r'(["\'])',
+            rf'\g<1>{new_id}\g<2>', source, count=1,
+        )
+        return source
 
     def reload(self) -> None:
         """Hot-reload all extensions from disk."""

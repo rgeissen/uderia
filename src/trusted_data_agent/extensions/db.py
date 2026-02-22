@@ -344,3 +344,40 @@ def get_extension_activation(user_uuid: str, activation_name: str) -> Optional[D
     except Exception as e:
         logger.error(f"Failed to get activation for '{activation_name}': {e}")
         return None
+
+
+def has_active_activations(extension_id: str) -> bool:
+    """Check if any user has active activations for this extension."""
+    try:
+        conn = sqlite3.connect(_get_db_path())
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM user_extensions WHERE extension_id = ? AND is_active = 1",
+            (extension_id,),
+        )
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        logger.error(f"Failed to check active activations for '{extension_id}': {e}")
+        return True  # Safe default: assume active to prevent accidental deletion
+
+
+def delete_inactive_activations_for_extension(extension_id: str) -> int:
+    """Delete all inactive (is_active=0) activation rows for an extension. Returns count deleted."""
+    try:
+        conn = sqlite3.connect(_get_db_path())
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM user_extensions WHERE extension_id = ? AND is_active = 0",
+            (extension_id,),
+        )
+        conn.commit()
+        deleted = cursor.rowcount
+        conn.close()
+        if deleted > 0:
+            logger.info(f"Cleaned up {deleted} inactive activation(s) for extension '{extension_id}'")
+        return deleted
+    except Exception as e:
+        logger.error(f"Failed to delete inactive activations for '{extension_id}': {e}")
+        return 0

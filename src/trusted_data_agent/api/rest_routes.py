@@ -10701,6 +10701,297 @@ async def delete_extension_activation_endpoint(activation_name: str):
         return jsonify({"error": "Failed to delete extension activation."}), 500
 
 
+@rest_api_bp.route("/v1/extensions/<ext_id>", methods=["DELETE"])
+async def delete_extension_endpoint(ext_id: str):
+    """
+    Delete a user-created extension from disk.
+
+    Rejects if:
+      - Extension is built-in (403)
+      - Extension has active activations (409)
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        from trusted_data_agent.extensions.db import (
+            has_active_activations,
+            delete_inactive_activations_for_extension,
+        )
+
+        manager = get_extension_manager()
+
+        # Verify extension exists
+        ext = manager.get_extension(ext_id)
+        if ext is None:
+            return jsonify({"error": f"Extension '{ext_id}' not found."}), 404
+
+        # Verify it's user-created
+        manifest = manager.get_manifest(ext_id) or {}
+        if not manifest.get("_is_user"):
+            return jsonify({"error": "Built-in extensions cannot be deleted."}), 403
+
+        # Check for active activations
+        if has_active_activations(ext_id):
+            return jsonify({
+                "error": "Extension has active activations. Deactivate them first."
+            }), 409
+
+        # Clean up inactive activation rows
+        delete_inactive_activations_for_extension(ext_id)
+
+        # Delete from disk + reload
+        manager.delete_extension(ext_id)
+
+        app_logger.info(f"Extension '{ext_id}' deleted by user {user_uuid}")
+        return jsonify({"status": "deleted", "extension_id": ext_id}), 200
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        app_logger.error(f"Failed to delete extension '{ext_id}': {e}", exc_info=True)
+        return jsonify({"error": f"Failed to delete extension: {str(e)}"}), 500
+
+
+# ============================================================================
+# EXTENSION EXPORT / IMPORT
+# ============================================================================
+
+@rest_api_bp.route("/v1/extensions/<ext_id>/export", methods=["POST"])
+async def export_extension_file(ext_id: str):
+    """
+    Export an extension as a downloadable .extension ZIP file.
+
+    The archive contains:
+        manifest.json   – extension metadata
+        source.py       – Python source code
+
+    Works for both built-in and user-created extensions.
+    """
+    import tempfile
+    import zipfile
+    from datetime import datetime, timezone
+    from quart import send_file
+
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+
+        manager = get_extension_manager()
+
+        # Verify extension exists
+        ext = manager.get_extension(ext_id)
+        if ext is None:
+            return jsonify({"error": f"Extension '{ext_id}' not found."}), 404
+
+        # Get source code
+        source = manager.get_extension_source(ext_id)
+        if not source:
+            return jsonify({"error": f"Could not retrieve source for '{ext_id}'."}), 404
+
+        # Get manifest and clean internal metadata keys
+        manifest = dict(manager.get_manifest(ext_id) or {})
+        for internal_key in ("_is_user", "_source_path", "_dir",
+                             "_auto_generated", "_convention_based"):
+            manifest.pop(internal_key, None)
+
+        manifest["export_format_version"] = "1.0"
+        manifest["exported_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Ensure extension_id is present
+        if "extension_id" not in manifest:
+            manifest["extension_id"] = ext_id
+
+        # Create ZIP in temp directory
+        tmp_dir = tempfile.mkdtemp()
+        zip_filename = f"{ext_id}.extension"
+        zip_path = Path(tmp_dir) / zip_filename
+
+        with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            zf.writestr("source.py", source)
+
+        return await send_file(
+            str(zip_path),
+            mimetype="application/zip",
+            as_attachment=True,
+            attachment_filename=zip_filename,
+        )
+
+    except Exception as e:
+        app_logger.error(f"Failed to export extension '{ext_id}': {e}", exc_info=True)
+        return jsonify({"error": f"Export failed: {str(e)}"}), 500
+
+
+@rest_api_bp.route("/v1/extensions/<ext_id>/duplicate", methods=["POST"])
+async def duplicate_extension_endpoint(ext_id):
+    """
+    Duplicate an extension (built-in or user-created) into a new user extension.
+
+    Creates a copy under ~/.tda/extensions/{new_id}/ with a unique ID,
+    rewritten source name references, and "(Copy)" display name.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        # Governance check — duplicate creates a user extension
+        from trusted_data_agent.extensions.settings import are_user_extensions_enabled
+        if not are_user_extensions_enabled():
+            return jsonify({
+                "error": "Custom extension creation has been disabled by the administrator."
+            }), 403
+
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        result = manager.duplicate_extension(ext_id)
+
+        return jsonify({
+            "status": "success",
+            "extension_id": result["extension_id"],
+            "display_name": result["display_name"],
+            "message": f"Extension duplicated as \"{result['extension_id']}\".",
+        }), 201
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        app_logger.error(f"Failed to duplicate extension '{ext_id}': {e}", exc_info=True)
+        return jsonify({"error": f"Duplicate failed: {str(e)}"}), 500
+
+
+@rest_api_bp.route("/v1/extensions/import", methods=["POST"])
+async def import_extension_file():
+    """
+    Import an extension from an uploaded .extension ZIP file.
+
+    Accepts multipart/form-data with a 'file' field.
+    Extracts source.py + manifest.json to ~/.tda/extensions/{extension_id}/
+    and hot-reloads the extension manager.
+    """
+    import tempfile
+    import zipfile
+
+    tmp_path = None
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        # Governance check — same as scaffold endpoint
+        from trusted_data_agent.extensions.settings import are_user_extensions_enabled
+        if not are_user_extensions_enabled():
+            return jsonify({
+                "error": "Custom extension creation has been disabled by the administrator."
+            }), 403
+
+        # Accept multipart upload
+        files = await request.files
+        if "file" not in files:
+            return jsonify({"error": "No file provided. Use multipart/form-data with a 'file' field."}), 400
+
+        uploaded = files["file"]
+        if not uploaded or not uploaded.filename:
+            return jsonify({"error": "Invalid file."}), 400
+
+        # Save to temp file
+        tmp = tempfile.NamedTemporaryFile(suffix=".extension", delete=False)
+        tmp_path = Path(tmp.name)
+        tmp.close()
+        await uploaded.save(str(tmp_path))
+
+        # Validate ZIP
+        if not zipfile.is_zipfile(str(tmp_path)):
+            return jsonify({"error": "Uploaded file is not a valid ZIP archive."}), 400
+
+        with zipfile.ZipFile(str(tmp_path), "r") as zf:
+            names = zf.namelist()
+
+            if "source.py" not in names:
+                return jsonify({
+                    "error": "Invalid extension archive: missing source.py"
+                }), 400
+
+            # Read source
+            source_code = zf.read("source.py").decode("utf-8")
+
+            # Read manifest (optional but expected)
+            if "manifest.json" in names:
+                manifest_text = zf.read("manifest.json").decode("utf-8")
+                manifest = json.loads(manifest_text)
+            else:
+                manifest = {}
+                manifest_text = None
+
+        # Determine extension_id
+        ext_id = manifest.get("extension_id") or manifest.get("name")
+        if not ext_id:
+            # Fall back to filename stem (e.g. "my_ext.extension" → "my_ext")
+            stem = Path(uploaded.filename).stem
+            ext_id = stem.replace(" ", "_").replace("-", "_").lower()
+
+        if not ext_id:
+            return jsonify({"error": "Cannot determine extension_id from manifest or filename."}), 400
+
+        # Sanitize extension_id (alphanumeric + underscore only)
+        import re
+        ext_id = re.sub(r"[^a-zA-Z0-9_]", "_", ext_id).strip("_")
+        if not ext_id:
+            return jsonify({"error": "Invalid extension_id after sanitization."}), 400
+
+        # Install to ~/.tda/extensions/{ext_id}/
+        user_ext_dir = Path.home() / ".tda" / "extensions" / ext_id
+        user_ext_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write source file
+        source_file = user_ext_dir / f"{ext_id}.py"
+        source_file.write_text(source_code, encoding="utf-8")
+
+        # Write manifest (clean export metadata before saving)
+        if manifest_text:
+            # Remove export-only fields before installing
+            install_manifest = dict(manifest)
+            install_manifest.pop("export_format_version", None)
+            install_manifest.pop("exported_at", None)
+            manifest_file = user_ext_dir / "manifest.json"
+            manifest_file.write_text(
+                json.dumps(install_manifest, indent=2), encoding="utf-8"
+            )
+
+        # Hot-reload extension manager
+        from trusted_data_agent.extensions.manager import get_extension_manager
+        manager = get_extension_manager()
+        manager.reload()
+
+        ext_name = manifest.get("name") or manifest.get("display_name") or ext_id
+        app_logger.info(f"Extension '{ext_id}' imported by user {user_uuid}")
+
+        return jsonify({
+            "status": "success",
+            "extension_id": ext_id,
+            "name": ext_name,
+            "message": f"Extension \"{ext_name}\" imported successfully.",
+        }), 200
+
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid manifest.json in extension archive."}), 400
+    except Exception as e:
+        app_logger.error(f"Failed to import extension: {e}", exc_info=True)
+        return jsonify({"error": f"Import failed: {str(e)}"}), 500
+    finally:
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
 # ============================================================================
 # EXTENSION MARKETPLACE ENDPOINTS
 # ============================================================================

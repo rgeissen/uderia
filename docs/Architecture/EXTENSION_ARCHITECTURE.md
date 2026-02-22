@@ -106,6 +106,7 @@ src/trusted_data_agent/extensions/
 ├── manager.py               # Singleton discovery & loading (4 discovery modes)
 ├── runner.py                # Serial execution with LLM injection & token extraction
 ├── db.py                    # Per-user activation persistence (SQLite)
+├── settings.py              # Admin governance (are_user_extensions_enabled)
 ├── scaffolds.py             # Template generators for all 4 levels
 └── helpers/                 # Shared utilities for extension authors
     ├── __init__.py          # Re-exports all helpers
@@ -478,6 +479,8 @@ manager.get_extension("json")          # Get loaded extension by name
 manager.get_all_names()                # ["json", "decision", "extract", "classify", "summary"]
 manager.get_extension_source("json")   # Python source code (for "View Script")
 manager.get_manifest("json")           # Full manifest dict
+manager.duplicate_extension("json")    # Create user copy → {"extension_id": "json_copy", "display_name": "..."}
+manager.delete_extension("myext")      # Delete user extension from disk (ValueError if built-in)
 manager.reload()                       # Hot-reload from disk
 ```
 
@@ -700,6 +703,10 @@ Query-time `#name:param` overrides the activation's `default_param`:
 | `/v1/extensions/activations/<name>` | DELETE | Hard-delete activation |
 | `/v1/extensions/<name>/source` | GET | Get Python source code |
 | `/v1/extensions/<name>/source` | PUT | Save edited source code (user extensions only) |
+| `/v1/extensions/<ext_id>/export` | POST | Export extension as `.extension` ZIP file |
+| `/v1/extensions/<ext_id>/duplicate` | POST | Duplicate extension into a new user copy |
+| `/v1/extensions/<ext_id>` | DELETE | Delete user-created extension (403 if built-in, 409 if active activations) |
+| `/v1/extensions/import` | POST | Import extension from uploaded `.extension` ZIP file |
 | `/v1/extensions/reload` | POST | Hot-reload from disk (admin) |
 | `/v1/extensions/scaffold` | POST | Generate extension skeleton and write to disk |
 | `/v1/extensions/scaffold/preview` | POST | Preview scaffold output without writing |
@@ -1360,6 +1367,60 @@ class MyExtension(SimpleExtension):
 
 ---
 
+## Extension Lifecycle Management
+
+### Export / Import
+
+Extensions can be exported as `.extension` ZIP archives and imported on another instance.
+
+**Export** (`POST /v1/extensions/<ext_id>/export`):
+- Packages `manifest.json` + `source.py` into a ZIP
+- Adds `export_format_version` and `exported_at` to manifest
+- Cleans internal metadata (`_is_user`, `_source_path`, `_dir`, etc.)
+- Works for both built-in and user-created extensions
+
+**Import** (`POST /v1/extensions/import`):
+- Accepts multipart/form-data with `.extension` or `.zip` file
+- Validates ZIP contains `source.py` + optional `manifest.json`
+- Extracts to `~/.tda/extensions/{extension_id}/`
+- Sanitizes extension_id (alphanumeric + underscore only)
+- Hot-reloads extension manager
+- Respects admin governance (`are_user_extensions_enabled()`)
+
+### Duplicate
+
+Any extension (built-in or user-created) can be duplicated into a new user extension.
+
+**Endpoint:** `POST /v1/extensions/<ext_id>/duplicate`
+
+**Flow:**
+1. Read original manifest + source code
+2. Generate unique ID: `{id}_copy`, `{id}_copy_2`, etc.
+3. Best-effort rewrite of name references in Python source (3 patterns: property return, class attribute, module constant)
+4. Write to `~/.tda/extensions/{new_id}/` with updated manifest
+5. Hot-reload and return new extension info
+
+**Use case:** Duplicate a built-in extension to create a customizable user copy.
+
+### Delete
+
+User-created extensions can be deleted if they have no active activations.
+
+**Endpoint:** `DELETE /v1/extensions/<ext_id>`
+
+**Safety guards:**
+- 403 if built-in extension (cannot be deleted)
+- 409 if any user has active activations (deactivate first)
+- Cleans up inactive activation rows before deletion
+- Removes directory (`shutil.rmtree`) or flat file (`unlink`)
+- Hot-reloads extension manager
+
+### Admin Governance
+
+Extension creation/import/duplicate can be disabled by administrators via `are_user_extensions_enabled()` setting. When disabled, scaffold, import, and duplicate endpoints return 403. The UI hides the Create and Import buttons accordingly.
+
+---
+
 ## Design Principles
 
 1. **Non-Breaking:** Extensions never break the main answer. Errors are isolated per-extension.
@@ -1442,6 +1503,7 @@ curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
 | `src/trusted_data_agent/extensions/manager.py` | Singleton manager (4 discovery modes, reload) |
 | `src/trusted_data_agent/extensions/runner.py` | Serial execution, LLM injection, token extraction |
 | `src/trusted_data_agent/extensions/db.py` | Per-user activation persistence (SQLite) |
+| `src/trusted_data_agent/extensions/settings.py` | Admin governance (user extensions enable/disable) |
 | `src/trusted_data_agent/extensions/scaffolds.py` | Template generators for all 4 levels |
 | `src/trusted_data_agent/extensions/helpers/__init__.py` | Helper re-exports |
 | `src/trusted_data_agent/extensions/helpers/text.py` | Text analysis utilities |

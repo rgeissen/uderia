@@ -293,6 +293,89 @@ async function scaffoldExtension(name, level, description) {
     return await res.json();
 }
 
+// ── Export / Import ────────────────────────────────────────────────────────
+
+async function exportExtension(extId) {
+    const res = await fetch(`/api/v1/extensions/${extId}/export`, {
+        method: 'POST',
+        headers: _headers(),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Export failed: ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${extId}.extension`;
+    const cd = res.headers.get('content-disposition');
+    if (cd) {
+        const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (match) a.download = match[1].replace(/['"]/g, '');
+    }
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    _notify('success', 'Extension exported successfully');
+}
+
+async function duplicateExtension(extId) {
+    const res = await fetch(`/api/v1/extensions/${extId}/duplicate`, {
+        method: 'POST',
+        headers: _headers(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(data.error || `Duplicate failed: ${res.status}`);
+    }
+    return data;
+}
+
+function handleImportExtension() {
+    const fileInput = document.getElementById('extension-file-input');
+    if (!fileInput) return;
+    fileInput.value = '';
+
+    // iOS/iPadOS workaround — custom extensions not recognized by file picker
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+        fileInput.removeAttribute('accept');
+    } else {
+        fileInput.setAttribute('accept', '.extension,.zip');
+    }
+
+    fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const res = await fetch('/api/v1/extensions/import', {
+                method: 'POST',
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok || data.status === 'error') {
+                throw new Error(data.error || `Import failed: ${res.status}`);
+            }
+            _notify('success', data.message || `Extension "${data.name}" imported`);
+            await _refreshExtensionData();
+            if (window.loadActivatedExtensions) window.loadActivatedExtensions();
+        } catch (err) {
+            _notify('error', `Import failed: ${err.message}`);
+        }
+    };
+
+    fileInput.click();
+}
+
 function showScaffoldModal() {
     // Cache existing extension names for uniqueness check
     let existingNames = [];
@@ -626,6 +709,49 @@ function createExtensionGridCard(ext, activations, activationCount) {
     });
     footer.appendChild(activateBtn);
 
+    // Delete icon button (user-created, no active activations)
+    if (ext.is_user && !ext.is_builtin && activationCount === 0) {
+        const deleteIconBtn = document.createElement('button');
+        deleteIconBtn.className = 'inline-flex items-center justify-center w-6 h-6 rounded transition-all duration-200';
+        deleteIconBtn.style.cssText = 'color: var(--text-subtle); opacity: 0.5;';
+        deleteIconBtn.title = 'Delete extension';
+        deleteIconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+        deleteIconBtn.addEventListener('mouseenter', () => { deleteIconBtn.style.opacity = '1'; deleteIconBtn.style.color = 'rgb(248,113,113)'; });
+        deleteIconBtn.addEventListener('mouseleave', () => { deleteIconBtn.style.opacity = '0.5'; deleteIconBtn.style.color = 'var(--text-subtle)'; });
+        deleteIconBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const extName = ext.display_name || ext.extension_id;
+            if (!window.showConfirmation) { _notify('error', 'Confirmation system not available'); return; }
+            window.showConfirmation(
+                'Delete Extension',
+                `Are you sure you want to delete "${extName}"? This cannot be undone.`,
+                async () => {
+                    try {
+                        deleteIconBtn.disabled = true;
+                        const token = localStorage.getItem('tda_auth_token');
+                        const resp = await fetch(`/api/v1/extensions/${ext.extension_id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                        });
+                        const data = await resp.json();
+                        if (resp.ok) {
+                            _notify('success', `Extension "${extName}" deleted`);
+                            await _refreshExtensionData();
+                            if (window.loadActivatedExtensions) window.loadActivatedExtensions();
+                        } else {
+                            _notify('error', data.error || 'Delete failed');
+                            deleteIconBtn.disabled = false;
+                        }
+                    } catch (err) {
+                        _notify('error', 'Delete failed: ' + err.message);
+                        deleteIconBtn.disabled = false;
+                    }
+                }
+            );
+        });
+        footer.appendChild(deleteIconBtn);
+    }
+
     compact.appendChild(footer);
     card.appendChild(compact);
 
@@ -655,93 +781,135 @@ function _buildCardDetailPanel(ext, activations) {
     panel.className = 'px-3.5 pb-3.5';
     panel.style.cssText = 'border-top: 1px solid var(--border-subtle); animation: extDetailFadeIn 200ms ease-out;';
 
-    // Metadata row
-    const meta = document.createElement('div');
-    meta.className = 'flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 mb-3 text-[10px]';
-    meta.style.color = 'var(--text-muted)';
+    // ── Metadata grid ──
+    const hasDetails = ext.output_target || (ext.keywords && ext.keywords.length > 0) || ext.author;
+    if (hasDetails) {
+        const detailsGrid = document.createElement('div');
+        detailsGrid.className = 'grid gap-x-4 gap-y-1 mt-3 text-[10px]';
+        detailsGrid.style.cssText = 'grid-template-columns: auto 1fr; align-items: baseline;';
 
-    if (ext.output_target) {
-        const ot = document.createElement('span');
-        ot.innerHTML = `<span style="color: var(--text-subtle);">Output:</span> ${ext.output_target}`;
-        meta.appendChild(ot);
-    }
-    if (ext.keywords && ext.keywords.length > 0) {
-        const kw = document.createElement('span');
-        kw.innerHTML = `<span style="color: var(--text-subtle);">Keywords:</span> ${ext.keywords.join(', ')}`;
-        meta.appendChild(kw);
-    }
-    if (ext.author) {
-        const auth = document.createElement('span');
-        auth.innerHTML = `<span style="color: var(--text-subtle);">Author:</span> ${ext.author}`;
-        meta.appendChild(auth);
-    }
-    panel.appendChild(meta);
+        const addDetail = (label, value) => {
+            const lbl = document.createElement('span');
+            lbl.className = 'font-medium uppercase tracking-wider';
+            lbl.style.cssText = 'color: var(--text-subtle); font-size: 9px;';
+            lbl.textContent = label;
+            detailsGrid.appendChild(lbl);
+            const val = document.createElement('span');
+            val.style.color = 'var(--text-muted)';
+            val.textContent = value;
+            detailsGrid.appendChild(val);
+        };
 
-    // Activations section
+        if (ext.output_target) addDetail('Output', ext.output_target);
+        if (ext.keywords && ext.keywords.length > 0) addDetail('Keywords', ext.keywords.join(', '));
+        if (ext.author) addDetail('Author', ext.author);
+        panel.appendChild(detailsGrid);
+    }
+
+    // ── Activations ──
     if (activations.length > 0) {
-        const header = document.createElement('div');
-        header.className = 'text-[10px] font-semibold uppercase tracking-wider mb-2';
-        header.style.color = 'var(--text-muted)';
-        header.textContent = `Your Activations (${activations.length})`;
-        panel.appendChild(header);
+        const actSection = document.createElement('div');
+        actSection.className = 'mt-3 pt-3';
+        actSection.style.borderTop = '1px solid var(--border-subtle)';
+
+        const actTitle = document.createElement('span');
+        actTitle.className = 'text-[10px] font-semibold uppercase tracking-wider';
+        actTitle.style.color = 'var(--text-muted)';
+        actTitle.textContent = `Activations (${activations.length})`;
+        actSection.appendChild(actTitle);
 
         const grid = document.createElement('div');
-        grid.className = 'grid gap-2 mb-3';
-        grid.style.cssText = 'grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));';
-
+        grid.className = 'grid gap-2 mt-2';
+        grid.style.cssText = 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));';
         for (const act of activations) {
             grid.appendChild(_buildActivationSubCard(act, ext));
         }
-        panel.appendChild(grid);
-    } else {
-        const empty = document.createElement('p');
-        empty.className = 'text-[10px] mb-3';
-        empty.style.color = 'var(--text-subtle)';
-        empty.textContent = 'No activations yet. Click Activate to create one.';
-        panel.appendChild(empty);
+        actSection.appendChild(grid);
+        panel.appendChild(actSection);
     }
 
-    // + Add Another Activation button
-    const addBtn = document.createElement('button');
-    addBtn.className = 'ext-amber-btn-dashed inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200';
-    addBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Add Another Activation`;
-    addBtn.addEventListener('click', async () => {
+    // ── Action toolbar ──
+    const toolbar = document.createElement('div');
+    toolbar.className = 'flex items-center gap-2 mt-3 pt-3';
+    toolbar.style.borderTop = '1px solid var(--border-subtle)';
+
+    // Helper for compact icon buttons
+    const _toolbarBtn = (iconSvg, label, cls) => {
+        const btn = document.createElement('button');
+        btn.className = `inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200 ${cls}`;
+        btn.innerHTML = `${iconSvg}${label}`;
+        return btn;
+    };
+
+    // View Source
+    const srcBtn = _toolbarBtn(
+        `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>`,
+        'Source', 'ext-amber-btn'
+    );
+    srcBtn.addEventListener('click', () => {
+        showExtensionSource(ext.extension_id, ext.display_name || ext.extension_id);
+    });
+    toolbar.appendChild(srcBtn);
+
+    // Export
+    const exportBtn = _toolbarBtn(
+        `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>`,
+        'Export', 'ext-amber-btn'
+    );
+    const _exportIcon = exportBtn.innerHTML;
+    exportBtn.addEventListener('click', async () => {
         try {
-            addBtn.disabled = true;
-            addBtn.textContent = 'Creating...';
-            const result = await activateExtension(ext.extension_id);
-            _notify('success', `Activated as #${result.activation_name}`);
+            exportBtn.disabled = true;
+            exportBtn.textContent = '...';
+            await exportExtension(ext.extension_id);
+        } catch (err) {
+            _notify('error', err.message);
+        } finally {
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = _exportIcon;
+        }
+    });
+    toolbar.appendChild(exportBtn);
+
+    // Duplicate (all extensions — creates a user copy)
+    const dupBtn = _toolbarBtn(
+        `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>`,
+        'Duplicate', 'ext-amber-btn'
+    );
+    const _dupIcon = dupBtn.innerHTML;
+    dupBtn.addEventListener('click', async () => {
+        try {
+            dupBtn.disabled = true;
+            dupBtn.textContent = '...';
+            const result = await duplicateExtension(ext.extension_id);
+            _notify('success', `Duplicated as #${result.extension_id}`);
+            _expandedExtId = result.extension_id;
             await _refreshExtensionData();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
         } catch (err) {
             _notify('error', err.message);
         } finally {
-            addBtn.disabled = false;
-            addBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>Add Another Activation`;
+            dupBtn.disabled = false;
+            dupBtn.innerHTML = _dupIcon;
         }
     });
-    panel.appendChild(addBtn);
+    toolbar.appendChild(dupBtn);
 
-    // Publish to Marketplace button (user-created extensions only, when marketplace enabled)
+    // Publish (user-created, marketplace enabled)
     if (ext.is_user && _extensionSettings.marketplace_enabled !== false) {
-        const publishRow = document.createElement('div');
-        publishRow.className = 'mt-3 pt-3';
-        publishRow.style.borderTop = '1px solid var(--border-subtle)';
-
-        const publishBtn = document.createElement('button');
-        publishBtn.className = 'ext-amber-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium rounded-md transition-all duration-200';
-        publishBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish to Marketplace`;
+        const publishBtn = _toolbarBtn(
+            `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>`,
+            'Publish', 'ext-amber-btn'
+        );
+        const _pubIcon = publishBtn.innerHTML;
         publishBtn.addEventListener('click', async () => {
             try {
                 publishBtn.disabled = true;
-                publishBtn.textContent = 'Publishing...';
+                publishBtn.textContent = '...';
                 const token = localStorage.getItem('tda_auth_token');
                 const resp = await fetch(`/api/v1/extensions/${ext.extension_id}/publish`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ visibility: 'public' }),
                 });
                 const data = await resp.json();
@@ -752,18 +920,67 @@ function _buildCardDetailPanel(ext, activations) {
                 } else {
                     _notify('error', data.error || 'Publish failed');
                     publishBtn.disabled = false;
-                    publishBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish to Marketplace`;
+                    publishBtn.innerHTML = _pubIcon;
                 }
             } catch (err) {
                 _notify('error', 'Publish failed: ' + err.message);
                 publishBtn.disabled = false;
-                publishBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish to Marketplace`;
+                publishBtn.innerHTML = _pubIcon;
             }
         });
-        publishRow.appendChild(publishBtn);
-        panel.appendChild(publishRow);
+        toolbar.appendChild(publishBtn);
     }
 
+    // Delete (user-created only) — right-aligned, danger style
+    if (ext.is_user && !ext.is_builtin) {
+        const spacer = document.createElement('div');
+        spacer.className = 'flex-1';
+        toolbar.appendChild(spacer);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200';
+        deleteBtn.style.cssText = 'background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); color: rgb(248,113,113);';
+        deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>Delete`;
+        const _delIcon = deleteBtn.innerHTML;
+        deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.background = 'rgba(239,68,68,0.15)'; deleteBtn.style.borderColor = 'rgba(239,68,68,0.3)'; });
+        deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.background = 'rgba(239,68,68,0.08)'; deleteBtn.style.borderColor = 'rgba(239,68,68,0.15)'; });
+        deleteBtn.addEventListener('click', () => {
+            const extName = ext.display_name || ext.extension_id;
+            if (!window.showConfirmation) { _notify('error', 'Confirmation system not available'); return; }
+            window.showConfirmation(
+                'Delete Extension',
+                `Are you sure you want to delete "${extName}"? This cannot be undone.`,
+                async () => {
+                    try {
+                        deleteBtn.disabled = true;
+                        deleteBtn.textContent = '...';
+                        const token = localStorage.getItem('tda_auth_token');
+                        const resp = await fetch(`/api/v1/extensions/${ext.extension_id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                        });
+                        const data = await resp.json();
+                        if (resp.ok) {
+                            _notify('success', `Extension "${extName}" deleted`);
+                            await _refreshExtensionData();
+                            if (window.loadActivatedExtensions) window.loadActivatedExtensions();
+                        } else {
+                            _notify('error', data.error || 'Delete failed');
+                            deleteBtn.disabled = false;
+                            deleteBtn.innerHTML = _delIcon;
+                        }
+                    } catch (err) {
+                        _notify('error', 'Delete failed: ' + err.message);
+                        deleteBtn.disabled = false;
+                        deleteBtn.innerHTML = _delIcon;
+                    }
+                }
+            );
+        });
+        toolbar.appendChild(deleteBtn);
+    }
+
+    panel.appendChild(toolbar);
     return panel;
 }
 
@@ -1252,10 +1469,14 @@ async function _refreshExtensionData() {
     _allExtensions = all;
     _allActivations = activated;
 
-    // Toggle Create button visibility based on admin governance
+    // Toggle Create/Import button visibility based on admin governance
     const createBtn = document.getElementById('create-ext-btn');
     if (createBtn) {
         createBtn.style.display = _extensionSettings.user_extensions_enabled === false ? 'none' : '';
+    }
+    const importBtn = document.getElementById('import-ext-btn');
+    if (importBtn) {
+        importBtn.style.display = _extensionSettings.user_extensions_enabled === false ? 'none' : '';
     }
 
     renderExtensionGrid();
@@ -1496,5 +1717,11 @@ export function initializeExtensionHandlers() {
                 reloadBtn.style.opacity = '1';
             }
         });
+    }
+
+    // Import Extension button
+    const importBtn = document.getElementById('import-ext-btn');
+    if (importBtn) {
+        importBtn.addEventListener('click', () => handleImportExtension());
     }
 }
