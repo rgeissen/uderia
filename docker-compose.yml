@@ -5,10 +5,10 @@ services:
       context: . # Assumes Dockerfile is in this directory
       dockerfile: Dockerfile
     # This will be the name of the image after it's built
-    image: uderia-v16:latest
+    image: uderia-v17:latest
     
     # This is the container name from your JSON config
-    container_name: uderia-v16
+    container_name: uderia-v17
     
     # This 'command' overrides the default CMD in the Dockerfile
     # It's taken directly from the "cmd" field in your JSON
