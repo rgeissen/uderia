@@ -369,7 +369,7 @@ function _createSkillCard(skill, activation) {
         params.forEach(p => {
             const paramBadge = document.createElement('span');
             paramBadge.className = 'font-mono font-semibold px-1 py-0.5 rounded';
-            paramBadge.style.cssText = 'background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3);';
+            paramBadge.style.cssText = 'background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);';
             paramBadge.textContent = p;
             paramRow.appendChild(paramBadge);
         });
@@ -1250,7 +1250,7 @@ export function initializeSkillHandlers() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 const EMERALD = '#34d399';
-const EMERALD_LIGHT = '#6ee7b7';
+const EMERALD_LIGHT = '#34d399';
 const EMERALD_BG = 'rgba(52, 211, 153, 0.15)';
 const EMERALD_BORDER = 'rgba(52, 211, 153, 0.3)';
 const EMERALD_GLOW = '0 0 0 3px rgba(16,185,129,0.12)';

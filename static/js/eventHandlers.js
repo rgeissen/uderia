@@ -1818,7 +1818,7 @@ function _renderSkillEventsForReload(turnData, container) {
         stepEl.innerHTML = `
             <div class="flex items-center gap-2">
                 <span class="text-xs" style="color: #34d399;">&#10038;</span>
-                <span class="text-xs text-gray-300"><span class="font-medium" style="color: #6ee7b7;">${nameDisplay}</span> &rarr; ${target}</span>
+                <span class="text-xs text-gray-300"><span class="font-medium" style="color: #34d399;">${nameDisplay}</span> &rarr; ${target}</span>
                 <span class="text-xs text-gray-500 ml-auto">~${tokens.toLocaleString()} tokens</span>
             </div>`;
         container.appendChild(stepEl);
