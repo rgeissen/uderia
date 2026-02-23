@@ -1,20 +1,52 @@
 /**
  * Component Handler
  *
- * Manages the Components Configuration tab UI:
+ * Manages the top-level Components view (sidebar → Components):
  * - Fetches component list from GET /v1/components
- * - Renders card grid with category/status filter pills
+ * - Renders card gallery with category/status filter pills
+ * - Card selection → fetches detail from GET /v1/components/<id>
+ * - Detail panel with capabilities table + tool arguments table
  * - Reload button for hot-reload from disk
  * - Import button governance (hidden when admin disables user components)
  */
 
 let _componentSettings = {};
+let _cachedComponents = [];
+let _selectedComponentId = null;
+let _initialized = false;
+
+// ─── DOM IDs (top-level view) ───────────────────────────────────────────────
+const GRID_ID = 'components-grid-top';
+const DETAIL_ID = 'component-detail-panel';
+const RELOAD_BTN_ID = 'reload-components-btn-top';
+const IMPORT_BTN_ID = 'import-component-btn-top';
+const CATEGORY_FILTERS_ID = 'component-category-filters-top';
+const STATUS_FILTERS_ID = 'component-status-filters-top';
 
 /**
- * Load components from the API and render the card grid.
+ * Entry point called by ui.js performViewSwitch() when navigating to components-view.
+ * Loads components and initializes handlers (once).
+ */
+export async function loadComponentsView() {
+    if (!_initialized) {
+        _initializeHandlers();
+        _initialized = true;
+    }
+    await _loadComponents();
+}
+
+/**
+ * Legacy export kept for backward compatibility if any caller still uses it.
  */
 export async function loadComponents() {
-    const grid = document.getElementById('components-grid');
+    await _loadComponents();
+}
+
+/**
+ * Fetch components from the API and render the card grid.
+ */
+async function _loadComponents() {
+    const grid = document.getElementById(GRID_ID);
     if (!grid) return;
 
     grid.innerHTML = '<div class="col-span-full text-center text-gray-400 py-8">Loading components...</div>';
@@ -31,21 +63,36 @@ export async function loadComponents() {
         }
 
         const data = await resp.json();
-        const components = data.components || [];
+        _cachedComponents = data.components || [];
         _componentSettings = data._settings || {};
 
         // Governance: show/hide Import button
-        const importBtn = document.getElementById('import-component-btn');
+        const importBtn = document.getElementById(IMPORT_BTN_ID);
         if (importBtn) {
             importBtn.style.display = _componentSettings.user_components_enabled ? '' : 'none';
         }
 
-        if (components.length === 0) {
+        if (_cachedComponents.length === 0) {
             grid.innerHTML = '<div class="col-span-full text-center text-gray-400 py-8">No components installed</div>';
+            _hideDetailPanel();
             return;
         }
 
-        grid.innerHTML = components.map(comp => _renderComponentCard(comp)).join('');
+        grid.innerHTML = _cachedComponents.map(comp => _renderComponentCard(comp)).join('');
+
+        // Attach click handlers to cards
+        grid.querySelectorAll('.component-card').forEach(card => {
+            card.addEventListener('click', () => _onCardClick(card.dataset.componentId));
+            card.style.cursor = 'pointer';
+        });
+
+        // Auto-select first card if nothing selected
+        if (!_selectedComponentId || !_cachedComponents.find(c => c.component_id === _selectedComponentId)) {
+            _onCardClick(_cachedComponents[0].component_id);
+        } else {
+            // Re-select the previously selected card
+            _onCardClick(_selectedComponentId);
+        }
 
     } catch (err) {
         console.error('[ComponentHandler] Error loading components:', err);
@@ -76,7 +123,7 @@ function _renderComponentCard(comp) {
     ).join('');
 
     return `
-        <div class="glass-panel rounded-lg p-4 flex flex-col gap-3 component-card"
+        <div class="glass-panel rounded-lg p-4 flex flex-col gap-3 component-card transition-all duration-150"
              data-component-type="${comp.component_type}"
              data-component-source="${comp.source}"
              data-component-id="${comp.component_id}">
@@ -107,12 +154,305 @@ function _renderComponentCard(comp) {
     `;
 }
 
+// ─── Card Selection & Detail Panel ──────────────────────────────────────────
+
 /**
- * Initialize event handlers for the Components tab.
+ * Handle card click — highlight selected card and fetch detail.
  */
-export function initializeComponentHandlers() {
+async function _onCardClick(componentId) {
+    if (!componentId) return;
+    _selectedComponentId = componentId;
+
+    // Update selection ring
+    const grid = document.getElementById(GRID_ID);
+    if (grid) {
+        grid.querySelectorAll('.component-card').forEach(card => {
+            if (card.dataset.componentId === componentId) {
+                card.classList.add('ring-2', 'ring-cyan-400/60');
+            } else {
+                card.classList.remove('ring-2', 'ring-cyan-400/60');
+            }
+        });
+    }
+
+    // Fetch full component detail
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const resp = await fetch(`/api/v1/components/${componentId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!resp.ok) {
+            _showDetailError('Failed to load component details');
+            return;
+        }
+
+        const data = await resp.json();
+        _renderDetailPanel(data.component);
+
+    } catch (err) {
+        console.error('[ComponentHandler] Detail fetch error:', err);
+        _showDetailError('Error loading component details');
+    }
+}
+
+/**
+ * Render the full detail panel for a selected component.
+ */
+function _renderDetailPanel(comp) {
+    const panel = document.getElementById(DETAIL_ID);
+    if (!panel) return;
+
+    const manifest = comp.manifest || {};
+    const toolDef = manifest.tool_definition || {};
+    const renderTargets = comp.render_targets || manifest.render_targets || {};
+    const profileDefaults = comp.profile_defaults || manifest.profile_defaults || {};
+    const backend = manifest.backend || {};
+
+    // ── Header Section ──
+    const sourceColors = {
+        builtin: 'bg-violet-500/20 text-violet-300',
+        agent_pack: 'bg-cyan-500/20 text-cyan-300',
+        user: 'bg-amber-500/20 text-amber-300',
+    };
+    const typeColors = {
+        action: 'bg-blue-500/20 text-blue-300',
+        structural: 'bg-gray-500/20 text-gray-300',
+    };
+    const sourceBadge = sourceColors[comp.source] || sourceColors.builtin;
+    const typeBadge = typeColors[comp.component_type] || typeColors.action;
+
+    const supportsStr = (renderTargets.supports || ['inline']).map(t =>
+        `<span class="px-2 py-0.5 rounded bg-gray-600/50 text-gray-300 text-xs">${t}</span>`
+    ).join('');
+
+    const enabledFor = (profileDefaults.enabled_for || []).map(p =>
+        `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-xs">${p}</span>`
+    ).join('');
+
+    const headerHTML = `
+        <div class="flex items-start gap-4 mb-6">
+            <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h2 class="text-xl font-bold text-white">${comp.display_name}</h2>
+                    <span class="text-sm text-gray-400">v${comp.version}</span>
+                    <span class="text-xs px-2 py-0.5 rounded ${sourceBadge}">${comp.source}</span>
+                    <span class="text-xs px-2 py-0.5 rounded ${typeBadge}">${comp.component_type}</span>
+                </div>
+                <p class="text-sm text-gray-400 mt-1">${comp.description || ''}</p>
+                <div class="flex items-center gap-4 mt-3 text-sm">
+                    ${toolDef.name ? `<div class="flex items-center gap-1.5">
+                        <span class="text-gray-500">Tool:</span>
+                        <span class="font-mono text-cyan-300">${toolDef.name}</span>
+                    </div>` : ''}
+                    ${backend.fast_path ? `<div class="flex items-center gap-1 text-emerald-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Fast-path
+                    </div>` : ''}
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-gray-500">Render:</span>
+                        ${supportsStr}
+                    </div>
+                </div>
+                ${enabledFor ? `<div class="flex items-center gap-1.5 mt-2 text-sm">
+                    <span class="text-gray-500">Profiles:</span>
+                    ${enabledFor}
+                </div>` : ''}
+            </div>
+        </div>
+    `;
+
+    // ── Capabilities Section (component-specific) ──
+    const capabilitiesHTML = _renderCapabilities(manifest, comp);
+
+    // ── Tool Arguments Section ──
+    const toolArgsHTML = _renderToolArguments(toolDef);
+
+    // ── Assemble ──
+    panel.innerHTML = `
+        <div class="glass-panel rounded-xl p-6">
+            ${headerHTML}
+            ${capabilitiesHTML}
+            ${toolArgsHTML}
+        </div>
+    `;
+    panel.classList.remove('hidden');
+}
+
+/**
+ * Render the capabilities section based on component manifest.
+ * - chart component: show chart_types table
+ * - generic: show key manifest capabilities
+ */
+function _renderCapabilities(manifest, comp) {
+    // Chart component — chart_types table
+    if (manifest.chart_types && Object.keys(manifest.chart_types).length > 0) {
+        const rows = Object.entries(manifest.chart_types).map(([type, info]) => {
+            const required = (info.mapping_roles || []).join(', ') || '\u2014';
+            const optional = (info.optional_roles || []).length > 0
+                ? info.optional_roles.join(', ')
+                : '\u2014';
+            return `
+                <tr class="border-t border-white/5">
+                    <td class="py-2 pr-4 font-mono text-cyan-300">${type}</td>
+                    <td class="py-2 pr-4 text-gray-300">${info.g2plot_type}</td>
+                    <td class="py-2 pr-4 text-gray-400">${required}</td>
+                    <td class="py-2 text-gray-500">${optional}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="mb-6">
+                <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+                    <h3 class="text-lg font-semibold text-white">Supported Chart Types</h3>
+                    <span class="text-xs text-gray-500">${Object.keys(manifest.chart_types).length} types</span>
+                </div>
+                <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="sticky top-0 bg-[var(--card-bg,#1a1a2e)]">
+                            <tr class="text-left text-xs text-gray-500 uppercase tracking-wide">
+                                <th class="pb-2 pr-4">Type</th>
+                                <th class="pb-2 pr-4">G2Plot</th>
+                                <th class="pb-2 pr-4">Required Roles</th>
+                                <th class="pb-2">Optional Roles</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    // Generic fallback: show key manifest info as property list
+    const skipKeys = new Set([
+        'component_id', 'display_name', 'description', 'version',
+        'component_type', 'category', 'tool_definition', 'backend',
+        'frontend', 'render_targets', 'profile_defaults', 'instructions'
+    ]);
+
+    const extraProps = Object.entries(manifest)
+        .filter(([k]) => !skipKeys.has(k))
+        .filter(([, v]) => v !== null && v !== undefined);
+
+    if (extraProps.length === 0) return '';
+
+    const propRows = extraProps.map(([key, value]) => {
+        const displayValue = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+        return `
+            <tr class="border-t border-white/5">
+                <td class="py-2 pr-4 font-mono text-cyan-300">${key}</td>
+                <td class="py-2 text-gray-300"><pre class="whitespace-pre-wrap text-xs">${_escapeHtml(displayValue)}</pre></td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="mb-6">
+            <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+                <h3 class="text-lg font-semibold text-white">Capabilities</h3>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs text-gray-500 uppercase tracking-wide">
+                        <th class="pb-2 pr-4">Property</th>
+                        <th class="pb-2">Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${propRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+/**
+ * Render the tool arguments table from the tool definition.
+ */
+function _renderToolArguments(toolDef) {
+    if (!toolDef.args || Object.keys(toolDef.args).length === 0) return '';
+
+    const rows = Object.entries(toolDef.args).map(([argName, argDef]) => {
+        const required = argDef.required
+            ? '<span class="text-emerald-400">&#10003;</span>'
+            : '<span class="text-gray-600">\u2014</span>';
+        return `
+            <tr class="border-t border-white/5">
+                <td class="py-2 pr-4 font-mono text-cyan-300">${argName}</td>
+                <td class="py-2 pr-4 text-gray-400">${argDef.type || 'string'}</td>
+                <td class="py-2 pr-4 text-center">${required}</td>
+                <td class="py-2 text-gray-400 text-xs">${argDef.description || ''}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div>
+            <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+                <h3 class="text-lg font-semibold text-white">Tool Arguments</h3>
+                <span class="text-xs text-gray-500 font-mono">${toolDef.name || ''}</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-xs text-gray-500 uppercase tracking-wide">
+                            <th class="pb-2 pr-4">Argument</th>
+                            <th class="pb-2 pr-4">Type</th>
+                            <th class="pb-2 pr-4 text-center">Required</th>
+                            <th class="pb-2">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+// ─── Detail Panel Helpers ───────────────────────────────────────────────────
+
+function _hideDetailPanel() {
+    const panel = document.getElementById(DETAIL_ID);
+    if (panel) {
+        panel.classList.add('hidden');
+        panel.innerHTML = '';
+    }
+    _selectedComponentId = null;
+}
+
+function _showDetailError(message) {
+    const panel = document.getElementById(DETAIL_ID);
+    if (panel) {
+        panel.innerHTML = `<div class="glass-panel rounded-xl p-6 text-center text-red-400">${message}</div>`;
+        panel.classList.remove('hidden');
+    }
+}
+
+function _escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─── Event Handlers (Reload, Filters) ───────────────────────────────────────
+
+/**
+ * Initialize event handlers for the top-level Components view (once).
+ */
+function _initializeHandlers() {
     // Reload button
-    const reloadBtn = document.getElementById('reload-components-btn');
+    const reloadBtn = document.getElementById(RELOAD_BTN_ID);
     if (reloadBtn) {
         reloadBtn.addEventListener('click', async () => {
             reloadBtn.disabled = true;
@@ -127,7 +467,7 @@ export function initializeComponentHandlers() {
                     if (window.showNotification) {
                         window.showNotification('success', `Reloaded ${data.loaded} component(s)`);
                     }
-                    await loadComponents();
+                    await _loadComponents();
                 } else {
                     if (window.showNotification) {
                         window.showNotification('error', 'Failed to reload components');
@@ -142,12 +482,12 @@ export function initializeComponentHandlers() {
     }
 
     // Category filter pills
-    _setupFilterPills('component-category-filters', (filter) => {
+    _setupFilterPills(CATEGORY_FILTERS_ID, (filter) => {
         _filterComponentCards('type', filter);
     });
 
     // Status filter pills
-    _setupFilterPills('component-status-filters', (filter) => {
+    _setupFilterPills(STATUS_FILTERS_ID, (filter) => {
         _filterComponentCards('status', filter);
     });
 }
@@ -161,7 +501,6 @@ function _setupFilterPills(containerId, onFilter) {
 
     container.querySelectorAll('.filter-pill').forEach(pill => {
         pill.addEventListener('click', () => {
-            // Update active state
             container.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('filter-pill--active'));
             pill.classList.add('filter-pill--active');
             onFilter(pill.dataset.filter);
@@ -173,7 +512,7 @@ function _setupFilterPills(containerId, onFilter) {
  * Filter component cards by type or status.
  */
 function _filterComponentCards(dimension, filter) {
-    const grid = document.getElementById('components-grid');
+    const grid = document.getElementById(GRID_ID);
     if (!grid) return;
 
     grid.querySelectorAll('.component-card').forEach(card => {
@@ -183,7 +522,6 @@ function _filterComponentCards(dimension, filter) {
             visible = card.dataset.componentType === filter;
         }
         if (dimension === 'status' && filter !== 'all') {
-            // For now, all loaded components are "active"
             visible = filter === 'active';
         }
 

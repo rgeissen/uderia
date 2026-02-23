@@ -5796,6 +5796,13 @@ function performViewSwitch(viewId) {
         console.error(`[UI DEBUG] View with ID '${viewId}' not found!`);
     }
     
+    // 4a. Lazy-load components when entering Components view
+    if (viewId === 'components-view') {
+        import('./handlers/componentHandler.js').then(({ loadComponentsView }) => {
+            loadComponentsView();
+        });
+    }
+
     // 4. Initialize dirty tracking when entering configuration view
     if (viewId === 'credentials-view') {
         import('./configDirtyState.js').then(({ initializeConfigDirtyTracking }) => {

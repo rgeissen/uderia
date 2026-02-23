@@ -14,7 +14,6 @@ import { showAppBanner } from '../bannerSystem.js';
 import { markSaving } from '../configDirtyState.js';
 import { loadAgentPacks } from './agentPackHandler.js';
 import { loadExtensions, initializeExtensionHandlers } from './extensionHandler.js';
-import { loadComponents, initializeComponentHandlers } from './componentHandler.js';
 import { loadSkills, initializeSkillHandlers } from './skillHandler.js';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers } from './agentPackGrouping.js';
 
@@ -2856,11 +2855,6 @@ function initializeConfigTabs() {
             // Lazy-load extensions when tab is activated
             if (targetTabId === 'extensions-tab') {
                 loadExtensions();
-            }
-
-            // Lazy-load components when tab is activated
-            if (targetTabId === 'components-tab') {
-                loadComponents();
             }
         });
     });
@@ -7077,7 +7071,6 @@ export async function initializeConfigurationUI() {
     renderProfiles();
     updateReconnectButton();
     initializeExtensionHandlers();
-    initializeComponentHandlers();
     initializeSkillHandlers();
 
     // Load MCP classification setting

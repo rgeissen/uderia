@@ -1211,6 +1211,7 @@ def initialize_default_panes(session):
     - Credentials: all tiers
     - Executions: developer + admin
     - Intelligence: developer + admin
+    - Components: developer + admin
     - Administration: admin only
     
     Args:
@@ -1250,10 +1251,19 @@ def initialize_default_panes(session):
             'visible_to_admin': True
         },
         {
+            'pane_id': 'components',
+            'pane_name': 'Components',
+            'description': 'Generative UI Component Library',
+            'display_order': 4,
+            'visible_to_user': False,
+            'visible_to_developer': True,
+            'visible_to_admin': True
+        },
+        {
             'pane_id': 'marketplace',
             'pane_name': 'Marketplace',
             'description': 'Browse and install Planner Repository Constructors',
-            'display_order': 4,
+            'display_order': 5,
             'visible_to_user': True,
             'visible_to_developer': True,
             'visible_to_admin': True
@@ -1262,7 +1272,7 @@ def initialize_default_panes(session):
             'pane_id': 'credentials',
             'pane_name': 'Setup',
             'description': 'Configure LLM and MCP credentials',
-            'display_order': 5,
+            'display_order': 6,
             'visible_to_user': True,
             'visible_to_developer': True,
             'visible_to_admin': True
@@ -1271,7 +1281,7 @@ def initialize_default_panes(session):
             'pane_id': 'admin',
             'pane_name': 'Administration',
             'description': 'User and system administration',
-            'display_order': 6,
+            'display_order': 7,
             'visible_to_user': False,
             'visible_to_developer': False,
             'visible_to_admin': True

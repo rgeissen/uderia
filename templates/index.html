@@ -590,6 +590,13 @@
                     </svg>
                     <span class="nav-link-text font-semibold">Intelligence</span>
                 </a>
+                <!-- Components View Link -->
+                <a href="#" id="view-switch-components" data-view="components-view" class="view-switch-button flex items-center gap-x-3 px-3 py-3 text-sm text-gray-200 rounded-md hover:bg-white/10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                    </svg>
+                    <span class="nav-link-text font-semibold">Components</span>
+                </a>
                 <!-- NEW: RAG Marketplace View Link -->
                 <a href="#" id="view-switch-rag-marketplace" data-view="rag-marketplace-view" class="view-switch-button flex items-center gap-x-3 px-3 py-3 text-sm text-gray-200 rounded-md hover:bg-white/10">
                     <!-- Marketplace/store icon -->
@@ -2018,6 +2025,65 @@
                 </div>
             </div>
 
+            <!-- VIEW: Components Gallery -->
+            <div id="components-view" class="app-view w-full h-full overflow-y-auto">
+                <div class="max-w-7xl mx-auto p-8">
+
+                    <!-- Page Header -->
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 class="text-3xl font-bold text-white header-title mb-2">Generative UI Components</h1>
+                            <p class="text-gray-400">Manage visual components for LLM output rendering</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button id="import-component-btn-top" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5" style="display: none;">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                                Import
+                            </button>
+                            <button id="reload-components-btn-top" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Reload
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filter Pills -->
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
+                            <div class="flex gap-1.5" id="component-category-filters-top">
+                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                <button class="filter-pill" data-filter="action">Action</button>
+                                <button class="filter-pill" data-filter="structural">Structural</button>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
+                            <div class="flex gap-1.5" id="component-status-filters-top">
+                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                <button class="filter-pill" data-filter="active">Active</button>
+                                <button class="filter-pill" data-filter="inactive">Inactive</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Component Gallery (cards grid) -->
+                    <div id="components-grid-top" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                        <!-- Cards rendered by componentHandler.js -->
+                    </div>
+
+                    <!-- Component Detail Panel (hidden until a card is selected) -->
+                    <div id="component-detail-panel" class="hidden transition-all duration-200">
+                        <!-- Rendered dynamically by componentHandler.js when a card is clicked -->
+                    </div>
+
+                </div>
+            </div>
+
             <!-- VIEW 2A: Planner Repository Marketplace -->
             <div id="rag-marketplace-view" class="app-view w-full h-full overflow-y-auto">
                 <div class="max-w-7xl mx-auto p-8">
@@ -2537,14 +2603,6 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
                                 Extensions
-                            </div>
-                        </button>
-                        <button class="config-tab ind-tab ind-tab--underline" data-tab="components-tab">
-                            <div class="flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-                                </svg>
-                                Components
                             </div>
                         </button>
                         <button class="config-tab ind-tab ind-tab--underline" data-tab="agent-packs-tab">
@@ -3219,59 +3277,6 @@
                                     <!-- Grid container -->
                                     <div id="extensions-grid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
                                         <!-- Extension cards rendered by extensionHandler.js -->
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Tab: Components -->
-                        <div id="components-tab" class="config-tab-content hidden">
-                            <div class="space-y-6">
-                                <div class="glass-panel rounded-xl p-6">
-                                    <div class="flex items-center justify-between mb-6">
-                                        <div>
-                                            <h3 class="text-xl font-bold text-white">Generative UI Components</h3>
-                                            <p class="text-sm text-gray-400 mt-1">Manage visual components for LLM output rendering</p>
-                                        </div>
-                                        <div class="flex items-center gap-3">
-                                            <button id="import-component-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5" style="display: none;">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                                                </svg>
-                                                Import
-                                            </button>
-                                            <button id="reload-components-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                </svg>
-                                                Reload
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <!-- Filter pills -->
-                                    <div class="flex items-center gap-4 mb-6">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
-                                            <div class="flex gap-1.5" id="component-category-filters">
-                                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
-                                                <button class="filter-pill" data-filter="action">Action</button>
-                                                <button class="filter-pill" data-filter="structural">Structural</button>
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
-                                            <div class="flex gap-1.5" id="component-status-filters">
-                                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
-                                                <button class="filter-pill" data-filter="active">Active</button>
-                                                <button class="filter-pill" data-filter="inactive">Inactive</button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Component cards grid -->
-                                    <div id="components-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        <!-- Component cards rendered by componentHandler.js -->
                                     </div>
                                 </div>
                             </div>
@@ -8611,6 +8616,7 @@
                     'conversation': 'view-switch-conversation',
                     'executions': 'view-switch-executions',
                     'rag-maintenance': 'view-switch-rag-maintenance',
+                    'components': 'view-switch-components',
                     'marketplace': 'view-switch-rag-marketplace',
                     'credentials': 'view-switch-credentials',
                     'admin': 'view-switch-admin'
