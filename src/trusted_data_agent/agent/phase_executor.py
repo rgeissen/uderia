@@ -1095,51 +1095,52 @@ class PhaseExecutor:
                             mapping = self._generate_charting_mapping(chart_type, resolved_data)
 
                             if not mapping:
-                                app_logger.warning("Component Fast-Path (chart): Could not generate mapping. Falling through to tactical LLM.")
-                            else:
-                                # Step 3: Build complete action and execute directly
-                                charting_action = {
-                                    "tool_name": "TDA_Charting",
-                                    "arguments": {
-                                        "chart_type": chart_type,
-                                        "data": resolved_data,
-                                        "title": title,
-                                        "mapping": mapping
-                                    }
-                                }
+                                app_logger.info("Component Fast-Path (chart): Mapping deferred to handler's internal resolver.")
 
+                            # Step 3: Build complete action and execute directly
+                            # (handler resolves mapping internally when missing)
+                            charting_action = {
+                                "tool_name": "TDA_Charting",
+                                "arguments": {
+                                    "chart_type": chart_type,
+                                    "data": resolved_data,
+                                    "title": title,
+                                    "mapping": mapping
+                                }
+                            }
+
+                            event_data = {
+                                "step": "Plan Optimization",
+                                "type": "plan_optimization",
+                                "details": {
+                                    "summary": (
+                                        f"Component Fast-Path ({comp_handler.component_id}): bypassing tactical LLM. "
+                                        f"Resolved {len(resolved_data)} data rows, mapping: {mapping or '(handler-resolved)'}."
+                                    ),
+                                    "correction_type": "deterministic_component"
+                                }
+                            }
+                            self.executor._log_system_event(event_data)
+                            yield self.executor._format_sse_with_depth(event_data)
+
+                            async for event in self._execute_action_with_orchestrators(charting_action, phase):
+                                yield event
+
+                            if not is_loop_iteration:
+                                phase_num = phase.get("phase", self.executor.current_phase_index + 1)
                                 event_data = {
-                                    "step": "Plan Optimization",
-                                    "type": "plan_optimization",
+                                    "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
+                                    "type": "phase_end",
                                     "details": {
-                                        "summary": (
-                                            f"Component Fast-Path ({comp_handler.component_id}): bypassing tactical LLM. "
-                                            f"Resolved {len(resolved_data)} data rows, mapping: {mapping}."
-                                        ),
-                                        "correction_type": "deterministic_component"
+                                        "phase_num": phase_num,
+                                        "total_phases": len(self.executor.meta_plan),
+                                        "status": "completed",
+                                        "execution_depth": self.executor.execution_depth
                                     }
                                 }
                                 self.executor._log_system_event(event_data)
                                 yield self.executor._format_sse_with_depth(event_data)
-
-                                async for event in self._execute_action_with_orchestrators(charting_action, phase):
-                                    yield event
-
-                                if not is_loop_iteration:
-                                    phase_num = phase.get("phase", self.executor.current_phase_index + 1)
-                                    event_data = {
-                                        "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
-                                        "type": "phase_end",
-                                        "details": {
-                                            "phase_num": phase_num,
-                                            "total_phases": len(self.executor.meta_plan),
-                                            "status": "completed",
-                                            "execution_depth": self.executor.execution_depth
-                                        }
-                                    }
-                                    self.executor._log_system_event(event_data)
-                                    yield self.executor._format_sse_with_depth(event_data)
-                                _component_bypass_handled = True
+                            _component_bypass_handled = True
 
                     # --- Generic deterministic component (future components) ---
                     # For non-chart deterministic components, delegate directly to handler.process()

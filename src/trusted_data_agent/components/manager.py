@@ -93,6 +93,7 @@ def get_component_instructions_for_prompt(
 def get_component_langchain_tools(
     profile_id: Optional[str],
     user_uuid: Optional[str],
+    session_id: Optional[str] = None,
 ) -> List[Any]:
     """
     Resolve profile → get LangChain component tools.
@@ -115,7 +116,8 @@ def get_component_langchain_tools(
             except Exception:
                 pass
 
-        return manager.get_langchain_tools(profile_config)
+        comp_context = {"session_id": session_id, "user_uuid": user_uuid}
+        return manager.get_langchain_tools(profile_config, comp_context)
     except Exception as e:
         logger.warning(f"Component LangChain tools assembly failed: {e}")
     return []
@@ -609,6 +611,7 @@ class ComponentManager:
     def get_langchain_tools(
         self,
         profile_config: Dict[str, Any],
+        comp_context: Optional[Dict[str, Any]] = None,
     ) -> List[Any]:
         """
         Create LangChain Tool objects for all active action components.
@@ -635,6 +638,8 @@ class ComponentManager:
             logger.warning("langchain_core not available — cannot create component LangChain tools")
             return []
 
+        _context = comp_context or {}
+
         tools = []
         for comp in action_components:
             tool_def = comp.tool_definition
@@ -649,12 +654,13 @@ class ComponentManager:
             async def _run_component(
                 _handler=handler,
                 _comp_id=comp.component_id,
+                _ctx=_context,
                 **kwargs,
             ) -> str:
                 """Execute a component handler and return a JSON result."""
                 import json as _json
                 try:
-                    payload = await _handler.process(kwargs, {})
+                    payload = await _handler.process(kwargs, _ctx)
                     # Return serialized result for the LLM to reference
                     return _json.dumps({
                         "status": "success",

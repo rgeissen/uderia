@@ -1398,7 +1398,7 @@ class PlanExecutor:
         # MCP server is optional when component tools are available (platform feature).
         # Component tools (TDA_Charting, etc.) don't require an MCP server.
         from trusted_data_agent.components.manager import get_component_langchain_tools
-        component_tools = get_component_langchain_tools(self.active_profile_id, self.user_uuid)
+        component_tools = get_component_langchain_tools(self.active_profile_id, self.user_uuid, session_id=self.session_id)
 
         if not mcp_server_id and not component_tools:
             error_msg = "conversation_with_tools profile requires an MCP server configuration or active component tools."
@@ -3646,7 +3646,7 @@ The following domain knowledge may be relevant to this conversation:
 
             # Check for active component tools — auto-upgrade synthesis to agent mode
             from trusted_data_agent.components.manager import get_component_langchain_tools as _get_rag_comp_tools
-            rag_component_tools = _get_rag_comp_tools(self.active_profile_id, self.user_uuid)
+            rag_component_tools = _get_rag_comp_tools(self.active_profile_id, self.user_uuid, session_id=self.session_id)
 
             rag_component_payloads = []  # Component payloads extracted from agent result (if any)
 

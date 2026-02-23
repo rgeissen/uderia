@@ -536,7 +536,8 @@ class GenieCoordinator:
         # Merge component tools (TDA_Charting, etc.) so the coordinator can call them
         from trusted_data_agent.components.manager import get_component_langchain_tools
         component_tools = get_component_langchain_tools(
-            self.genie_profile.get("id"), self.user_uuid
+            self.genie_profile.get("id"), self.user_uuid,
+            session_id=parent_session_id,
         )
         if component_tools:
             self.tools.extend(component_tools)

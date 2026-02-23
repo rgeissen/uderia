@@ -1674,16 +1674,28 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
             handler = comp_manager.get_handler(tool_name)
             if handler:
                 app_logger.info(f"Routing '{tool_name}' through component handler: {handler.component_id}")
-                import asyncio
                 args = command.get("arguments", {})
-                payload = asyncio.get_event_loop().run_until_complete(
-                    handler.process(args, {})
-                )
+                # Build context for component handlers (session info + LLM callable)
+                comp_context: dict = {"session_id": session_id, "user_uuid": user_uuid}
+                _llm = STATE.get('llm')
+                if _llm:
+                    async def _comp_llm_callable(prompt, system_prompt="You are a data analyst.", max_tokens=200):
+                        from trusted_data_agent.llm.handler import call_llm_api
+                        text, in_tok, out_tok, _, _ = await call_llm_api(
+                            _llm, prompt, user_uuid=user_uuid, session_id=session_id,
+                            system_prompt_override=system_prompt,
+                            reason="Component mapping resolution",
+                            disabled_history=True)
+                        return {"content": text, "input_tokens": in_tok, "output_tokens": out_tok}
+                    comp_context["llm_callable"] = _comp_llm_callable
+                payload = await handler.process(args, comp_context)
                 if payload.spec.get("error"):
                     result = {"status": "error", "error": "Component Error", "data": payload.spec["error"]}
                 else:
                     result = {"type": payload.component_id, "spec": payload.spec, "metadata": payload.metadata}
-                return result, 0, 0
+                _comp_in = payload.metadata.get("llm_input_tokens", 0)
+                _comp_out = payload.metadata.get("llm_output_tokens", 0)
+                return result, _comp_in, _comp_out
     except Exception as comp_err:
         app_logger.warning(f"Component handler routing failed for '{tool_name}', using legacy: {comp_err}")
 

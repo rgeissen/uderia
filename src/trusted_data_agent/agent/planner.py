@@ -2690,6 +2690,37 @@ Ranking:"""
         tools_context = APP_STATE.get('tools_context', '--- No Tools Available ---')
         prompts_context = APP_STATE.get('prompts_context', '--- No Prompts Available ---')
 
+        # Build component_tools context for strategic planner.
+        # Component tools (TDA_Charting, etc.) are managed by ComponentManager
+        # and need a dedicated section since they're not in mcp_tools/tools_context.
+        # This is component-agnostic — automatically discovers all active components.
+        component_tools_str = ""
+        try:
+            from trusted_data_agent.components.manager import get_component_manager
+            comp_manager = get_component_manager()
+            if comp_manager:
+                profile_config = self.executor._get_profile_config()
+                component_tool_defs = comp_manager.get_tool_definitions(profile_config)
+                if component_tool_defs:
+                    parts = ["--- Available Component Tools ---"]
+                    for tool_def in component_tool_defs:
+                        tool_str = f"- `{tool_def['name']}` (tool): {tool_def.get('description', 'No description.')}"
+                        args = tool_def.get("args", {})
+                        if args:
+                            tool_str += "\n  - Arguments:"
+                            for arg_name, arg_details in args.items():
+                                if isinstance(arg_details, dict):
+                                    arg_type = arg_details.get('type', 'any')
+                                    is_required = arg_details.get('required', False)
+                                    req_str = "required" if is_required else "optional"
+                                    arg_desc = arg_details.get('description', 'No description.')
+                                    tool_str += f"\n    - `{arg_name}` ({arg_type}, {req_str}): {arg_desc}"
+                        parts.append(tool_str)
+                    component_tools_str = "\n".join(parts)
+                    app_logger.info(f"Built component_tools context with {len(component_tool_defs)} component tool(s)")
+        except Exception as e:
+            app_logger.warning(f"Failed to build component_tools context: {e}")
+
         # DEBUG: Log tools_context details
         app_logger.info(f"[DEBUG] tools_context length: {len(tools_context)} characters")
         app_logger.info(f"[DEBUG] tools_context preview (first 2000 chars): {tools_context[:2000]}")
@@ -2746,7 +2777,8 @@ CRITICAL REQUIREMENTS:
             rag_few_shot_examples=rag_few_shot_examples_str,  # Pass the populated examples
             knowledge_context=knowledge_context_str,  # Empty string when knowledge disabled
             available_tools=tools_context,  # Pass tools context
-            available_prompts=prompts_context  # Pass prompts context
+            available_prompts=prompts_context,  # Pass prompts context
+            component_tools=component_tools_str  # Pass component tools context
         )
 
         # --- Inject skill content into planning prompt (pre-processing) ---
