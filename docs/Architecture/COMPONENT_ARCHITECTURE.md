@@ -809,9 +809,17 @@ Component tools are merged with the coordinator's invoke_* profile tools:
 component_tools = get_component_langchain_tools(self.genie_profile.get("id"), self.user_uuid)
 if component_tools:
     self.tools.extend(component_tools)
+    self.component_tool_names = {t.name for t in component_tools}
 ```
 
-The coordinator can then call component tools (e.g., TDA_Charting) when synthesizing results from sub-profiles.
+The coordinator can then call component tools (e.g., TDA_Charting) when synthesizing results from sub-profiles. Component tool invocations emit explicit Live Status events:
+
+| Event | When | Payload |
+|-------|------|---------|
+| `genie_component_invoked` | `on_tool_start` when tool is in `component_tool_names` | `{tool_name, session_id}` |
+| `genie_component_completed` | `on_tool_end` when payload extraction succeeds | `{tool_name, component_id, success, session_id}` |
+
+These events are routed through `eventHandlers.js` → `genieHandler.js` and rendered as dedicated cards in the Live Status panel. Payload extraction uses the shared `extract_component_payload()` utility; HTML generation uses `generate_component_html()` — both from `components/utils.py`.
 
 ### Component Fast-Path
 
@@ -868,15 +876,23 @@ chartContainers.forEach(container => {
 });
 ```
 
-The formatter (`formatter.py`) embeds component output as:
+The shared utility `generate_component_html()` (`components/utils.py`) embeds component output as:
 ```html
-<div id="comp-{uuid}" class="chart-render-target"
-     data-component-id="chart"
-     data-spec='{"type":"Column","options":{...}}'>
+<div class="response-card mb-4">
+  <div id="component-{uuid12}" data-component-id="chart"
+       data-spec='{"type":"Column","options":{...}}'></div>
 </div>
 ```
 
+All profile types (llm_only, rag_focused, genie) call this single function — there is no profile-specific HTML generation logic.
+
 ### SSE Event Handling
+
+#### Inline Components
+
+Inline components (`render_target: "inline"`) are embedded in the `final_answer` HTML and rendered during `UI.appendMessage()` — no dedicated SSE event required.
+
+#### Sub-Window Components
 
 **File:** `static/js/eventHandlers.js` (lines 25-26, 1271-1305)
 
@@ -917,6 +933,19 @@ import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowMan
   "render_target": "sub_window"
 }
 ```
+
+#### Genie Component Events
+
+**File:** `static/js/eventHandlers.js` (~line 1325), `static/js/ui.js` (`_renderGenieStep`)
+
+When the genie coordinator calls component tools directly (not through a child profile), it emits dedicated Live Status events:
+
+| SSE Event | Trigger | Live Status Card |
+|-----------|---------|------------------|
+| `genie_component_invoked` | `on_tool_start` for component tool | "Component: TDA_Charting" (amber, active) |
+| `genie_component_completed` | `on_tool_end` with successful payload extraction | "Component Complete: chart" (green, completed) |
+
+These events are routed through the genie event handler path (`eventHandlers.js` → `genieHandler.js` → `ui.js:_renderGenieStep`) and rendered as cards in the genie coordination trace. They are also persisted in `genie_events` for plan reload.
 
 ---
 
@@ -1144,6 +1173,7 @@ Agent pack manifests (v1.2+) include a `components` array. When a pack is instal
 | `src/trusted_data_agent/components/models.py` | 206 | `ComponentDefinition` dataclass |
 | `src/trusted_data_agent/components/manager.py` | ~620 | `ComponentManager` singleton (discovery, registry, hot-reload, LangChain tool factory) |
 | `src/trusted_data_agent/components/settings.py` | 142 | Admin governance predicates |
+| `src/trusted_data_agent/components/utils.py` | 63 | Shared utilities: `generate_component_html()`, `extract_component_payload()` |
 | `components/builtin/chart/manifest.json` | 71 | Chart component manifest |
 | `components/builtin/chart/handler.py` | 259 | `ChartComponentHandler` (data normalization + G2Plot spec) |
 | `components/builtin/chart/renderer.js` | 41 | `renderChart()` (G2Plot instantiation) |
@@ -1163,15 +1193,17 @@ Agent pack manifests (v1.2+) include a `components` array. When a pack is instal
 | `src/trusted_data_agent/llm/handler.py` | 429-554 | Component instructions pipeline with profile_config resolution via config_manager |
 | `src/trusted_data_agent/mcp_adapter/adapter.py` | 330-437, 1691-1712 | System tools in `CLIENT_SIDE_TOOLS` (TDA_Charting removed); route component tools through `ComponentManager.get_handler()` |
 | `src/trusted_data_agent/core/configuration_service.py` | ~240 | Inject "Component Tools" category into `APP_STATE['structured_tools']` for planner visibility |
-| `src/trusted_data_agent/agent/executor.py` | ~1398, ~2441, ~3072, ~3622 | Component tool merge for conversation agent; auto-upgrade llm_only and rag_focused paths when components active |
-| `src/trusted_data_agent/agent/genie_coordinator.py` | ~530 | Merge component LangChain tools with invoke_* profile tools for coordinator |
+| `src/trusted_data_agent/agent/executor.py` | ~1398, ~1785, ~2441, ~3072, ~3622, ~3838 | Component tool merge; auto-upgrade llm_only/rag_focused paths; HTML generation via `generate_component_html()` |
+| `src/trusted_data_agent/agent/execution_service.py` | ~854 | Genie component HTML generation via `generate_component_html()`; session name token persistence |
+| `src/trusted_data_agent/agent/conversation_agent.py` | ~617 | Component payload extraction via `extract_component_payload()` |
+| `src/trusted_data_agent/agent/genie_coordinator.py` | ~530, ~791, ~799 | Merge component tools; emit `genie_component_invoked`/`completed` events; payload extraction via `extract_component_payload()` |
 | `src/trusted_data_agent/agent/phase_executor.py` | 1066-1156 | Component fast-path for deterministic handlers |
 | `src/trusted_data_agent/llm/langchain_adapter.py` | ~508 | Removed `TDA_*` auto-include filter (component tools no longer flow through MCP path) |
 | `src/trusted_data_agent/api/rest_routes.py` | 11530-11672 | Five component REST endpoints |
 | `src/trusted_data_agent/api/admin_routes.py` | 2609-2690 | Two admin governance endpoints |
 | `src/trusted_data_agent/auth/database.py` | 842-960 | Component table creation in bootstrap |
 | `static/js/ui.js` | 10, 1361-1377 | `[data-component-id]` rendering + legacy fallback |
-| `static/js/eventHandlers.js` | 25-26, 1271-1305 | `component_render` SSE event handler |
+| `static/js/eventHandlers.js` | 25-26, 1271-1305, ~1325 | `component_render` SSE event handler; `genie_component_invoked`/`completed` routing and title generation |
 | `static/js/handlers/configurationHandler.js` | — | Component toggle section in profile modal (populate, restore, collect on save) |
 | `static/js/adminManager.js` | 2835-2942 | Component Management section in Features panel |
 | `templates/index.html` | — | Components tab, sub-window container, `#component-config-section` in profile modal |

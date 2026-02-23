@@ -616,17 +616,11 @@ RESPONSE FORMAT:
 
                     # Detect component render payloads (chart specs, code blocks, etc.)
                     # so the executor can generate data-component-id divs for the frontend.
-                    try:
-                        _raw = tool_output.content if hasattr(tool_output, 'content') else str(tool_output)
-                        _parsed = json.loads(_raw)
-                        if (isinstance(_parsed, dict)
-                                and _parsed.get("status") == "success"
-                                and _parsed.get("component_id")
-                                and _parsed.get("spec")):
-                            self.component_payloads.append(_parsed)
-                            logger.info(f"[ConvAgent] Captured component payload: {_parsed['component_id']}")
-                    except (json.JSONDecodeError, TypeError, AttributeError):
-                        pass
+                    from trusted_data_agent.components.utils import extract_component_payload
+                    _payload = extract_component_payload(tool_output)
+                    if _payload:
+                        self.component_payloads.append(_payload)
+                        logger.info(f"[ConvAgent] Captured component payload: {_payload['component_id']}")
 
                     # CRITICAL: Yield control to event loop to allow SSE tasks to run
                     await asyncio.sleep(0)

@@ -798,24 +798,18 @@ After gathering information from profiles, provide a synthesized answer that:
                 # (TDA_Charting, etc. — merged at init time alongside SlaveSessionTools)
                 if event_kind == "on_tool_end":
                     tool_output = event_data.get("output", "")
-                    try:
-                        _raw = tool_output.content if hasattr(tool_output, 'content') else str(tool_output)
-                        _parsed = json.loads(_raw)
-                        if (isinstance(_parsed, dict)
-                                and _parsed.get("status") == "success"
-                                and _parsed.get("component_id")
-                                and _parsed.get("spec")):
-                            self.component_payloads.append(_parsed)
-                            logger.info(f"[Genie] Captured component payload: {_parsed['component_id']}")
-                            # Emit completion event for Live Status display
-                            self._emit_event("genie_component_completed", {
-                                "tool_name": event_name,
-                                "component_id": _parsed["component_id"],
-                                "success": True,
-                                "session_id": self.parent_session_id
-                            })
-                    except (json.JSONDecodeError, TypeError, AttributeError):
-                        pass
+                    from trusted_data_agent.components.utils import extract_component_payload
+                    _parsed = extract_component_payload(tool_output)
+                    if _parsed:
+                        self.component_payloads.append(_parsed)
+                        logger.info(f"[Genie] Captured component payload: {_parsed['component_id']}")
+                        # Emit completion event for Live Status display
+                        self._emit_event("genie_component_completed", {
+                            "tool_name": event_name,
+                            "component_id": _parsed["component_id"],
+                            "success": True,
+                            "session_id": self.parent_session_id
+                        })
 
                 # Track token usage from LLM calls
                 # Some providers emit on_llm_end, others emit on_chat_model_end

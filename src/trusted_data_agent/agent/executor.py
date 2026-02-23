@@ -1783,24 +1783,8 @@ class PlanExecutor:
             final_html, tts_payload = formatter.render()
 
             # Append component rendering HTML (chart, code, audio, video, etc.)
-            # The ConversationAgentExecutor extracts component payloads from tool
-            # results.  We generate generic data-component-id divs that the
-            # frontend's ComponentRendererRegistry dispatches to the correct renderer.
-            component_payloads = result.get("component_payloads", [])
-            for _cp in component_payloads:
-                _comp_id = _cp.get("component_id", "unknown")
-                _spec = _cp.get("spec", {})
-                _cid = f"component-{uuid.uuid4().hex[:12]}"
-                try:
-                    _spec_json = json.dumps(_spec).replace("'", "&apos;")
-                except (TypeError, ValueError):
-                    continue
-                final_html += (
-                    f'\n<div class="response-card mb-4">'
-                    f'<div id="{_cid}" data-component-id="{_comp_id}" '
-                    f"data-spec='{_spec_json}'></div>"
-                    f'</div>'
-                )
+            from trusted_data_agent.components.utils import generate_component_html
+            final_html += generate_component_html(result.get("component_payloads", []))
 
             # Add assistant message to conversation history (with HTML for display)
             await session_manager.add_message_to_histories(
@@ -3848,23 +3832,8 @@ The following domain knowledge may be relevant to this conversation:
             final_html, tts_payload = formatter.render()
 
             # Append component rendering HTML (chart, code, audio, video, etc.)
-            # The ConversationAgentExecutor extracts component payloads from tool
-            # results.  We generate generic data-component-id divs that the
-            # frontend's ComponentRendererRegistry dispatches to the correct renderer.
-            for _cp in rag_component_payloads:
-                _comp_id = _cp.get("component_id", "unknown")
-                _spec = _cp.get("spec", {})
-                _cid = f"component-{uuid.uuid4().hex[:12]}"
-                try:
-                    _spec_json = json.dumps(_spec).replace("'", "&apos;")
-                except (TypeError, ValueError):
-                    continue
-                final_html += (
-                    f'\n<div class="response-card mb-4">'
-                    f'<div id="{_cid}" data-component-id="{_comp_id}" '
-                    f"data-spec='{_spec_json}'></div>"
-                    f'</div>'
-                )
+            from trusted_data_agent.components.utils import generate_component_html
+            final_html += generate_component_html(rag_component_payloads)
 
             # Emit final answer
             yield self._format_sse_with_depth({

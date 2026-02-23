@@ -851,21 +851,8 @@ async def _run_genie_execution(
 
         # Generate component HTML from coordinator's direct component tool calls
         # (TDA_Charting, etc. — component-agnostic, works for any future component)
-        genie_component_html = ""
-        for _cp in result.get("component_payloads", []):
-            _comp_id = _cp.get("component_id", "unknown")
-            _spec = _cp.get("spec", {})
-            _cid = f"component-{uuid.uuid4().hex[:12]}"
-            try:
-                _spec_json = json.dumps(_spec).replace("'", "&apos;")
-            except (TypeError, ValueError):
-                continue
-            genie_component_html += (
-                f'\n<div class="response-card mb-4">'
-                f'<div id="{_cid}" data-component-id="{_comp_id}" '
-                f"data-spec='{_spec_json}'></div>"
-                f'</div>'
-            )
+        from trusted_data_agent.components.utils import generate_component_html
+        genie_component_html = generate_component_html(result.get("component_payloads", []))
 
         # Extract token counts from coordination result IMMEDIATELY (before any other processing)
         input_tokens = result.get('input_tokens', 0) or 0
