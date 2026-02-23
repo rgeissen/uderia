@@ -3,6 +3,7 @@ import logging
 import json
 import re
 import asyncio
+import uuid
 from datetime import datetime, timezone
 
 from trusted_data_agent.agent.executor import PlanExecutor
@@ -848,6 +849,24 @@ async def _run_genie_execution(
         coordinator_response = result.get('coordinator_response', '')
         success = result.get('success', False)
 
+        # Generate component HTML from coordinator's direct component tool calls
+        # (TDA_Charting, etc. — component-agnostic, works for any future component)
+        genie_component_html = ""
+        for _cp in result.get("component_payloads", []):
+            _comp_id = _cp.get("component_id", "unknown")
+            _spec = _cp.get("spec", {})
+            _cid = f"component-{uuid.uuid4().hex[:12]}"
+            try:
+                _spec_json = json.dumps(_spec).replace("'", "&apos;")
+            except (TypeError, ValueError):
+                continue
+            genie_component_html += (
+                f'\n<div class="response-card mb-4">'
+                f'<div id="{_cid}" data-component-id="{_comp_id}" '
+                f"data-spec='{_spec_json}'></div>"
+                f'</div>'
+            )
+
         # Extract token counts from coordination result IMMEDIATELY (before any other processing)
         input_tokens = result.get('input_tokens', 0) or 0
         output_tokens = result.get('output_tokens', 0) or 0
@@ -906,11 +925,14 @@ async def _run_genie_execution(
         # Log the Genie conversation to session files
         try:
             # Add coordinator response to session history (user message was already saved by caller)
+            # Include component HTML (chart, code, etc.) for UI display if present
+            genie_html_content = (coordinator_response + genie_component_html) if genie_component_html else None
             await session_manager.add_message_to_histories(
                 user_uuid=user_uuid,
                 session_id=session_id,
                 role='assistant',
                 content=coordinator_response,
+                html_content=genie_html_content,
                 profile_tag=profile_tag,
                 is_session_primer=is_session_primer
             )
@@ -1027,10 +1049,12 @@ async def _run_genie_execution(
             app_logger.error(f"Failed to log Genie session data: {log_error}")
 
         # Send final answer event with proper fields for frontend and extensions
+        # Include component HTML (chart divs, etc.) in the visual response but keep clean text for extensions
+        genie_visual_response = (coordinator_response + genie_component_html) if genie_component_html else coordinator_response
         final_payload = {
-            "final_answer": coordinator_response,  # Required by eventHandlers.js
+            "final_answer": genie_visual_response,  # Required by eventHandlers.js (includes component divs)
             "final_answer_text": coordinator_response,  # Plain text for extensions (ExtensionContext.answer_text)
-            "html_response": coordinator_response,
+            "html_response": genie_visual_response,
             "raw_response": coordinator_response,
             "turn_id": turn_number,  # Required for turn numbering in UI
             "session_id": session_id,  # Include session_id for filtering when switching sessions
@@ -1060,6 +1084,38 @@ async def _run_genie_execution(
             # Payload now contains the complete event_dict (step, details, type)
             for event in session_name_events:
                 await event_handler(event['payload'], event['type'])
+
+            # Persist session name tokens and emit token_update so Last Stmt KPI updates
+            if session_name_input_tokens > 0 or session_name_output_tokens > 0:
+                await session_manager.update_token_count(
+                    user_uuid, session_id,
+                    session_name_input_tokens, session_name_output_tokens
+                )
+                _updated_session = await session_manager.get_session(user_uuid, session_id)
+                if _updated_session:
+                    _sess_in = _updated_session.get("input_tokens", 0)
+                    _sess_out = _updated_session.get("output_tokens", 0)
+                    _name_cost = 0
+                    try:
+                        from trusted_data_agent.core.cost_manager import CostManager
+                        _name_cost = CostManager().calculate_cost(
+                            provider=provider or "Unknown",
+                            model=model or "Unknown",
+                            input_tokens=session_name_input_tokens,
+                            output_tokens=session_name_output_tokens
+                        )
+                    except Exception:
+                        pass
+                    await event_handler({
+                        "statement_input": session_name_input_tokens,
+                        "statement_output": session_name_output_tokens,
+                        "turn_input": input_tokens + session_name_input_tokens,
+                        "turn_output": output_tokens + session_name_output_tokens,
+                        "total_input": _sess_in,
+                        "total_output": _sess_out,
+                        "call_id": "genie_session_name",
+                        "cost_usd": _name_cost
+                    }, "token_update")
 
             # Update session name in database
             if session_name and session_name != "New Chat":

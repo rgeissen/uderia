@@ -26,6 +26,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Dict, List, Any, Optional, Callable
@@ -485,6 +486,9 @@ class GenieCoordinator:
         # Track which profiles were actually invoked during execution
         self.invoked_profiles = []
 
+        # Collect component payloads from direct component tool calls (TDA_Charting, etc.)
+        self.component_payloads: list = []
+
         # Register event callback for this parent session
         # Wrap the callback to also collect events from child tools
         # Transient events that are only meaningful during live execution (UI indicator dots).
@@ -528,9 +532,22 @@ class GenieCoordinator:
 
         # Build tools and agent
         self.tools = self._build_tools()
+
+        # Merge component tools (TDA_Charting, etc.) so the coordinator can call them
+        from trusted_data_agent.components.manager import get_component_langchain_tools
+        component_tools = get_component_langchain_tools(
+            self.genie_profile.get("id"), self.user_uuid
+        )
+        if component_tools:
+            self.tools.extend(component_tools)
+            logger.info(f"GenieCoordinator: added {len(component_tools)} component tool(s)")
+
+        # Track component tool names for event emission (distinguish from SlaveSessionTools)
+        self.component_tool_names = {t.name for t in component_tools} if component_tools else set()
+
         self.agent_executor = self._build_agent()
 
-        logger.info(f"GenieCoordinator initialized with {len(self.tools)} child profile tools")
+        logger.info(f"GenieCoordinator initialized with {len(self.tools)} tools ({len(self.tools) - len(component_tools) if component_tools else len(self.tools)} profile + {len(component_tools) if component_tools else 0} component)")
 
     def _emit_event(self, event_type: str, payload: dict):
         """Emit event via callback if configured. Events are collected via the registered callback."""
@@ -613,6 +630,13 @@ class GenieCoordinator:
             for p in self.slave_profiles
         ])
         system_prompt = system_prompt.replace("{available_profiles}", tool_descriptions)
+
+        # Inject component instructions
+        from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+        comp_section = get_component_instructions_for_prompt(
+            self.genie_profile.get("id"), self.user_uuid
+        )
+        system_prompt = system_prompt.replace("{component_instructions_section}", comp_section)
 
         # Store system prompt for use in execute()
         self.system_prompt = system_prompt
@@ -759,10 +783,39 @@ After gathering information from profiles, provide a synthesized answer that:
                     })
 
                 # Note: on_tool_start/on_tool_end/on_tool_error events here are for
-                # SlaveSessionTool invocations (child profile calls), NOT actual MCP tool
-                # calls. The genie coordinator does not use MCP tools directly — child
-                # profiles handle their own MCP status indicators in their own streams.
-                # No MCP status_indicator_update is emitted here.
+                # SlaveSessionTool invocations (child profile calls) AND component tools
+                # (TDA_Charting, etc.). SlaveSessionTools emit their own events internally.
+                # Component tools need explicit event emission for Live Status visibility.
+
+                # Emit event when a component tool is invoked (for Live Status display)
+                if event_kind == "on_tool_start" and event_name in self.component_tool_names:
+                    self._emit_event("genie_component_invoked", {
+                        "tool_name": event_name,
+                        "session_id": self.parent_session_id
+                    })
+
+                # Capture component payloads from direct component tool calls
+                # (TDA_Charting, etc. — merged at init time alongside SlaveSessionTools)
+                if event_kind == "on_tool_end":
+                    tool_output = event_data.get("output", "")
+                    try:
+                        _raw = tool_output.content if hasattr(tool_output, 'content') else str(tool_output)
+                        _parsed = json.loads(_raw)
+                        if (isinstance(_parsed, dict)
+                                and _parsed.get("status") == "success"
+                                and _parsed.get("component_id")
+                                and _parsed.get("spec")):
+                            self.component_payloads.append(_parsed)
+                            logger.info(f"[Genie] Captured component payload: {_parsed['component_id']}")
+                            # Emit completion event for Live Status display
+                            self._emit_event("genie_component_completed", {
+                                "tool_name": event_name,
+                                "component_id": _parsed["component_id"],
+                                "success": True,
+                                "session_id": self.parent_session_id
+                            })
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        pass
 
                 # Track token usage from LLM calls
                 # Some providers emit on_llm_end, others emit on_chat_model_end
@@ -925,6 +978,7 @@ After gathering information from profiles, provide a synthesized answer that:
                 "tools_used": tools_used,
                 "slave_sessions": turn_slave_sessions,
                 "genie_events": self.collected_events,  # For plan reload
+                "component_payloads": self.component_payloads,  # Component tool render specs
                 "success": True,
                 "input_tokens": self.total_input_tokens,
                 "output_tokens": self.total_output_tokens

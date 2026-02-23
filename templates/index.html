@@ -280,6 +280,82 @@
             background: rgba(217,119,6,0.15);
             color: #b45309;
         }
+
+        /* Component filter pills */
+        .filter-pill {
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(148,163,184,0.2);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .filter-pill:hover {
+            border-color: rgba(139,92,246,0.4);
+            color: #a78bfa;
+        }
+        .filter-pill--active, .filter-pill.filter-pill--active {
+            background: rgba(139,92,246,0.15);
+            color: #a78bfa;
+            border-color: rgba(139,92,246,0.3);
+        }
+        [data-theme="light"] .filter-pill--active {
+            background: rgba(124,58,237,0.1);
+            color: #6d28d9;
+            border-color: rgba(124,58,237,0.3);
+        }
+
+        /* Sub-window styles */
+        .sub-window-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            padding: 0 1rem 1rem;
+        }
+        .sub-window {
+            border-radius: 0.75rem;
+            overflow: hidden;
+            min-width: 300px;
+            max-width: 100%;
+            flex: 0 0 auto;
+        }
+        .sub-window-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border-primary);
+            cursor: move;
+        }
+        .sub-window-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .sub-window-controls {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .sub-window-controls button {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            line-height: 1;
+        }
+        .sub-window-controls button:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--text-primary);
+        }
+        .sub-window-body {
+            padding: 0.75rem;
+            min-height: 100px;
+        }
     </style>
     <script src="https://unpkg.com/@antv/g2plot@latest/dist/g2plot.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
@@ -1378,6 +1454,11 @@
                                 <div id="chat-log" class="max-w-5xl mx-auto space-y-8">
                                     <!-- Chat messages will be added here -->
                                 </div>
+
+                                <!-- Sub-window container for component panels -->
+                                <div id="sub-window-container" class="sub-window-container">
+                                    <!-- Sub-windows created dynamically by subWindowManager.js -->
+                                </div>
                             </main>
 
                             <footer id="chat-footer" class="p-4">
@@ -2458,6 +2539,14 @@
                                 Extensions
                             </div>
                         </button>
+                        <button class="config-tab ind-tab ind-tab--underline" data-tab="components-tab">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                                </svg>
+                                Components
+                            </div>
+                        </button>
                         <button class="config-tab ind-tab ind-tab--underline" data-tab="agent-packs-tab">
                             <div class="flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -3130,6 +3219,59 @@
                                     <!-- Grid container -->
                                     <div id="extensions-grid" class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
                                         <!-- Extension cards rendered by extensionHandler.js -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Components -->
+                        <div id="components-tab" class="config-tab-content hidden">
+                            <div class="space-y-6">
+                                <div class="glass-panel rounded-xl p-6">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <div>
+                                            <h3 class="text-xl font-bold text-white">Generative UI Components</h3>
+                                            <p class="text-sm text-gray-400 mt-1">Manage visual components for LLM output rendering</p>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <button id="import-component-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5" style="display: none;">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                </svg>
+                                                Import
+                                            </button>
+                                            <button id="reload-components-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                </svg>
+                                                Reload
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Filter pills -->
+                                    <div class="flex items-center gap-4 mb-6">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
+                                            <div class="flex gap-1.5" id="component-category-filters">
+                                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                                <button class="filter-pill" data-filter="action">Action</button>
+                                                <button class="filter-pill" data-filter="structural">Structural</button>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
+                                            <div class="flex gap-1.5" id="component-status-filters">
+                                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                                <button class="filter-pill" data-filter="active">Active</button>
+                                                <button class="filter-pill" data-filter="inactive">Inactive</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Component cards grid -->
+                                    <div id="components-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <!-- Component cards rendered by componentHandler.js -->
                                     </div>
                                 </div>
                             </div>
@@ -4119,6 +4261,87 @@
                                                     <div class="flex-1">
                                                         <label for="ext-marketplace-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable extension marketplace</label>
                                                         <p class="text-xs text-gray-400 mt-1">When enabled, users can publish custom extensions to the marketplace and install extensions shared by others.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </details>
+                                </div>
+
+                                <!-- Component Management -->
+                                <div class="glass-panel rounded-xl p-6">
+                                    <details class="group">
+                                        <summary class="flex justify-between items-center cursor-pointer list-none">
+                                            <div class="flex items-center gap-3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                                                </svg>
+                                                <div>
+                                                    <h3 class="text-lg font-bold text-white">Component Management</h3>
+                                                    <p class="text-sm text-gray-400">Control component availability and custom components</p>
+                                                </div>
+                                            </div>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </summary>
+                                        <div class="mt-6 pl-9 space-y-4">
+
+                                            <!-- Component Availability Mode -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <h4 class="text-sm font-semibold text-white mb-3">Component Availability</h4>
+                                                <div class="space-y-3">
+                                                    <label class="flex items-center gap-3 cursor-pointer">
+                                                        <input type="radio" name="comp-mode" id="comp-mode-all" value="all" class="text-violet-500 focus:ring-violet-500" checked>
+                                                        <div>
+                                                            <span class="text-sm text-white">All components available</span>
+                                                            <p class="text-xs text-gray-400">All built-in components are available to users (default)</p>
+                                                        </div>
+                                                    </label>
+                                                    <label class="flex items-center gap-3 cursor-pointer">
+                                                        <input type="radio" name="comp-mode" id="comp-mode-selective" value="selective" class="text-violet-500 focus:ring-violet-500">
+                                                        <div>
+                                                            <span class="text-sm text-white">Selective</span>
+                                                            <p class="text-xs text-gray-400">Choose which built-in components are available to users</p>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <!-- Built-in Component Checklist (shown only in selective mode) -->
+                                            <div id="comp-checklist-container" class="p-4 bg-gray-700/50 rounded-lg hidden">
+                                                <h4 class="text-sm font-semibold text-white mb-3">Built-in Components</h4>
+                                                <p class="text-xs text-gray-400 mb-3">Uncheck components you want to hide from users</p>
+                                                <div id="comp-checklist" class="space-y-2">
+                                                    <!-- Dynamically populated by adminManager.js -->
+                                                </div>
+                                            </div>
+
+                                            <!-- Custom Components Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <label class="ind-toggle">
+                                                        <input type="checkbox" id="comp-user-components-enabled" checked>
+                                                        <span class="ind-track"></span>
+                                                    </label>
+                                                    <div class="flex-1">
+                                                        <label for="comp-user-components-enabled" class="block text-sm font-semibold text-white cursor-pointer">Allow users to import custom components</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, users can import third-party components. When disabled, the Import button is hidden in the Components tab.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Component Marketplace Toggle -->
+                                            <div class="p-4 bg-gray-700/50 rounded-lg">
+                                                <div class="flex items-start gap-3">
+                                                    <label class="ind-toggle">
+                                                        <input type="checkbox" id="comp-marketplace-enabled" checked>
+                                                        <span class="ind-track"></span>
+                                                    </label>
+                                                    <div class="flex-1">
+                                                        <label for="comp-marketplace-enabled" class="block text-sm font-semibold text-white cursor-pointer">Enable component marketplace</label>
+                                                        <p class="text-xs text-gray-400 mt-1">When enabled, users can install components from the marketplace and publish their own.</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -7541,6 +7764,22 @@
                                 </p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Component Configuration Section (all profile types) -->
+                <div id="component-config-section" class="mt-6 rounded-xl bg-gray-800/20 border border-gray-700/30 p-6" style="display: none;">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wide">
+                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                            </svg>
+                            Component Configuration
+                        </h4>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-4">Enable or disable components for this profile. Disabled components won't have their instructions injected into the LLM prompt.</p>
+                    <div id="profile-component-toggles" class="space-y-3">
+                        <!-- Populated dynamically by configurationHandler.js -->
                     </div>
                 </div>
 

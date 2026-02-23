@@ -1063,77 +1063,97 @@ class PhaseExecutor:
             return
         # --- END SYSTEM TOOL BYPASS ---
 
-        # --- CHARTING BYPASS: Deterministic TDA_Charting (zero LLM calls) ---
-        # TDA_Charting requires 4 args (chart_type, data, title, mapping) — all deterministic.
-        # The tactical LLM hallucinates mapping keys (x/y vs x_axis/y_axis) and column names,
-        # then self-correction fails because it tries to re-emit all data rows in JSON.
-        if tool_name == "TDA_Charting":
-            app_logger.info("Charting Bypass: Handling TDA_Charting deterministically (no tactical LLM).")
+        # --- COMPONENT FAST-PATH: Deterministic component handlers (zero LLM calls) ---
+        # Components with is_deterministic=True can bypass the tactical LLM entirely.
+        # The chart component (TDA_Charting) is the primary user: it requires 4 args
+        # (chart_type, data, title, mapping) — all deterministic. The tactical LLM
+        # hallucinates mapping keys (x/y vs x_axis/y_axis) and column names, then
+        # self-correction fails because it tries to re-emit all data rows in JSON.
+        _component_bypass_handled = False
+        try:
+            from trusted_data_agent.components.manager import get_component_manager
+            comp_manager = get_component_manager()
+            if tool_name and comp_manager.is_component_tool(tool_name):
+                comp_handler = comp_manager.get_handler(tool_name)
+                if comp_handler and comp_handler.is_deterministic:
+                    app_logger.info(f"Component Fast-Path: Handling {tool_name} deterministically via component '{comp_handler.component_id}'.")
 
-            chart_type = strategic_args.get("chart_type", "bar")
-            title = phase_goal
+                    # --- Chart-specific deterministic resolution ---
+                    if tool_name == "TDA_Charting":
+                        chart_type = strategic_args.get("chart_type", "bar")
+                        title = phase_goal
 
-            # Step 1: Resolve data from workflow_state or previous_turn_data
-            temp_action = {"tool_name": "TDA_Charting", "arguments": dict(strategic_args)}
-            self._resolve_charting_data(temp_action)
-            resolved_data = temp_action["arguments"].get("data")
+                        # Step 1: Resolve data from workflow_state or previous_turn_data
+                        temp_action = {"tool_name": "TDA_Charting", "arguments": dict(strategic_args)}
+                        self._resolve_charting_data(temp_action)
+                        resolved_data = temp_action["arguments"].get("data")
 
-            if not isinstance(resolved_data, list) or not resolved_data:
-                # Cannot proceed without data — fall through to tactical LLM as last resort
-                app_logger.warning("Charting Bypass: Could not resolve data. Falling through to tactical LLM.")
-            else:
-                # Step 2: Generate mapping algorithmically from data columns
-                mapping = self._generate_charting_mapping(chart_type, resolved_data)
+                        if not isinstance(resolved_data, list) or not resolved_data:
+                            app_logger.warning("Component Fast-Path (chart): Could not resolve data. Falling through to tactical LLM.")
+                        else:
+                            # Step 2: Generate mapping algorithmically from data columns
+                            mapping = self._generate_charting_mapping(chart_type, resolved_data)
 
-                if not mapping:
-                    app_logger.warning("Charting Bypass: Could not generate mapping. Falling through to tactical LLM.")
-                else:
-                    # Step 3: Build complete action and execute directly
-                    charting_action = {
-                        "tool_name": "TDA_Charting",
-                        "arguments": {
-                            "chart_type": chart_type,
-                            "data": resolved_data,
-                            "title": title,
-                            "mapping": mapping
-                        }
-                    }
+                            if not mapping:
+                                app_logger.warning("Component Fast-Path (chart): Could not generate mapping. Falling through to tactical LLM.")
+                            else:
+                                # Step 3: Build complete action and execute directly
+                                charting_action = {
+                                    "tool_name": "TDA_Charting",
+                                    "arguments": {
+                                        "chart_type": chart_type,
+                                        "data": resolved_data,
+                                        "title": title,
+                                        "mapping": mapping
+                                    }
+                                }
 
-                    event_data = {
-                        "step": "Plan Optimization",
-                        "type": "plan_optimization",
-                        "details": {
-                            "summary": (
-                                f"Deterministic Charting: bypassing tactical LLM. "
-                                f"Resolved {len(resolved_data)} data rows, mapping: {mapping}."
-                            ),
-                            "correction_type": "deterministic_charting"
-                        }
-                    }
-                    self.executor._log_system_event(event_data)
-                    yield self.executor._format_sse_with_depth(event_data)
+                                event_data = {
+                                    "step": "Plan Optimization",
+                                    "type": "plan_optimization",
+                                    "details": {
+                                        "summary": (
+                                            f"Component Fast-Path ({comp_handler.component_id}): bypassing tactical LLM. "
+                                            f"Resolved {len(resolved_data)} data rows, mapping: {mapping}."
+                                        ),
+                                        "correction_type": "deterministic_component"
+                                    }
+                                }
+                                self.executor._log_system_event(event_data)
+                                yield self.executor._format_sse_with_depth(event_data)
 
-                    async for event in self._execute_action_with_orchestrators(charting_action, phase):
-                        yield event
+                                async for event in self._execute_action_with_orchestrators(charting_action, phase):
+                                    yield event
 
-                    # Result storage (workflow_state + structured_collected_data) is handled
-                    # by _execute_tool() inside _execute_action_with_orchestrators — no duplicate add here.
-                    if not is_loop_iteration:
-                        phase_num = phase.get("phase", self.executor.current_phase_index + 1)
-                        event_data = {
-                            "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
-                            "type": "phase_end",
-                            "details": {
-                                "phase_num": phase_num,
-                                "total_phases": len(self.executor.meta_plan),
-                                "status": "completed",
-                                "execution_depth": self.executor.execution_depth
-                            }
-                        }
-                        self.executor._log_system_event(event_data)
-                        yield self.executor._format_sse_with_depth(event_data)
-                    return
-        # --- END CHARTING BYPASS ---
+                                if not is_loop_iteration:
+                                    phase_num = phase.get("phase", self.executor.current_phase_index + 1)
+                                    event_data = {
+                                        "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
+                                        "type": "phase_end",
+                                        "details": {
+                                            "phase_num": phase_num,
+                                            "total_phases": len(self.executor.meta_plan),
+                                            "status": "completed",
+                                            "execution_depth": self.executor.execution_depth
+                                        }
+                                    }
+                                    self.executor._log_system_event(event_data)
+                                    yield self.executor._format_sse_with_depth(event_data)
+                                _component_bypass_handled = True
+
+                    # --- Generic deterministic component (future components) ---
+                    # For non-chart deterministic components, delegate directly to handler.process()
+                    elif not _component_bypass_handled:
+                        app_logger.info(f"Component Fast-Path ({comp_handler.component_id}): generic deterministic execution.")
+                        # Future: call comp_handler.process(strategic_args, context) directly
+                        # For now, fall through to standard execution
+                        pass
+        except Exception as comp_err:
+            app_logger.warning(f"Component fast-path check failed for '{tool_name}', falling through: {comp_err}")
+
+        if _component_bypass_handled:
+            return
+        # --- END COMPONENT FAST-PATH ---
 
         is_fast_path_candidate = False
         if tool_name:

@@ -29,10 +29,7 @@ except Exception as e:
 # They now load from the database on first access (lazy loading for bootstrap)
 
 class LazyPrompt:
-    """Lazy-loading wrapper for database prompts.
-    
-    Handles both string prompts and JSON dict prompts (like CHARTING_INSTRUCTIONS).
-    """
+    """Lazy-loading wrapper for database prompts."""
     def __init__(self, name: str):
         self._name = name
         self._cached = None
@@ -70,7 +67,7 @@ class LazyPrompt:
         return str(self).format(**kwargs)
     
     def get(self, key, default=None):
-        """Support dict .get() for dict prompts like CHARTING_INSTRUCTIONS."""
+        """Support dict .get() for dict prompts."""
         result = self._load()
         if self._is_dict:
             return result.get(key, default)
@@ -102,9 +99,6 @@ PROVIDER_SYSTEM_PROMPTS = {
     "Friendli": MASTER_SYSTEM_PROMPT,
     "Ollama": OLLAMA_MASTER_SYSTEM_PROMPT
 }
-
-G2PLOT_GUIDELINES = _get_prompt_lazy("G2PLOT_GUIDELINES")
-CHARTING_INSTRUCTIONS = _get_prompt_lazy("CHARTING_INSTRUCTIONS") or {}
 
 ERROR_RECOVERY_PROMPT = _get_prompt_lazy("ERROR_RECOVERY_PROMPT")
 TACTICAL_SELF_CORRECTION_PROMPT = _get_prompt_lazy("TACTICAL_SELF_CORRECTION_PROMPT")

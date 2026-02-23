@@ -1561,9 +1561,7 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 3. Versioning: Changes saved to `prompt_versions` table
 
 **For development (source files)**:
-1. Edit plain text files in `trusted-data-agent-license/default_prompts/`
-   - `.txt` files for string prompts
-   - `.json` files for dictionary prompts (e.g., CHARTING_INSTRUCTIONS)
+1. Edit plain text files in `trusted-data-agent-license/default_prompts/` (`.txt` format)
 2. Encrypt: `python encrypt_default_prompts.py` (creates `schema/default_prompts.dat`)
 3. Test locally or deploy to production
 

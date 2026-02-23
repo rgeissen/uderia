@@ -22,7 +22,7 @@ from trusted_data_agent.core.config import get_user_provider, get_user_model
 # --- MODIFICATION START: Import session manager functions ---
 from trusted_data_agent.core.session_manager import get_session, update_token_count
 # --- MODIFICATION END ---
-from trusted_data_agent.agent.prompts import CHARTING_INSTRUCTIONS, PROVIDER_SYSTEM_PROMPTS
+from trusted_data_agent.agent.prompts import PROVIDER_SYSTEM_PROMPTS
 from trusted_data_agent.auth.database import get_db_session
 from trusted_data_agent.auth.models import RecommendedModel
 
@@ -370,10 +370,10 @@ def _condense_and_clean_history(history: list) -> list:
     return _denormalize_history(cleaned_history, APP_CONFIG.CURRENT_PROVIDER)
 
 
-def _get_full_system_prompt(session_data: dict, dependencies: dict, system_prompt_override: str = None, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None) -> str:
+def _get_full_system_prompt(session_data: dict, dependencies: dict, system_prompt_override: str = None, active_prompt_name_for_filter: str = None, source: str = "text", active_profile_id: str = None, current_provider: str = None, user_uuid: str = None) -> str:
     """
     Constructs the final system prompt based on the user's license tier and profile mapping.
-    
+
     Args:
         session_data: Session data dictionary
         dependencies: Dependencies dictionary containing STATE
@@ -382,6 +382,7 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
         source: Source of the call ("text", "prompt_library", etc.)
         active_profile_id: Active profile ID for prompt resolution
         current_provider: Current LLM provider for prompt resolution
+        user_uuid: User UUID for profile config resolution
     """
     if system_prompt_override:
         return system_prompt_override
@@ -426,12 +427,12 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
 
     STATE = dependencies['STATE']
 
-    charting_instructions_section = ""
-    if APP_CONFIG.CHARTING_ENABLED:
-        charting_intensity = session_data.get("charting_intensity", "medium")
-        chart_instructions_detail = CHARTING_INSTRUCTIONS.get(charting_intensity, "")
-        if chart_instructions_detail:
-            charting_instructions_section = f"- **Charting Guidelines:** {chart_instructions_detail}"
+    # --- Component instructions pipeline ---
+    # Assembles instructions from all active components for the current profile.
+    from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+    component_instructions_section = get_component_instructions_for_prompt(
+        active_profile_id, user_uuid, session_data
+    )
 
     tools_context = ""
     use_condensed_context = False
@@ -536,7 +537,7 @@ def _get_full_system_prompt(session_data: dict, dependencies: dict, system_promp
     conn.close()
     
     final_system_prompt = base_prompt_text.replace(
-        '{charting_instructions_section}', charting_instructions_section
+        '{component_instructions_section}', component_instructions_section
     ).replace(
         '{tools_context}', tools_context
     ).replace(
@@ -578,7 +579,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
     # --- MODIFICATION START: Pass user_uuid to get_session ---
     session_data = await get_session(user_uuid, session_id) if user_uuid and session_id else None
     # --- MODIFICATION END ---
-    system_prompt = _get_full_system_prompt(session_data, dependencies, system_prompt_override, active_prompt_name_for_filter, source, active_profile_id, current_provider)
+    system_prompt = _get_full_system_prompt(session_data, dependencies, system_prompt_override, active_prompt_name_for_filter, source, active_profile_id, current_provider, user_uuid=user_uuid)
 
     history_for_log_str = "No history available."
     history_source = [] # Initialize history source

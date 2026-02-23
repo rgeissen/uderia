@@ -2412,6 +2412,19 @@ const AdminManager = {
                 });
             }
         });
+        // Component mode radio buttons
+        ['comp-mode-all', 'comp-mode-selective'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', () => {
+                    const container = document.getElementById('comp-checklist-container');
+                    if (container) {
+                        container.classList.toggle('hidden', id === 'comp-mode-all');
+                    }
+                    this.checkFeaturesDirty();
+                });
+            }
+        });
     },
 
     /**
@@ -2542,7 +2555,9 @@ const AdminManager = {
             tts_mode: 'tts-mode-select',
             ext_user_extensions: 'ext-user-extensions-enabled',
             ext_marketplace: 'ext-marketplace-enabled',
-            skill_user_skills: 'skill-user-skills-enabled'
+            skill_user_skills: 'skill-user-skills-enabled',
+            comp_user_components: 'comp-user-components-enabled',
+            comp_marketplace: 'comp-marketplace-enabled'
         });
         // Extension mode radio
         const allRadio = document.getElementById('ext-mode-all');
@@ -2554,6 +2569,11 @@ const AdminManager = {
         base.skill_mode = skillAllRadio && skillAllRadio.checked ? 'all' : 'selective';
         // Disabled skills (dynamic checkboxes)
         base.skill_disabled = JSON.stringify(this._getDisabledSkills());
+        // Component mode radio
+        const compAllRadio = document.getElementById('comp-mode-all');
+        base.comp_mode = compAllRadio && compAllRadio.checked ? 'all' : 'selective';
+        // Disabled components (dynamic checkboxes)
+        base.comp_disabled = JSON.stringify(this._getDisabledComponents());
         return base;
     },
     checkFeaturesDirty() {
@@ -2795,6 +2815,126 @@ const AdminManager = {
             return true;
         } catch (err) {
             console.error('[AdminManager] Error saving skill settings:', err);
+            return false;
+        }
+    },
+
+    // --- Component Governance ---
+
+    _getDisabledComponents() {
+        const disabled = [];
+        const container = document.getElementById('comp-checklist');
+        if (!container) return disabled;
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            if (!cb.checked) disabled.push(cb.dataset.compId);
+        });
+        return disabled;
+    },
+
+    /** Load component governance settings from the admin API */
+    async loadComponentSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return;
+
+            const resp = await fetch('/api/v1/admin/component-settings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) return;
+
+            const data = await resp.json();
+            if (data.status !== 'success') return;
+
+            const settings = data.settings || {};
+            const builtins = data.builtin_components || [];
+
+            // Mode radio buttons
+            const allRadio = document.getElementById('comp-mode-all');
+            const selRadio = document.getElementById('comp-mode-selective');
+            if (allRadio && selRadio) {
+                allRadio.checked = settings.components_mode !== 'selective';
+                selRadio.checked = settings.components_mode === 'selective';
+            }
+
+            // Show/hide checklist
+            const checklistContainer = document.getElementById('comp-checklist-container');
+            if (checklistContainer) {
+                checklistContainer.classList.toggle('hidden', settings.components_mode !== 'selective');
+            }
+
+            // Render built-in component checklist
+            const checklist = document.getElementById('comp-checklist');
+            if (checklist) {
+                const disabledList = settings.disabled_components || [];
+                checklist.innerHTML = builtins.map(comp => `
+                    <label class="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-600/30">
+                        <input type="checkbox" data-comp-id="${comp.component_id}"
+                            ${disabledList.includes(comp.component_id) ? '' : 'checked'}
+                            class="rounded text-violet-500 focus:ring-violet-500 bg-gray-700 border-gray-500">
+                        <div class="flex-1 flex items-center justify-between">
+                            <span class="text-sm text-white">${comp.display_name}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">${comp.category}</span>
+                                <span class="text-xs px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">${comp.component_type}</span>
+                            </div>
+                        </div>
+                    </label>
+                `).join('');
+
+                checklist.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.addEventListener('change', () => this.checkFeaturesDirty());
+                });
+            }
+
+            // User components toggle
+            const userCompCb = document.getElementById('comp-user-components-enabled');
+            if (userCompCb) userCompCb.checked = settings.user_components_enabled !== false;
+
+            // Marketplace toggle
+            const mktCb = document.getElementById('comp-marketplace-enabled');
+            if (mktCb) mktCb.checked = settings.user_components_marketplace_enabled !== false;
+
+        } catch (err) {
+            console.error('[AdminManager] Error loading component settings:', err);
+        }
+    },
+
+    /** Save component governance settings to the admin API */
+    async saveComponentSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return true;
+
+            const allRadio = document.getElementById('comp-mode-all');
+            const userCompCb = document.getElementById('comp-user-components-enabled');
+            const mktCb = document.getElementById('comp-marketplace-enabled');
+
+            const payload = {
+                components_mode: allRadio && allRadio.checked ? 'all' : 'selective',
+                disabled_components: this._getDisabledComponents(),
+                user_components_enabled: userCompCb ? userCompCb.checked : true,
+                user_components_marketplace_enabled: mktCb ? mktCb.checked : true
+            };
+
+            const resp = await fetch('/api/v1/admin/component-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', data.message || 'Failed to save component settings');
+                }
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.error('[AdminManager] Error saving component settings:', err);
             return false;
         }
     },
@@ -3415,6 +3555,9 @@ const AdminManager = {
             // Load skill governance settings (populates UI before snapshot)
             await this.loadSkillSettings();
 
+            // Load component governance settings (populates UI before snapshot)
+            await this.loadComponentSettings();
+
             // Store original values for dirty tracking - Features tab
             this.featuresOriginal = this.getFeaturesSnapshot();
             this.featuresDirty = false;
@@ -3665,6 +3808,10 @@ const AdminManager = {
             // Save skill governance settings
             const skillOk = await this.saveSkillSettings();
             if (!skillOk) return;
+
+            // Save component governance settings
+            const compOk = await this.saveComponentSettings();
+            if (!compOk) return;
 
             // Reset dirty state
             this.featuresOriginal = this.getFeaturesSnapshot();

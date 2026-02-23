@@ -84,7 +84,7 @@ class ProfilePromptResolver:
         try:
             content = self._loader.get_prompt(prompt_name)
             
-            # Try to parse as JSON dict (for CHARTING_INSTRUCTIONS)
+            # Try to parse as JSON dict
             try:
                 parsed = json.loads(content)
                 if isinstance(parsed, dict):
@@ -151,19 +151,6 @@ class ProfilePromptResolver:
         prompt_name = self._resolve_prompt_name("data_operations", subcategory)
         return self._load_prompt_content(prompt_name)
     
-    def get_visualization_prompt(self, subcategory: str):
-        """
-        Get visualization prompt.
-        
-        Args:
-            subcategory: Visualization type (e.g., "charting_instructions", "g2plot_guidelines")
-        
-        Returns:
-            Prompt content as string or dict (for CHARTING_INSTRUCTIONS)
-        """
-        prompt_name = self._resolve_prompt_name("visualization", subcategory)
-        return self._load_prompt_content(prompt_name)
-    
     # Convenience methods for specific prompts
     
     def get_task_classification_prompt(self) -> Optional[str]:
@@ -190,14 +177,6 @@ class ProfilePromptResolver:
         """Get SQL_CONSOLIDATION_PROMPT via profile mapping."""
         return self.get_data_operations_prompt("sql_consolidation")
     
-    def get_charting_instructions(self):
-        """Get CHARTING_INSTRUCTIONS via profile mapping (returns dict)."""
-        return self.get_visualization_prompt("charting_instructions") or {}
-    
-    def get_g2plot_guidelines(self) -> Optional[str]:
-        """Get G2PLOT_GUIDELINES via profile mapping."""
-        return self.get_visualization_prompt("g2plot_guidelines")
-
     def get_genie_coordination_prompt(self, subcategory: str = "coordinator_prompt") -> Optional[str]:
         """
         Get genie coordination prompt.

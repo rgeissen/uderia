@@ -11521,3 +11521,152 @@ async def unpublish_extension(marketplace_id: str):
     except Exception as e:
         app_logger.error(f"Extension unpublish failed: {e}", exc_info=True)
         return jsonify({"error": f"Unpublish failed: {e}"}), 500
+
+
+# =============================================================================
+# Component Library Endpoints
+# =============================================================================
+
+@rest_api_bp.route("/v1/components", methods=["GET"])
+async def list_components():
+    """
+    List all installed components with status and governance filtering.
+    Returns component list + governance settings for frontend enforcement.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.components.manager import get_component_manager
+        from trusted_data_agent.components.settings import (
+            get_component_settings,
+            is_component_available,
+        )
+
+        manager = get_component_manager()
+        settings = get_component_settings()
+
+        components = []
+        for comp in manager.get_all_components():
+            if not is_component_available(comp.component_id):
+                continue
+            # If user components disabled, hide non-builtin
+            if not settings.get("user_components_enabled", True) and comp.source != "builtin":
+                continue
+            components.append(comp.to_api_dict())
+
+        return jsonify({
+            "components": components,
+            "_settings": {
+                "user_components_enabled": settings.get("user_components_enabled", True),
+                "marketplace_enabled": settings.get("user_components_marketplace_enabled", True),
+            },
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to list components: {e}", exc_info=True)
+        return jsonify({"error": "Failed to list components."}), 500
+
+
+@rest_api_bp.route("/v1/components/reload", methods=["POST"])
+async def reload_components():
+    """Hot-reload all components from disk without restarting."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.components.manager import get_component_manager
+
+        manager = get_component_manager()
+        count = manager.reload()
+        return jsonify({
+            "status": "success",
+            "loaded": count,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to reload components: {e}", exc_info=True)
+        return jsonify({"error": "Failed to reload components."}), 500
+
+
+@rest_api_bp.route("/v1/components/<component_id>", methods=["GET"])
+async def get_component_detail(component_id):
+    """Get detailed component information including full manifest."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.components.manager import get_component_manager
+        from trusted_data_agent.components.settings import is_component_available
+
+        if not is_component_available(component_id):
+            return jsonify({"error": "Component not available"}), 403
+
+        manager = get_component_manager()
+        comp = manager.get_component(component_id)
+        if not comp:
+            return jsonify({"error": "Component not found"}), 404
+
+        detail = comp.to_api_dict()
+        detail["manifest"] = comp.manifest
+
+        return jsonify({"component": detail}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get component {component_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get component: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/components/<component_id>/renderer", methods=["GET"])
+async def get_component_renderer(component_id):
+    """
+    Serve a component's JavaScript renderer file.
+    Used by the frontend ComponentRendererRegistry to dynamically load renderers.
+    """
+    try:
+        from trusted_data_agent.components.manager import get_component_manager
+        from trusted_data_agent.components.settings import is_component_available
+
+        if not is_component_available(component_id):
+            return jsonify({"error": "Component not available"}), 403
+
+        manager = get_component_manager()
+        comp = manager.get_component(component_id)
+        if not comp or not comp.renderer_path:
+            return jsonify({"error": "Renderer not found"}), 404
+
+        if not comp.renderer_path.exists():
+            return jsonify({"error": "Renderer file missing"}), 404
+
+        js_content = comp.renderer_path.read_text(encoding="utf-8")
+        return js_content, 200, {"Content-Type": "application/javascript; charset=utf-8"}
+
+    except Exception as e:
+        app_logger.error(f"Failed to serve renderer for {component_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to serve renderer: {e}"}), 500
+
+
+@rest_api_bp.route("/v1/components/manifest", methods=["GET"])
+async def get_component_manifest():
+    """
+    Get the frontend manifest for all components.
+    Used by ComponentRendererRegistry to register all available renderers.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.components.manager import get_component_manager
+
+        manager = get_component_manager()
+        manifest = manager.get_frontend_manifest()
+
+        return jsonify({"manifest": manifest}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get component manifest: {e}", exc_info=True)
+        return jsonify({"error": "Failed to get component manifest."}), 500

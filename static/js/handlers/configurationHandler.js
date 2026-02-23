@@ -14,6 +14,7 @@ import { showAppBanner } from '../bannerSystem.js';
 import { markSaving } from '../configDirtyState.js';
 import { loadAgentPacks } from './agentPackHandler.js';
 import { loadExtensions, initializeExtensionHandlers } from './extensionHandler.js';
+import { loadComponents, initializeComponentHandlers } from './componentHandler.js';
 import { loadSkills, initializeSkillHandlers } from './skillHandler.js';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers } from './agentPackGrouping.js';
 
@@ -2856,6 +2857,11 @@ function initializeConfigTabs() {
             if (targetTabId === 'extensions-tab') {
                 loadExtensions();
             }
+
+            // Lazy-load components when tab is activated
+            if (targetTabId === 'components-tab') {
+                loadComponents();
+            }
         });
     });
 }
@@ -5349,6 +5355,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             const dualModelSection = modal.querySelector('#dual-model-section');
             if (dualModelSection) dualModelSection.style.display = 'none';
 
+            // Show component config section for llm_only
+            const compConfigSection = modal.querySelector('#component-config-section');
+            if (compConfigSection) compConfigSection.style.display = '';
+
             // SHOW Conversation Capabilities section
             if (conversationCapabilitiesSection) conversationCapabilitiesSection.style.display = '';
 
@@ -5424,6 +5434,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             const dualModelSection = modal.querySelector('#dual-model-section');
             if (dualModelSection) dualModelSection.style.display = 'none';
 
+            // Show component config section (components auto-upgrade RAG to agent path)
+            const compConfigSectionRag = modal.querySelector('#component-config-section');
+            if (compConfigSectionRag) compConfigSectionRag.style.display = '';
+
             // Hide MCP sections (RAG focused doesn't use tools/planner)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
             if (classificationSection) classificationSection.style.display = 'none';
@@ -5466,6 +5480,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             // Hide dual-model section (only for tool_enabled)
             const dualModelSection = modal.querySelector('#dual-model-section');
             if (dualModelSection) dualModelSection.style.display = 'none';
+
+            // Show component config section (coordinator can call component tools directly)
+            const compConfigSectionGenie = modal.querySelector('#component-config-section');
+            if (compConfigSectionGenie) compConfigSectionGenie.style.display = '';
 
             // Hide MCP-related sections (genie doesn't use MCP directly)
             if (mcpServerContainer) mcpServerContainer.style.display = 'none';
@@ -5567,6 +5585,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                     });
                 }
             }
+
+            // Show component config section for tool_enabled
+            const compConfigSectionTool = modal.querySelector('#component-config-section');
+            if (compConfigSectionTool) compConfigSectionTool.style.display = '';
 
             // KEEP System Prompts tab visible (for enterprise users to configure all prompts)
             if (systemPromptsTab && systemPromptsTab.style.display !== 'none') {
@@ -5869,6 +5891,71 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 }
             }
         }
+    }
+
+    // Populate component configuration toggles
+    const compTogglesContainer = modal.querySelector('#profile-component-toggles');
+    if (compTogglesContainer) {
+        (async () => {
+            try {
+                const authToken = localStorage.getItem('tda_auth_token');
+                const resp = await fetch('/api/v1/components', {
+                    headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const components = data.components || [];
+
+                if (components.length === 0) {
+                    compTogglesContainer.innerHTML = '<p class="text-xs text-gray-500 italic">No components installed.</p>';
+                    return;
+                }
+
+                const componentConfig = profile?.componentConfig || {};
+
+                compTogglesContainer.innerHTML = components.map(comp => {
+                    const compSettings = componentConfig[comp.component_id] || {};
+                    const isEnabled = compSettings.enabled !== undefined ? compSettings.enabled : true;
+                    const intensity = compSettings.intensity || comp.profile_defaults?.default_intensity || 'medium';
+                    const hasIntensity = comp.component_type === 'action';
+
+                    return `
+                        <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20">
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm text-gray-200">${comp.display_name}</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 uppercase tracking-wider">${comp.component_type}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                ${hasIntensity ? `
+                                <select class="comp-intensity-select text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-300"
+                                        data-component-id="${comp.component_id}" ${!isEnabled ? 'disabled' : ''}>
+                                    <option value="minimal" ${intensity === 'minimal' ? 'selected' : ''}>Minimal</option>
+                                    <option value="low" ${intensity === 'low' ? 'selected' : ''}>Low</option>
+                                    <option value="medium" ${intensity === 'medium' ? 'selected' : ''}>Medium</option>
+                                    <option value="high" ${intensity === 'high' ? 'selected' : ''}>High</option>
+                                </select>` : ''}
+                                <label class="ind-toggle ind-toggle--sm">
+                                    <input type="checkbox" class="comp-toggle"
+                                           data-component-id="${comp.component_id}" ${isEnabled ? 'checked' : ''}>
+                                    <span class="ind-track"></span>
+                                </label>
+                            </div>
+                        </div>`;
+                }).join('');
+
+                // Wire toggle → intensity select enable/disable
+                compTogglesContainer.querySelectorAll('.comp-toggle').forEach(toggle => {
+                    toggle.addEventListener('change', (e) => {
+                        const row = e.target.closest('.flex');
+                        const intensitySelect = row?.querySelector('.comp-intensity-select');
+                        if (intensitySelect) intensitySelect.disabled = !e.target.checked;
+                    });
+                });
+            } catch (err) {
+                console.warn('[Profile Modal] Failed to load components:', err);
+                compTogglesContainer.innerHTML = '<p class="text-xs text-gray-500 italic">Could not load components.</p>';
+            }
+        })();
     }
 
     // Set classification mode
@@ -6812,6 +6899,22 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             profileData.dualModelConfig = null;
         }
 
+        // Collect componentConfig from component toggles
+        const compToggles = modal.querySelectorAll('.comp-toggle');
+        if (compToggles.length > 0) {
+            const componentConfig = {};
+            compToggles.forEach(toggle => {
+                const compId = toggle.dataset.componentId;
+                const row = toggle.closest('.flex');
+                const intensitySelect = row?.querySelector('.comp-intensity-select');
+                componentConfig[compId] = {
+                    enabled: toggle.checked,
+                    intensity: intensitySelect ? intensitySelect.value : 'medium'
+                };
+            });
+            profileData.componentConfig = componentConfig;
+        }
+
         // For new profiles: if a default profile exists, enable inherit_classification by default
         if (!isEdit && configState.defaultProfileId) {
             profileData.inherit_classification = true;
@@ -6974,6 +7077,7 @@ export async function initializeConfigurationUI() {
     renderProfiles();
     updateReconnectButton();
     initializeExtensionHandlers();
+    initializeComponentHandlers();
     initializeSkillHandlers();
 
     // Load MCP classification setting

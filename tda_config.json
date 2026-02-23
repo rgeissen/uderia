@@ -886,37 +886,6 @@
               "disabled": false
             },
             {
-              "name": "TDA_Charting",
-              "description": "Generates a data visualization based on provided data. You must specify the chart type and map the data fields to the appropriate visual roles.",
-              "arguments": [
-                {
-                  "name": "chart_type",
-                  "type": "string",
-                  "description": "The type of chart to generate (e.g., 'bar', 'pie', 'line', 'scatter'). This MUST be one of the types listed in the 'Charting Guidelines'.",
-                  "required": true
-                },
-                {
-                  "name": "data",
-                  "type": "list[dict]",
-                  "description": "The data to be visualized, passed directly from the output of another tool.",
-                  "required": true
-                },
-                {
-                  "name": "title",
-                  "type": "string",
-                  "description": "A descriptive title for the chart.",
-                  "required": true
-                },
-                {
-                  "name": "mapping",
-                  "type": "dict",
-                  "description": "A dictionary that maps data keys to chart axes or roles (e.g., {'x_axis': 'product_name', 'y_axis': 'sales_total'}). The required keys for this mapping depend on the selected chart_type.",
-                  "required": true
-                }
-              ],
-              "disabled": false
-            },
-            {
               "name": "TDA_CurrentDate",
               "description": "Returns the current system date in YYYY-MM-DD format. Use this as the first step for any user query involving relative dates like 'today', 'yesterday', or 'this week'.",
               "arguments": [],
@@ -1036,7 +1005,10 @@
       },
       "needs_reclassification": false,
       "agent_packs": [],
-      "dualModelConfig": null
+      "dualModelConfig": null,
+      "componentConfig": {
+        "chart": { "enabled": true, "intensity": "medium" }
+      }
     },
     {
       "id": "profile-1764006444002-z0hdduce9",
@@ -2176,7 +2148,10 @@
         ]
       },
       "needs_reclassification": true,
-      "agent_packs": []
+      "agent_packs": [],
+      "componentConfig": {
+        "chart": { "enabled": true, "intensity": "medium" }
+      }
     },
     {
       "id": "profile-default-rag",
@@ -2236,7 +2211,10 @@
       },
       "providerName": "Friendli",
       "agent_packs": [],
-      "dualModelConfig": null
+      "dualModelConfig": null,
+      "componentConfig": {
+        "chart": { "enabled": true, "intensity": "medium" }
+      }
     },
     {
       "id": "profile-default-genie",
@@ -2291,7 +2269,10 @@
       },
       "providerName": "Friendli",
       "agent_packs": [],
-      "dualModelConfig": null
+      "dualModelConfig": null,
+      "componentConfig": {
+        "chart": { "enabled": true, "intensity": "medium" }
+      }
     }
   ],
   "active_profile_id": null,
@@ -2722,10 +2703,6 @@
     "data_operations": {
       "sql_consolidation": "SQL_CONSOLIDATION_PROMPT"
     },
-    "visualization": {
-      "charting_instructions": "CHARTING_INSTRUCTIONS",
-      "g2plot_guidelines": "G2PLOT_GUIDELINES"
-    },
     "conversation_execution": {
       "conversation": "CONVERSATION_EXECUTION",
       "conversation_with_tools": "CONVERSATION_WITH_TOOLS_EXECUTION"
@@ -2752,5 +2729,11 @@
     "user_skills_enabled": true,
     "auto_skills_enabled": false,
     "user_skills_marketplace_enabled": true
+  },
+  "component_settings": {
+    "components_mode": "all",
+    "disabled_components": [],
+    "user_components_enabled": true,
+    "user_components_marketplace_enabled": true
   }
 }

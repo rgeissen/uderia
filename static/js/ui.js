@@ -7,6 +7,7 @@
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedModelId } from './utils.js';
+import { renderComponent, hasRenderer } from './componentRenderers.js';
 // We need access to the functions that will handle save/cancel from the input
 import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.6';
 import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
@@ -1357,7 +1358,18 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         }
     }
 
-    const chartContainers = messageContent.querySelectorAll('.chart-render-target');
+    // --- Component rendering: generalized [data-component-id] + legacy .chart-render-target ---
+    const componentContainers = messageContent.querySelectorAll('[data-component-id]');
+    componentContainers.forEach(container => {
+        const componentId = container.dataset.componentId;
+        const spec = container.dataset.spec;
+        if (componentId && spec && hasRenderer(componentId)) {
+            renderComponent(componentId, container.id, spec);
+        }
+    });
+
+    // Legacy: .chart-render-target without data-component-id (backward compat)
+    const chartContainers = messageContent.querySelectorAll('.chart-render-target:not([data-component-id])');
     chartContainers.forEach(container => {
         if (container.dataset.spec) {
             renderChart(container.id, container.dataset.spec);
@@ -2175,6 +2187,37 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 break;
             }
 
+            case 'genie_component_invoked': {
+                const compToolName = details.tool_name || 'Component Tool';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">${compToolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">Executing...</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'genie_component_completed': {
+                const compToolNameDone = details.tool_name || 'Component Tool';
+                const componentId = details.component_id || 'unknown';
+                const compStatusText = details.success ? '✓ Success' : '✗ Failed';
+                const compStatusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">${compToolNameDone}</code></div>
+                        <div class="status-kv-key">Component</div>
+                        <div class="status-kv-value">${componentId}</div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${compStatusClass}">${compStatusText}</div>
+                    </div>
+                `;
+                break;
+            }
+
             case 'execution_start':
             case 'execution_complete':
             case 'execution_error':
@@ -2245,8 +2288,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
     }
 
     // CRITICAL FIX: For session name generation complete, UPDATE the existing "Generating..." step
+    // Use deterministic data-event-type selector (set by START event) with fallback to .active
     if (type === 'session_name_generation_complete') {
-        const lastStep = parentContainer.querySelector('.status-step.active');
+        const lastStep = parentContainer.querySelector('.status-step[data-event-type="session_name_generation_start"]')
+                      || parentContainer.querySelector('.status-step.active');
 
         if (lastStep) {
             // Update the existing step as completed
@@ -2400,6 +2445,10 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
         stepEl.dataset.toolName = details.tool_name;
         stepEl.dataset.toolStatus = 'executing';
         console.log('[LiveStatus] Set data attributes on invoked step:', {toolName: details.tool_name, toolStatus: 'executing'});
+    }
+    // Tag session name START card so the COMPLETE handler can find it deterministically
+    if (type === 'session_name_generation_start') {
+        stepEl.dataset.eventType = 'session_name_generation_start';
     }
 
     if (isFinal) {

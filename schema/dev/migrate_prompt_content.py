@@ -67,7 +67,7 @@ def migrate_prompt_content(db_path):
         
         content = _LOADED_PROMPTS[name]
         
-        # Skip if content is not a string (e.g., CHARTING_INSTRUCTIONS is a dict)
+        # Skip if content is not a string
         if not isinstance(content, str):
             print(f"  ⚠ SKIPPED: {name} - content is {type(content).__name__}, not string")
             skipped += 1

@@ -2600,3 +2600,91 @@ async def save_skill_settings_endpoint():
     except Exception as e:
         logger.error(f"Error saving skill settings: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Component Governance Settings (mirrors extension/skill settings above)
+# ---------------------------------------------------------------------------
+
+@admin_api_bp.route('/v1/admin/component-settings', methods=['GET'])
+@require_admin
+async def get_component_settings_endpoint():
+    """
+    Get current component governance settings plus the list of built-in components.
+
+    Returns:
+    {
+        "status": "success",
+        "settings": { ... },
+        "builtin_components": [ { component_id, display_name, category, component_type }, ... ]
+    }
+    """
+    try:
+        from trusted_data_agent.components.settings import get_component_settings
+        from trusted_data_agent.components.manager import get_component_manager
+
+        settings = get_component_settings()
+        manager = get_component_manager()
+
+        builtin = [
+            {
+                "component_id": c.component_id,
+                "display_name": c.display_name,
+                "category": c.category,
+                "component_type": c.component_type,
+            }
+            for c in manager.get_builtin_components()
+        ]
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings,
+            'builtin_components': builtin,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting component settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/component-settings', methods=['POST'])
+@require_admin
+async def save_component_settings_endpoint():
+    """
+    Save component governance settings (admin only).
+
+    Body (all fields optional — only supplied keys are updated):
+    {
+        "components_mode": "all" | "selective",
+        "disabled_components": ["audio_tts", "video"],
+        "user_components_enabled": true | false,
+        "user_components_marketplace_enabled": true | false
+    }
+    """
+    try:
+        from trusted_data_agent.components.settings import save_component_settings, get_component_settings
+
+        data = await request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        if 'components_mode' in data and data['components_mode'] not in ('all', 'selective'):
+            return jsonify({'status': 'error', 'message': "components_mode must be 'all' or 'selective'"}), 400
+
+        if 'disabled_components' in data and not isinstance(data['disabled_components'], list):
+            return jsonify({'status': 'error', 'message': 'disabled_components must be a list'}), 400
+
+        admin_user = get_current_user_from_request()
+        admin_uuid = admin_user.id if admin_user else 'unknown'
+
+        save_component_settings(data, admin_uuid)
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Component settings updated successfully',
+            'settings': get_component_settings(),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error saving component settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

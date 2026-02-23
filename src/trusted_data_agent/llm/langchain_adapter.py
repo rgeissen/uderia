@@ -502,10 +502,13 @@ async def load_mcp_tools_for_langchain(
         logger.info(f"Loaded {len(all_tools)} tools from MCP server {mcp_server_id}")
 
         # Filter tools based on profile configuration
+        # Note: Only MCP server tools flow through here. System tools (TDA_*) are in
+        # CLIENT_SIDE_TOOLS (adapter.py) and component tools (TDA_Charting, etc.) are
+        # managed by ComponentManager — neither comes through this MCP loading path.
         if filter_tools:
             filtered_tools = [
                 tool for tool in all_tools
-                if tool.name in enabled_tools or tool.name.startswith('TDA_')
+                if tool.name in enabled_tools
             ]
             logger.info(f"Filtered to {len(filtered_tools)} tools based on profile settings")
             return filtered_tools

@@ -29,6 +29,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Dict, List, Any, Optional, Callable
@@ -122,6 +123,10 @@ class ConversationAgentExecutor:
         # Collect events during execution for session storage/replay
         self.collected_events = []
 
+        # Collect component render payloads (chart specs, code blocks, etc.)
+        # Extracted from tool results so the executor can generate rendering HTML.
+        self.component_payloads: list = []
+
         # Track tool execution state
         self.tools_invoked = []
         self.tool_start_times = {}
@@ -210,6 +215,11 @@ class ConversationAgentExecutor:
             for tool in self.mcp_tools
         ])
         prompt = prompt.replace("{tools_context}", f"AVAILABLE TOOLS:\n{tool_descriptions}")
+
+        # Inject component instructions
+        from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+        comp_section = get_component_instructions_for_prompt(self.profile_id, self.user_uuid)
+        prompt = prompt.replace("{component_instructions_section}", comp_section)
 
         # Inject knowledge context if available
         if self.knowledge_context:
@@ -604,6 +614,20 @@ RESPONSE FORMAT:
                     })
                     logger.info(f"[ConvAgent] ✓ Emitted conversation_tool_completed event with result_preview: {bool(output_preview)}")
 
+                    # Detect component render payloads (chart specs, code blocks, etc.)
+                    # so the executor can generate data-component-id divs for the frontend.
+                    try:
+                        _raw = tool_output.content if hasattr(tool_output, 'content') else str(tool_output)
+                        _parsed = json.loads(_raw)
+                        if (isinstance(_parsed, dict)
+                                and _parsed.get("status") == "success"
+                                and _parsed.get("component_id")
+                                and _parsed.get("spec")):
+                            self.component_payloads.append(_parsed)
+                            logger.info(f"[ConvAgent] Captured component payload: {_parsed['component_id']}")
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        pass
+
                     # CRITICAL: Yield control to event loop to allow SSE tasks to run
                     await asyncio.sleep(0)
 
@@ -748,6 +772,7 @@ RESPONSE FORMAT:
                 "response": final_response,
                 "tools_used": tools_used,
                 "collected_events": self.collected_events,
+                "component_payloads": self.component_payloads,
                 "success": True,
                 "duration_ms": total_duration_ms,
                 "input_tokens": total_input_tokens,

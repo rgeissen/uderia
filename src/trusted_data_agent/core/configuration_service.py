@@ -212,9 +212,10 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
     APP_STATE['structured_resources'] = classification_results.get('resources', {})
     APP_STATE['tool_scopes'] = classification_results.get('tool_scopes', {})
 
-    # CRITICAL FIX: Inject TDA_* client-side tools into structured_tools if missing from cached classification.
-    # Classification only covers MCP server tools. TDA_* tools are client-side system tools that
-    # must always be present for the Fusion Optimizer (TDA_FinalReport, TDA_Charting, etc.).
+    # CRITICAL FIX: Inject system tools into structured_tools if missing from cached classification.
+    # Classification only covers MCP server tools. System tools (TDA_FinalReport, TDA_CurrentDate, etc.)
+    # must always be present for the Fusion Optimizer planner. Component tools (TDA_Charting, etc.)
+    # are injected separately via ComponentManager.
     from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS
     existing_tool_names = {t['name'] for tools in APP_STATE['structured_tools'].values() for t in tools}
     missing_system_tools = [t for t in CLIENT_SIDE_TOOLS if t['name'] not in existing_tool_names]
@@ -237,7 +238,36 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
                 "disabled": False
             })
         APP_STATE['structured_tools']["System Tools"] = system_category
-        app_logger.info(f"Injected {len(missing_system_tools)} missing TDA_* tools into structured_tools from cached classification")
+        app_logger.info(f"Injected {len(missing_system_tools)} missing system tools into structured_tools from cached classification")
+
+    # Inject component tools (TDA_Charting, etc.) as a separate "Component Tools" category.
+    # These are managed by ComponentManager and filtered per-profile at query time.
+    try:
+        from trusted_data_agent.components.manager import get_component_manager
+        comp_manager = get_component_manager()
+        component_tool_defs = comp_manager.get_tool_definitions({})  # All components (profile filtering at query time)
+        if component_tool_defs:
+            component_category = []
+            for tool_def in component_tool_defs:
+                processed_args = []
+                for arg_name, arg_details in tool_def.get("args", {}).items():
+                    if isinstance(arg_details, dict):
+                        processed_args.append({
+                            "name": arg_name,
+                            "type": arg_details.get("type", "any"),
+                            "description": arg_details.get("description", "No description."),
+                            "required": arg_details.get("required", False)
+                        })
+                component_category.append({
+                    "name": tool_def["name"],
+                    "description": tool_def.get("description", ""),
+                    "arguments": processed_args,
+                    "disabled": False
+                })
+            APP_STATE['structured_tools']["Component Tools"] = component_category
+            app_logger.info(f"Injected {len(component_tool_defs)} component tool(s) into structured_tools")
+    except Exception as e:
+        app_logger.warning(f"Failed to inject component tools: {e}")
 
     # CRITICAL FIX: Always regenerate tools_context string after loading classification
     # The strategic planner reads APP_STATE['tools_context'] (string), not structured_tools (dict).

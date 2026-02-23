@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Component Manifest v1",
+  "description": "Schema for Generative UI Component manifest.json files",
+  "type": "object",
+  "required": ["component_id", "display_name", "version", "component_type"],
+  "properties": {
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Unique identifier (lowercase, underscores allowed)"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for UI display"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description of what the component does"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version string"
+    },
+    "component_type": {
+      "type": "string",
+      "enum": ["action", "structural"],
+      "description": "action = LLM-invoked via tool call, structural = data-driven"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["Visualization", "Media", "Code", "Layout", "General"],
+      "description": "UI category for filtering"
+    },
+    "agent_pack_id": {
+      "type": "string",
+      "description": "If installed via agent pack, the pack ID"
+    },
+    "tool_definition": {
+      "type": "object",
+      "description": "Tool definition for action components (injected into LLM context)",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^TDA_",
+          "description": "Tool name (must start with TDA_)"
+        },
+        "description": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "description": { "type": "string" },
+              "required": { "type": "boolean" }
+            },
+            "required": ["type", "description"]
+          }
+        }
+      },
+      "required": ["name", "description", "args"]
+    },
+    "instructions": {
+      "type": "object",
+      "description": "LLM prompt instructions configuration",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Filename of the instructions file (relative to component dir)"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["plain", "intensity_keyed"],
+          "description": "plain = raw text, intensity_keyed = JSON keyed by intensity level"
+        },
+        "placeholder_substitutions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map of {PLACEHOLDER} → filename for text substitution"
+        }
+      },
+      "required": ["file", "format"]
+    },
+    "backend": {
+      "type": "object",
+      "description": "Backend handler configuration",
+      "properties": {
+        "handler_file": {
+          "type": "string",
+          "description": "Python handler filename (relative to component dir)"
+        },
+        "handler_class": {
+          "type": "string",
+          "description": "Handler class name (auto-detected if omitted)"
+        },
+        "fast_path": {
+          "type": "boolean",
+          "description": "If true, executor can skip tactical LLM for this component"
+        }
+      },
+      "required": ["handler_file"]
+    },
+    "frontend": {
+      "type": "object",
+      "description": "Frontend renderer configuration",
+      "properties": {
+        "renderer_file": {
+          "type": "string",
+          "description": "JS renderer filename (relative to component dir)"
+        },
+        "renderer_export": {
+          "type": "string",
+          "description": "Exported function name from renderer.js"
+        },
+        "cdn_dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "global": { "type": "string" }
+            },
+            "required": ["name", "url", "global"]
+          },
+          "description": "CDN libraries to load before rendering"
+        }
+      },
+      "required": ["renderer_file", "renderer_export"]
+    },
+    "render_targets": {
+      "type": "object",
+      "description": "Where this component can render",
+      "properties": {
+        "default": {
+          "type": "string",
+          "enum": ["inline", "sub_window", "status_panel"]
+        },
+        "supports": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["inline", "sub_window", "status_panel"]
+          }
+        },
+        "sub_window": {
+          "type": "object",
+          "properties": {
+            "title_template": { "type": "string" },
+            "default_size": {
+              "type": "object",
+              "properties": {
+                "width": { "type": "integer" },
+                "height": { "type": "integer" }
+              }
+            },
+            "resizable": { "type": "boolean" },
+            "interactive": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["default", "supports"]
+    },
+    "profile_defaults": {
+      "type": "object",
+      "description": "Default profile settings for this component",
+      "properties": {
+        "enabled_for": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Profile types where this component is enabled by default"
+        },
+        "default_intensity": {
+          "type": "string",
+          "description": "Default intensity level for this component"
+        }
+      }
+    }
+  }
+}

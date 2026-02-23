@@ -3503,7 +3503,7 @@ button[data-action="delete-mcp"]:hover {
     border-color: rgba(16, 185, 129, 0.5);
 }
 
-/* Enhanced checkbox styling - applied globally */
+/* Enhanced checkbox styling */
 input[type="checkbox"] {
     appearance: none;
     -webkit-appearance: none;

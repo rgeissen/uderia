@@ -1395,8 +1395,13 @@ class PlanExecutor:
         mcp_server_id = profile_config.get("mcpServerId")
         llm_config_id = profile_config.get("llmConfigurationId")
 
-        if not mcp_server_id:
-            error_msg = "conversation_with_tools profile requires an MCP server configuration."
+        # MCP server is optional when component tools are available (platform feature).
+        # Component tools (TDA_Charting, etc.) don't require an MCP server.
+        from trusted_data_agent.components.manager import get_component_langchain_tools
+        component_tools = get_component_langchain_tools(self.active_profile_id, self.user_uuid)
+
+        if not mcp_server_id and not component_tools:
+            error_msg = "conversation_with_tools profile requires an MCP server configuration or active component tools."
             app_logger.error(error_msg)
             yield self._format_sse_with_depth({"step": "Error", "error": error_msg}, "error")
             return
@@ -1412,14 +1417,23 @@ class PlanExecutor:
             app_logger.info(f"Creating LangChain LLM for config {llm_config_id}")
             llm_instance = create_langchain_llm(llm_config_id, self.user_uuid, thinking_budget=self.thinking_budget)
 
-            # Load MCP tools filtered by profile
-            app_logger.info(f"Loading MCP tools from server {mcp_server_id}")
-            mcp_tools = await load_mcp_tools_for_langchain(
-                mcp_server_id=mcp_server_id,
-                profile_id=self.active_profile_id,
-                user_uuid=self.user_uuid
-            )
-            app_logger.info(f"Loaded {len(mcp_tools)} tools for agent")
+            # Load MCP tools filtered by profile (if MCP server configured)
+            all_tools = []
+            if mcp_server_id:
+                app_logger.info(f"Loading MCP tools from server {mcp_server_id}")
+                mcp_tools = await load_mcp_tools_for_langchain(
+                    mcp_server_id=mcp_server_id,
+                    profile_id=self.active_profile_id,
+                    user_uuid=self.user_uuid
+                )
+                all_tools.extend(mcp_tools)
+                app_logger.info(f"Loaded {len(mcp_tools)} MCP tools for agent")
+
+            # Merge component tools (TDA_Charting, etc.) — platform feature, per-profile config
+            # component_tools already loaded above (before MCP server check)
+            if component_tools:
+                all_tools.extend(component_tools)
+                app_logger.info(f"Added {len(component_tools)} component tool(s): {', '.join(t.name for t in component_tools)}")
 
             # Get conversation history for context
             # NOTE: The current user query has already been added to chat_object by execution_service.py
@@ -1691,7 +1705,7 @@ class PlanExecutor:
                 user_uuid=self.user_uuid,
                 session_id=self.session_id,
                 llm_instance=llm_instance,
-                mcp_tools=mcp_tools,
+                mcp_tools=all_tools,
                 async_event_handler=self.event_handler,  # Real-time SSE via asyncio.create_task()
                 max_iterations=5,
                 conversation_history=conversation_history,
@@ -1767,6 +1781,26 @@ class PlanExecutor:
             }
             formatter = OutputFormatter(**formatter_kwargs)
             final_html, tts_payload = formatter.render()
+
+            # Append component rendering HTML (chart, code, audio, video, etc.)
+            # The ConversationAgentExecutor extracts component payloads from tool
+            # results.  We generate generic data-component-id divs that the
+            # frontend's ComponentRendererRegistry dispatches to the correct renderer.
+            component_payloads = result.get("component_payloads", [])
+            for _cp in component_payloads:
+                _comp_id = _cp.get("component_id", "unknown")
+                _spec = _cp.get("spec", {})
+                _cid = f"component-{uuid.uuid4().hex[:12]}"
+                try:
+                    _spec_json = json.dumps(_spec).replace("'", "&apos;")
+                except (TypeError, ValueError):
+                    continue
+                final_html += (
+                    f'\n<div class="response-card mb-4">'
+                    f'<div id="{_cid}" data-component-id="{_comp_id}" '
+                    f"data-spec='{_spec_json}'></div>"
+                    f'</div>'
+                )
 
             # Add assistant message to conversation history (with HTML for display)
             await session_manager.add_message_to_histories(
@@ -2281,8 +2315,14 @@ Response:"""
         # Check if llm_only profile has MCP tools enabled (routes to LangChain agent path instead)
         profile_config = self._get_profile_config()
         use_mcp_tools = profile_config.get("useMcpTools", False)
-        # Only pure llm_only (without MCP tools) goes through direct execution
-        is_llm_only = (profile_type == "llm_only" and not use_mcp_tools)
+        # Check if profile has active component tools (e.g., TDA_Charting) — platform feature
+        # Component tools require tool-calling capability, so profiles with active components
+        # auto-upgrade to the conversation agent path (LangChain) even without MCP tools.
+        from trusted_data_agent.components.manager import get_component_manager as _get_comp_mgr
+        _comp_mgr = _get_comp_mgr()
+        has_component_tools = _comp_mgr.has_active_tool_components(profile_config)
+        # Only pure llm_only (without MCP tools AND without component tools) goes through direct execution
+        is_llm_only = (profile_type == "llm_only" and not use_mcp_tools and not has_component_tools)
 
         # --- Document upload: Load document context with multimodal routing ---
         if self.attachments:
@@ -2650,6 +2690,13 @@ The following domain knowledge may be relevant to this conversation:
                 # Fallback if prompt not found
                 system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
                 app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
+
+            # --- Inject component instructions ---
+            from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+            comp_section = get_component_instructions_for_prompt(
+                self.active_profile_id, self.user_uuid, session_data
+            )
+            system_prompt = system_prompt.replace('{component_instructions_section}', comp_section)
 
             # --- Inject skill content (pre-processing) ---
             if self.skill_result and self.skill_result.has_content:
@@ -3047,11 +3094,13 @@ The following domain knowledge may be relevant to this conversation:
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH END ---
 
         # --- CONVERSATION WITH TOOLS: LANGCHAIN AGENT PATH ---
-        # Check if this is an llm_only profile with useMcpTools enabled
-        # Note: profile_config and use_mcp_tools already computed at beginning of execute()
-        is_conversation_with_tools = (profile_type == "llm_only" and use_mcp_tools)
+        # Routes here when llm_only profile has MCP tools OR active component tools.
+        # Component tools are a platform feature available to all profile types.
+        # Note: profile_config, use_mcp_tools, has_component_tools already computed at beginning of execute()
+        is_conversation_with_tools = (profile_type == "llm_only" and (use_mcp_tools or has_component_tools))
         if is_conversation_with_tools:
-            app_logger.info("🔧 Conversation profile with MCP Tools - LangChain agent mode")
+            tool_reason = "MCP Tools" if use_mcp_tools else "Component Tools"
+            app_logger.info(f"🔧 Conversation profile with {tool_reason} - LangChain agent mode")
 
             # Note: Lifecycle events (execution_start/execution_complete) are NOT emitted here.
             # The conversation_agent_start/conversation_agent_complete events from ConversationAgentExecutor
@@ -3560,6 +3609,13 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = synthesis_prompt_override.strip()
                 app_logger.info(f"[RAG] Using synthesis prompt override ({len(system_prompt)} chars)")
 
+            # --- Inject component instructions ---
+            from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+            comp_section = get_component_instructions_for_prompt(
+                self.active_profile_id, self.user_uuid, session_data
+            )
+            system_prompt = system_prompt.replace('{component_instructions_section}', comp_section)
+
             # --- Inject skill content (pre-processing) ---
             if self.skill_result and self.skill_result.has_content:
                 sp_block = self.skill_result.get_system_prompt_block()
@@ -3604,13 +3660,76 @@ The following domain knowledge may be relevant to this conversation:
             # Set LLM busy indicator
             yield self._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
-            # Call LLM for synthesis
-            response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
-                prompt=user_message,
-                reason="RAG Focused Synthesis",
-                system_prompt_override=system_prompt,
-                multimodal_content=self.multimodal_content
-            )
+            # Check for active component tools — auto-upgrade synthesis to agent mode
+            from trusted_data_agent.components.manager import get_component_langchain_tools as _get_rag_comp_tools
+            rag_component_tools = _get_rag_comp_tools(self.active_profile_id, self.user_uuid)
+
+            rag_component_payloads = []  # Component payloads extracted from agent result (if any)
+
+            if rag_component_tools:
+                # --- RAG + Component Tools: Agent-based synthesis ---
+                # Use ConversationAgentExecutor for synthesis with component tools
+                # (e.g., LLM can call TDA_Charting to visualize retrieved knowledge)
+                app_logger.info(f"[RAG] Component tools active ({len(rag_component_tools)}) — agent-based synthesis")
+                from trusted_data_agent.llm.langchain_adapter import create_langchain_llm
+                from trusted_data_agent.agent.conversation_agent import ConversationAgentExecutor
+
+                llm_config_id = profile_config.get("llmConfigurationId")
+                rag_llm_instance = create_langchain_llm(llm_config_id, self.user_uuid, thinking_budget=self.thinking_budget)
+
+                session_data_for_history = await session_manager.get_session(self.user_uuid, self.session_id)
+                rag_conv_history = []
+                if session_data_for_history:
+                    chat_obj = session_data_for_history.get("chat_object", [])
+                    rag_conv_history = [m for m in chat_obj[-10:] if m.get("content", "").strip() != self.original_user_input.strip()]
+
+                rag_agent = ConversationAgentExecutor(
+                    profile=profile_config,
+                    user_uuid=self.user_uuid,
+                    session_id=self.session_id,
+                    llm_instance=rag_llm_instance,
+                    mcp_tools=rag_component_tools,
+                    async_event_handler=self.event_handler,
+                    max_iterations=3,
+                    conversation_history=rag_conv_history,
+                    knowledge_context=knowledge_context,
+                    document_context=rag_doc_context,
+                    multimodal_content=self.multimodal_content,
+                    turn_number=self.current_turn_number,
+                    provider=self.current_provider if hasattr(self, 'current_provider') else None,
+                    model=self.current_model if hasattr(self, 'current_model') else None,
+                )
+
+                agent_result = await rag_agent.execute(self.original_user_input)
+                response_text = agent_result.get("response", "")
+                input_tokens = agent_result.get("input_tokens", 0)
+                output_tokens = agent_result.get("output_tokens", 0)
+
+                # CRITICAL: ConversationAgentExecutor uses LangChain directly (not llm_handler)
+                # so we must explicitly update turn counters and persist session token counts.
+                # Without this, the token_update event reads stale session data (0/0).
+                self.turn_input_tokens += input_tokens
+                self.turn_output_tokens += output_tokens
+                if input_tokens > 0 or output_tokens > 0:
+                    await session_manager.update_token_count(
+                        self.user_uuid, self.session_id,
+                        input_tokens, output_tokens
+                    )
+
+                # Store agent events for plan reload
+                for evt in rag_agent.collected_events:
+                    knowledge_events.append(evt)
+
+                # Extract component payloads for HTML generation (chart, code, etc.)
+                rag_component_payloads = agent_result.get("component_payloads", [])
+            else:
+                # --- Standard RAG: Direct LLM synthesis (no tools) ---
+                response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
+                    prompt=user_message,
+                    reason="RAG Focused Synthesis",
+                    system_prompt_override=system_prompt,
+                    multimodal_content=self.multimodal_content
+                )
 
             # Calculate LLM call duration
             llm_duration_ms = int((time.time() - llm_start_time) * 1000)
@@ -3727,6 +3846,25 @@ The following domain knowledge may be relevant to this conversation:
                 rag_focused_sources=final_results  # NEW: Pass sources
             )
             final_html, tts_payload = formatter.render()
+
+            # Append component rendering HTML (chart, code, audio, video, etc.)
+            # The ConversationAgentExecutor extracts component payloads from tool
+            # results.  We generate generic data-component-id divs that the
+            # frontend's ComponentRendererRegistry dispatches to the correct renderer.
+            for _cp in rag_component_payloads:
+                _comp_id = _cp.get("component_id", "unknown")
+                _spec = _cp.get("spec", {})
+                _cid = f"component-{uuid.uuid4().hex[:12]}"
+                try:
+                    _spec_json = json.dumps(_spec).replace("'", "&apos;")
+                except (TypeError, ValueError):
+                    continue
+                final_html += (
+                    f'\n<div class="response-card mb-4">'
+                    f'<div id="{_cid}" data-component-id="{_comp_id}" '
+                    f"data-spec='{_spec_json}'></div>"
+                    f'</div>'
+                )
 
             # Emit final answer
             yield self._format_sse_with_depth({
@@ -4188,7 +4326,7 @@ The following domain knowledge may be relevant to this conversation:
                             # Filter to only enabled tools (prompts handled separately via original structure)
                             # CRITICAL FIX: Always include TDA client-side tools (reporting, synthesis) regardless of profile filtering
                             # These are core system tools, not MCP server tools, and must always be available for FASTPATH optimization
-                            TDA_CORE_TOOLS = {"TDA_FinalReport", "TDA_ComplexPromptReport", "TDA_ContextReport", "TDA_LLMTask", "TDA_LLMFilter", "TDA_Charting", "TDA_CurrentDate", "TDA_DateRange"}
+                            TDA_CORE_TOOLS = {"TDA_FinalReport", "TDA_ComplexPromptReport", "TDA_ContextReport", "TDA_LLMTask", "TDA_LLMFilter", "TDA_CurrentDate", "TDA_DateRange"}
                             filtered_tools = [tool for tool in all_processed_tools if tool.name in enabled_tool_names or tool.name in TDA_CORE_TOOLS]
 
                             # Convert to dictionary with tool names as keys (matching normal structure)

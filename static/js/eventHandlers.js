@@ -22,6 +22,8 @@ import {
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
 import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
+import { renderComponent, hasRenderer } from './componentRenderers.js';
+import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -750,6 +752,10 @@ function getGenieTitle(eventType, payload) {
             return 'LLM Synthesis Results';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordinator Complete' : 'Coordinator Failed';
+        case 'genie_component_invoked':
+            return `Component: ${payload.tool_name || 'Tool'}`;
+        case 'genie_component_completed':
+            return `Component Complete: ${payload.component_id || payload.tool_name || 'Tool'}`;
         case 'session_name_generation_start':
             return 'Generating Session Name';
         case 'session_name_generation_complete':
@@ -1171,7 +1177,13 @@ async function processStream(responseBody, originSessionId) {
                                 input: details.input_tokens,
                                 output: details.output_tokens
                             });
-                            UI.updateTokenDisplay(details);
+                            // Map session_name event field names to updateTokenDisplay contract
+                            // (event has input_tokens/output_tokens, display expects statement_input/statement_output)
+                            UI.updateTokenDisplay({
+                                statement_input: details.input_tokens,
+                                statement_output: details.output_tokens,
+                                cost_usd: details.cost_usd
+                            });
                         }
 
                         // Update status window with formatted rendering (existing renderers in ui.js will be called)
@@ -1265,6 +1277,43 @@ async function processStream(responseBody, originSessionId) {
                             type: 'extension_results'
                         }, false, 'extension');
 
+                    // --- Component Render Events (Generative UI) ---
+                    } else if (eventName === 'component_render') {
+                        const { component_id, window_id, action, spec, title, render_target } = eventData;
+                        console.log('[SSE] Component render event:', component_id, action, render_target);
+
+                        if (render_target === 'sub_window') {
+                            // Sub-window component: create, update, or close a persistent panel
+                            if (action === 'close' && window_id) {
+                                closeSubWindow(window_id);
+                            } else if (action === 'update' && window_id) {
+                                updateSubWindow(window_id, spec);
+                            } else {
+                                // 'create' or default
+                                const swEl = createSubWindow(window_id || `sw-${Date.now()}`, component_id, {
+                                    title: title || component_id,
+                                    spec
+                                });
+                                if (swEl && spec && hasRenderer(component_id)) {
+                                    const bodyEl = swEl.querySelector('.sub-window-body');
+                                    if (bodyEl) {
+                                        bodyEl.id = bodyEl.id || `sw-body-${Date.now()}`;
+                                        renderComponent(component_id, bodyEl.id, spec);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Inline component: rendered via [data-component-id] in the chat message
+                            // (already handled by ui.js appendMessage). Log for debugging.
+                            console.log('[SSE] Inline component_render — will be rendered by appendMessage().');
+                        }
+
+                        UI.updateStatusWindow({
+                            step: `Component: ${title || component_id}`,
+                            details: { component_id, render_target: render_target || 'inline', action: action || 'render' },
+                            type: 'component_render'
+                        }, false, 'interactive');
+
                     // --- Genie Coordination Events ---
                     } else if (eventName === 'genie_start' || eventName === 'genie_routing' ||
                                eventName === 'genie_coordination_start' || eventName === 'genie_llm_step' ||
@@ -1272,7 +1321,9 @@ async function processStream(responseBody, originSessionId) {
                                eventName === 'genie_slave_invoked' || eventName === 'genie_slave_progress' ||
                                eventName === 'genie_slave_completed' || eventName === 'genie_synthesis_start' ||
                                eventName === 'genie_synthesis_complete' ||
-                               eventName === 'genie_coordination_complete') {
+                               eventName === 'genie_coordination_complete' ||
+                               eventName === 'genie_component_invoked' ||
+                               eventName === 'genie_component_completed') {
                         // Handle genie coordination events - delegate to genieHandler
                         console.log('[SSE] Genie event received:', eventName, eventData);
                         handleGenieEvent(eventName, eventData);

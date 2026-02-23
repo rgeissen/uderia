@@ -49,6 +49,9 @@ INSERT OR IGNORE INTO schema_version (version, description) VALUES
 -- 14. 14_marketplace_extensions.sql - Marketplace extensions + ratings
 -- 15. 15_skills.sql                - Per-user skill activations
 -- 16. 16_skill_settings.sql        - Admin skill governance settings
+-- 17. 17_marketplace_skills.sql    - Marketplace skills + ratings
+-- 18. 18_components.sql            - Installed components + profile config
+-- 19. 19_component_settings.sql    - Admin component governance settings
 
 -- ============================================================================
 -- Alternatively, use the Python validation script to build the database

@@ -117,6 +117,12 @@ def init_database():
         # Create marketplace skills tables
         _create_marketplace_skills_tables()
 
+        # Create component tables (installed_components + profile_component_config)
+        _create_components_tables()
+
+        # Create component settings table (admin governance)
+        _create_component_settings_table()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -833,6 +839,127 @@ def _create_marketplace_skills_tables():
         logger.error(f"Error creating marketplace_skills tables: {e}", exc_info=True)
 
 
+def _create_components_tables():
+    """
+    Create installed_components table for component registry.
+    Per-profile component config lives on the profile JSON dict (componentConfig key),
+    not in a separate DB table.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "18_components.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 18_components.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS installed_components (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    component_id TEXT UNIQUE NOT NULL,
+                    display_name TEXT NOT NULL,
+                    version TEXT NOT NULL DEFAULT '1.0.0',
+                    source TEXT NOT NULL DEFAULT 'builtin',
+                    agent_pack_id TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    manifest_json TEXT,
+                    installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_installed_components_source
+                    ON installed_components(source);
+                CREATE INDEX IF NOT EXISTS idx_installed_components_active
+                    ON installed_components(is_active);
+            """)
+            logger.info("Created components tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating components tables: {e}", exc_info=True)
+
+
+def _create_component_settings_table():
+    """
+    Create component_settings table for admin governance.
+    Safe to call multiple times (won't recreate if exists).
+    Mirrors _create_extension_settings_table().
+    """
+    import json
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "19_component_settings.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 19_component_settings.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS component_settings (
+                    id INTEGER PRIMARY KEY,
+                    setting_key TEXT NOT NULL UNIQUE,
+                    setting_value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                );
+                INSERT OR IGNORE INTO component_settings (setting_key, setting_value) VALUES
+                    ('components_mode', 'all'),
+                    ('disabled_components', '[]'),
+                    ('user_components_enabled', 'true'),
+                    ('user_components_marketplace_enabled', 'true');
+                CREATE INDEX IF NOT EXISTS idx_component_settings_key
+                    ON component_settings(setting_key);
+            """)
+            logger.info("Created component_settings table (inline fallback)")
+
+        # Bootstrap from tda_config.json if component_settings exists
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                component_settings = config.get("component_settings", {})
+                if component_settings:
+                    for key, value in component_settings.items():
+                        if isinstance(value, bool):
+                            str_value = 'true' if value else 'false'
+                        elif isinstance(value, list):
+                            str_value = json.dumps(value)
+                        else:
+                            str_value = str(value)
+                        cursor.execute(
+                            """
+                            INSERT INTO component_settings (setting_key, setting_value)
+                            VALUES (?, ?)
+                            ON CONFLICT(setting_key) DO UPDATE
+                            SET setting_value = excluded.setting_value
+                            """,
+                            (key, str_value)
+                        )
+            except Exception as cfg_err:
+                logger.warning(f"Could not bootstrap component settings from tda_config.json: {cfg_err}")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating component_settings table: {e}", exc_info=True)
+
+
 def _run_user_table_migrations():
     """
     Run schema migrations for the users table.
@@ -1308,32 +1435,12 @@ def _bootstrap_prompt_system():
                     if prompt_name in encrypted_prompts:
                         try:
                             encrypted_bootstrap_content = encrypted_prompts[prompt_name]
-                            
-                            # Handle dict prompts (like CHARTING_INSTRUCTIONS) specially
-                            if isinstance(encrypted_bootstrap_content, dict):
-                                logger.info(f"Processing dict prompt: {prompt_name}")
-                                # Decrypt each value in the dict
-                                decrypted_dict = {}
-                                for key, encrypted_value in encrypted_bootstrap_content.items():
-                                    if isinstance(encrypted_value, str):
-                                        try:
-                                            decrypted_dict[key] = decrypt_prompt(encrypted_value, bootstrap_key)
-                                        except Exception as e:
-                                            logger.warning(f"Failed to decrypt {prompt_name}[{key}]: {e}")
-                                            decrypted_dict[key] = encrypted_value
-                                    else:
-                                        decrypted_dict[key] = encrypted_value
-                                
-                                # Re-encrypt the dict as JSON
-                                decrypted_json = json.dumps(decrypted_dict)
-                                tier_encrypted_content = encrypt_prompt(decrypted_json, tier_key)
-                            else:
-                                # Regular string prompt
-                                # Decrypt from bootstrap encryption
-                                decrypted_content = decrypt_prompt(encrypted_bootstrap_content, bootstrap_key)
-                                
-                                # Re-encrypt with tier key for database storage
-                                tier_encrypted_content = encrypt_prompt(decrypted_content, tier_key)
+
+                            # Decrypt from bootstrap encryption
+                            decrypted_content = decrypt_prompt(encrypted_bootstrap_content, bootstrap_key)
+
+                            # Re-encrypt with tier key for database storage
+                            tier_encrypted_content = encrypt_prompt(decrypted_content, tier_key)
                             
                             # Update database
                             cursor.execute(

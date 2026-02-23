@@ -1,0 +1,21 @@
+{
+  "registry_version": "1.0.0",
+  "last_updated": "2026-02-23T00:00:00Z",
+  "components": [
+    {
+      "component_id": "chart",
+      "plugin_directory": "chart",
+      "status": "active",
+      "display_order": 1,
+      "category": "Visualization",
+      "is_builtin": true,
+      "notes": "Data visualization using G2Plot (bar, line, pie, scatter, area, etc.)"
+    }
+  ],
+  "component_status_definitions": {
+    "active": "Ready for use",
+    "beta": "Still being tested",
+    "deprecated": "Being phased out",
+    "draft": "Not yet available"
+  }
+}

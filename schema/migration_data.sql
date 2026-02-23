@@ -217,31 +217,8 @@ INSERT INTO prompts (name, display_name, content, description, class_id, role, p
 );
 
 -- Visualization (class_id = 5)
-INSERT INTO prompts (name, display_name, content, description, class_id, role, provider, is_active, is_system_default, version) VALUES
-(
-    'G2PLOT_GUIDELINES',
-    'G2Plot Guidelines',
-    '[MIGRATE]',
-    'Guidelines for generating G2Plot chart specifications',
-    5,
-    'visualization',
-    NULL,
-    1,
-    1,
-    1
-),
-(
-    'CHARTING_INSTRUCTIONS',
-    'Charting Instructions',
-    '[MIGRATE]',
-    'JSON object containing chart generation instructions by complexity level',
-    5,
-    'visualization',
-    NULL,
-    1,
-    1,
-    1
-);
+-- CHARTING_INSTRUCTIONS and G2PLOT_GUIDELINES removed — now managed by the Component system
+-- (components/builtin/chart/instructions.json and guidelines.txt)
 
 -- ============================================================================
 -- STEP 3: Define Common Global Parameters

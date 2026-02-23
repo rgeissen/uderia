@@ -327,34 +327,10 @@ def _reduce_samples(data, max_rows: int):
     return data
 
 
-# --- MODIFICATION START: Consolidate all client-side tools into a single list ---
+# --- MODIFICATION START: System tools for the Planner/Executor architecture ---
+# NOTE: Component tools (TDA_Charting, etc.) are NOT here — they are managed
+# by ComponentManager and injected per-profile via get_tool_definitions().
 CLIENT_SIDE_TOOLS = [
-    {
-        "name": "TDA_Charting",
-        "description": "Generates a data visualization based on provided data. You must specify the chart type and map the data fields to the appropriate visual roles.",
-        "args": {
-            "chart_type": {
-                "type": "string",
-                "description": "The type of chart to generate (e.g., 'bar', 'pie', 'line', 'scatter'). This MUST be one of the types listed in the 'Charting Guidelines'.",
-                "required": True
-            },
-            "data": {
-                "type": "list[dict]",
-                "description": "The data to be visualized, passed directly from the output of another tool.",
-                "required": True
-            },
-            "title": {
-                "type": "string",
-                "description": "A descriptive title for the chart.",
-                "required": True
-            },
-            "mapping": {
-                "type": "dict",
-                "description": "A dictionary that maps data keys to chart axes or roles (e.g., {'x_axis': 'product_name', 'y_axis': 'sales_total'}). The required keys for this mapping depend on the selected chart_type.",
-                "required": True
-            }
-        }
-    },
     {
         "name": "TDA_CurrentDate",
         "description": "Returns the current system date in YYYY-MM-DD format. Use this as the first step for any user query involving relative dates like 'today', 'yesterday', or 'this week'.",
@@ -1688,8 +1664,31 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
         # --- MODIFICATION END ---
         return result, 0, 0
 
+    # --- Component handler routing ---
+    # Route component tool calls through ComponentManager when available.
+    # Falls back to legacy handler if component system unavailable.
+    try:
+        from trusted_data_agent.components.manager import get_component_manager
+        comp_manager = get_component_manager()
+        if comp_manager.is_component_tool(tool_name):
+            handler = comp_manager.get_handler(tool_name)
+            if handler:
+                app_logger.info(f"Routing '{tool_name}' through component handler: {handler.component_id}")
+                import asyncio
+                args = command.get("arguments", {})
+                payload = asyncio.get_event_loop().run_until_complete(
+                    handler.process(args, {})
+                )
+                if payload.spec.get("error"):
+                    result = {"status": "error", "error": "Component Error", "data": payload.spec["error"]}
+                else:
+                    result = {"type": payload.component_id, "spec": payload.spec, "metadata": payload.metadata}
+                return result, 0, 0
+    except Exception as comp_err:
+        app_logger.warning(f"Component handler routing failed for '{tool_name}', using legacy: {comp_err}")
+
     if tool_name == "TDA_Charting":
-        app_logger.info(f"Handling abstract chart generation for: {command}")
+        app_logger.info(f"Handling abstract chart generation for: {command} (legacy path)")
 
         try:
             args = command.get("arguments", {})
