@@ -1099,9 +1099,12 @@ class PhaseExecutor:
 
                             # Step 3: Build complete action and execute directly
                             # (handler resolves mapping internally when missing)
+                            # Start with strategic_args to preserve optional params
+                            # (sort_by, sort_direction, row_limit, etc.)
                             charting_action = {
                                 "tool_name": "TDA_Charting",
                                 "arguments": {
+                                    **strategic_args,
                                     "chart_type": chart_type,
                                     "data": resolved_data,
                                     "title": title,

@@ -88,6 +88,8 @@ class ChartComponentHandler(BaseComponentHandler):
 
         # Robust data transformation (handles hallucinated formats)
         data = _transform_chart_data(data)
+        # Sort and limit (handles 'top N' / 'bottom N' queries)
+        data = _apply_data_filters(data, arguments)
         arguments["data"] = data
 
         # Validate after transformation
@@ -230,6 +232,54 @@ def _transform_chart_data(data: Any) -> list:
                     new_row["SourceColumnName"] = new_row.pop("ColumnName")
                 transformed.append(new_row)
             return transformed
+
+    return data
+
+
+def _apply_data_filters(data: list, arguments: Dict[str, Any]) -> list:
+    """
+    Apply sorting and row limiting to chart data.
+
+    Called after _transform_chart_data() but before mapping resolution.
+    Handles 'top N' / 'bottom N' queries where the data-gathering tool
+    returned more rows than the user requested.
+    """
+    if not data or not isinstance(data, list) or not isinstance(data[0], dict):
+        return data
+
+    sort_by = arguments.get("sort_by")
+    sort_dir = arguments.get("sort_direction", "desc").lower()
+    row_limit = arguments.get("row_limit")
+
+    # Sort
+    if sort_by and sort_by in data[0]:
+        reverse = sort_dir != "asc"
+
+        def sort_key(row):
+            val = row.get(sort_by)
+            if val is None:
+                return (1, 0)  # None values last
+            if isinstance(val, (int, float)):
+                return (0, val)
+            try:
+                return (0, float(val))
+            except (ValueError, TypeError):
+                return (0, str(val))
+
+        data = sorted(data, key=sort_key, reverse=reverse)
+        logger.info(f"Chart data sorted by '{sort_by}' {sort_dir}: {len(data)} rows")
+
+    # Limit
+    if row_limit is not None:
+        try:
+            row_limit = int(row_limit)
+        except (ValueError, TypeError):
+            row_limit = None
+    if row_limit and row_limit > 0:
+        original_count = len(data)
+        data = data[:row_limit]
+        if original_count > row_limit:
+            logger.info(f"Chart data limited: {original_count} → {row_limit} rows")
 
     return data
 

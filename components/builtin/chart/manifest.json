@@ -28,6 +28,21 @@
         "type": "dict",
         "description": "A dictionary that maps data keys to chart axes or roles (e.g., {'x_axis': 'product_name', 'y_axis': 'sales_total'}). The required keys for this mapping depend on the selected chart_type.",
         "required": true
+      },
+      "sort_by": {
+        "type": "string",
+        "description": "Column name to sort data by before charting. Use with row_limit for 'top N' queries.",
+        "required": false
+      },
+      "sort_direction": {
+        "type": "string",
+        "description": "Sort direction: 'asc' (ascending, smallest first) or 'desc' (descending, largest first). Defaults to 'desc'.",
+        "required": false
+      },
+      "row_limit": {
+        "type": "integer",
+        "description": "Maximum number of data rows to chart. Applied AFTER sorting. Use for 'top N' or 'bottom N' queries.",
+        "required": false
       }
     }
   },
