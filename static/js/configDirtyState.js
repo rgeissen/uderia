@@ -109,9 +109,7 @@ function captureAllProfileStates() {
  * Capture advanced settings state
  */
 function captureAdvancedSettings() {
-    return {
-        chartingIntensity: document.getElementById('charting-intensity')?.value || 'none'
-    };
+    return {};
 }
 
 /**
@@ -128,12 +126,6 @@ function attachChangeListeners() {
     const llmSelect = document.getElementById('llm-config-select');
     if (llmSelect) {
         llmSelect.addEventListener('change', () => markDirty('llm-provider'));
-    }
-    
-    // Advanced Settings (TTS credentials now managed via dedicated save button)
-    const chartingSelect = document.getElementById('charting-intensity');
-    if (chartingSelect) {
-        chartingSelect.addEventListener('change', () => markDirty('charting-intensity'));
     }
     
     // Profile changes are tracked via custom events from configurationHandler

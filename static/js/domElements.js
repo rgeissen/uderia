@@ -146,7 +146,6 @@ export const azureApiVersionInput = document.getElementById('azure-api-version')
 export const friendliCredentialsContainer = document.getElementById('friendli-credentials-container');
 export const friendliTokenInput = document.getElementById('friendli-token');
 export const friendliEndpointUrlInput = document.getElementById('friendli-endpoint-url');
-export const chartingIntensitySelect = document.getElementById('charting-intensity');
 export const ttsCredentialsJsonTextarea = document.getElementById('tts-credentials-json');
 
 

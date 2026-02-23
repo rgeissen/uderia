@@ -836,23 +836,3 @@ export async function resetSystemPrompt(force = false) {
     }
 }
 
-/**
- * Handles changes to the charting intensity dropdown.
- */
-export async function handleIntensityChange() {
-    if (Utils.isPromptCustomForModel(state.currentProvider, state.currentModel)) {
-        UI.showConfirmation(
-            'Reset System Prompt?',
-            'Changing the charting intensity requires resetting the system prompt to a new default to include updated instructions. Your custom changes will be lost. Do you want to continue?',
-            () => {
-                resetSystemPrompt(true);
-                DOM.configStatus.textContent = 'Charting intensity updated and system prompt was reset to default.';
-                DOM.configStatus.className = 'text-sm text-yellow-400 text-center';
-            }
-        );
-    } else {
-        await resetSystemPrompt(true);
-        DOM.configStatus.textContent = 'Charting intensity updated.';
-        DOM.configStatus.className = 'text-sm text-green-400 text-center';
-    }
-}

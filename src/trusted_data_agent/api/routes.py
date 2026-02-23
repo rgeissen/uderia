@@ -1925,7 +1925,7 @@ async def new_session():
 
 
     data = await request.get_json()
-    charting_intensity = data.get("charting_intensity", APP_CONFIG.DEFAULT_CHARTING_INTENSITY) if APP_CONFIG.CHARTING_ENABLED else "none"
+    charting_intensity = APP_CONFIG.DEFAULT_CHARTING_INTENSITY if APP_CONFIG.CHARTING_ENABLED else "none"
     system_prompt_template = data.get("system_prompt")
     profile_override_id = data.get("profile_override_id")  # For session primer to use overridden profile
 

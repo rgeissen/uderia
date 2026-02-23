@@ -2259,13 +2259,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await API.checkAndUpdateDefaultPrompts();
 
-        const chartingIntensityContainer = document.getElementById('charting-intensity-container');
-        if (!state.appConfig.charting_enabled) {
-            chartingIntensityContainer.style.display = 'none';
-        } else {
-            DOM.chartingIntensitySelect.value = state.appConfig.default_charting_intensity || 'medium';
-        }
-
         updateVoiceButtonVisibility(state.appConfig.voice_conversation_enabled);
 
         // Initialize user TTS settings section based on tts_mode

@@ -2516,8 +2516,7 @@ export async function reconnectAndLoad() {
             provider: llmConfig.provider,
             model: llmConfig.model,
             credentials: llmConfig.credentials,
-            listing_method: llmConfig.listingMethod || 'foundation_models',
-            charting_intensity: document.getElementById('charting-intensity')?.value || 'none'
+            listing_method: llmConfig.listingMethod || 'foundation_models'
         };
 
         // Add MCP server data only for Tool Focused profiles

@@ -202,9 +202,7 @@ export async function loadResources(type) {
 }
 
 export async function startNewSession(profileOverrideId = null) {
-    const payload = {
-        charting_intensity: DOM.chartingIntensitySelect.value
-    };
+    const payload = {};
 
     // Include profile override if provided (for session primer to use correct profile)
     if (profileOverrideId) {

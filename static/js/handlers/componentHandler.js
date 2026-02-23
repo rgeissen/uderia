@@ -275,21 +275,74 @@ function _renderDetailPanel(comp) {
     // ── Tool Arguments Section ──
     const toolArgsHTML = _renderToolArguments(toolDef);
 
+    // ── Tabbed Layout ──
+    const capIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>`;
+    const argsIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`;
+    const profIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>`;
+
+    const tabs = [];
+    const tabPanels = [];
+
+    if (capabilitiesHTML) {
+        tabs.push({ id: 'comp-tab-cap', label: 'Chart Types', icon: capIcon, panelId: 'comp-panel-cap' });
+        tabPanels.push({ id: 'comp-panel-cap', html: capabilitiesHTML });
+    }
+    if (toolArgsHTML) {
+        tabs.push({ id: 'comp-tab-args', label: 'Tool Arguments', icon: argsIcon, panelId: 'comp-panel-args' });
+        tabPanels.push({ id: 'comp-panel-args', html: toolArgsHTML });
+    }
+    tabs.push({ id: 'comp-tab-prof', label: 'Profiles', icon: profIcon, panelId: 'comp-panel-prof' });
+    tabPanels.push({
+        id: 'comp-panel-prof',
+        html: `<div id="component-profile-assignments">
+            <div class="flex items-center gap-2 mb-3">
+                <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Profile Assignments</h3>
+            </div>
+            <div class="text-sm" style="color:var(--text-muted)">Loading profiles...</div>
+        </div>`
+    });
+
+    const tabBarHTML = tabs.map((t, i) => `
+        <button class="ind-tab ind-tab--underline ${i === 0 ? 'active' : ''}"
+                style="--tab-color: 6, 182, 212"
+                data-tab-target="${t.panelId}"
+                id="${t.id}">
+            ${t.icon}
+            ${t.label}
+        </button>
+    `).join('');
+
+    const panelsHTML = tabPanels.map((p, i) => `
+        <div id="${p.id}" class="${i === 0 ? '' : 'hidden'}">
+            ${p.html}
+        </div>
+    `).join('');
+
     // ── Assemble ──
     panel.innerHTML = `
         <div class="glass-panel rounded-xl p-6">
             ${headerHTML}
-            ${capabilitiesHTML}
-            ${toolArgsHTML}
-            <div id="component-profile-assignments">
-                <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
-                    <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Profile Assignments</h3>
-                </div>
-                <div class="text-sm" style="color:var(--text-muted)">Loading profiles...</div>
+            <div class="flex gap-1 border-b border-white/10 mb-4 mt-2">
+                ${tabBarHTML}
             </div>
+            ${panelsHTML}
         </div>
     `;
     panel.classList.remove('hidden');
+
+    // Wire tab switching
+    panel.querySelectorAll('.ind-tab--underline').forEach(tab => {
+        tab.addEventListener('click', () => {
+            panel.querySelectorAll('.ind-tab--underline').forEach(t => t.classList.remove('active'));
+            tabPanels.forEach(p => {
+                const el = document.getElementById(p.id);
+                if (el) el.classList.add('hidden');
+            });
+            tab.classList.add('active');
+            const target = document.getElementById(tab.dataset.tabTarget);
+            if (target) target.classList.remove('hidden');
+        });
+    });
 
     // Async-load profile assignments (doesn't block the detail render)
     _loadProfileAssignments(comp);
@@ -319,8 +372,8 @@ function _renderCapabilities(manifest, comp) {
         }).join('');
 
         return `
-            <div class="mb-6">
-                <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+            <div>
+                <div class="flex items-center gap-2 mb-3">
                     <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Supported Chart Types</h3>
                     <span class="text-xs" style="color:var(--text-muted)">${Object.keys(manifest.chart_types).length} types</span>
                 </div>
@@ -367,8 +420,8 @@ function _renderCapabilities(manifest, comp) {
     }).join('');
 
     return `
-        <div class="mb-6">
-            <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+        <div>
+            <div class="flex items-center gap-2 mb-3">
                 <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Capabilities</h3>
             </div>
             <table class="w-full text-sm">
@@ -408,7 +461,7 @@ function _renderToolArguments(toolDef) {
 
     return `
         <div>
-            <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+            <div class="flex items-center gap-2 mb-3">
                 <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Tool Arguments</h3>
                 <span class="text-xs font-mono text-cyan-300 comp-lt-text-cyan">${toolDef.name || ''}</span>
             </div>
@@ -506,7 +559,7 @@ async function _loadProfileAssignments(comp) {
 
         // Replace the loading placeholder, keep the header
         container.innerHTML = `
-            <div class="flex items-center gap-2 mb-3 border-t border-white/10 pt-4">
+            <div class="flex items-center gap-2 mb-3">
                 <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Profile Assignments</h3>
                 <span class="text-xs" style="color:var(--text-muted)">${profiles.length} profiles</span>
             </div>

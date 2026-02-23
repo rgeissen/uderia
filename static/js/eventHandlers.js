@@ -36,8 +36,7 @@ import {
     openPromptEditor,
     closePromptEditor,
     saveSystemPromptChanges,
-    resetSystemPrompt,
-    handleIntensityChange
+    resetSystemPrompt
 } from './handlers/configManagement.js';
 
 
@@ -3117,7 +3116,6 @@ async function openViewPromptModal(promptName) {
 // closePromptEditor
 // saveSystemPromptChanges
 // resetSystemPrompt
-// handleIntensityChange
 // ---
 
 function openChatModal() {
@@ -3778,8 +3776,7 @@ export function initializeEventListeners() {
     document.addEventListener('keyup', handleKeyUp);
     DOM.statusWindowContent.addEventListener('mouseenter', () => { state.isMouseOverStatus = true; });
     DOM.statusWindowContent.addEventListener('mouseleave', () => { state.isMouseOverStatus = false; });
-    DOM.chartingIntensitySelect.addEventListener('change', handleIntensityChange);
-    
+
     DOM.windowMenuButton.addEventListener('click', (e) => {
         e.stopPropagation();
         DOM.windowDropdownMenu.classList.toggle('open');
