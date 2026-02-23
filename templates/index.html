@@ -307,6 +307,59 @@
             border-color: rgba(124,58,237,0.3);
         }
 
+        /* ── Component View: Light Mode Overrides ─────────────────
+         * Dark mode colors use Tailwind utility classes in componentHandler.js.
+         * These overrides provide readable colors in light theme via !important.
+         */
+        [data-theme="light"] .comp-lt-violet {
+            background: rgba(109,40,217,0.1) !important;
+            color: #6d28d9 !important;
+        }
+        [data-theme="light"] .comp-lt-cyan {
+            background: rgba(14,116,144,0.1) !important;
+            color: #0e7490 !important;
+        }
+        [data-theme="light"] .comp-lt-amber {
+            background: rgba(180,83,9,0.1) !important;
+            color: #b45309 !important;
+        }
+        [data-theme="light"] .comp-lt-blue {
+            background: rgba(29,78,216,0.1) !important;
+            color: #1d4ed8 !important;
+        }
+        [data-theme="light"] .comp-lt-gray {
+            background: rgba(107,114,128,0.12) !important;
+            color: #4b5563 !important;
+        }
+        [data-theme="light"] .comp-lt-emerald {
+            background: rgba(4,120,87,0.1) !important;
+            color: #047857 !important;
+        }
+        [data-theme="light"] .comp-lt-orange {
+            background: rgba(194,65,12,0.1) !important;
+            color: #c2410c !important;
+        }
+        [data-theme="light"] .comp-lt-purple {
+            background: rgba(126,34,206,0.1) !important;
+            color: #7e22ce !important;
+        }
+        [data-theme="light"] .comp-lt-pink {
+            background: rgba(190,24,93,0.1) !important;
+            color: #be185d !important;
+        }
+        [data-theme="light"] .comp-lt-text-cyan {
+            color: #0e7490 !important;
+        }
+        [data-theme="light"] .comp-lt-row {
+            background: rgba(243,244,246,0.6) !important;
+            border-color: rgba(209,213,219,0.6) !important;
+        }
+        [data-theme="light"] .comp-lt-select {
+            background: #fff !important;
+            border-color: rgba(209,213,219,0.8) !important;
+            color: #374151 !important;
+        }
+
         /* Sub-window styles */
         .sub-window-container {
             display: flex;

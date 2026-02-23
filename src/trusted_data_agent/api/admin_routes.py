@@ -1205,13 +1205,13 @@ def initialize_default_panes(session):
     """
     Initialize pane visibility with default configuration.
     
-    Default Configuration:
+    Default Configuration (matches sidebar order):
+    - Setup: all tiers
     - Conversations: all tiers
-    - Marketplace: all tiers
-    - Credentials: all tiers
     - Executions: developer + admin
     - Intelligence: developer + admin
     - Components: developer + admin
+    - Marketplace: all tiers
     - Administration: admin only
     
     Args:
@@ -1224,10 +1224,19 @@ def initialize_default_panes(session):
     
     default_panes = [
         {
+            'pane_id': 'credentials',
+            'pane_name': 'Setup',
+            'description': 'Configure LLM and MCP credentials',
+            'display_order': 1,
+            'visible_to_user': True,
+            'visible_to_developer': True,
+            'visible_to_admin': True
+        },
+        {
             'pane_id': 'conversation',
             'pane_name': 'Conversations',
             'description': 'Chat interface for conversations',
-            'display_order': 1,
+            'display_order': 2,
             'visible_to_user': True,
             'visible_to_developer': True,
             'visible_to_admin': True
@@ -1236,7 +1245,7 @@ def initialize_default_panes(session):
             'pane_id': 'executions',
             'pane_name': 'Executions',
             'description': 'Execution dashboard and history',
-            'display_order': 2,
+            'display_order': 3,
             'visible_to_user': False,
             'visible_to_developer': True,
             'visible_to_admin': True
@@ -1245,7 +1254,7 @@ def initialize_default_panes(session):
             'pane_id': 'rag-maintenance',
             'pane_name': 'Intelligence',
             'description': 'Manage RAG collections and templates',
-            'display_order': 3,
+            'display_order': 4,
             'visible_to_user': False,
             'visible_to_developer': True,
             'visible_to_admin': True
@@ -1254,7 +1263,7 @@ def initialize_default_panes(session):
             'pane_id': 'components',
             'pane_name': 'Components',
             'description': 'Generative UI Component Library',
-            'display_order': 4,
+            'display_order': 5,
             'visible_to_user': False,
             'visible_to_developer': True,
             'visible_to_admin': True
@@ -1263,15 +1272,6 @@ def initialize_default_panes(session):
             'pane_id': 'marketplace',
             'pane_name': 'Marketplace',
             'description': 'Browse and install Planner Repository Constructors',
-            'display_order': 5,
-            'visible_to_user': True,
-            'visible_to_developer': True,
-            'visible_to_admin': True
-        },
-        {
-            'pane_id': 'credentials',
-            'pane_name': 'Setup',
-            'description': 'Configure LLM and MCP credentials',
             'display_order': 6,
             'visible_to_user': True,
             'visible_to_developer': True,
