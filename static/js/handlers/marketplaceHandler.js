@@ -70,6 +70,14 @@ export function initializeMarketplace() {
             switchRepositoryType('extensions');
         });
     }
+
+    // Skills type tab
+    const skillsTypeTab = document.getElementById('marketplace-repo-type-skills');
+    if (skillsTypeTab) {
+        skillsTypeTab.addEventListener('click', () => {
+            switchRepositoryType('skills');
+        });
+    }
     
     // Search and filter handlers
     const searchBtn = document.getElementById('marketplace-search-btn');
@@ -187,12 +195,14 @@ function switchRepositoryType(type) {
         knowledge: document.getElementById('marketplace-repo-type-knowledge'),
         'agent-packs': document.getElementById('marketplace-repo-type-agent-packs'),
         extensions: document.getElementById('marketplace-repo-type-extensions'),
+        skills: document.getElementById('marketplace-repo-type-skills'),
     };
     const descs = {
         planner: document.getElementById('planner-description'),
         knowledge: document.getElementById('knowledge-description'),
         'agent-packs': document.getElementById('agent-packs-description'),
         extensions: document.getElementById('extensions-description'),
+        skills: document.getElementById('skills-description'),
     };
 
     for (const [key, tab] of Object.entries(tabs)) {
@@ -219,6 +229,8 @@ function loadMarketplaceContent() {
         loadMarketplaceAgentPacks();
     } else if (currentRepositoryType === 'extensions') {
         loadMarketplaceExtensions();
+    } else if (currentRepositoryType === 'skills') {
+        loadMarketplaceSkills();
     } else {
         loadMarketplaceCollections();
     }
@@ -1417,6 +1429,493 @@ function openAgentPackRateModal(pack) {
             showNotification('success', 'Rating submitted successfully');
             closeModal();
             loadMarketplaceAgentPacks();
+        } catch (err) {
+            showNotification('error', 'Failed to submit rating: ' + err.message);
+            submitBtn.textContent = 'Submit Rating';
+            submitBtn.disabled = false;
+        }
+    };
+}
+
+/**
+ * Load marketplace skills from API
+ */
+async function loadMarketplaceSkills() {
+    const container = document.getElementById('marketplace-collections-list');
+    const loading = document.getElementById('marketplace-loading');
+    const empty = document.getElementById('marketplace-empty');
+    const pagination = document.getElementById('marketplace-pagination');
+
+    if (!container) return;
+
+    if (loading) loading.classList.remove('hidden');
+    if (empty) empty.classList.add('hidden');
+    container.innerHTML = '';
+    if (pagination) pagination.classList.add('hidden');
+
+    try {
+        const token = await window.authClient.getToken();
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        let skills = [];
+
+        if (currentTab === 'my-collections') {
+            // My Assets — show user-created (non-builtin) skills
+            const response = await fetch('/api/v1/skills', { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const data = await response.json();
+            skills = (data.skills || []).filter(s => !s.is_builtin);
+        } else {
+            // Browse Marketplace — show published skills
+            const params = new URLSearchParams({
+                page: currentPage,
+                per_page: 12,
+                sort_by: currentSortBy === 'subscribers' ? 'recent' : currentSortBy,
+            });
+            if (currentSearch) params.append('search', currentSearch);
+
+            const response = await fetch(`/api/v1/marketplace/skills?${params}`, { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+            const data = await response.json();
+            skills = data.skills || [];
+            totalPages = data.total_pages || 1;
+            updatePaginationUI(data);
+        }
+
+        if (loading) loading.classList.add('hidden');
+
+        if (skills.length === 0) {
+            if (empty) {
+                empty.classList.remove('hidden');
+                const emptyTitle = empty.querySelector('h3');
+                const emptyDesc = empty.querySelector('p');
+                if (currentTab === 'my-collections') {
+                    if (emptyTitle) emptyTitle.textContent = 'No Skills';
+                    if (emptyDesc) emptyDesc.textContent = 'Create custom skills from Setup → Skills, or install from the Browse tab';
+                } else {
+                    if (emptyTitle) emptyTitle.textContent = 'No Skills Found';
+                    if (emptyDesc) emptyDesc.textContent = currentSearch
+                        ? 'Try adjusting your search'
+                        : 'No skills have been published to the marketplace yet';
+                }
+            }
+            return;
+        }
+
+        skills.forEach(skill => {
+            if (currentTab === 'my-collections') {
+                container.appendChild(createMySkillCard(skill));
+            } else {
+                container.appendChild(createSkillMarketplaceCard(skill));
+            }
+        });
+
+    } catch (error) {
+        console.error('Failed to load skills:', error);
+        if (loading) loading.classList.add('hidden');
+        showNotification('error', 'Failed to load skills: ' + error.message);
+    }
+}
+
+/**
+ * Create a skill marketplace card (Browse tab)
+ */
+function createSkillMarketplaceCard(skill) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-emerald-500/50 transition-colors';
+
+    const isPublisher = skill.is_publisher || false;
+    const rating = skill.average_rating || 0;
+    const tags = skill.tags || [];
+
+    // Injection target badge
+    const targetBadges = {
+        system_prompt: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'System Prompt' },
+        user_context:  { bg: 'bg-blue-500/20',   text: 'text-blue-400',   label: 'User Context' },
+    };
+    const targetBadge = targetBadges[skill.injection_target] || targetBadges.system_prompt;
+
+    // Star rating HTML
+    const starsHtml = Array.from({length: 5}, (_, i) =>
+        `<svg class="w-3.5 h-3.5 ${i < Math.round(rating) ? 'text-yellow-400' : 'text-gray-600'}" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>`
+    ).join('');
+
+    card.innerHTML = `
+        <!-- Header -->
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-lg font-semibold text-white">${escapeHtml(skill.name)}</h2>
+                    ${skill.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(skill.version)}</span>` : ''}
+                    <span class="px-2 py-0.5 text-xs rounded-full ${targetBadge.bg} ${targetBadge.text}">${targetBadge.label}</span>
+                    ${skill.has_params ? `<span class="px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400">Params</span>` : ''}
+                </div>
+                ${skill.author ? `<p class="text-sm text-gray-400 mt-0.5">by ${escapeHtml(skill.author)}</p>` : ''}
+            </div>
+        </div>
+
+        <!-- Description -->
+        ${skill.description ? `<p class="text-sm text-gray-300">${escapeHtml(skill.description)}</p>` : ''}
+
+        <!-- Tags + Skill ID -->
+        <div class="flex flex-wrap gap-1.5">
+            ${tags.map(t => `<span class="px-1.5 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-400">${escapeHtml(t)}</span>`).join('')}
+            <span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">!${escapeHtml(skill.skill_id)}</span>
+        </div>
+
+        <!-- Publisher -->
+        ${skill.publisher_username ? `
+            <div class="flex items-center gap-1.5 text-sm text-gray-400">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                </svg>
+                <span class="text-gray-300">${escapeHtml(skill.publisher_username)}</span>
+            </div>
+        ` : ''}
+
+        <!-- Stats -->
+        <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-300">
+            <div class="flex items-center gap-1">${starsHtml}
+                <span class="ml-1 text-gray-400">${rating.toFixed(1)} (${skill.rating_count || 0})</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>${skill.install_count || 0} installs</span>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2 pt-1 border-t border-white/5">
+            ${isPublisher ? `
+                <button class="skill-mkt-unpublish flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+                    Unpublish
+                </button>
+            ` : `
+                <button class="skill-mkt-install flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
+                    Install
+                </button>
+            `}
+            <button class="skill-mkt-rate px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/20 transition-colors">
+                Rate
+            </button>
+        </div>
+    `;
+
+    // Wire install button
+    const installBtn = card.querySelector('.skill-mkt-install');
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            installBtn.disabled = true;
+            installBtn.textContent = 'Installing...';
+            try {
+                const token = await window.authClient.getToken();
+                const resp = await fetch(`/api/v1/marketplace/skills/${skill.id}/install`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showNotification('success', data.message || 'Skill installed');
+                    installBtn.textContent = 'Installed';
+                    installBtn.classList.replace('text-emerald-400', 'text-green-400');
+                    installBtn.classList.replace('border-emerald-500/20', 'border-green-500/20');
+                    installBtn.classList.replace('bg-emerald-500/10', 'bg-green-500/10');
+                } else {
+                    showNotification('error', data.error || 'Install failed');
+                    installBtn.textContent = 'Install';
+                    installBtn.disabled = false;
+                }
+            } catch (err) {
+                showNotification('error', 'Install failed: ' + err.message);
+                installBtn.textContent = 'Install';
+                installBtn.disabled = false;
+            }
+        });
+    }
+
+    // Wire unpublish button
+    const unpublishBtn = card.querySelector('.skill-mkt-unpublish');
+    if (unpublishBtn) {
+        unpublishBtn.addEventListener('click', async () => {
+            if (!confirm('Unpublish this skill from the marketplace? Existing installations will remain.')) return;
+            try {
+                const token = await window.authClient.getToken();
+                const resp = await fetch(`/api/v1/marketplace/skills/${skill.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (resp.ok) {
+                    showNotification('success', 'Skill unpublished');
+                    loadMarketplaceSkills();
+                } else {
+                    const data = await resp.json();
+                    showNotification('error', data.error || 'Unpublish failed');
+                }
+            } catch (err) {
+                showNotification('error', 'Unpublish failed: ' + err.message);
+            }
+        });
+    }
+
+    // Wire rate button
+    const rateBtn = card.querySelector('.skill-mkt-rate');
+    if (rateBtn) {
+        rateBtn.addEventListener('click', () => openSkillRateModal(skill));
+    }
+
+    return card;
+}
+
+/**
+ * Create a "My Assets" skill card (user-created skills).
+ * Pattern follows createMyExtensionCard().
+ */
+function createMySkillCard(skill) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-emerald-500/50 transition-colors';
+
+    // Injection target badge
+    const targetBadges = {
+        system_prompt: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'System Prompt' },
+        user_context:  { bg: 'bg-blue-500/20',   text: 'text-blue-400',   label: 'User Context' },
+    };
+    const target = skill.injection_target || 'system_prompt';
+    const badge = targetBadges[target] || targetBadges.system_prompt;
+    const tags = skill.tags || [];
+
+    card.innerHTML = `
+        <!-- Header -->
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-lg font-semibold text-white">${escapeHtml(skill.name || skill.skill_id)}</h2>
+                    ${skill.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(skill.version)}</span>` : ''}
+                    <span class="px-2 py-0.5 text-xs rounded-full ${badge.bg} ${badge.text}">${badge.label}</span>
+                    ${skill.allowed_params?.length ? `<span class="px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400">${skill.allowed_params.length} param${skill.allowed_params.length > 1 ? 's' : ''}</span>` : ''}
+                </div>
+                ${skill.author ? `<p class="text-xs text-gray-500 mt-0.5">by ${escapeHtml(skill.author)}</p>` : ''}
+            </div>
+            <div class="flex flex-col items-end gap-1">
+                <span class="px-2 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-400">Custom</span>
+            </div>
+        </div>
+
+        <!-- Description -->
+        ${skill.description ? `<p class="text-xs text-gray-400">${escapeHtml(skill.description)}</p>` : ''}
+
+        <!-- Tags + Skill ID -->
+        <div class="flex items-center gap-4 text-xs text-gray-500">
+            <div class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                </svg>
+                <span class="text-gray-300 font-mono">!${escapeHtml(skill.skill_id)}</span>
+            </div>
+            ${tags.length > 0 ? `
+                <div class="flex flex-wrap gap-1">
+                    ${tags.slice(0, 4).map(t => `<span class="px-1.5 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-400">${escapeHtml(t)}</span>`).join('')}
+                    ${tags.length > 4 ? `<span class="text-gray-500">+${tags.length - 4}</span>` : ''}
+                </div>
+            ` : ''}
+        </div>
+
+        <!-- Actions -->
+        <div class="mt-2 flex gap-2 flex-wrap">
+            <button class="my-skill-publish-btn card-btn card-btn--success">
+                Publish
+            </button>
+            <button class="my-skill-export-btn card-btn card-btn--secondary">
+                Export
+            </button>
+        </div>
+    `;
+
+    // Wire publish button
+    const publishBtn = card.querySelector('.my-skill-publish-btn');
+    if (publishBtn) {
+        publishBtn.addEventListener('click', async () => {
+            try {
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+                const token = await window.authClient.getToken();
+                const resp = await fetch(`/api/v1/skills/${skill.skill_id}/publish`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ visibility: 'public' }),
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showNotification('success', data.message || 'Published to marketplace');
+                    publishBtn.textContent = 'Published';
+                    publishBtn.disabled = true;
+                } else {
+                    showNotification('error', data.error || 'Publish failed');
+                    publishBtn.textContent = 'Publish';
+                    publishBtn.disabled = false;
+                }
+            } catch (err) {
+                showNotification('error', 'Publish failed: ' + err.message);
+                publishBtn.textContent = 'Publish';
+                publishBtn.disabled = false;
+            }
+        });
+    }
+
+    // Wire export button
+    const exportBtn = card.querySelector('.my-skill-export-btn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+            try {
+                exportBtn.disabled = true;
+                exportBtn.textContent = 'Exporting...';
+                const token = await window.authClient.getToken();
+                const res = await fetch(`/api/v1/skills/${skill.skill_id}/export`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || `Export failed (${res.status})`);
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${skill.skill_id}.skill`;
+                const cd = res.headers.get('content-disposition');
+                if (cd) {
+                    const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (match) a.download = match[1].replace(/['"]/g, '');
+                }
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                showNotification('success', 'Skill exported');
+            } catch (err) {
+                showNotification('error', 'Export failed: ' + err.message);
+            } finally {
+                exportBtn.textContent = 'Export';
+                exportBtn.disabled = false;
+            }
+        });
+    }
+
+    return card;
+}
+
+/**
+ * Open skill rate modal
+ */
+function openSkillRateModal(skill) {
+    let overlay = document.getElementById('rate-skill-modal-overlay');
+    if (overlay) overlay.remove();
+
+    overlay = document.createElement('div');
+    overlay.id = 'rate-skill-modal-overlay';
+    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] opacity-0 transition-opacity duration-300';
+    overlay.innerHTML = `
+        <div id="rate-skill-modal-content" class="glass-panel rounded-xl p-6 w-full max-w-md border border-white/10 shadow-2xl transform scale-95 opacity-0 transition-all duration-300">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Rate Skill</h3>
+                <button id="rate-skill-close" class="text-gray-400 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <p class="text-sm text-gray-400 mb-4">Rating: <span class="text-white font-medium">${escapeHtml(skill.name)}</span></p>
+            <div class="flex gap-2 mb-4 justify-center" id="rate-skill-stars">
+                ${[1,2,3,4,5].map(i => `
+                    <button class="rate-skill-star cursor-pointer" data-rating="${i}">
+                        <svg class="w-8 h-8 text-gray-500 hover:text-yellow-400 transition-colors" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                    </button>
+                `).join('')}
+            </div>
+            <textarea id="rate-skill-comment" rows="3" placeholder="Optional review comment..."
+                      class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4 focus:outline-none focus:border-emerald-500 resize-none"></textarea>
+            <div class="flex justify-end gap-3">
+                <button id="rate-skill-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+                <button id="rate-skill-submit" class="px-4 py-2 text-sm font-medium rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors" disabled>Submit Rating</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    let selectedRating = 0;
+    const stars = overlay.querySelectorAll('.rate-skill-star');
+    const submitBtn = overlay.querySelector('#rate-skill-submit');
+    const content = overlay.querySelector('#rate-skill-modal-content');
+
+    // Show with animation
+    requestAnimationFrame(() => {
+        overlay.classList.add('opacity-100');
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+    });
+
+    // Star click handlers
+    stars.forEach(star => {
+        star.addEventListener('click', () => {
+            selectedRating = parseInt(star.dataset.rating);
+            submitBtn.disabled = false;
+            stars.forEach((s, idx) => {
+                const svg = s.querySelector('svg');
+                if (idx < selectedRating) {
+                    svg.classList.remove('text-gray-500');
+                    svg.classList.add('text-yellow-400');
+                } else {
+                    svg.classList.remove('text-yellow-400');
+                    svg.classList.add('text-gray-500');
+                }
+            });
+        });
+    });
+
+    const closeModal = () => {
+        overlay.classList.remove('opacity-100');
+        content.classList.remove('scale-100', 'opacity-100');
+        content.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => overlay.remove(), 300);
+    };
+
+    overlay.querySelector('#rate-skill-close').onclick = closeModal;
+    overlay.querySelector('#rate-skill-cancel').onclick = closeModal;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+    submitBtn.onclick = async () => {
+        if (!selectedRating) return;
+        submitBtn.textContent = 'Submitting...';
+        submitBtn.disabled = true;
+        try {
+            const token = await window.authClient.getToken();
+            const comment = overlay.querySelector('#rate-skill-comment').value.trim();
+            const body = { rating: selectedRating };
+            if (comment) body.comment = comment;
+
+            const res = await fetch(`/api/v1/marketplace/skills/${skill.id}/rate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.message || err.error || 'Rating failed');
+            }
+            showNotification('success', 'Rating submitted successfully');
+            closeModal();
+            loadMarketplaceSkills();
         } catch (err) {
             showNotification('error', 'Failed to submit rating: ' + err.message);
             submitBtn.textContent = 'Submit Rating';
