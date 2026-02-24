@@ -619,7 +619,17 @@ This prevents the common failure pattern where data contains both a constant met
 
 **Melt column hardening**: When the melt path fires, `process()` selects metric columns to melt. Only columns with numeric values in the first row are included — non-numeric columns (e.g., constant-value dimension columns that were cardinality-filtered out of `x_candidates`) are excluded to prevent garbage `Value=0.0` entries.
 
-**Heatmap yField numeric coercion**: `_build_g2plot_spec()` conditionally coerces heatmap `yField` values. When yField is categorical (melt path: `"Metric"` column with labels like `"Request Count"`), coercion is skipped. When yField is a real data column with numeric values (dual-axis path: `"hourOfDay"` = `"6"`), values are coerced to float for proper numeric ordering in G2Plot.
+**Heatmap yField coercion — always skip**: `_build_g2plot_spec()` unconditionally skips numeric coercion for heatmap `yField` values. G2Plot's Heatmap chart requires **categorical (string)** axis values to render discrete cells; coercing to float (e.g., `6` → `6.0`) causes G2Plot to treat the axis as continuous, making cells vanish entirely. Proper numeric ordering is handled by the `meta` configuration (see below) rather than value coercion.
+
+> **Design note (Feb 2026):** Previously, coercion was conditional — skipped for melt-path categorical labels (`"Metric"`) but applied for dual-axis numeric columns (`"hourOfDay"`). This produced float values (`6.0`, `10.0`) that broke G2Plot's discrete cell rendering. The fix always keeps yField as strings and delegates ordering to `meta`.
+
+**Heatmap `meta` configuration**: For heatmap charts, `_build_g2plot_spec()` generates a `meta` object that forces both `xField` and `yField` to categorical type with explicitly sorted values:
+
+```python
+meta[col] = {"type": "cat", "values": unique_vals_sorted}
+```
+
+Values are sorted numerically when possible (e.g., `["6", "7", "10", "14"]`), falling back to lexicographic sort for non-numeric strings (e.g., dates). This ensures G2Plot renders cells in the correct order without requiring float coercion.
 
 **Fuzzy matching** (`_fuzzy_match_column()`): Tokenized edit-distance matching that handles case differences, underscores vs spaces, and partial matches. Example: `distinctvalue` → `DistinctValue`, `product_name` → `ProductName`. Note: fuzzy matches are subject to the cardinality guard — a structurally correct match may be rejected if the target column is constant-valued for categorical roles.
 
