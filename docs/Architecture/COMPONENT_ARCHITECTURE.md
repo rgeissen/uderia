@@ -27,6 +27,7 @@ This architecture replaces the monolithic approach where charting, table renderi
   - [Component Manager](#component-manager)
   - [Admin Governance Settings](#admin-governance-settings)
 - [Chart Component: Reference Implementation](#chart-component-reference-implementation)
+  - [5-Stage Mapping Validation & Repair Pipeline](#5-stage-mapping-validation--repair-pipeline)
 - [Frontend Architecture](#frontend-architecture)
   - [Component Renderer Registry](#component-renderer-registry)
   - [Sub-Window Manager](#sub-window-manager)
@@ -37,6 +38,7 @@ This architecture replaces the monolithic approach where charting, table renderi
   - [Component Fast-Path](#component-fast-path)
   - [DOM Rendering](#dom-rendering)
   - [SSE Event Handling](#sse-event-handling)
+    - [Component LLM Event Piggybacking](#component-llm-event-piggybacking)
 - [REST API](#rest-api)
   - [User Endpoints](#user-endpoints)
   - [Admin Endpoints](#admin-endpoints)
@@ -465,13 +467,33 @@ These convenience functions handle profile resolution internally so profile clas
 `get_langchain_tools()` wraps each active action component's handler as a LangChain `StructuredTool`:
 
 ```python
-def get_langchain_tools(self, profile_config: Dict) -> List[StructuredTool]:
+def get_langchain_tools(self, profile_config: Dict, context: Dict) -> List[StructuredTool]:
     # 1. Filter active action components with handlers
-    # 2. For each: create async wrapper around handler.process()
-    # 3. Return list of StructuredTool objects
+    # 2. Build Pydantic args_schema from manifest (required vs optional fields)
+    # 3. For each: create async _run_component() wrapper around handler.process()
+    # 4. Return list of StructuredTool objects
 ```
 
-The async wrapper serializes the `ComponentRenderPayload` to JSON so the LLM agent receives structured output. This enables component tools to work with `ConversationAgentExecutor` (LangGraph-based) across all profile types.
+The async wrapper (`_run_component()`) serializes the `ComponentRenderPayload` to JSON so the LLM agent receives structured output. This enables component tools to work with `ConversationAgentExecutor` (LangGraph-based) across all profile types.
+
+**Pydantic None-value stripping:** The `_build_args_schema()` function creates Pydantic models from the manifest's `args` dict. Optional fields (e.g., `sort_direction`, `sort_by`, `row_limit`) get `default=None`. When the LLM omits an optional argument, Pydantic fills in `None` — but handlers expect absent keys (matching the adapter path where optional args are simply omitted). The `_run_component()` wrapper strips all `None` values from kwargs before calling `handler.process()`:
+
+```python
+async def _run_component(_handler=handler, **kwargs) -> str:
+    kwargs = {k: v for k, v in kwargs.items() if v is not None}  # Align with adapter path
+    payload = await _handler.process(kwargs, _ctx)
+    return json.dumps({...})
+```
+
+**Component context (`comp_context`):** The convenience function `get_component_langchain_tools(profile_id, user_uuid, session_id)` builds the context dict passed to all component handlers. It includes:
+
+| Key | Source | Purpose |
+|-----|--------|---------|
+| `session_id` | Parameter | Session isolation |
+| `user_uuid` | Parameter | User isolation |
+| `llm_callable` | Closure over `call_llm_api` | Enables components to make LLM calls (e.g., chart mapping Stage 4). Mirrors `adapter.py:1682`. Tokens automatically tracked via `call_llm_api` → `update_token_count()`. |
+
+The `llm_callable` closure is only created when both `user_uuid` and `session_id` are provided. Components that don't need LLM assistance (most of them) simply ignore it.
 
 #### Auto-Upgrade Pattern
 
@@ -525,31 +547,65 @@ The chart component is the first fully migrated component and serves as the refe
 
 ### ChartComponentHandler
 
-**File:** `components/builtin/chart/handler.py` (259 lines)
+**File:** `components/builtin/chart/handler.py` (~1072 lines)
 
 ```python
-class ChartComponentHandler(BaseComponentHandler):        # Line 20
-    component_id = "chart"                                 # Line 24
-    tool_name = "TDA_Charting"                            # Line 28
-    is_deterministic = True                                # Line 32
+class ChartComponentHandler(BaseComponentHandler):        # Line 79
+    component_id = "chart"                                 # Line 83
+    tool_name = "TDA_Charting"                            # Line 91
+    is_deterministic = True                                # Line 95
 
-    async def process(self, arguments, context=None):     # Line 45
+    async def process(self, arguments, context):          # Line 108
         # 1. Transform/normalize data (handle LLM hallucinations)
-        # 2. Build G2Plot spec from semantic roles
-        # 3. Return ComponentRenderPayload with spec
+        # 2. Sort and limit data (_apply_data_filters)
+        # 3. Validate arguments
+        # 4. Run 5-stage mapping validation & repair pipeline
+        # 5. Build G2Plot spec from validated mapping
+        # 6. Propagate component LLM events in metadata
+        # 7. Return ComponentRenderPayload with spec
 ```
 
-**Data normalization** (`_transform_chart_data()`, line 99): Handles five LLM hallucination patterns:
+**Data normalization** (`_transform_chart_data()`): Handles five LLM hallucination patterns:
 
-| Pattern | Lines | Correction |
-|---------|-------|------------|
-| Nested `{results: [...]}` wrapper | 109-119 | Flatten to top-level array |
-| `{labels: [...], values: [...]}` | 122-133 | Convert to array of dicts |
-| `{columns: [...], rows: [...]}` | 136-141 | Convert to array of dicts |
-| `ColumnName` key (qlty_distinctCategories) | 144-160 | Rename to `SourceColumnName` |
-| String numeric values | 219-239 | Coerce to float |
+| Pattern | Correction |
+|---------|------------|
+| Nested `{results: [...]}` wrapper | Flatten to top-level array |
+| `{labels: [...], values: [...]}` | Convert to array of dicts |
+| `{columns: [...], rows: [...]}` | Convert to array of dicts |
+| `ColumnName` key (qlty_distinctCategories) | Rename to `SourceColumnName` |
+| String numeric values | Coerce to float |
 
-**G2Plot spec generation** (`_build_g2plot_spec()`, line 165): Maps LLM semantic roles to G2Plot chart configuration:
+**Data filtering** (`_apply_data_filters()`): Handles `sort_by`, `sort_direction`, and `row_limit` arguments for "top N" / "bottom N" queries. Applied after data normalization but before mapping resolution.
+
+#### 5-Stage Mapping Validation & Repair Pipeline
+
+**Function:** `_resolve_and_validate_mapping()` (~100 lines)
+
+Every chart request passes through a 5-stage mapping pipeline that guarantees `_build_g2plot_spec()` always receives a valid mapping — eliminating LLM hallucination crashes (null values, wrong column names, swapped axes).
+
+```
+LLM Mapping → Stage 1 → Stage 2 → [Stage 3 → Stage 4 → Stage 5] → Valid Mapping
+               Sanitize  Validate   Deterministic  LLM Repair  Positional
+                                    Repair                     Fallback
+```
+
+| Stage | Function | When | What |
+|-------|----------|------|------|
+| **1. Sanitize** | `_sanitize_mapping()` | Always | Strip `None` values, empty strings, non-string values, unknown role keys, internal `_`-prefixed keys |
+| **2. Validate** | `_validate_mapping()` | Always | Diagnose structural issues — missing required roles, columns not in data, numeric/categorical swaps |
+| **3. Deterministic Repair** | `_repair_mapping_deterministic()` | If Stage 2 finds problems | Fuzzy-match column names (tokenized edit distance), swap axes when types mismatch, fill missing roles from column classification |
+| **4. LLM Repair** | `_repair_mapping_via_llm_wrapper()` | If Stage 3 insufficient + `llm_callable` available | Surgical LLM call for genuinely ambiguous columns; tokens tracked and piggybacked as Live Status events |
+| **5. Positional Fallback** | `_positional_fallback()` | If all else fails | Guaranteed last resort — assign columns by position and type classification |
+
+**Key design principle:** Stages 1-2 always run. Stages 3-5 only run if Stage 2 finds problems. The pipeline always returns a valid mapping — `_build_g2plot_spec()` never receives garbage input.
+
+**Column classification** (`_classify_columns()`): Categorizes data columns as `numeric`, `categorical`, or `date` by inspecting actual cell values. Used by Stages 3 and 5 to make type-aware assignment decisions.
+
+**Fuzzy matching** (`_fuzzy_match_column()`): Tokenized edit-distance matching that handles case differences, underscores vs spaces, and partial matches. Example: `distinctvalue` → `DistinctValue`, `product_name` → `ProductName`.
+
+**LLM event piggybacking (Stage 4):** When the LLM repair stage fires, it embeds a `_component_llm_events` list in the mapping metadata. This is propagated through `ComponentRenderPayload.metadata` and extracted by the consuming execution path (phase_executor for `tool_enabled`, conversation_agent for `conversation_with_tools`) to emit Live Status events and track tokens. See [Component LLM Event Piggybacking](#component-llm-event-piggybacking) below.
+
+**G2Plot spec generation** (`_build_g2plot_spec()`): Maps validated LLM semantic roles to G2Plot chart configuration:
 
 | LLM Semantic Role | G2Plot Field | Chart Types |
 |-------------------|-------------|-------------|
@@ -558,6 +614,8 @@ class ChartComponentHandler(BaseComponentHandler):        # Line 20
 | `color` / `series` | `seriesField` | All (grouping) |
 | `angle` / `value` | `angleField` | Pie, Donut |
 | `size` | `sizeField` | Scatter |
+
+**Defense-in-depth guard:** `_build_g2plot_spec()` skips any mapping entry where the column name is `None` or non-string, logging a warning. This should never trigger (the pipeline guarantees clean input) but prevents cascading crashes if future code paths bypass the pipeline.
 
 ### Chart Renderer
 
@@ -763,12 +821,30 @@ This intercepts component tool calls before they reach MCP server dispatch. The 
 Component LangChain tools are merged with MCP tools:
 
 ```python
-component_tools = get_component_langchain_tools(self.active_profile_id, self.user_uuid)
+component_tools = get_component_langchain_tools(self.active_profile_id, self.user_uuid, self.session_id)
 all_tools = mcp_tools + component_tools  # MCP tools optional when components present
 agent = ConversationAgentExecutor(..., mcp_tools=all_tools, ...)
 ```
 
 MCP server is no longer required when component tools are present — a profile with only component tools can still use the conversation agent path.
+
+**Component LLM event & token extraction** (`conversation_agent.py:on_tool_end`): When a component tool completes, the conversation agent extracts piggybacked events and tokens from the payload metadata — mirroring the extraction that `phase_executor.py:2076` performs for the `tool_enabled` path:
+
+```python
+_payload = extract_component_payload(tool_output)
+if _payload:
+    _comp_meta = _payload.get("metadata") or {}
+    # 1. Emit piggybacked Live Status events
+    _comp_events = _comp_meta.pop("_component_llm_events", None)
+    if _comp_events:
+        for evt in _comp_events:
+            await self._emit_event("component_llm_resolution", evt)
+    # 2. Accumulate component LLM tokens
+    self._component_llm_input_tokens += _comp_meta.get("llm_input_tokens", 0)
+    self._component_llm_output_tokens += _comp_meta.get("llm_output_tokens", 0)
+```
+
+The accumulated component tokens are returned alongside LangChain tokens in the agent result dict (`component_llm_input_tokens`, `component_llm_output_tokens`). The executor combines them for turn counters, cost calculation, and the `token_update` SSE — but does NOT double-count in the session DB (component tokens are already persisted by `call_llm_api` inside the handler). See [Component LLM Event Piggybacking](#component-llm-event-piggybacking) below.
 
 #### llm_only Direct Path (Auto-Upgrade)
 
@@ -946,6 +1022,45 @@ When the genie coordinator calls component tools directly (not through a child p
 | `genie_component_completed` | `on_tool_end` with successful payload extraction | "Component Complete: chart" (green, completed) |
 
 These events are routed through the genie event handler path (`eventHandlers.js` → `genieHandler.js` → `ui.js:_renderGenieStep`) and rendered as cards in the genie coordination trace. They are also persisted in `genie_events` for plan reload.
+
+#### Component LLM Event Piggybacking
+
+When a component handler makes internal LLM calls (e.g., chart mapping Stage 4), the resulting events and token counts must reach the frontend Live Status panel and the token/cost tracking system. Since components run inside tool execution (not as top-level LLM calls), this data is **piggybacked** through the component payload metadata.
+
+**The piggybacking contract:**
+
+```
+Component Handler                    Consuming Execution Path
+─────────────────                    ──────────────────────────
+Stage 4 calls llm_callable     →    call_llm_api updates session DB tokens
+Handler embeds in metadata:          Consumer extracts from tool result:
+  metadata["_component_llm_events"]    → Emitted as Live Status SSE events
+  metadata["llm_input_tokens"]         → Added to turn/statement token counters
+  metadata["llm_output_tokens"]        → Added to cost calculation
+```
+
+**Two extraction paths** (same contract, different consumers):
+
+| Profile Type | Consumer | File:Line | Extraction Method |
+|-------------|----------|-----------|-------------------|
+| `tool_enabled` | PhaseExecutor | `phase_executor.py:2076` | `tool_result.get("metadata", {}).pop("_component_llm_events")` → `_log_system_event()` + `_format_sse_with_depth()` |
+| `conversation_with_tools` | ConversationAgent | `conversation_agent.py:on_tool_end` | `extract_component_payload()` → `_emit_event("component_llm_resolution", evt)` |
+
+**Token flow (no double-counting):**
+
+```
+T1:  Component handler calls llm_callable (Stage 4)
+T2:  call_llm_api → update_token_count() → SESSION DB UPDATED (component tokens)
+T3:  Handler stores tokens in metadata, embeds _component_llm_events
+T4:  Consumer extracts events → Live SSE + stored for plan reload
+T5:  Consumer accumulates component tokens in separate counters
+T6:  Executor combines LangChain + component tokens for turn counters, cost, SSE
+T7:  Executor updates session DB with ONLY LangChain tokens (component already in DB)
+```
+
+**Frontend handling:**
+
+The `component_llm_resolution` event type is whitelisted in `processStream()` (`eventHandlers.js`) alongside other conversation agent events. The title routing function `_getConversationAgentStepTitle()` maps it to the event's own `step` field (e.g., "Chart Mapping Resolution (LLM)"). This works for both live streaming and plan event reload (stored in `conversation_agent_events`).
 
 ---
 
@@ -1171,11 +1286,11 @@ Agent pack manifests (v1.2+) include a `components` array. When a pack is instal
 | `src/trusted_data_agent/components/__init__.py` | 21 | Package init, exports `get_component_manager` |
 | `src/trusted_data_agent/components/base.py` | 219 | `RenderTarget`, `ComponentRenderPayload`, `BaseComponentHandler`, `StructuralHandler` |
 | `src/trusted_data_agent/components/models.py` | 206 | `ComponentDefinition` dataclass |
-| `src/trusted_data_agent/components/manager.py` | ~620 | `ComponentManager` singleton (discovery, registry, hot-reload, LangChain tool factory) |
+| `src/trusted_data_agent/components/manager.py` | ~720 | `ComponentManager` singleton (discovery, registry, hot-reload, LangChain tool factory, Pydantic schema builder, `llm_callable` injection, None-value stripping) |
 | `src/trusted_data_agent/components/settings.py` | 142 | Admin governance predicates |
 | `src/trusted_data_agent/components/utils.py` | 63 | Shared utilities: `generate_component_html()`, `extract_component_payload()` |
 | `components/builtin/chart/manifest.json` | 71 | Chart component manifest |
-| `components/builtin/chart/handler.py` | 259 | `ChartComponentHandler` (data normalization + G2Plot spec) |
+| `components/builtin/chart/handler.py` | ~1072 | `ChartComponentHandler` (data normalization, 5-stage mapping pipeline, G2Plot spec, LLM event piggybacking) |
 | `components/builtin/chart/renderer.js` | 41 | `renderChart()` (G2Plot instantiation) |
 | `components/builtin/chart/instructions.json` | — | Intensity-keyed LLM instructions |
 | `components/builtin/chart/guidelines.txt` | — | G2Plot guidelines (placeholder substitution) |
@@ -1193,17 +1308,17 @@ Agent pack manifests (v1.2+) include a `components` array. When a pack is instal
 | `src/trusted_data_agent/llm/handler.py` | 429-554 | Component instructions pipeline with profile_config resolution via config_manager |
 | `src/trusted_data_agent/mcp_adapter/adapter.py` | 330-437, 1691-1712 | System tools in `CLIENT_SIDE_TOOLS` (TDA_Charting removed); route component tools through `ComponentManager.get_handler()` |
 | `src/trusted_data_agent/core/configuration_service.py` | ~240 | Inject "Component Tools" category into `APP_STATE['structured_tools']` for planner visibility |
-| `src/trusted_data_agent/agent/executor.py` | ~1398, ~1785, ~2441, ~3072, ~3622, ~3838 | Component tool merge; auto-upgrade llm_only/rag_focused paths; HTML generation via `generate_component_html()` |
+| `src/trusted_data_agent/agent/executor.py` | ~1398, ~1726-1772, ~1785, ~2441, ~3072, ~3622, ~3838 | Component tool merge; auto-upgrade llm_only/rag_focused paths; HTML generation via `generate_component_html()`; combined component+LangChain token accounting for turn counters, cost, and `token_update` SSE |
 | `src/trusted_data_agent/agent/execution_service.py` | ~854 | Genie component HTML generation via `generate_component_html()`; session name token persistence |
-| `src/trusted_data_agent/agent/conversation_agent.py` | ~617 | Component payload extraction via `extract_component_payload()` |
+| `src/trusted_data_agent/agent/conversation_agent.py` | ~617, ~630-650 | Component payload extraction via `extract_component_payload()`; component LLM event emission (`_component_llm_events` → `component_llm_resolution` SSE); component token accumulation (`_component_llm_input/output_tokens`) |
 | `src/trusted_data_agent/agent/genie_coordinator.py` | ~530, ~791, ~799 | Merge component tools; emit `genie_component_invoked`/`completed` events; payload extraction via `extract_component_payload()` |
-| `src/trusted_data_agent/agent/phase_executor.py` | 1066-1156 | Component fast-path for deterministic handlers |
+| `src/trusted_data_agent/agent/phase_executor.py` | 1066-1156, 2076-2082 | Component fast-path for deterministic handlers; `_component_llm_events` extraction from tool results (piggybacking for `tool_enabled` path) |
 | `src/trusted_data_agent/llm/langchain_adapter.py` | ~508 | Removed `TDA_*` auto-include filter (component tools no longer flow through MCP path) |
 | `src/trusted_data_agent/api/rest_routes.py` | 11530-11672 | Five component REST endpoints |
 | `src/trusted_data_agent/api/admin_routes.py` | 2609-2690 | Two admin governance endpoints |
 | `src/trusted_data_agent/auth/database.py` | 842-960 | Component table creation in bootstrap |
 | `static/js/ui.js` | 10, 1361-1377 | `[data-component-id]` rendering + legacy fallback |
-| `static/js/eventHandlers.js` | 25-26, 1271-1305, ~1325 | `component_render` SSE event handler; `genie_component_invoked`/`completed` routing and title generation |
+| `static/js/eventHandlers.js` | 25-26, 974-979, 1271-1305, ~1325 | `component_render` SSE event handler; `component_llm_resolution` in conversation agent SSE whitelist + title routing; `genie_component_invoked`/`completed` routing and title generation |
 | `static/js/handlers/configurationHandler.js` | — | Component toggle section in profile modal (populate, restore, collect on save) |
 | `static/js/adminManager.js` | 2835-2942 | Component Management section in Features panel |
 | `templates/index.html` | — | Components tab, sub-window container, `#component-config-section` in profile modal |

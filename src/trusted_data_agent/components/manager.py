@@ -117,6 +117,31 @@ def get_component_langchain_tools(
                 pass
 
         comp_context = {"session_id": session_id, "user_uuid": user_uuid}
+
+        # Provide llm_callable for components needing LLM assistance
+        # (e.g., chart mapping resolution Stage 4). Mirrors adapter.py:1682-1690.
+        if user_uuid and session_id:
+            async def _comp_llm_callable(
+                prompt,
+                system_prompt="You are a data analyst.",
+                max_tokens=200,
+                _uid=user_uuid,
+                _sid=session_id,
+            ):
+                from trusted_data_agent.core.config import APP_STATE
+                from trusted_data_agent.llm.handler import call_llm_api
+                _llm = APP_STATE.get("llm")
+                if _llm:
+                    text, in_tok, out_tok, _, _ = await call_llm_api(
+                        _llm, prompt, user_uuid=_uid, session_id=_sid,
+                        system_prompt_override=system_prompt,
+                        reason="Component mapping resolution",
+                        disabled_history=True,
+                    )
+                    return {"content": text, "input_tokens": in_tok, "output_tokens": out_tok}
+                return {"content": "", "input_tokens": 0, "output_tokens": 0}
+            comp_context["llm_callable"] = _comp_llm_callable
+
         return manager.get_langchain_tools(profile_config, comp_context)
     except Exception as e:
         logger.warning(f"Component LangChain tools assembly failed: {e}")
@@ -659,6 +684,10 @@ class ComponentManager:
             ) -> str:
                 """Execute a component handler and return a JSON result."""
                 import json as _json
+                # Strip None values — Pydantic fills None for optional fields not
+                # provided by the LLM, but handlers expect absent keys (matching
+                # the adapter path where optional args are simply omitted).
+                kwargs = {k: v for k, v in kwargs.items() if v is not None}
                 try:
                     payload = await _handler.process(kwargs, _ctx)
                     # Return serialized result for the LLM to reference

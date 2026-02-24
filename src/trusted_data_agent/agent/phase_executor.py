@@ -2073,6 +2073,14 @@ class PhaseExecutor:
                     self.executor._log_system_event(event_data)
                     yield self.executor._format_sse_with_depth(event_data)
 
+            # Check for component-piggybacked Live Status events (e.g. chart LLM mapping resolution)
+            if isinstance(tool_result, dict):
+                comp_events = tool_result.get("metadata", {}).pop("_component_llm_events", None)
+                if comp_events:
+                    for evt in comp_events:
+                        self.executor._log_system_event(evt)
+                        yield self.executor._format_sse_with_depth(evt)
+
             # --- Calculate cost for client-side LLM evaluation of MCP server feedback ---
             _tool_llm_cost = 0
             if input_tokens > 0 or output_tokens > 0:

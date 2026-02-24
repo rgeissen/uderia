@@ -131,6 +131,10 @@ class ConversationAgentExecutor:
         self.tools_invoked = []
         self.tool_start_times = {}
 
+        # Track component-internal LLM token usage (not captured by LangChain callbacks)
+        self._component_llm_input_tokens = 0
+        self._component_llm_output_tokens = 0
+
         # Track LLM call count for step naming
         self.llm_call_count = 0
 
@@ -622,6 +626,29 @@ RESPONSE FORMAT:
                         self.component_payloads.append(_payload)
                         logger.info(f"[ConvAgent] Captured component payload: {_payload['component_id']}")
 
+                        # --- Component LLM event & token extraction (mirrors phase_executor:2076) ---
+                        _comp_meta = _payload.get("metadata") or {}
+
+                        # Emit piggybacked Live Status events (e.g., chart mapping LLM resolution)
+                        _comp_events = _comp_meta.pop("_component_llm_events", None)
+                        if _comp_events:
+                            for evt in _comp_events:
+                                await self._emit_event("component_llm_resolution", evt)
+                            logger.info(
+                                f"[ConvAgent] Emitted {len(_comp_events)} component LLM event(s) "
+                                f"for {_payload['component_id']}"
+                            )
+
+                        # Accumulate component LLM tokens (not captured by LangChain callbacks)
+                        _comp_in = _comp_meta.get("llm_input_tokens", 0)
+                        _comp_out = _comp_meta.get("llm_output_tokens", 0)
+                        if _comp_in or _comp_out:
+                            self._component_llm_input_tokens += _comp_in
+                            self._component_llm_output_tokens += _comp_out
+                            logger.info(
+                                f"[ConvAgent] Component LLM tokens: {_comp_in} in / {_comp_out} out"
+                            )
+
                     # CRITICAL: Yield control to event loop to allow SSE tasks to run
                     await asyncio.sleep(0)
 
@@ -770,7 +797,9 @@ RESPONSE FORMAT:
                 "success": True,
                 "duration_ms": total_duration_ms,
                 "input_tokens": total_input_tokens,
-                "output_tokens": total_output_tokens
+                "output_tokens": total_output_tokens,
+                "component_llm_input_tokens": self._component_llm_input_tokens,
+                "component_llm_output_tokens": self._component_llm_output_tokens,
             }
 
         except Exception as e:

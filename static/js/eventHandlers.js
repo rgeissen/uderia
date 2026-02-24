@@ -221,6 +221,11 @@ function _getConversationAgentStepTitle(eventType, payload) {
         return getRagFocusedTitle(eventType, payload);
     }
 
+    // Component-internal LLM events (e.g., chart mapping resolution)
+    if (eventType === 'component_llm_resolution') {
+        return payload?.step || 'Component LLM Resolution';
+    }
+
     // Fallback for unknown events
     return eventType;
 }
@@ -976,7 +981,8 @@ async function processStream(responseBody, originSessionId) {
                                    eventData.type === 'conversation_llm_complete' ||
                                    eventData.type === 'conversation_tool_invoked' ||
                                    eventData.type === 'conversation_tool_completed' ||
-                                   eventData.type === 'conversation_agent_complete') {
+                                   eventData.type === 'conversation_agent_complete' ||
+                                   eventData.type === 'component_llm_resolution') {
                             // Handle conversation agent events during execution stream
                             const payload = eventData.payload || {};
                             // Only handle events for current session

@@ -12,6 +12,7 @@ manifest and restart.
 import json as _json
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -51,6 +52,32 @@ _METRIC_PATTERN = re.compile(
     r"|bytes|kb|mb|io|cpu|memory|latency|duration|size)",
     re.IGNORECASE,
 )
+
+# ---------------------------------------------------------------------------
+# Mapping pipeline data structures
+# ---------------------------------------------------------------------------
+
+_CAMEL_CASE_RE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+@dataclass
+class MappingValidation:
+    """Diagnostic result from _validate_mapping."""
+
+    is_valid: bool
+    missing_required: List[str] = field(default_factory=list)
+    bad_columns: Dict[str, str] = field(default_factory=dict)
+    swapped_axes: bool = False
+    duplicate_columns: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MappingResult:
+    """Output of the mapping pipeline."""
+
+    mapping: Dict[str, str] = field(default_factory=dict)
+    needs_melt: bool = False
+    meta: Dict[str, Any] = field(default_factory=dict)
 
 
 class ChartComponentHandler(BaseComponentHandler):
@@ -102,35 +129,32 @@ class ChartComponentHandler(BaseComponentHandler):
                 metadata={"tool_name": self.tool_name, "status": "error"},
             )
 
-        chart_type = arguments.get("chart_type", "bar").lower()
+        chart_type = (arguments.get("chart_type") or "bar").lower()
 
-        # --- Intelligent mapping resolution (all chart types) ---
+        # --- Mapping validation & repair pipeline (always runs) ---
         mapping_meta: Dict[str, Any] = {}
         if data:
-            existing_mapping = arguments.get("mapping") or {}
-            chart_entry = _CHART_TYPES.get(chart_type, {})
-            required_roles = chart_entry.get("mapping_roles", ["x_axis", "y_axis"])
+            raw_mapping = arguments.get("mapping") or {}
+            result = await _resolve_and_validate_mapping(
+                chart_type, data, raw_mapping, context,
+            )
 
-            if not _is_mapping_complete(existing_mapping, required_roles, data):
-                resolved_mapping, needs_melt, mapping_meta = await _resolve_chart_mapping(
-                    chart_type, data, existing_mapping, context,
-                )
+            if result.needs_melt:
+                x_col = result.mapping.get("x_axis", list(data[0].keys())[0])
+                metric_cols = [c for c in data[0].keys() if c != x_col]
+                original_shape = f"{len(data)} rows x {len(data[0])} columns"
+                data = _melt_wide_to_long(data, x_col, metric_cols)
+                arguments["data"] = data
+                result.meta["auto_melt"] = True
+                result.meta["original_shape"] = original_shape
+                result.meta["melted_shape"] = f"{len(data)} cells"
 
-                if needs_melt:
-                    x_col = resolved_mapping.get("x_axis", list(data[0].keys())[0])
-                    metric_cols = [c for c in data[0].keys() if c != x_col]
-                    original_shape = f"{len(data)} rows x {len(data[0])} columns"
-                    data = _melt_wide_to_long(data, x_col, metric_cols)
-                    arguments["data"] = data
-                    mapping_meta["auto_melt"] = True
-                    mapping_meta["original_shape"] = original_shape
-                    mapping_meta["melted_shape"] = f"{len(data)} cells"
-
-                arguments["mapping"] = resolved_mapping
-                logger.info(
-                    f"Chart mapping resolved ({mapping_meta.get('approach', 'unknown')}): "
-                    f"{resolved_mapping}"
-                )
+            arguments["mapping"] = result.mapping
+            mapping_meta = result.meta
+            logger.info(
+                f"Chart mapping ({mapping_meta.get('resolved_by', 'unknown')}): "
+                f"{result.mapping}"
+            )
 
         try:
             chart_spec = _build_g2plot_spec(arguments, data)
@@ -152,9 +176,12 @@ class ChartComponentHandler(BaseComponentHandler):
         }
         if mapping_meta:
             metadata["mapping_resolution"] = mapping_meta
-        if mapping_meta.get("approach") == "llm_assisted":
+        if mapping_meta.get("resolved_by") == "llm_assisted":
             metadata["llm_input_tokens"] = mapping_meta.get("llm_input_tokens", 0)
             metadata["llm_output_tokens"] = mapping_meta.get("llm_output_tokens", 0)
+        # Propagate piggybacked Live Status events for the SSE stream
+        if "_component_llm_events" in mapping_meta:
+            metadata["_component_llm_events"] = mapping_meta["_component_llm_events"]
 
         return ComponentRenderPayload(
             component_id=self.component_id,
@@ -248,7 +275,7 @@ def _apply_data_filters(data: list, arguments: Dict[str, Any]) -> list:
         return data
 
     sort_by = arguments.get("sort_by")
-    sort_dir = arguments.get("sort_direction", "desc").lower()
+    sort_dir = (arguments.get("sort_direction") or "desc").lower()
     row_limit = arguments.get("row_limit")
 
     # Sort
@@ -320,6 +347,12 @@ def _build_g2plot_spec(args: dict, data: list) -> dict:
 
     processed_mapping = {}
     for llm_key, data_col_name in mapping.items():
+        # Defense-in-depth: pipeline guarantees clean input, but guard anyway
+        if not isinstance(data_col_name, str) or not data_col_name:
+            logger.warning(
+                f"Skipping mapping key '{llm_key}': column name is {data_col_name!r}"
+            )
+            continue
         g2plot_key = reverse_canonical_map.get(llm_key.lower())
         if g2plot_key:
             actual_col_name = first_row_keys_lower.get(data_col_name.lower())
@@ -418,25 +451,424 @@ def _classify_columns(data: List[dict]) -> Dict[str, List[str]]:
     return result
 
 
-def _is_mapping_complete(
+# ---------------------------------------------------------------------------
+# Stage 1: Sanitize mapping — strip garbage values
+# ---------------------------------------------------------------------------
+
+
+def _sanitize_mapping(
+    mapping: Dict[str, Any], chart_type: str,
+) -> Tuple[Dict[str, str], List[str]]:
+    """
+    Strip invalid entries from an LLM-provided mapping.
+
+    Drops: None values, empty strings, non-string values, unknown role keys,
+    internal keys (prefixed with ``_``).  Returns ``(clean_mapping, actions)``.
+    """
+    chart_entry = _CHART_TYPES.get(chart_type.lower(), {})
+    valid_roles = set(chart_entry.get("mapping_roles", [])) | set(
+        chart_entry.get("optional_roles", [])
+    )
+    # Always accept the universal role keys even if the manifest doesn't list them
+    valid_roles |= {"x_axis", "y_axis", "color", "angle", "size", "value"}
+
+    clean: Dict[str, str] = {}
+    actions: List[str] = []
+
+    for key, val in mapping.items():
+        if key.startswith("_"):
+            actions.append(f"dropped {key}: internal key")
+            continue
+        if key not in valid_roles:
+            actions.append(f"dropped {key}: not a valid role")
+            continue
+        if not isinstance(val, str) or not val.strip():
+            actions.append(f"dropped {key}: {val!r}")
+            continue
+        clean[key] = val.strip()
+
+    return clean, actions
+
+
+# ---------------------------------------------------------------------------
+# Stage 2: Validate mapping — purely diagnostic
+# ---------------------------------------------------------------------------
+
+
+def _validate_mapping(
     mapping: Dict[str, str],
     required_roles: List[str],
     data: List[dict],
-    allow_synthetic: bool = False,
-) -> bool:
-    """Check if all required roles are filled and mapped columns exist in data."""
-    if not mapping:
-        return False
-    if not all(mapping.get(role) for role in required_roles):
-        return False
-    if allow_synthetic:
-        return True  # Synthetic columns (Metric/Value) will be created by melt
-    first_row_keys_lower = {k.lower() for k in data[0]} if data else set()
-    return all(
-        mapping[r].lower() in first_row_keys_lower
-        for r in required_roles
-        if mapping.get(r)
+) -> MappingValidation:
+    """
+    Diagnose structural issues in a mapping.  Does NOT repair — purely diagnostic.
+
+    Returns a ``MappingValidation`` with ``is_valid=True`` when the mapping is
+    safe to pass directly to ``_build_g2plot_spec()``.
+    """
+    missing_required: List[str] = [r for r in required_roles if r not in mapping]
+    bad_columns: Dict[str, str] = {}
+    duplicate_columns: List[str] = []
+    swapped_axes = False
+
+    if data:
+        first_row_keys_lower = {k.lower(): k for k in data[0].keys()}
+        seen_cols: Dict[str, str] = {}  # lowercase col → first role
+
+        for role, col in mapping.items():
+            col_lower = col.lower()
+            # Check column exists (case-insensitive)
+            if col_lower not in first_row_keys_lower:
+                bad_columns[role] = col
+            # Check duplicates
+            if col_lower in seen_cols:
+                duplicate_columns.append(f"{role}={col} duplicates {seen_cols[col_lower]}")
+            else:
+                seen_cols[col_lower] = role
+
+        # Check swapped axes: x_axis should be categorical, y_axis numeric
+        if "x_axis" in mapping and "y_axis" in mapping:
+            x_col = mapping["x_axis"]
+            y_col = mapping["y_axis"]
+            if (
+                x_col.lower() in first_row_keys_lower
+                and y_col.lower() in first_row_keys_lower
+            ):
+                actual_x = first_row_keys_lower[x_col.lower()]
+                actual_y = first_row_keys_lower[y_col.lower()]
+                # Sample up to 5 rows to check types
+                sample = data[:5]
+                x_all_numeric = all(_is_numeric_value(row.get(actual_x)) for row in sample)
+                y_any_non_numeric = any(
+                    not _is_numeric_value(row.get(actual_y)) for row in sample
+                )
+                if x_all_numeric and y_any_non_numeric:
+                    swapped_axes = True
+
+    is_valid = not missing_required and not bad_columns and not swapped_axes
+    return MappingValidation(
+        is_valid=is_valid,
+        missing_required=missing_required,
+        bad_columns=bad_columns,
+        swapped_axes=swapped_axes,
+        duplicate_columns=duplicate_columns,
     )
+
+
+# ---------------------------------------------------------------------------
+# Fuzzy column matching helpers (for Stage 3)
+# ---------------------------------------------------------------------------
+
+
+def _tokenize_column_name(name: str) -> List[str]:
+    """
+    Split a column name into lowercase tokens.
+
+    Handles camelCase, snake_case, kebab-case, and space-separated names::
+
+        'DistinctValueCount' → ['distinct', 'value', 'count']
+        'product_type'       → ['product', 'type']
+        'Request Count'      → ['request', 'count']
+    """
+    # Split on camelCase boundaries first
+    parts = _CAMEL_CASE_RE.sub(" ", name)
+    # Then split on underscores, hyphens, spaces
+    tokens = re.split(r"[_\-\s]+", parts)
+    return [t.lower() for t in tokens if t]
+
+
+def _fuzzy_match_column(target: str, data_columns: List[str]) -> Optional[str]:
+    """
+    Find the best matching data column for a target name.
+
+    Match priority:
+    1. Case-insensitive exact match
+    2. Normalized match (strip all separators, lowercase)
+    3. Token-overlap (Jaccard) — requires >0.5 AND unique best match
+    4. Substring — target is suffix/prefix of exactly one column
+
+    Returns the actual column name (preserving original case) or ``None``.
+    """
+    if not target or not data_columns:
+        return None
+
+    target_lower = target.lower()
+
+    # 1. Case-insensitive exact match
+    for col in data_columns:
+        if col.lower() == target_lower:
+            return col
+
+    # 2. Normalized match (strip all non-alphanumeric, lowercase)
+    target_norm = re.sub(r"[^a-z0-9]", "", target_lower)
+    for col in data_columns:
+        col_norm = re.sub(r"[^a-z0-9]", "", col.lower())
+        if col_norm == target_norm:
+            return col
+
+    # 3. Token overlap (Jaccard similarity)
+    target_tokens = set(_tokenize_column_name(target))
+    if target_tokens:
+        best_score = 0.0
+        best_col: Optional[str] = None
+        tied = False
+
+        for col in data_columns:
+            col_tokens = set(_tokenize_column_name(col))
+            if not col_tokens:
+                continue
+            intersection = target_tokens & col_tokens
+            union = target_tokens | col_tokens
+            score = len(intersection) / len(union) if union else 0.0
+            if score > best_score:
+                best_score = score
+                best_col = col
+                tied = False
+            elif score == best_score and score > 0:
+                tied = True
+
+        if best_score > 0.5 and not tied:
+            return best_col
+
+    # 4. Substring match (target is prefix/suffix of exactly one column)
+    matches = [
+        col
+        for col in data_columns
+        if col.lower().startswith(target_lower) or col.lower().endswith(target_lower)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Stage 3: Deterministic repair — fuzzy match, swap axes, fill roles
+# ---------------------------------------------------------------------------
+
+
+def _repair_mapping_deterministic(
+    mapping: Dict[str, str],
+    validation: MappingValidation,
+    chart_type: str,
+    required_roles: List[str],
+    optional_roles: List[str],
+    data: List[dict],
+) -> Tuple[Dict[str, str], bool, List[str]]:
+    """
+    Attempt to repair a mapping using deterministic strategies.
+
+    Strategies applied in order:
+    - 3a. Fuzzy column matching for bad (not found) columns
+    - 3b. Axis swap when x_axis/y_axis types are swapped
+    - 3c. Fill missing required roles using column classification
+
+    Returns ``(repaired_mapping, needs_melt, repairs_list)``.
+    """
+    repaired = dict(mapping)
+    repairs: List[str] = []
+    needs_melt = False
+    data_columns = list(data[0].keys()) if data else []
+
+    # 3a. Fuzzy column matching for bad columns
+    for role, bad_col in validation.bad_columns.items():
+        match = _fuzzy_match_column(bad_col, data_columns)
+        if match:
+            repaired[role] = match
+            repairs.append(f"fuzzy_matched {role}: '{bad_col}' → '{match}'")
+        else:
+            # Remove the bad mapping — it'll be filled by 3c if required
+            repaired.pop(role, None)
+            repairs.append(f"removed {role}: '{bad_col}' not found in data")
+
+    # 3b. Axis swap
+    if validation.swapped_axes and "x_axis" in repaired and "y_axis" in repaired:
+        repaired["x_axis"], repaired["y_axis"] = repaired["y_axis"], repaired["x_axis"]
+        repairs.append(
+            f"swapped axes: x_axis←'{repaired['y_axis']}', y_axis←'{repaired['x_axis']}'"
+        )
+
+    # 3c. Fill missing required roles using classification
+    still_missing = [r for r in required_roles if r not in repaired]
+    if still_missing:
+        classified = _classify_columns(data)
+        # Use _assign_roles to get a full mapping, but only take roles we need
+        full_assignment = _assign_roles(
+            chart_type, required_roles, optional_roles, classified, data,
+        )
+        needs_melt = bool(full_assignment.pop("_needs_melt", False))
+
+        for role in still_missing:
+            if role in full_assignment:
+                repaired[role] = full_assignment[role]
+                repairs.append(f"filled {role}: '{full_assignment[role]}' (classified)")
+
+    return repaired, needs_melt, repairs
+
+
+# ---------------------------------------------------------------------------
+# Stage 4: LLM-assisted repair wrapper
+# ---------------------------------------------------------------------------
+
+
+async def _repair_mapping_via_llm_wrapper(
+    mapping: Dict[str, str],
+    chart_type: str,
+    required_roles: List[str],
+    data: List[dict],
+    classified: Dict[str, List[str]],
+    context: Dict[str, Any],
+) -> Tuple[Optional[Dict[str, str]], bool, Dict[str, Any]]:
+    """
+    Wrap the existing ``_resolve_mapping_via_llm()`` with partial-mapping context
+    and output sanitization.
+
+    Returns ``(repaired_mapping_or_None, needs_melt, meta_dict)``.
+    """
+    llm_callable = context.get("llm_callable")
+    if not llm_callable:
+        return None, False, {}
+
+    # Only call LLM if there are ambiguous columns to resolve
+    if not classified.get("ambiguous"):
+        return None, False, {}
+
+    llm_result, tokens = await _resolve_mapping_via_llm(
+        chart_type, required_roles, data, classified, llm_callable,
+    )
+
+    if not llm_result:
+        return None, False, {
+            "llm_input_tokens": tokens[0],
+            "llm_output_tokens": tokens[1],
+        }
+
+    # Sanitize LLM output (LLMs can also return None values)
+    sanitized, _ = _sanitize_mapping(llm_result, chart_type)
+
+    # Merge: preserve existing valid roles, overlay LLM assignments
+    merged = dict(mapping)
+    for role, col in sanitized.items():
+        if role not in merged:
+            merged[role] = col
+
+    needs_melt = bool(
+        llm_result.pop("_needs_melt", False) or llm_result.pop("needs_melt", False)
+    )
+
+    return merged, needs_melt, {
+        "llm_input_tokens": tokens[0],
+        "llm_output_tokens": tokens[1],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pipeline orchestrator — replaces _is_mapping_complete + _resolve_chart_mapping
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_and_validate_mapping(
+    chart_type: str,
+    data: List[dict],
+    raw_mapping: Dict[str, Any],
+    context: Dict[str, Any],
+) -> MappingResult:
+    """
+    Five-stage mapping validation and repair pipeline.
+
+    Every mapping passes through stages 1-2.  Stages 3-5 only run if stage 2
+    finds problems.  The output is always a valid mapping that
+    ``_build_g2plot_spec()`` can consume without error.
+
+    Stages:
+        1. Sanitize — strip garbage values (None, empty, non-string, unknown roles)
+        2. Validate — diagnose structural issues (missing roles, bad columns, swapped axes)
+        3. Deterministic repair — fuzzy match columns, swap axes, fill missing roles
+        4. LLM repair — surgical call for genuinely ambiguous columns
+        5. Positional fallback — guaranteed last resort
+    """
+    chart_entry = _CHART_TYPES.get(chart_type.lower(), {})
+    required_roles = chart_entry.get("mapping_roles", ["x_axis", "y_axis"])
+    optional_roles = chart_entry.get("optional_roles", [])
+    meta: Dict[str, Any] = {"stages_applied": []}
+
+    # --- Stage 1: Sanitize ---
+    sanitized, sanitize_actions = _sanitize_mapping(raw_mapping, chart_type)
+    meta["stages_applied"].append("sanitize")
+    if sanitize_actions:
+        meta["sanitize_actions"] = sanitize_actions
+
+    # --- Stage 2: Validate ---
+    validation = _validate_mapping(sanitized, required_roles, data)
+
+    if validation.is_valid:
+        meta["resolved_by"] = "sanitized_passthrough"
+        return MappingResult(mapping=sanitized, meta=meta)
+
+    # --- Stage 3: Deterministic repair ---
+    meta["stages_applied"].append("deterministic_repair")
+    classified = _classify_columns(data)
+    meta["classified"] = classified
+
+    repaired, needs_melt, repairs = _repair_mapping_deterministic(
+        sanitized, validation, chart_type, required_roles, optional_roles, data,
+    )
+    if repairs:
+        meta["repairs_applied"] = repairs
+
+    # Re-validate after repair
+    post_repair_validation = _validate_mapping(repaired, required_roles, data)
+    if post_repair_validation.is_valid or (
+        needs_melt and not post_repair_validation.missing_required
+    ):
+        meta["resolved_by"] = "deterministic_repair"
+        return MappingResult(mapping=repaired, needs_melt=needs_melt, meta=meta)
+
+    # --- Stage 4: LLM repair ---
+    llm_mapping, llm_melt, llm_meta = await _repair_mapping_via_llm_wrapper(
+        repaired, chart_type, required_roles, data, classified, context,
+    )
+    if llm_meta:
+        meta["stages_applied"].append("llm_repair")
+        meta.update(llm_meta)
+
+    if llm_mapping:
+        # Validate LLM output
+        llm_validation = _validate_mapping(llm_mapping, required_roles, data)
+        if llm_validation.is_valid or (
+            llm_melt and not llm_validation.missing_required
+        ):
+            meta["resolved_by"] = "llm_assisted"
+            # Build Live Status event for piggybacking
+            in_tok = llm_meta.get("llm_input_tokens", 0)
+            out_tok = llm_meta.get("llm_output_tokens", 0)
+            missing_count = len(post_repair_validation.missing_required)
+            meta["_component_llm_events"] = [
+                {
+                    "step": "Chart Mapping Resolution (LLM)",
+                    "type": "plan_optimization",
+                    "details": {
+                        "summary": (
+                            f"Deterministic repair insufficient — LLM resolved "
+                            f"{missing_count} ambiguous role(s). "
+                            f"({in_tok} in / {out_tok} out)"
+                        ),
+                        "correction_type": "component_llm_mapping",
+                        "input_tokens": in_tok,
+                        "output_tokens": out_tok,
+                    },
+                }
+            ]
+            return MappingResult(
+                mapping=llm_mapping, needs_melt=llm_melt, meta=meta,
+            )
+
+    # --- Stage 5: Positional fallback ---
+    meta["stages_applied"].append("positional_fallback")
+    fallback = _positional_fallback(chart_type, required_roles, data)
+    fallback_melt = bool(fallback.pop("_needs_melt", False))
+    meta["resolved_by"] = "positional_fallback"
+    return MappingResult(mapping=fallback, needs_melt=fallback_melt, meta=meta)
 
 
 def _assign_roles(
@@ -544,68 +976,6 @@ def _positional_fallback(
             "_needs_melt": True,
         }
     return mapping
-
-
-async def _resolve_chart_mapping(
-    chart_type: str,
-    data: List[dict],
-    mapping: Optional[Dict[str, str]],
-    context: Dict[str, Any],
-) -> Tuple[Dict[str, str], bool, Dict[str, Any]]:
-    """
-    Resolve chart mapping for ANY chart type using a 3-tier strategy:
-
-    1. Validate existing mapping against manifest roles
-    2. Smart deterministic classification + manifest-driven role assignment
-    3. LLM fallback (only if required roles remain unfilled + ambiguous columns exist)
-
-    Returns ``(mapping, needs_melt, approach_metadata)``.
-    """
-    chart_entry = _CHART_TYPES.get(chart_type.lower(), {})
-    required_roles = chart_entry.get("mapping_roles", ["x_axis", "y_axis"])
-    optional_roles = chart_entry.get("optional_roles", [])
-
-    # --- Tier 1: Validate existing mapping completeness ---
-    if mapping and _is_mapping_complete(mapping, required_roles, data):
-        return mapping, False, {"approach": "user_provided"}
-
-    # --- Tier 2: Deterministic classification + role assignment ---
-    classified = _classify_columns(data)
-    resolved = _assign_roles(chart_type, required_roles, optional_roles, classified, data)
-
-    if resolved:
-        needs_melt = resolved.pop("_needs_melt", False)
-        if _is_mapping_complete(resolved, required_roles, data, allow_synthetic=needs_melt):
-            return resolved, needs_melt, {
-                "approach": "heuristic",
-                "classified": classified,
-                "final_mapping": dict(resolved),
-            }
-
-    # --- Tier 3: LLM fallback (ambiguous columns AND unfilled required roles) ---
-    llm_callable = context.get("llm_callable")
-    if llm_callable and classified.get("ambiguous"):
-        llm_result, tokens = await _resolve_mapping_via_llm(
-            chart_type, required_roles, data, classified, llm_callable,
-        )
-        if llm_result:
-            needs_melt = llm_result.pop("_needs_melt", False) or llm_result.pop("needs_melt", False)
-            return llm_result, needs_melt, {
-                "approach": "llm_assisted",
-                "llm_input_tokens": tokens[0],
-                "llm_output_tokens": tokens[1],
-                "classified": classified,
-                "final_mapping": dict(llm_result),
-            }
-
-    # --- Tier 3b: Positional fallback (best effort) ---
-    fallback = _positional_fallback(chart_type, required_roles, data)
-    needs_melt = fallback.pop("_needs_melt", False)
-    return fallback, needs_melt, {
-        "approach": "heuristic_positional",
-        "classified": classified,
-        "final_mapping": dict(fallback),
-    }
 
 
 # ---------------------------------------------------------------------------

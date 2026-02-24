@@ -1731,12 +1731,21 @@ class PlanExecutor:
             input_tokens = result.get("input_tokens", 0)
             output_tokens = result.get("output_tokens", 0)
 
-            # Update turn token counters
-            self.turn_input_tokens += input_tokens
-            self.turn_output_tokens += output_tokens
+            # Include component-internal LLM tokens (e.g., chart mapping resolution).
+            # These are NOT captured by LangChain callbacks but were already persisted
+            # to session DB by call_llm_api → update_token_count (handler.py:1082).
+            comp_llm_in = result.get("component_llm_input_tokens", 0)
+            comp_llm_out = result.get("component_llm_output_tokens", 0)
+            combined_input = input_tokens + comp_llm_in
+            combined_output = output_tokens + comp_llm_out
+
+            # Update turn token counters with combined totals
+            self.turn_input_tokens += combined_input
+            self.turn_output_tokens += combined_output
 
             # CRITICAL: Conversation agent uses LangChain directly (not llm_handler)
-            # so we must explicitly update session token counts here
+            # so we must explicitly update session token counts here.
+            # NOTE: Only add LangChain tokens — component tokens already in DB.
             if input_tokens > 0 or output_tokens > 0:
                 await session_manager.update_token_count(
                     self.user_uuid,
@@ -1748,21 +1757,21 @@ class PlanExecutor:
             # Emit token update event with updated session totals
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
-                # Calculate cost (LangChain path, not _call_llm_and_update_tokens)
+                # Calculate cost using combined tokens (LangChain + component LLM)
                 _conv_cost = 0
                 try:
                     from trusted_data_agent.core.cost_manager import CostManager
                     _conv_cost = CostManager().calculate_cost(
                         provider=self.current_provider or "Unknown",
                         model=self.current_model or "Unknown",
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens
+                        input_tokens=combined_input,
+                        output_tokens=combined_output
                     )
                 except Exception:
                     pass
                 yield self._format_sse_with_depth({
-                    "statement_input": input_tokens,
-                    "statement_output": output_tokens,
+                    "statement_input": combined_input,
+                    "statement_output": combined_output,
                     "turn_input": self.turn_input_tokens,
                     "turn_output": self.turn_output_tokens,
                     "total_input": updated_session.get("input_tokens", 0),
