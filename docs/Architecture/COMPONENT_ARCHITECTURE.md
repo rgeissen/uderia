@@ -607,6 +607,20 @@ LLM Mapping → Stage 1 → Stage 2 → [Stage 3 → Stage 4 → Stage 5] → Va
 
 This prevents the common failure pattern where data contains both a constant metadata column and a variable category column — without cardinality filtering, the first dimension column by dict order was selected regardless of whether it had 1 or 20 unique values.
 
+**Heatmap dual-axis priority** (`_assign_roles()` heatmap branch): Heatmaps require three roles: `x_axis`, `y_axis`, and `color`. The mapping logic uses three mutually exclusive conditions evaluated in priority order:
+
+| Condition | Guard | Mapping | Example |
+|-----------|-------|---------|---------|
+| **A. Dual-axis** | 2+ categorical/temporal AND 1+ numeric | x=dim[0], y=dim[1], color=metric[0] | LogDate × hourOfDay, color=Request Count |
+| **B. Melt** | Exactly 1 categorical/temporal AND 2+ numeric | x=dim[0], y="Metric", color="Value", melt=True | LogDate × {CPU, IO, Memory}, wide→long |
+| **C. All-numeric melt** | 0 categorical AND 3+ numeric | x=num[0], y="Metric", color="Value", melt=True | Pure numeric datasets |
+
+> **Design note (Feb 2026):** Condition A was previously evaluated *after* the melt condition, which meant datasets with two natural dimensions (e.g., date + hour) were always melted — collapsing one dimension into the metric axis. Promoting dual-axis to first priority ensures that when two categorical/temporal axes exist, the heatmap uses both as axes with a single metric as color intensity. The melt guard was also tightened from `x_candidates` (truthy if 1+) to `len(x_candidates) == 1` to make conditions mutually exclusive.
+
+**Melt column hardening**: When the melt path fires, `process()` selects metric columns to melt. Only columns with numeric values in the first row are included — non-numeric columns (e.g., constant-value dimension columns that were cardinality-filtered out of `x_candidates`) are excluded to prevent garbage `Value=0.0` entries.
+
+**Heatmap yField numeric coercion**: `_build_g2plot_spec()` conditionally coerces heatmap `yField` values. When yField is categorical (melt path: `"Metric"` column with labels like `"Request Count"`), coercion is skipped. When yField is a real data column with numeric values (dual-axis path: `"hourOfDay"` = `"6"`), values are coerced to float for proper numeric ordering in G2Plot.
+
 **Fuzzy matching** (`_fuzzy_match_column()`): Tokenized edit-distance matching that handles case differences, underscores vs spaces, and partial matches. Example: `distinctvalue` → `DistinctValue`, `product_name` → `ProductName`. Note: fuzzy matches are subject to the cardinality guard — a structurally correct match may be rejected if the target column is constant-valued for categorical roles.
 
 **LLM event piggybacking (Stage 4):** When the LLM repair stage fires, it embeds a `_component_llm_events` list in the mapping metadata. This is propagated through `ComponentRenderPayload.metadata` and extracted by the consuming execution path (phase_executor for `tool_enabled`, conversation_agent for `conversation_with_tools`) to emit Live Status events and track tokens. See [Component LLM Event Piggybacking](#component-llm-event-piggybacking) below.

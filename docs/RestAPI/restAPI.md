@@ -85,7 +85,7 @@ Without a configured default profile, REST endpoints will return `400 Bad Reques
 
 The typical REST API workflow involves five steps:
 
-**1. Authenticate** - Obtain a JWT from `/auth/login`, then create long-lived token via `/auth/tokens`  
+**1. Authenticate** - Obtain a JWT from `/api/v1/auth/login`, then create long-lived token via `/api/v1/auth/tokens`  
 **2. Create Profile** (One-time) - Configure LLM + MCP via UI or REST endpoints, set as default  
 **3. Create a Session** - `POST /api/v1/sessions` to start a conversation context  
 **4. Submit a Query** - `POST /api/v1/sessions/{session_id}/query` with your prompt  
@@ -176,7 +176,7 @@ JWT (JSON Web Tokens) are short-lived session tokens automatically managed by th
 
 ```bash
 # Login to get JWT token
-JWT=$(curl -s -X POST http://localhost:5050/auth/login \
+JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"your_username","password":"your_password"}' \
   | jq -r '.token')
@@ -191,7 +191,7 @@ curl -X GET http://localhost:5050/api/v1/sessions \
 #### Step 1: Register an Account
 
 ```bash
-curl -X POST http://localhost:5050/auth/register \
+curl -X POST http://localhost:5050/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "api_user",
@@ -216,7 +216,7 @@ curl -X POST http://localhost:5050/auth/register \
 #### Step 2: Login to Get JWT Token
 
 ```bash
-curl -X POST http://localhost:5050/auth/login \
+curl -X POST http://localhost:5050/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "api_user",
@@ -287,7 +287,7 @@ The base URL for all endpoints is `/api`.
 
 Create a new user account.
 
-**Endpoint:** `POST /auth/register`  
+**Endpoint:** `POST /api/v1/auth/register`  
 **Authentication:** None (public endpoint)
 
 **Request Body:**
@@ -325,7 +325,7 @@ Create a new user account.
 
 Authenticate and receive a JWT token.
 
-**Endpoint:** `POST /auth/login`  
+**Endpoint:** `POST /api/v1/auth/login`  
 **Authentication:** None (uses credentials)
 
 **Request Body:**
@@ -360,7 +360,7 @@ Authenticate and receive a JWT token.
 
 Invalidate the current JWT token (web UI only - access tokens should be revoked via API).
 
-**Endpoint:** `POST /auth/logout`  
+**Endpoint:** `POST /api/v1/auth/logout`  
 **Authentication:** Required (JWT token)
 
 **Success Response:**
@@ -7994,7 +7994,7 @@ class TDAClient:
     def register(self, username: str, email: str, password: str) -> Dict[str, Any]:
         """Register a new user account"""
         response = requests.post(
-            f"{self.base_url}/auth/register",
+            f"{self.base_url}/api/v1/auth/register",
             json={
                 "username": username,
                 "email": email,
@@ -8007,7 +8007,7 @@ class TDAClient:
     def login(self, username: str, password: str) -> bool:
         """Login and store JWT token"""
         response = requests.post(
-            f"{self.base_url}/auth/login",
+            f"{self.base_url}/api/v1/auth/login",
             json={"username": username, "password": password}
         )
         
@@ -8291,7 +8291,7 @@ class TDAClient {
     
     async register(username, email, password) {
         const response = await axios.post(
-            `${this.baseURL}/auth/register`,
+            `${this.baseURL}/api/v1/auth/register`,
             { username, email, password }
         );
         return response.data;
@@ -8300,7 +8300,7 @@ class TDAClient {
     async login(username, password) {
         try {
             const response = await axios.post(
-                `${this.baseURL}/auth/login`,
+                `${this.baseURL}/api/v1/auth/login`,
                 { username, password }
             );
             
@@ -8413,7 +8413,7 @@ class TDAClient {
 **Create Access Token:**
 ```bash
 # Login first
-JWT=$(curl -s -X POST http://localhost:5050/auth/login \
+JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"your_user","password":"your_pass"}' \
   | jq -r '.token')
@@ -8610,8 +8610,8 @@ The API implements rate limiting to prevent abuse:
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| `/auth/register` | 3 requests | 1 hour per IP |
-| `/auth/login` | 5 requests | 1 minute per IP |
+| `/api/v1/auth/register` | 3 requests | 1 hour per IP |
+| `/api/v1/auth/login` | 5 requests | 1 minute per IP |
 | All other endpoints | Varies | Based on usage |
 
 **Handle Rate Limits:**
@@ -8937,9 +8937,9 @@ If you continue to experience issues:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/auth/register` | Register new user |
-| POST | `/auth/login` | Login and get JWT |
-| POST | `/auth/logout` | Logout (web UI) |
+| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/login` | Login and get JWT |
+| POST | `/api/v1/auth/logout` | Logout (web UI) |
 | POST | `/api/v1/auth/tokens` | Create access token |
 | GET | `/api/v1/auth/tokens` | List access tokens |
 | DELETE | `/api/v1/auth/tokens/{id}` | Revoke access token |

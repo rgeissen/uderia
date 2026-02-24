@@ -141,7 +141,10 @@ class ChartComponentHandler(BaseComponentHandler):
 
             if result.needs_melt:
                 x_col = result.mapping.get("x_axis", list(data[0].keys())[0])
-                metric_cols = [c for c in data[0].keys() if c != x_col]
+                metric_cols = [
+                    c for c in data[0].keys()
+                    if c != x_col and _is_numeric_value(data[0].get(c))
+                ]
                 original_shape = f"{len(data)} rows x {len(data[0])} columns"
                 data = _melt_wide_to_long(data, x_col, metric_cols)
                 arguments["data"] = data
@@ -377,7 +380,10 @@ def _build_g2plot_spec(args: dict, data: list) -> dict:
         numeric_keys = set()
         for g2plot_key, actual_col_name in options.items():
             if g2plot_key in ("yField", "angleField", "sizeField", "value", "colorField"):
-                # For heatmap, yField is categorical (metric name) — skip numeric coercion
+                # Heatmap yField must stay as STRING (categorical) so G2Plot
+                # renders discrete cells.  Float coercion (6.0, 10.0) makes
+                # G2Plot treat the axis as continuous → cells vanish.
+                # Correct ordering is handled via meta config below.
                 if chart_type == "heatmap" and g2plot_key == "yField":
                     continue
                 numeric_keys.add(actual_col_name)
@@ -397,6 +403,28 @@ def _build_g2plot_spec(args: dict, data: list) -> dict:
             final_data.append(new_row)
 
     options["data"] = final_data
+
+    # ------------------------------------------------------------------
+    # Heatmap: force categorical axes so G2Plot renders discrete cells.
+    # When yField holds numeric strings ("6", "10"), provide an explicit
+    # sort order via `meta` so labels don't sort lexicographically
+    # ("10" < "3").
+    # ------------------------------------------------------------------
+    if chart_type == "heatmap" and final_data:
+        meta = {}
+        for axis_key in ("xField", "yField"):
+            col = options.get(axis_key)
+            if not col:
+                continue
+            unique_vals = list(dict.fromkeys(str(row.get(col, "")) for row in final_data))
+            # Numeric strings → sort numerically, else sort lexicographically
+            try:
+                unique_vals.sort(key=lambda v: float(v))
+            except (ValueError, TypeError):
+                unique_vals.sort()
+            meta[col] = {"type": "cat", "values": unique_vals}
+        if meta:
+            options["meta"] = meta
 
     # Look up the G2Plot type from the manifest registry.
     # Fallback: capitalize() — so any G2Plot chart type is reachable even if
@@ -919,21 +947,25 @@ def _assign_roles(
     if x_varied:
         x_candidates = x_varied
 
-    # --- Heatmap: may need wide→long melt ---
+    # --- Heatmap: prefer dual-axis when two dimensions exist ---
     if ct == "heatmap":
-        if x_candidates and len(all_numeric) >= 2:
+        # Condition A: Two+ categorical/temporal axes → natural 2D heatmap
+        # (date × hour, category × subcategory, etc.)  Color = first metric.
+        if len(x_candidates) >= 2 and all_numeric:
+            mapping = {
+                "x_axis": x_candidates[0],
+                "y_axis": x_candidates[1],
+                "color": all_numeric[0],
+            }
+        # Condition B: Exactly one axis + multiple metrics → wide→long melt
+        elif len(x_candidates) == 1 and len(all_numeric) >= 2:
             mapping = {
                 "x_axis": x_candidates[0],
                 "y_axis": "Metric",
                 "color": "Value",
                 "_needs_melt": True,
             }
-        elif len(x_candidates) >= 2 and all_numeric:
-            mapping = {
-                "x_axis": x_candidates[0],
-                "y_axis": x_candidates[1],
-                "color": all_numeric[0],
-            }
+        # Condition C: No categorical axes, 3+ numerics → melt all
         elif len(all_numeric) >= 3:
             mapping = {
                 "x_axis": all_numeric[0],
