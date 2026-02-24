@@ -2276,6 +2276,9 @@ async def execute_query(session_id: str):
     # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
     skill_specs = data.get("skills")
 
+    # Canvas bidirectional context {title, language, content, modified}
+    canvas_context = data.get("canvas_context")
+
     # --- MODIFICATION START: Validate session for this user ---
     if not await session_manager.get_session(user_uuid, session_id):
         app_logger.warning(f"REST API: Session '{session_id}' not found for user '{user_uuid}'.")
@@ -2401,7 +2404,8 @@ async def execute_query(session_id: str):
                 is_session_primer=is_session_primer, # Pass session primer flag
                 attachments=attachments,  # File attachments (uploaded via /api/v1/chat/upload)
                 extension_specs=extension_specs,  # Post-processing extensions
-                skill_specs=skill_specs  # Pre-processing skills
+                skill_specs=skill_specs,  # Pre-processing skills
+                canvas_context=canvas_context  # Canvas bidirectional context
             )
 
             if task_status_dict:
@@ -11670,3 +11674,223 @@ async def get_component_manifest():
     except Exception as e:
         app_logger.error(f"Failed to get component manifest: {e}", exc_info=True)
         return jsonify({"error": "Failed to get component manifest."}), 500
+
+
+# ─── Canvas Inline AI (M7) ───────────────────────────────────────────────────
+
+@rest_api_bp.route("/v1/canvas/inline-ai", methods=["POST"])
+async def canvas_inline_ai():
+    """
+    Lightweight LLM endpoint for canvas inline AI (M7).
+    Modifies selected code based on user instruction.
+    No planner/executor — direct LLM call with <2s latency.
+
+    Request body:
+    {
+        "selected_code": "code the user selected",
+        "instruction": "what to do with it",
+        "full_content": "entire file content for context",
+        "language": "python"
+    }
+
+    Returns:
+    {
+        "status": "success",
+        "modified_code": "the replacement code",
+        "input_tokens": 123,
+        "output_tokens": 45
+    }
+    """
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    data = await request.get_json()
+    selected_code = data.get("selected_code", "").strip()
+    instruction = data.get("instruction", "").strip()
+    full_content = data.get("full_content", "")
+    language = data.get("language", "text")
+
+    if not selected_code or not instruction:
+        return jsonify({"status": "error", "message": "selected_code and instruction are required"}), 400
+
+    llm_instance = APP_STATE.get("llm")
+    if not llm_instance:
+        return jsonify({"status": "error", "message": "LLM not initialized"}), 500
+
+    system_prompt = (
+        "You are an expert code editor. The user has selected a portion of code "
+        "and wants you to modify ONLY that selection.\n\n"
+        "RULES:\n"
+        "- Output ONLY the replacement code — no explanations, no markdown fences, no commentary\n"
+        "- Preserve the indentation level of the original selection\n"
+        "- The replacement must integrate correctly with the surrounding code\n"
+        "- If the instruction is unclear, make the most reasonable improvement\n"
+        "- Do NOT include any text before or after the replacement code"
+    )
+
+    user_prompt = (
+        f"Language: {language}\n\n"
+        f"=== FULL FILE ===\n{full_content}\n=== END FILE ===\n\n"
+        f"=== SELECTED CODE (to modify) ===\n{selected_code}\n=== END SELECTION ===\n\n"
+        f"Instruction: {instruction}\n\n"
+        f"Output ONLY the replacement for the selected code:"
+    )
+
+    try:
+        modified_code, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
+            llm_instance,
+            user_prompt,
+            user_uuid=user_uuid,
+            session_id=None,
+            dependencies={"STATE": APP_STATE, "CONFIG": APP_CONFIG},
+            reason=f"Canvas inline AI: {instruction[:80]}",
+            system_prompt_override=system_prompt,
+            disabled_history=True,
+            source="canvas_inline_ai",
+        )
+
+        # Strip markdown fences if LLM wraps in ```
+        cleaned = modified_code.strip()
+        if cleaned.startswith("```") and cleaned.endswith("```"):
+            lines = cleaned.split("\n")
+            cleaned = "\n".join(lines[1:-1])
+
+        app_logger.info(
+            f"[Canvas InlineAI] {instruction[:50]} | "
+            f"{input_tokens} in / {output_tokens} out | {provider}/{model}"
+        )
+
+        return jsonify({
+            "status": "success",
+            "modified_code": cleaned,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Canvas inline AI failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ─── Canvas Code Execution (M8.1) ─────────────────────────────────────────────
+
+@rest_api_bp.route("/v1/canvas/execute", methods=["POST"])
+async def canvas_execute():
+    """
+    Execute canvas code via MCP server.
+    Currently supports SQL only (via base_readQuery).
+
+    Request body:
+    {
+        "code": "SELECT * FROM products WHERE quantity < 10",
+        "language": "sql",
+        "session_id": "session-xxx"
+    }
+
+    Returns:
+    {
+        "status": "success",
+        "result": "col1 | col2\\n...",
+        "row_count": 15,
+        "execution_time_ms": 234
+    }
+    """
+    import time
+
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    data = await request.get_json()
+    code = data.get("code", "").strip()
+    language = data.get("language", "").lower()
+    session_id = data.get("session_id")
+
+    if not code:
+        return jsonify({"status": "error", "message": "Code is required"}), 400
+
+    if language != "sql":
+        return jsonify({"status": "error", "message": f"Execution not supported for language: {language}. Only SQL is currently supported."}), 400
+
+    mcp_client = APP_STATE.get("mcp_client")
+    if not mcp_client:
+        return jsonify({"status": "error", "message": "MCP server not connected. Please configure an MCP server in your profile."}), 503
+
+    try:
+        from trusted_data_agent.mcp_adapter.adapter import invoke_mcp_tool
+
+        command = {
+            "tool_name": "base_readQuery",
+            "arguments": {"sql": code}
+        }
+
+        start_time = time.time()
+        result, input_tokens, output_tokens = await invoke_mcp_tool(
+            APP_STATE, command, user_uuid=user_uuid, session_id=session_id
+        )
+        execution_time_ms = int((time.time() - start_time) * 1000)
+
+        # Check for MCP error
+        if isinstance(result, dict) and result.get("status") == "error":
+            error_msg = result.get("data") or result.get("error") or "SQL execution failed"
+            app_logger.warning(f"[Canvas Execute] SQL error: {error_msg}")
+            return jsonify({
+                "status": "error",
+                "message": str(error_msg),
+                "execution_time_ms": execution_time_ms,
+            }), 400
+
+        # Extract result text
+        result_text = ""
+        row_count = 0
+        if isinstance(result, dict):
+            # MCP results are usually in result["results"] or result itself
+            results_data = result.get("results", result)
+            if isinstance(results_data, list):
+                row_count = len(results_data)
+                result_text = json.dumps(results_data, indent=2, default=str)
+            elif isinstance(results_data, str):
+                result_text = results_data
+                row_count = result_text.count("\n")
+            else:
+                result_text = json.dumps(results_data, indent=2, default=str)
+        elif isinstance(result, str):
+            result_text = result
+            row_count = result.count("\n")
+        else:
+            result_text = str(result)
+
+        app_logger.info(
+            f"[Canvas Execute] SQL query | {row_count} rows | "
+            f"{execution_time_ms}ms | {len(code)} chars"
+        )
+
+        return jsonify({
+            "status": "success",
+            "result": result_text,
+            "row_count": row_count,
+            "execution_time_ms": execution_time_ms,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Canvas execute failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ─── Canvas Templates (M8.3) ──────────────────────────────────────────────────
+
+@rest_api_bp.route("/v1/canvas/templates", methods=["GET"])
+async def canvas_templates():
+    """Serve canvas starter templates."""
+    import os
+    templates_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "components", "builtin", "canvas", "templates.json"
+    )
+    try:
+        with open(templates_path, "r") as f:
+            templates = json.load(f)
+        return jsonify({"status": "success", "templates": templates})
+    except FileNotFoundError:
+        return jsonify({"status": "success", "templates": []})

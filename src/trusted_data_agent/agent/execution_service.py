@@ -334,7 +334,8 @@ async def run_agent_execution(
     is_session_primer: bool = False, # Session primer flag - marks messages as initialization
     attachments: list = None,  # Document upload attachments [{file_id, filename, ...}]
     extension_specs: list = None,  # Post-processing extensions [{"name": "json", "param": null}]
-    skill_specs: list = None  # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
+    skill_specs: list = None,  # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
+    canvas_context: dict = None  # Canvas bidirectional context {title, language, content, modified}
 ):
 # --- MODIFICATION END ---
     """
@@ -588,7 +589,8 @@ async def run_agent_execution(
             event_handler=event_handler,
             is_session_primer=is_session_primer, # Pass the session primer flag
             attachments=attachments,  # Pass document upload attachments
-            skill_result=skill_result  # Pass pre-processing skill content
+            skill_result=skill_result,  # Pass pre-processing skill content
+            canvas_context=canvas_context  # Pass canvas bidirectional context
         )
         # --- MODIFICATION END ---
 

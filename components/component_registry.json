@@ -10,6 +10,15 @@
       "category": "Visualization",
       "is_builtin": true,
       "notes": "Data visualization using G2Plot (bar, line, pie, scatter, area, etc.)"
+    },
+    {
+      "component_id": "canvas",
+      "plugin_directory": "canvas",
+      "status": "active",
+      "display_order": 2,
+      "category": "Code",
+      "is_builtin": true,
+      "notes": "Interactive code/document workspace with CodeMirror 6 editing, live preview, and syntax highlighting"
     }
   ],
   "component_status_definitions": {

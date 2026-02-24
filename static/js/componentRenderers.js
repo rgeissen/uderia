@@ -9,6 +9,7 @@
  */
 
 import { renderChart } from './utils.js';
+import { renderCanvas } from '/api/v1/components/canvas/renderer';
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -29,6 +30,9 @@ const _loadingDeps = new Map();
 
 // Chart uses the existing renderChart from utils.js (G2Plot already loaded via CDN in index.html)
 _renderers.set('chart', renderChart);
+
+// Canvas — interactive code/document workspace with CodeMirror 6
+_renderers.set('canvas', renderCanvas);
 
 // ---------------------------------------------------------------------------
 // Public API

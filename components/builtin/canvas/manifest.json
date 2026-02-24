@@ -1,0 +1,62 @@
+{
+  "component_id": "canvas",
+  "display_name": "Canvas Workspace",
+  "description": "Interactive code and document workspace with syntax highlighting, live preview, and direct editing via CodeMirror 6",
+  "version": "1.0.0",
+  "component_type": "action",
+  "category": "Code",
+  "tool_definition": {
+    "name": "TDA_Canvas",
+    "description": "Presents code, documents, or structured content in an interactive canvas workspace with syntax highlighting, live preview for HTML/SVG/Markdown, and direct editing capabilities. Use this for substantial content that benefits from a dedicated workspace rather than inline display.",
+    "args": {
+      "content": {
+        "type": "string",
+        "description": "The complete source code or document content to display in the canvas.",
+        "required": true
+      },
+      "language": {
+        "type": "string",
+        "description": "The content language: html, css, javascript, python, sql, markdown, json, svg, or mermaid.",
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "description": "A descriptive title for the canvas workspace.",
+        "required": false
+      },
+      "sources": {
+        "type": "string",
+        "description": "Comma-separated list of knowledge source documents that informed this content. Include when generating content based on retrieved knowledge documents. Format: 'Document Title (collection)', 'Another Doc (collection)'",
+        "required": false
+      }
+    }
+  },
+  "instructions": {
+    "file": "instructions.json",
+    "format": "intensity_keyed"
+  },
+  "backend": {
+    "handler_file": "handler.py",
+    "handler_class": "CanvasComponentHandler",
+    "fast_path": true
+  },
+  "frontend": {
+    "renderer_file": "renderer.js",
+    "renderer_export": "renderCanvas",
+    "cdn_dependencies": []
+  },
+  "render_targets": {
+    "default": "inline",
+    "supports": ["inline", "sub_window"],
+    "sub_window": {
+      "title_template": "Canvas: {title}",
+      "default_size": { "width": 700, "height": 500 },
+      "resizable": true,
+      "interactive": true
+    }
+  },
+  "profile_defaults": {
+    "enabled_for": ["tool_enabled", "llm_only", "rag_focused", "genie"],
+    "default_intensity": "medium"
+  }
+}

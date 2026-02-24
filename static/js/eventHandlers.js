@@ -5,7 +5,7 @@
  */
 
 import * as DOM from './domElements.js';
-import { state } from './state.js';
+import { state, setCanvasSplitMode } from './state.js';
 import * as API from './api.js';
 import * as UI from './ui.js?v=1.5';
 import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.5';
@@ -24,6 +24,7 @@ import { handleConversationAgentEvent } from './handlers/conversationAgentHandle
 import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
 import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
+import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -1297,7 +1298,8 @@ async function processStream(responseBody, originSessionId) {
                                 // 'create' or default
                                 const swEl = createSubWindow(window_id || `sw-${Date.now()}`, component_id, {
                                     title: title || component_id,
-                                    spec
+                                    spec,
+                                    interactive: !!eventData.interactive
                                 });
                                 if (swEl && spec && hasRenderer(component_id)) {
                                     const bodyEl = swEl.querySelector('.sub-window-body');
@@ -1373,7 +1375,11 @@ async function processStream(responseBody, originSessionId) {
                         }
                         // All new messages are valid by default, so we don't need to pass `true`
                         // Pass is_session_primer flag for Primer badge display
+                        // Enable live coding animation for canvas components in this response
+                        window.__canvasLiveMode = true;
                         UI.addMessage('assistant', eventData.final_answer, eventData.turn_id, true, null, null, eventData.is_session_primer || false);
+                        // Clear fallback in case no canvas was in this response
+                        setTimeout(() => { window.__canvasLiveMode = false; }, 100);
                         // Note: "Finished" status step removed - redundant with execution_complete events
                         // All profile types now emit execution_complete with profile-specific KPIs
                         UI.setExecutionState(false);
@@ -1746,6 +1752,18 @@ export async function handleChatSubmit(e, source = 'text') {
     // Collect pending file attachments
     const attachments = getPendingAttachments();
 
+    // Collect open canvas state for bidirectional context
+    const canvasState = getOpenCanvasState();
+    let canvasContext = undefined;
+    if (canvasState) {
+        canvasContext = {
+            title: canvasState.title,
+            language: canvasState.language,
+            content: canvasState.content,
+            modified: canvasState.modified,
+        };
+    }
+
     handleStreamRequest('/ask_stream', {
         message: cleanedMessage,
         session_id: state.currentSessionId,
@@ -1753,7 +1771,8 @@ export async function handleChatSubmit(e, source = 'text') {
         profile_override_id: profileOverrideId,
         skills: skillSpecs.length > 0 ? skillSpecs : undefined,
         extensions: extensionSpecs.length > 0 ? extensionSpecs : undefined,
-        attachments: attachments.length > 0 ? attachments : undefined
+        attachments: attachments.length > 0 ? attachments : undefined,
+        canvas_context: canvasContext
         // is_replay is implicitly false here
     });
 
@@ -3513,6 +3532,21 @@ async function handleToggleTurnValidity(badgeEl) {
     }
 }
 
+/**
+ * Apply active/inactive styling to the canvas split mode toggle button.
+ */
+function applyCanvasToggleStyle(btn, isOn) {
+    if (isOn) {
+        btn.classList.add('bg-white/15', 'text-white', 'ring-1', 'ring-white/20');
+        btn.classList.remove('text-gray-300');
+        btn.title = 'Canvas Split Mode (On)';
+    } else {
+        btn.classList.remove('bg-white/15', 'text-white', 'ring-1', 'ring-white/20');
+        btn.classList.add('text-gray-300');
+        btn.title = 'Canvas Split Mode (Off)';
+    }
+}
+
 // --- Initializer ---
 
 export function initializeEventListeners() {
@@ -3833,6 +3867,29 @@ export function initializeEventListeners() {
         toggleTooltipsCheckbox.addEventListener('change', (e) => {
             state.showTooltips = e.target.checked;
             localStorage.setItem('showTooltips', state.showTooltips);
+        });
+    }
+
+    // --- Canvas Split Mode Toggle ---
+    if (DOM.canvasModeToggle) {
+        const savedCanvasMode = localStorage.getItem('canvasSplitMode');
+        setCanvasSplitMode(savedCanvasMode === 'on');
+        applyCanvasToggleStyle(DOM.canvasModeToggle, state.canvasSplitMode);
+
+        DOM.canvasModeToggle.addEventListener('click', async () => {
+            setCanvasSplitMode(!state.canvasSplitMode);
+            localStorage.setItem('canvasSplitMode', state.canvasSplitMode ? 'on' : 'off');
+            applyCanvasToggleStyle(DOM.canvasModeToggle, state.canvasSplitMode);
+
+            // When turning OFF, close the split panel if open
+            if (!state.canvasSplitMode) {
+                try {
+                    const { closeSplitPanel } = await import('/api/v1/components/canvas/renderer');
+                    closeSplitPanel();
+                } catch (e) {
+                    console.warn('[Canvas] Could not close split panel:', e);
+                }
+            }
         });
     }
 

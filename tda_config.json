@@ -1007,7 +1007,8 @@
       "agent_packs": [],
       "dualModelConfig": null,
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" }
+        "chart": { "enabled": true, "intensity": "medium" },
+        "canvas": { "enabled": true, "intensity": "medium" }
       }
     },
     {
@@ -2150,7 +2151,8 @@
       "needs_reclassification": true,
       "agent_packs": [],
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" }
+        "chart": { "enabled": true, "intensity": "medium" },
+        "canvas": { "enabled": true, "intensity": "medium" }
       }
     },
     {
@@ -2213,7 +2215,8 @@
       "agent_packs": [],
       "dualModelConfig": null,
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" }
+        "chart": { "enabled": true, "intensity": "medium" },
+        "canvas": { "enabled": true, "intensity": "medium" }
       }
     },
     {
@@ -2271,7 +2274,8 @@
       "agent_packs": [],
       "dualModelConfig": null,
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" }
+        "chart": { "enabled": true, "intensity": "medium" },
+        "canvas": { "enabled": true, "intensity": "medium" }
       }
     }
   ],

@@ -77,7 +77,8 @@ class ConversationAgentExecutor:
         multimodal_content: Optional[List[Dict]] = None,
         turn_number: Optional[int] = None,
         provider: Optional[str] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        canvas_context: Optional[str] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -101,6 +102,7 @@ class ConversationAgentExecutor:
             turn_number: Optional turn number for status title tracking in the UI
             provider: Optional provider name for event tracking (dual-model feature)
             model: Optional model name for event tracking (dual-model feature)
+            canvas_context: Optional formatted canvas context string for bidirectional context
         """
         self.profile = profile
         self.profile_id = profile.get("id")
@@ -116,6 +118,7 @@ class ConversationAgentExecutor:
         self.knowledge_context = knowledge_context
         self.document_context = document_context
         self.multimodal_content = multimodal_content
+        self.canvas_context = canvas_context
         self.turn_number = turn_number
         self.provider = provider or "Unknown"
         self.model = model or "Unknown"
@@ -319,10 +322,13 @@ RESPONSE FORMAT:
                 elif role == "assistant":
                     messages.append(AIMessage(content=content))
 
-            # Add current query (with document context and/or multimodal content if present)
+            # Add current query (with canvas context, document context, and/or multimodal content if present)
             effective_query = query
+            if self.canvas_context:
+                effective_query = f"{self.canvas_context}\n\n{effective_query}"
+                logger.info(f"Prepended canvas context ({len(self.canvas_context):,} chars) to query for conversation agent")
             if self.document_context:
-                effective_query = f"[User has uploaded documents]\n{self.document_context}\n\n[User's question]\n{query}"
+                effective_query = f"[User has uploaded documents]\n{self.document_context}\n\n[User's question]\n{effective_query}"
                 logger.info(f"Prepended document context ({len(self.document_context):,} chars) to query for conversation agent")
 
             # Build multimodal HumanMessage if native content blocks are available
@@ -623,6 +629,21 @@ RESPONSE FORMAT:
                     from trusted_data_agent.components.utils import extract_component_payload
                     _payload = extract_component_payload(tool_output)
                     if _payload:
+                        # Check if this payload targets a sub_window — emit SSE immediately
+                        _render_target = _payload.get("render_target", "inline")
+                        if _render_target == "sub_window":
+                            await self._emit_event("component_render", {
+                                "component_id": _payload.get("component_id"),
+                                "render_target": "sub_window",
+                                "spec": _payload.get("spec", {}),
+                                "title": _payload.get("title", _payload.get("component_id")),
+                                "window_id": _payload.get("window_id", ""),
+                                "action": _payload.get("window_action", "create"),
+                                "interactive": _payload.get("interactive", False),
+                                "session_id": self.session_id,
+                            })
+                            logger.info(f"[ConvAgent] Emitted sub_window component_render SSE for {_payload['component_id']}")
+                        # Always collect for inline rendering (sub_window payloads filtered out in generate_component_html)
                         self.component_payloads.append(_payload)
                         logger.info(f"[ConvAgent] Captured component payload: {_payload['component_id']}")
 

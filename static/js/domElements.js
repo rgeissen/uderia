@@ -160,6 +160,9 @@ export const ccrStatusDot = document.getElementById('ccr-status-dot');
 export const windowMenuButton = document.getElementById('window-menu-button');
 export const windowDropdownMenu = document.getElementById('window-dropdown-menu');
 
+// Canvas split mode toggle
+export const canvasModeToggle = document.getElementById('canvas-mode-toggle');
+
 // Prompt Editor elements
 export const promptEditorButton = document.getElementById('prompt-editor-button');
 export const promptEditorOverlay = document.getElementById('prompt-editor-overlay');

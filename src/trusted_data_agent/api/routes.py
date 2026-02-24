@@ -2297,7 +2297,8 @@ async def ask_stream():
     extension_specs = data.get("extensions")  # Optional list of [{"name": "json", "param": null}]
     # --- Pre-processing skills ---
     skill_specs = data.get("skills")  # Optional list of [{"name": "sql-expert", "param": "strict"}]
-
+    # --- Canvas bidirectional context ---
+    canvas_context = data.get("canvas_context")  # Optional {title, language, content, modified}
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
@@ -2583,7 +2584,8 @@ async def ask_stream():
                         is_session_primer=is_session_primer, # Pass the session primer flag
                         attachments=attachments,  # Pass document upload attachments
                         extension_specs=extension_specs,  # Pass post-processing extensions
-                        skill_specs=skill_specs  # Pass pre-processing skills
+                        skill_specs=skill_specs,  # Pass pre-processing skills
+                        canvas_context=canvas_context  # Pass canvas bidirectional context
                     )
                 )
                 # --- MODIFICATION END ---

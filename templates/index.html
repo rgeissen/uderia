@@ -723,8 +723,17 @@
                             </button>
                         </div>
                     </div>
-                    <!-- RIGHT: Window/Layout Button -->
+                    <!-- RIGHT: Canvas Toggle + Window/Layout Button -->
                     <div class="flex items-center gap-x-1">
+                        <button id="canvas-mode-toggle"
+                                class="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                                title="Canvas Split Mode (Off)">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+                                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/>
+                            </svg>
+                        </button>
                         <div class="menu-item">
                             <button id="window-menu-button" class="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors" title="Panel Settings">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -876,6 +885,7 @@
                         </header>
 
                         <div class="flex-1 flex flex-col min-h-0">
+                          <div id="chat-canvas-split" class="flex-1 flex flex-row min-h-0">
                             <main id="chat-container" class="flex-1 overflow-y-auto p-6">
                                 <!-- Welcome Screen for Unconfigured State -->
                                 <div id="welcome-screen" class="hidden h-full overflow-y-auto">
@@ -1538,6 +1548,27 @@
                                     <!-- Sub-windows created dynamically by subWindowManager.js -->
                                 </div>
                             </main>
+
+                            <!-- Canvas Split Panel — side-by-side with chat, hidden by default -->
+                            <aside id="canvas-split-panel" style="display:none;">
+                                <div class="canvas-split-header">
+                                    <span id="canvas-split-title" class="canvas-split-title-text">Canvas</span>
+                                    <div class="canvas-split-header-actions">
+                                        <button id="canvas-split-pop-in" class="canvas-split-action-btn" title="Collapse back to inline">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" />
+                                            </svg>
+                                        </button>
+                                        <button id="canvas-split-close" class="canvas-split-action-btn" title="Close canvas panel">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="canvas-split-content" class="canvas-split-body"></div>
+                            </aside>
+                          </div>
 
                             <footer id="chat-footer" class="p-4">
                                 <div class="max-w-5xl mx-auto relative">

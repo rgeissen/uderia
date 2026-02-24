@@ -87,11 +87,21 @@ export const state = {
     sessionUiCache: {},              // sessionId -> { chatHTML, statusHTML, tokenData } saved on switch-away
     restEventBuffer: {},             // session_id -> { taskId, events: [], isComplete: false } for REST task replay
     activeRestSessions: new Set(),   // Session IDs with active REST execution (e.g., Genie child sessions)
+    // --- Canvas split mode ---
+    canvasSplitMode: false,          // Whether canvas split mode toggle is ON (renders in side panel)
 };
 
 // Functions to modify state can be added here if needed, e.g.:
 export function setCurrentSessionId(id) {
     state.currentSessionId = id;
+    // Expose to global scope for canvas execution bridge (renderer.js)
+    window.__currentSessionId = id;
+}
+
+export function setCanvasSplitMode(on) {
+    state.canvasSplitMode = on;
+    // Expose to global scope for canvas renderer (loaded as separate module via /api/v1/components/)
+    window.__canvasSplitMode = on;
 }
 
 export function setResourceData(type, data) {

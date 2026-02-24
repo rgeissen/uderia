@@ -23,6 +23,9 @@ def generate_component_html(component_payloads: List[Dict[str, Any]]) -> str:
     """
     html = ""
     for _cp in component_payloads:
+        # Skip sub_window payloads — they are delivered via SSE component_render events
+        if _cp.get("render_target") == "sub_window":
+            continue
         _comp_id = _cp.get("component_id", "unknown")
         _spec = _cp.get("spec", {})
         _cid = f"component-{uuid.uuid4().hex[:12]}"

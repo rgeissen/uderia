@@ -382,7 +382,7 @@ class PlanExecutor:
         return None
 
     # --- MODIFICATION START: Add plan_to_execute and is_replay ---
-    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None):
+    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None, canvas_context: dict = None):
         self.session_id = session_id
         self.user_uuid = user_uuid
         self.event_handler = event_handler
@@ -617,6 +617,8 @@ class PlanExecutor:
         self.multimodal_content = None  # Will be populated with native multimodal blocks if provider supports it
         # --- Pre-processing skill injections ---
         self.skill_result = skill_result  # SkillResult from skills module (or None)
+        # --- Canvas bidirectional context ---
+        self.canvas_context = canvas_context  # {title, language, content, modified} or None
 
         self.turn_input_tokens = 0
         self.turn_output_tokens = 0
@@ -1714,7 +1716,8 @@ class PlanExecutor:
                 multimodal_content=self.multimodal_content,
                 turn_number=self.current_turn_number,
                 provider=self.current_provider,  # NEW: Pass provider for event tracking
-                model=self.current_model         # NEW: Pass model for event tracking
+                model=self.current_model,        # NEW: Pass model for event tracking
+                canvas_context=self._format_canvas_context()  # Canvas bidirectional context
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
@@ -1994,6 +1997,29 @@ class PlanExecutor:
             }
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
 
+    def _format_canvas_context(self) -> Optional[str]:
+        """Format open canvas state as context string for LLM injection.
+
+        Returns:
+            Formatted context string or None if no canvas is open.
+        """
+        if not self.canvas_context:
+            return None
+        title = self.canvas_context.get("title", "Canvas")
+        language = self.canvas_context.get("language", "text")
+        content = self.canvas_context.get("content", "")
+        modified = self.canvas_context.get("modified", False)
+
+        status = "modified by user" if modified else "as generated"
+        return (
+            f"# Open Canvas: {title}\n"
+            f"Language: {language} | Status: {status}\n"
+            f"The user has this canvas open in the side panel. "
+            f"When they refer to \"the canvas\", \"the code\", \"the page\", or \"it\", they mean this content.\n"
+            f"If asked to modify it, use TDA_Canvas with the same title to update it.\n"
+            f"```{language}\n{content}\n```"
+        )
+
     async def _build_user_message_for_conversation(self, knowledge_context: Optional[str] = None, document_context: Optional[str] = None) -> str:
         """Build user message for LLM-only direct execution.
 
@@ -2033,6 +2059,11 @@ class PlanExecutor:
         # Build user message (WITHOUT system prompt)
         user_message_parts = []
 
+        # Inject open canvas context if present (bidirectional context)
+        canvas_ctx = self._format_canvas_context()
+        if canvas_ctx:
+            user_message_parts.append(canvas_ctx)
+
         # Inject uploaded document context if present
         if document_context:
             user_message_parts.append(f"# Uploaded Documents\n{document_context}")
@@ -2060,6 +2091,11 @@ User: {self.original_user_input}""")
             User message string with documents + knowledge + optional history + current query
         """
         parts = []
+
+        # Inject open canvas context if present (bidirectional context)
+        canvas_ctx = self._format_canvas_context()
+        if canvas_ctx:
+            parts.append(canvas_ctx)
 
         # Inject uploaded document context if present
         if document_context:
@@ -4595,6 +4631,12 @@ The following domain knowledge may be relevant to this conversation:
         # Track execution start time for duration calculation (tool_enabled profiles)
         if not is_llm_only and not is_rag_focused:
             self.tool_enabled_start_time = time.time()
+
+        # --- Canvas bidirectional context: Prepend for tool_enabled planning ---
+        canvas_ctx = self._format_canvas_context()
+        if canvas_ctx:
+            self.original_user_input = f"{canvas_ctx}\n\n{self.original_user_input}"
+            app_logger.info(f"Prepended canvas context to user input for tool_enabled planning")
 
         # --- Document upload: Prepend document context for tool_enabled planning ---
         # By this point, llm_only, conversation_with_tools, and rag_focused have all returned.

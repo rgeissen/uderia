@@ -1155,13 +1155,49 @@ class PhaseExecutor:
                                 yield self.executor._format_sse_with_depth(event_data)
                             _component_bypass_handled = True
 
-                    # --- Generic deterministic component (future components) ---
-                    # For non-chart deterministic components, delegate directly to handler.process()
+                    # --- Generic deterministic component fast-path ---
+                    # For non-chart deterministic components (canvas, etc.), build
+                    # an action from strategic args and execute via the shared path.
                     elif not _component_bypass_handled:
                         app_logger.info(f"Component Fast-Path ({comp_handler.component_id}): generic deterministic execution.")
-                        # Future: call comp_handler.process(strategic_args, context) directly
-                        # For now, fall through to standard execution
-                        pass
+
+                        generic_action = {
+                            "tool_name": tool_name,
+                            "arguments": dict(strategic_args),
+                        }
+
+                        event_data = {
+                            "step": "Plan Optimization",
+                            "type": "plan_optimization",
+                            "details": {
+                                "summary": (
+                                    f"Component Fast-Path ({comp_handler.component_id}): "
+                                    f"bypassing tactical LLM — deterministic pass-through."
+                                ),
+                                "correction_type": "deterministic_component"
+                            }
+                        }
+                        self.executor._log_system_event(event_data)
+                        yield self.executor._format_sse_with_depth(event_data)
+
+                        async for event in self._execute_action_with_orchestrators(generic_action, phase):
+                            yield event
+
+                        if not is_loop_iteration:
+                            phase_num = phase.get("phase", self.executor.current_phase_index + 1)
+                            event_data = {
+                                "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
+                                "type": "phase_end",
+                                "details": {
+                                    "phase_num": phase_num,
+                                    "total_phases": len(self.executor.meta_plan),
+                                    "status": "completed",
+                                    "execution_depth": self.executor.execution_depth
+                                }
+                            }
+                            self.executor._log_system_event(event_data)
+                            yield self.executor._format_sse_with_depth(event_data)
+                        _component_bypass_handled = True
         except Exception as comp_err:
             app_logger.warning(f"Component fast-path check failed for '{tool_name}', falling through: {comp_err}")
 
