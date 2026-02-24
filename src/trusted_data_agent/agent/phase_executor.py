@@ -1382,7 +1382,9 @@ class PhaseExecutor:
                 self.executor.events_to_yield.append(event)
 
             tactical_call_id = str(uuid.uuid4())
-            yield self.executor._format_sse_with_depth({"step": "Calling LLM for Tactical Action", "type": "system_message", "details": {"summary": f"Deciding next action for phase goal: '{phase_goal}'", "call_id": tactical_call_id}})
+            # Match strategic planning pattern (planner.py:2793-2829):
+            # Only emit status_indicator before LLM call; emit system_message
+            # AFTER call completes so it includes token counts.
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
             next_action, input_tokens, output_tokens = await self._get_next_tactical_action(
@@ -1396,7 +1398,7 @@ class PhaseExecutor:
                 yield self.executor._format_sse_with_depth(event_data)
             self._pending_distill_events = []
 
-            # --- Log tactical LLM call to execution trace for reload consistency ---
+            # --- Emit tactical LLM call with token data (live SSE + execution trace) ---
             tactical_log_event = {
                 "step": "Calling LLM for Tactical Action",
                 "type": "system_message",
@@ -1410,6 +1412,7 @@ class PhaseExecutor:
                 }
             }
             self.executor._log_system_event(tactical_log_event)
+            yield self.executor._format_sse_with_depth(tactical_log_event)
 
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
