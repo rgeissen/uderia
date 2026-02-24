@@ -715,6 +715,14 @@ class PhaseExecutor:
         Avoids hallucinated LLM mappings (x/y vs x_axis/y_axis, unknown columns).
 
         Classification: date-like strings → prefer as x_axis, numeric → y_axis/angle, other strings → categories.
+
+        .. deprecated::
+            No longer called from the component fast-path.  Mapping resolution
+            is now delegated entirely to the chart handler's 5-stage pipeline
+            (``ChartComponentHandler`` in ``components/builtin/chart/handler.py``),
+            which uses semantic name patterns and cardinality-aware column
+            selection — avoiding constant-value metadata columns and
+            data-transformation timing mismatches.
         """
         if not data or not isinstance(data[0], dict):
             return {}
@@ -1091,11 +1099,13 @@ class PhaseExecutor:
                         if not isinstance(resolved_data, list) or not resolved_data:
                             app_logger.warning("Component Fast-Path (chart): Could not resolve data. Falling through to tactical LLM.")
                         else:
-                            # Step 2: Generate mapping algorithmically from data columns
-                            mapping = self._generate_charting_mapping(chart_type, resolved_data)
-
-                            if not mapping:
-                                app_logger.info("Component Fast-Path (chart): Mapping deferred to handler's internal resolver.")
+                            # Step 2: Delegate mapping entirely to handler's 5-stage pipeline.
+                            # The handler's _classify_columns() + _assign_roles() uses semantic
+                            # name patterns AND cardinality filtering — strictly superior to the
+                            # naive value-type classification in _generate_charting_mapping().
+                            # Passing an empty mapping avoids data-transformation timing mismatches
+                            # (fast-path sees pre-transform column names, handler renames them).
+                            mapping = {}
 
                             # Step 3: Build complete action and execute directly
                             # (handler resolves mapping internally when missing)

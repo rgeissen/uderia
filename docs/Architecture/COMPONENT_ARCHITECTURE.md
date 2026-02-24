@@ -593,7 +593,7 @@ LLM Mapping → Stage 1 → Stage 2 → [Stage 3 → Stage 4 → Stage 5] → Va
 |-------|----------|------|------|
 | **1. Sanitize** | `_sanitize_mapping()` | Always | Strip `None` values, empty strings, non-string values, unknown role keys, internal `_`-prefixed keys |
 | **2. Validate** | `_validate_mapping()` | Always | Diagnose structural issues — missing required roles, columns not in data, numeric/categorical swaps |
-| **3. Deterministic Repair** | `_repair_mapping_deterministic()` | If Stage 2 finds problems | Fuzzy-match column names (tokenized edit distance), swap axes when types mismatch, fill missing roles from column classification |
+| **3. Deterministic Repair** | `_repair_mapping_deterministic()` | If Stage 2 finds problems | Fuzzy-match column names (tokenized edit distance) with **cardinality guard** — rejects constant-value columns for `x_axis`/`color` roles; swap axes when types mismatch; fill missing roles from column classification with cardinality-aware filtering |
 | **4. LLM Repair** | `_repair_mapping_via_llm_wrapper()` | If Stage 3 insufficient + `llm_callable` available | Surgical LLM call for genuinely ambiguous columns; tokens tracked and piggybacked as Live Status events |
 | **5. Positional Fallback** | `_positional_fallback()` | If all else fails | Guaranteed last resort — assign columns by position and type classification |
 
@@ -601,7 +601,13 @@ LLM Mapping → Stage 1 → Stage 2 → [Stage 3 → Stage 4 → Stage 5] → Va
 
 **Column classification** (`_classify_columns()`): Categorizes data columns as `numeric`, `categorical`, or `date` by inspecting actual cell values. Used by Stages 3 and 5 to make type-aware assignment decisions.
 
-**Fuzzy matching** (`_fuzzy_match_column()`): Tokenized edit-distance matching that handles case differences, underscores vs spaces, and partial matches. Example: `distinctvalue` → `DistinctValue`, `product_name` → `ProductName`.
+**Cardinality guard** (`_has_multiple_values()`): Samples up to 50 rows to check whether a column has more than one unique value. Used in two places:
+- **Stage 3a (fuzzy repair):** When a fuzzy match resolves to a constant-value column for an `x_axis` or `color` role, the match is rejected and the role deferred to `_assign_roles()` for cardinality-aware classification.
+- **Stage 3c (`_assign_roles()`):** Filters constant-value columns from x-axis and pie-color candidate lists. A column where every row has the same value (e.g., `SourceColumnName="ProductType"` in `qlty_distinctCategories` output) is metadata, not a chartable dimension.
+
+This prevents the common failure pattern where data contains both a constant metadata column and a variable category column — without cardinality filtering, the first dimension column by dict order was selected regardless of whether it had 1 or 20 unique values.
+
+**Fuzzy matching** (`_fuzzy_match_column()`): Tokenized edit-distance matching that handles case differences, underscores vs spaces, and partial matches. Example: `distinctvalue` → `DistinctValue`, `product_name` → `ProductName`. Note: fuzzy matches are subject to the cardinality guard — a structurally correct match may be rejected if the target column is constant-valued for categorical roles.
 
 **LLM event piggybacking (Stage 4):** When the LLM repair stage fires, it embeds a `_component_llm_events` list in the mapping metadata. This is propagated through `ComponentRenderPayload.metadata` and extracted by the consuming execution path (phase_executor for `tool_enabled`, conversation_agent for `conversation_with_tools`) to emit Live Status events and track tokens. See [Component LLM Event Piggybacking](#component-llm-event-piggybacking) below.
 
@@ -915,9 +921,11 @@ Line 1156:  # --- END COMPONENT FAST-PATH ---
 
 The chart-specific fast-path (lines 1082-1142):
 1. Resolves data from `collected_data` (previous phase results)
-2. Calls `_generate_charting_mapping()` to determine chart type and field mappings
+2. Passes `mapping = {}` — delegates mapping entirely to the handler's 5-stage pipeline
 3. Executes the handler directly with resolved arguments
 4. Skips tactical LLM entirely → saves ~3,000 tokens per chart
+
+> **Design note (Feb 2026):** The fast-path previously called `_generate_charting_mapping()` to pre-generate field mappings based on value-type classification (string/numeric/date). This was removed because the naive value-type-only logic could not distinguish constant-value metadata columns from variable category columns, producing "close but wrong" mappings that poisoned the handler's fuzzy repair stage. The handler's 5-stage pipeline — with cardinality-aware `_assign_roles()` and semantic column name pattern matching — is strictly superior. `_generate_charting_mapping()` remains in `phase_executor.py` as deprecated dead code.
 
 The `_component_bypass_handled` flag pattern ensures graceful fallback — if the fast-path fails for any reason, execution falls through to the standard tactical LLM path.
 

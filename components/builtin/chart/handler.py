@@ -451,6 +451,22 @@ def _classify_columns(data: List[dict]) -> Dict[str, List[str]]:
     return result
 
 
+def _has_multiple_values(col: str, data: List[dict], sample_size: int = 50) -> bool:
+    """
+    Check if a column has more than one unique value (early-exit sampling).
+
+    A column where every row has the same value (e.g., SourceColumnName = "ProductType"
+    in qlty_distinctCategories output) is metadata — not a chartable dimension.
+    Used by ``_assign_roles()`` and ``_repair_mapping_deterministic()`` to filter
+    out constant-value columns that would collapse a chart to a single category.
+    """
+    sample = data[:sample_size]
+    if len(sample) < 2:
+        return False
+    first_val = str(sample[0].get(col, ""))
+    return any(str(row.get(col, "")) != first_val for row in sample[1:])
+
+
 # ---------------------------------------------------------------------------
 # Stage 1: Sanitize mapping — strip garbage values
 # ---------------------------------------------------------------------------
@@ -674,8 +690,19 @@ def _repair_mapping_deterministic(
     for role, bad_col in validation.bad_columns.items():
         match = _fuzzy_match_column(bad_col, data_columns)
         if match:
-            repaired[role] = match
-            repairs.append(f"fuzzy_matched {role}: '{bad_col}' → '{match}'")
+            # Reject constant-value columns for categorical roles —
+            # fuzzy matching "ColumnName" → "SourceColumnName" is structurally
+            # correct but semantically useless when all rows share the same
+            # value.  Defer to 3c (classify + assign) which is cardinality-aware.
+            if role in ("x_axis", "color") and data and not _has_multiple_values(match, data):
+                repaired.pop(role, None)
+                repairs.append(
+                    f"rejected_fuzzy {role}: '{bad_col}' → '{match}' "
+                    f"(constant value, deferring to classifier)"
+                )
+            else:
+                repaired[role] = match
+                repairs.append(f"fuzzy_matched {role}: '{bad_col}' → '{match}'")
         else:
             # Remove the bad mapping — it'll be filled by 3c if required
             repaired.pop(role, None)
@@ -884,6 +911,14 @@ def _assign_roles(
     x_candidates = classified["temporal"] + classified["dimension"]
     all_numeric = classified["metric"] + classified["ambiguous"]
 
+    # Filter out constant-value columns — a column where every row has the
+    # same value (e.g. SourceColumnName="ProductType" in qlty_distinctCategories
+    # output) is metadata, not a chartable dimension.  Keep the unfiltered
+    # list as fallback in case ALL candidates are constant (single-row data).
+    x_varied = [c for c in x_candidates if _has_multiple_values(c, data)]
+    if x_varied:
+        x_candidates = x_varied
+
     # --- Heatmap: may need wide→long melt ---
     if ct == "heatmap":
         if x_candidates and len(all_numeric) >= 2:
@@ -913,6 +948,9 @@ def _assign_roles(
         if all_numeric:
             mapping["angle"] = all_numeric[0]
         cat = classified["dimension"] + classified["temporal"]
+        cat_varied = [c for c in cat if _has_multiple_values(c, data)]
+        if cat_varied:
+            cat = cat_varied
         if cat:
             mapping["color"] = cat[0]
         return mapping

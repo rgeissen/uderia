@@ -3058,6 +3058,8 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **24-Feb-2026:** Generative UI Components - Plugin-based component architecture with manifest-driven discovery, hot-reload, profile-level intensity control, admin governance, and CDN dependency management for extensible frontend rendering
+*   **24-Feb-2026:** Data Visualization (Chart Component) - Interactive charting via G2Plot with 16 chart types (bar, line, pie, scatter, heatmap, gauge, radar, treemap, and more), 5-stage mapping resolution pipeline with cardinality-aware column selection, deterministic fast-path execution, and LLM-assisted fallback for ambiguous data
 *   **22-Feb-2026:** Extensions - Post-processing transformation pipeline with `#` trigger, 6 built-in extensions (json, decision, extract, classify, summary, pdf), four-tier custom extension framework, and serial chaining for workflow automation
 *   **22-Feb-2026:** Skills - Pre-processing prompt injections with `!` trigger, 5 built-in skills, parameterizable behavior, visual editor, and admin governance for transparent LLM context control
 *   **12-Feb-2026:** Dual-Model Cost Breakdown - Live Status displays strategic vs tactical costs for Fusion Optimizer dual-model executions with color-coded visualization
