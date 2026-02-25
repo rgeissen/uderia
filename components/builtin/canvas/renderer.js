@@ -1581,7 +1581,7 @@ function renderInlineCard(container, spec) {
             <span class="canvas-inline-card-meta">${(language || '').toUpperCase()} &middot; ${lineCount} LINES</span>
         </div>
         <div class="canvas-inline-card-preview">${escaped}</div>
-        <div class="canvas-inline-card-action">Expanded in side panel &rarr;</div>
+        <div class="canvas-inline-card-action">View in Canvas &rarr;</div>
     `;
 
     // Prevent card click when user is scrolling inside the preview area
@@ -3035,6 +3035,11 @@ export function closeSplitPanel() {
         if (overlay) overlay.remove();
         _collapsedSourceWrapper = null;
     }
+
+    // Reset all inline card badges back to default
+    document.querySelectorAll('.canvas-inline-card-action').forEach(el => {
+        el.textContent = 'View in Canvas \u2192';
+    });
 
     panel.classList.remove('canvas-split--open');
 
