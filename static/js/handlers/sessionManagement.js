@@ -584,6 +584,15 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         console.log(`[handleLoadSession] Cached full UI state for active session ${previousSessionId}`);
     }
 
+    // Close canvas split panel when switching sessions (prevents cross-session contamination)
+    try {
+        const splitPanel = document.getElementById('canvas-split-panel');
+        if (splitPanel && splitPanel.classList.contains('canvas-split--open')) {
+            const { closeSplitPanel } = await import('/api/v1/components/canvas/renderer');
+            closeSplitPanel();
+        }
+    } catch (e) { /* canvas component may not be loaded */ }
+
     // --- MODIFICATION START: Clear task ID display on session load ---
     UI.updateTaskIdDisplay(null);
     // --- MODIFICATION END ---

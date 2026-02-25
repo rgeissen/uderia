@@ -40,6 +40,7 @@ The canvas operates as a deterministic component: the backend handler passes con
 - [Diff Algorithm](#diff-algorithm)
 - [Live Coding Animation](#live-coding-animation)
 - [Inline AI Selection](#inline-ai-selection)
+- [Canvas Split Mode Toggle](#canvas-split-mode-toggle)
 - [Split-Screen Mode](#split-screen-mode)
 - [Bidirectional Context](#bidirectional-context)
 - [Template System](#template-system)
@@ -265,14 +266,15 @@ Serve starter templates from `templates.json`. No authentication required.
 
 **File:** `components/builtin/canvas/renderer.js` (~2400 lines)
 
-The renderer is a single ES module exporting two functions:
+The renderer is a single ES module exporting three functions:
 
 | Export | Purpose |
 |--------|---------|
-| `renderCanvas(containerId, payload)` | Main entry point — builds canvas DOM, initializes capabilities |
+| `renderCanvas(containerId, payload)` | Main entry point — routes to split-panel or inline mode based on `window.__canvasSplitMode` |
 | `getOpenCanvasState()` | Returns current split-panel canvas state for bidirectional context |
+| `closeSplitPanel()` | Close the split-screen panel and clear bidirectional context |
 
-The module self-contains all CSS (injected once via `injectStyles()`), all 10 capabilities, the diff algorithm, live animation engine, inline AI functions, split-screen management, and version tracking.
+The module self-contains all CSS (injected once via `injectStyles()`), all 10 capabilities, the diff algorithm, live animation engine, inline AI functions, split-screen management, version tracking, and split-mode routing logic.
 
 ### CodeMirror 6 Integration
 
@@ -653,6 +655,83 @@ CM6 dispatch({ changes: { from, to, insert: modified_code } })
 
 ---
 
+## Canvas Split Mode Toggle
+
+A `</>` toggle button in the conversation header controls how canvases render. Inspired by Claude Artifacts (inline card → side panel), ChatGPT Canvas (persistent side panel), and Gemini Canvas (explicit user toggle).
+
+### Toggle Button
+
+**Location:** `#canvas-mode-toggle` in `templates/index.html`, placed next to `#window-menu-button` in the header right section.
+
+**Styling:** Same as window menu — `text-gray-300 hover:text-white hover:bg-white/10`. Active state adds `bg-white/15 text-white ring-1 ring-white/20`.
+
+**State:** Persisted in `localStorage('canvasSplitMode')` and exposed via `window.__canvasSplitMode` (set by `setCanvasSplitMode()` in `state.js`).
+
+### Two Rendering Modes
+
+`renderCanvas()` reads `window.__canvasSplitMode` and routes accordingly:
+
+#### Split Mode ON
+
+1. **Inline:** `renderInlineCard()` — compact card with title, language badge, 3-line code preview, "View in Canvas →" link
+2. **Split Panel:** `autoPopOutCanvas()` → `renderCanvasFull()` — full canvas with all capabilities (editable CM6, tabs, toolbar, inline AI, console, version history, diff)
+
+If the panel is already open, new canvases **replace** the current content. Old inline card badges update accordingly.
+
+#### Split Mode OFF
+
+`renderInlineCompact()` — limited inline canvas with:
+- Read-only CodeMirror (`EditorView.editable.of(false)` + `EditorState.readOnly.of(true)`)
+- Copy button only
+- 300px max-height with "Show more" expand
+- No tabs, toolbar, inline AI, run, sources, version history, or diff
+
+### Feature Comparison
+
+| Feature | Split Panel | Inline Compact |
+|---------|-------------|---------------|
+| CodeMirror editor | Editable | Read-only |
+| Tab bar (Code/Preview/Diff) | Yes | No |
+| Copy / Download / Expand | Yes | Copy only |
+| Inline AI editing | Yes | No |
+| Run (SQL execution) | Yes | No |
+| Sources / Version history | Yes | No |
+| Bidirectional LLM context | Yes | No |
+| Max height | Full panel | ~300px |
+
+### Rendering Architecture
+
+```
+renderCanvas(containerId, payload)
+    │
+    ├── containerId starts with 'canvas-split-render-'?
+    │   └── renderCanvasFull()  (internal, full capabilities)
+    │
+    ├── window.__canvasSplitMode === true?
+    │   ├── renderInlineCard()       → compact card in chat
+    │   └── autoPopOutCanvas()       → full canvas in split panel
+    │
+    └── else (split OFF)
+        └── renderInlineCompact()    → read-only inline viewer
+```
+
+### State Flow
+
+```
+Toggle ON  → setCanvasSplitMode(true) → localStorage + window.__canvasSplitMode
+Toggle OFF → setCanvasSplitMode(false) → closeSplitPanel() via dynamic import
+```
+
+### Files
+
+- `templates/index.html` — Toggle button HTML
+- `static/js/domElements.js` — `canvasModeToggle` reference
+- `static/js/state.js` — `canvasSplitMode` state + `setCanvasSplitMode()`
+- `static/js/eventHandlers.js` — Toggle initialization, `applyCanvasToggleStyle()`
+- `components/builtin/canvas/renderer.js` — `renderInlineCard()`, `renderInlineCompact()`, `autoPopOutCanvas()`, `renderCanvasFull()`, routing in `renderCanvas()`
+
+---
+
 ## Split-Screen Mode
 
 **Design decision**: Originally planned as floating sub-windows (using `subWindowManager.js`), redesigned per user feedback to a side-by-side split-screen layout matching the Gemini Canvas / Claude Artifacts pattern.
@@ -672,12 +751,16 @@ CM6 dispatch({ changes: { from, to, insert: modified_code } })
 
 ### Behavior
 
-**Opening** (`popOutCanvas(state)`):
+**Opening** — Two entry points:
+- `popOutCanvas(state)` — Manual expand from toolbar button (takes canvasState)
+- `autoPopOutCanvas(spec)` — Automatic from split mode toggle (takes raw spec, clears old card badges)
+
+Both follow the same flow:
 1. Update split panel title
 2. Clear previous content
 3. Create render target inside `#canvas-split-content`
 4. Show panel with CSS transition (`width: 0` → `width: 50%`, `min-width: 320px`)
-5. Call `renderCanvas()` to get full capability experience in the panel
+5. Call `renderCanvasFull()` to get full capability experience in the panel
 6. Store reference in `_activeSplitCanvasState` for bidirectional context
 
 **Closing** (`closeSplitPanel()`):

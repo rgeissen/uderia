@@ -1228,75 +1228,98 @@ const CANVAS_STYLES = `
 }
 /* ─── Inline Card (Split Mode ON — compact summary in chat) ──── */
 .canvas-inline-card {
-    border: 1px solid var(--border-primary, rgba(255,255,255,0.08));
+    border: 1px solid rgba(96, 165, 250, 0.15);
     border-radius: 8px;
-    background: var(--card-bg, rgba(15,23,42,0.6));
-    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, rgba(15,23,42,0.85) 0%, rgba(30,41,59,0.7) 100%);
+    padding: 0;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    transition: all 0.25s ease;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03);
 }
 .canvas-inline-card:hover {
-    background: var(--hover-bg-strong, rgba(255,255,255,0.08));
-    border-color: rgba(96, 165, 250, 0.3);
+    border-color: rgba(96, 165, 250, 0.4);
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.12), 0 4px 16px rgba(0,0,0,0.25), 0 0 20px rgba(96, 165, 250, 0.06);
+    transform: translateY(-1px);
 }
 .canvas-inline-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 0.6rem 0.85rem;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid rgba(96, 165, 250, 0.08);
 }
 .canvas-inline-card-title {
     font-weight: 600;
     color: var(--text-primary, #e2e8f0);
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
+    letter-spacing: 0.01em;
 }
 .canvas-inline-card-title svg {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     color: rgb(96, 165, 250);
     flex-shrink: 0;
+    filter: drop-shadow(0 0 2px rgba(96, 165, 250, 0.4));
 }
 .canvas-inline-card-meta {
-    color: var(--text-muted, #94a3b8);
-    font-size: 0.7rem;
+    color: rgba(148, 163, 184, 0.8);
+    font-size: 0.6rem;
     white-space: nowrap;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    background: rgba(96, 165, 250, 0.08);
+    padding: 0.15rem 0.45rem;
+    border-radius: 3px;
+    border: 1px solid rgba(96, 165, 250, 0.1);
 }
 .canvas-inline-card-preview {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.7rem;
-    line-height: 1.4;
-    color: var(--text-muted, #94a3b8);
+    font-size: 0.68rem;
+    line-height: 1.6;
+    color: rgba(148, 163, 184, 0.7);
     white-space: pre;
-    overflow: hidden;
-    max-height: 3.6em;
-    opacity: 0.7;
+    overflow-y: auto;
+    overflow-x: auto;
+    max-height: 11rem;
+    padding: 0.5rem 0.85rem;
+    background: rgba(0,0,0,0.15);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
 }
 .canvas-inline-card-action {
     color: rgb(96, 165, 250);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
     text-align: center;
-    padding-top: 0.25rem;
-    border-top: 1px solid var(--border-primary, rgba(255,255,255,0.06));
+    padding: 0.45rem 0.85rem;
+    background: rgba(96, 165, 250, 0.04);
+    letter-spacing: 0.03em;
+    transition: all 0.2s ease;
+}
+.canvas-inline-card:hover .canvas-inline-card-action {
+    background: rgba(96, 165, 250, 0.1);
+    color: rgb(147, 197, 253);
 }
 /* ─── Inline Compact (Split Mode OFF — limited code viewer) ──── */
 .canvas-inline-compact {
-    border: 1px solid var(--border-primary, rgba(255,255,255,0.08));
-    border-radius: 8px;
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.06));
+    border-radius: 6px;
     background: var(--card-bg, rgba(15,23,42,0.6));
     overflow: hidden;
+    transition: border-color 0.2s;
 }
 .canvas-inline-compact-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0.75rem;
+    padding: 0.45rem 0.75rem;
     background: var(--bg-secondary, rgba(0,0,0,0.15));
-    border-bottom: 1px solid var(--border-primary, rgba(255,255,255,0.06));
+    border-bottom: 1px solid var(--border-primary, rgba(255,255,255,0.04));
 }
 .canvas-inline-compact-title {
     font-weight: 600;
@@ -1305,29 +1328,50 @@ const CANVAS_STYLES = `
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    letter-spacing: 0.01em;
 }
 .canvas-inline-compact-badge {
     color: var(--text-muted, #94a3b8);
-    font-size: 0.7rem;
+    font-size: 0.65rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
 }
 .canvas-inline-compact-actions {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.35rem;
 }
 .canvas-inline-compact-btn {
     background: none;
-    border: 1px solid var(--border-primary, rgba(255,255,255,0.1));
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.08));
     color: var(--text-muted, #94a3b8);
-    padding: 4px 8px;
+    padding: 3px 8px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.7rem;
-    transition: background 0.15s, color 0.15s;
+    font-weight: 500;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 .canvas-inline-compact-btn:hover {
     background: var(--hover-bg, rgba(255,255,255,0.06));
     color: var(--text-primary, #e2e8f0);
+    border-color: rgba(255,255,255,0.15);
+}
+.canvas-inline-compact-open {
+    color: rgb(96, 165, 250);
+    border-color: rgba(96, 165, 250, 0.2);
+}
+.canvas-inline-compact-open:hover {
+    background: rgba(96, 165, 250, 0.1);
+    color: rgb(147, 197, 253);
+    border-color: rgba(96, 165, 250, 0.35);
+}
+.canvas-inline-compact-open svg {
+    display: block;
 }
 .canvas-inline-compact-body {
     max-height: 300px;
@@ -1345,31 +1389,55 @@ const CANVAS_STYLES = `
     align-items: center;
     justify-content: center;
     padding: 0.4rem;
-    background: linear-gradient(to bottom, transparent, var(--card-bg, rgba(15,23,42,0.8)) 40%);
+    background: linear-gradient(to bottom, transparent, var(--card-bg, rgba(15,23,42,0.9)) 50%);
     color: rgb(96, 165, 250);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
     cursor: pointer;
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
     height: 2.5rem;
-    transition: background 0.15s;
+    transition: color 0.15s;
 }
 .canvas-inline-compact-showmore:hover {
     color: rgb(147, 197, 253);
 }
 .canvas-inline-compact-body.expanded .canvas-inline-compact-showmore {
     position: static;
-    background: var(--bg-secondary, rgba(0,0,0,0.15));
+    background: var(--bg-secondary, rgba(0,0,0,0.12));
 }
 /* Light theme overrides for inline modes */
 [data-theme="light"] .canvas-inline-card {
-    border-color: var(--border-primary);
-    background: var(--card-bg);
+    border-color: rgba(59, 130, 246, 0.2);
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
 }
 [data-theme="light"] .canvas-inline-card:hover {
-    background: var(--hover-bg-strong);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12), 0 4px 12px rgba(0,0,0,0.1);
+}
+[data-theme="light"] .canvas-inline-card-header {
+    background: rgba(0,0,0,0.03);
+    border-bottom-color: rgba(59, 130, 246, 0.1);
+}
+[data-theme="light"] .canvas-inline-card-title svg {
+    filter: none;
+}
+[data-theme="light"] .canvas-inline-card-meta {
+    background: rgba(59, 130, 246, 0.06);
+    border-color: rgba(59, 130, 246, 0.12);
+    color: rgba(71, 85, 105, 0.9);
+}
+[data-theme="light"] .canvas-inline-card-preview {
+    background: rgba(0,0,0,0.02);
+    color: rgba(71, 85, 105, 0.6);
+    border-bottom-color: rgba(0,0,0,0.04);
+}
+[data-theme="light"] .canvas-inline-card-action {
+    background: rgba(59, 130, 246, 0.03);
 }
 [data-theme="light"] .canvas-inline-compact {
     border-color: var(--border-primary);
@@ -1452,13 +1520,37 @@ function renderMarkdownToHtml(md) {
 // ─── Canvas Split Mode Rendering ─────────────────────────────────────────────
 
 /**
+ * Activate split mode from an inline compact card click.
+ * Turns on the header toggle, sets global state, and opens the full canvas in the split panel.
+ */
+async function activateSplitModeFromCard(spec) {
+    // Set global state
+    window.__canvasSplitMode = true;
+
+    // Update the header toggle button appearance and localStorage
+    const toggleBtn = document.getElementById('canvas-mode-toggle');
+    if (toggleBtn) {
+        toggleBtn.classList.add('bg-white/15', 'text-white', 'ring-1', 'ring-white/20');
+        toggleBtn.classList.remove('text-gray-300');
+        toggleBtn.title = 'Canvas Split Mode (On)';
+    }
+    localStorage.setItem('canvasSplitMode', 'on');
+
+    // Dispatch a custom event so eventHandlers.js can sync its state object
+    window.dispatchEvent(new CustomEvent('canvas-split-mode-changed', { detail: { on: true } }));
+
+    // Open the full canvas in the split panel
+    await autoPopOutCanvas(spec);
+}
+
+/**
  * Render a compact card in the chat when split mode is ON.
  * Shows title, language badge, 3-line preview, and "View in Canvas" link.
  */
 function renderInlineCard(container, spec) {
     const { content, language, title, line_count } = spec;
     const lineCount = line_count || (content.match(/\n/g) || []).length + 1;
-    const preview = content.split('\n').slice(0, 3).join('\n');
+    const escaped = content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     const card = document.createElement('div');
     card.className = 'canvas-inline-card';
@@ -1470,15 +1562,27 @@ function renderInlineCard(container, spec) {
                 </svg>
                 ${title || 'Canvas'}
             </span>
-            <span class="canvas-inline-card-meta">${language} &middot; ${lineCount} lines</span>
+            <span class="canvas-inline-card-meta">${(language || '').toUpperCase()} &middot; ${lineCount} LINES</span>
         </div>
-        <div class="canvas-inline-card-preview">${preview.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-        <div class="canvas-inline-card-action">View in Canvas &rarr;</div>
+        <div class="canvas-inline-card-preview">${escaped}</div>
+        <div class="canvas-inline-card-action">Expanded in side panel &rarr;</div>
     `;
 
-    card.addEventListener('click', () => {
+    // Prevent card click when user is scrolling inside the preview area
+    const previewEl = card.querySelector('.canvas-inline-card-preview');
+    if (previewEl) {
+        previewEl.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    card.addEventListener('click', async () => {
         const panel = document.getElementById('canvas-split-panel');
-        if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+        if (panel && panel.classList.contains('canvas-split--open')) {
+            panel.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            await autoPopOutCanvas(spec);
+        }
+        const action = card.querySelector('.canvas-inline-card-action');
+        if (action) action.textContent = 'Expanded in side panel \u2192';
     });
 
     container.appendChild(card);
@@ -1508,6 +1612,18 @@ async function renderInlineCompact(container, spec) {
 
     const actions = document.createElement('div');
     actions.className = 'canvas-inline-compact-actions';
+
+    // Open in Canvas button — activates split mode + opens full canvas
+    const openBtn = document.createElement('button');
+    openBtn.className = 'canvas-inline-compact-btn canvas-inline-compact-open';
+    openBtn.title = 'Open in Canvas';
+    openBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg>`;
+    openBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        // Activate split mode globally
+        activateSplitModeFromCard(spec);
+    });
+    actions.appendChild(openBtn);
 
     // Copy button
     const copyBtn = document.createElement('button');

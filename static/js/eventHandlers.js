@@ -3891,6 +3891,14 @@ export function initializeEventListeners() {
                 }
             }
         });
+
+        // Listen for split mode activation from inline compact card clicks (renderer.js)
+        window.addEventListener('canvas-split-mode-changed', (e) => {
+            if (e.detail?.on !== undefined) {
+                setCanvasSplitMode(e.detail.on);
+                applyCanvasToggleStyle(DOM.canvasModeToggle, state.canvasSplitMode);
+            }
+        });
     }
 
     const welcomeScreenCheckbox = document.getElementById('toggle-welcome-screen-checkbox');
