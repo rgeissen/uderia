@@ -333,6 +333,12 @@ const CANVAS_STYLES = `
     gap: 0.5rem;
     align-items: center;
 }
+.canvas-toolbar-separator {
+    width: 1px;
+    height: 1rem;
+    background: var(--border-primary, rgba(255,255,255,0.15));
+    margin: 0 0.25rem;
+}
 .canvas-toolbar-btn {
     padding: 0.25rem 0.5rem;
     border-radius: 0.375rem;
@@ -617,13 +623,7 @@ const CANVAS_STYLES = `
     min-width: 320px;
 }
 .canvas-split-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border-primary, rgba(255,255,255,0.1));
-    background: var(--bg-secondary, rgba(0,0,0,0.15));
-    flex-shrink: 0;
+    display: none;
 }
 .canvas-split-title-text {
     font-weight: 600;
@@ -1450,6 +1450,22 @@ const CANVAS_STYLES = `
 [data-theme="light"] .canvas-inline-compact-body {
     background: var(--code-bg);
 }
+/* ─── Canvas Fullscreen Mode ──── */
+/* position:fixed takes the panel out of the flex hierarchy entirely,
+   positioning it relative to the viewport — no gaps, no cutoff. */
+.canvas-fullscreen #canvas-split-panel.canvas-split--open {
+    position: fixed !important;
+    top: var(--canvas-fullscreen-top, 0px);
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    z-index: 45;
+    border-left: none !important;
+}
 `;
 
 // Inject styles once
@@ -1577,12 +1593,12 @@ function renderInlineCard(container, spec) {
     card.addEventListener('click', async () => {
         const panel = document.getElementById('canvas-split-panel');
         if (panel && panel.classList.contains('canvas-split--open')) {
-            panel.scrollIntoView({ behavior: 'smooth' });
+            closeSplitPanel();
         } else {
             await autoPopOutCanvas(spec);
+            const action = card.querySelector('.canvas-inline-card-action');
+            if (action) action.textContent = 'Expanded in side panel \u2192';
         }
-        const action = card.querySelector('.canvas-inline-card-action');
-        if (action) action.textContent = 'Expanded in side panel \u2192';
     });
 
     container.appendChild(card);
@@ -1756,17 +1772,6 @@ async function autoPopOutCanvas(spec) {
         }
     };
 
-    // Wire up close / pop-in buttons (once)
-    if (!_splitPanelWired) {
-        _splitPanelWired = true;
-
-        const closeBtn = document.getElementById('canvas-split-close');
-        const popInBtn = document.getElementById('canvas-split-pop-in');
-
-        if (closeBtn) closeBtn.addEventListener('click', closeSplitPanel);
-        if (popInBtn) popInBtn.addEventListener('click', closeSplitPanel);
-    }
-
     // Mark the newest inline card as "expanded"
     const allCards = document.querySelectorAll('.canvas-inline-card-action');
     if (allCards.length > 0) {
@@ -1897,6 +1902,13 @@ async function renderCanvasFull(containerId, spec) {
     // Toolbar area
     const toolbar = document.createElement('div');
     toolbar.className = 'canvas-toolbar';
+
+    // In split panel context, add fullscreen + close buttons to the toolbar
+    if (containerId.startsWith('canvas-split-')) {
+        // Will be populated after capability buttons — store ref for later
+        toolbar._needsSplitButtons = true;
+    }
+
     header.appendChild(toolbar);
 
     wrapper.appendChild(header);
@@ -1953,6 +1965,29 @@ async function renderCanvasFull(containerId, spec) {
         if (cap.render) {
             cap.render(toolbar, content, language, canvasState);
         }
+    }
+
+    // Append split-panel control buttons (fullscreen + close) after capability buttons
+    if (toolbar._needsSplitButtons) {
+        const sep = document.createElement('span');
+        sep.className = 'canvas-toolbar-separator';
+        toolbar.appendChild(sep);
+
+        const fsBtn = document.createElement('button');
+        fsBtn.className = 'canvas-toolbar-btn canvas-toolbar-fullscreen';
+        fsBtn.title = _isCanvasFullscreen ? 'Exit fullscreen' : 'Fullscreen canvas';
+        fsBtn.innerHTML = _isCanvasFullscreen
+            ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25"/></svg>`
+            : `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>`;
+        fsBtn.addEventListener('click', toggleCanvasFullscreen);
+        toolbar.appendChild(fsBtn);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'canvas-toolbar-btn canvas-toolbar-close';
+        closeBtn.title = 'Close canvas panel';
+        closeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`;
+        closeBtn.addEventListener('click', closeSplitPanel);
+        toolbar.appendChild(closeBtn);
     }
 
     // Activate default tab (code_editor)
@@ -2835,9 +2870,6 @@ function previewVersion(state, content, versionNum) {
 
 // ─── Split-Screen Panel Management ──────────────────────────────────────────
 
-/** Track whether split-panel close/pop-in listeners are wired up */
-let _splitPanelWired = false;
-
 /** Track the active split-panel canvas state for bidirectional context */
 let _activeSplitCanvasState = null;
 /** Track the collapsed inline canvas wrapper for restore on split-panel close */
@@ -2900,21 +2932,6 @@ async function popOutCanvas(state) {
         }
     };
 
-    // Wire up close / pop-in buttons (once)
-    if (!_splitPanelWired) {
-        _splitPanelWired = true;
-
-        const closeBtn = document.getElementById('canvas-split-close');
-        const popInBtn = document.getElementById('canvas-split-pop-in');
-
-        if (closeBtn) {
-            closeBtn.addEventListener('click', closeSplitPanel);
-        }
-        if (popInBtn) {
-            popInBtn.addEventListener('click', closeSplitPanel);
-        }
-    }
-
     // Collapse the source inline canvas to a compact overview card
     const sourceWrapper = state.container?.querySelector('.canvas-container');
     if (sourceWrapper) {
@@ -2942,12 +2959,71 @@ async function popOutCanvas(state) {
     }
 }
 
+// ─── Canvas Fullscreen Mode ─────────────────────────────────────────────────
+
+let _isCanvasFullscreen = false;
+
+/**
+ * Swap the fullscreen button icon and tooltip between enter/exit states.
+ */
+function updateFullscreenButtonIcon(isFullscreen) {
+    const btn = document.querySelector('.canvas-toolbar-fullscreen');
+    if (!btn) return;
+
+    if (isFullscreen) {
+        btn.title = 'Exit fullscreen';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25"/>
+        </svg>`;
+    } else {
+        btn.title = 'Fullscreen canvas';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/>
+        </svg>`;
+    }
+}
+
+/**
+ * Toggle canvas fullscreen mode.
+ * First click: hide all UI, expand canvas to full viewport.
+ * Second click: exit fullscreen and close canvas panel.
+ */
+function toggleCanvasFullscreen() {
+    const mainArea = document.getElementById('main-content-area');
+    if (!mainArea) return;
+
+    _isCanvasFullscreen = !_isCanvasFullscreen;
+
+    if (_isCanvasFullscreen) {
+        // Measure top nav height so canvas sits directly below it
+        const topNav = document.querySelector('body > nav');
+        const topOffset = topNav ? topNav.offsetHeight : 0;
+        document.documentElement.style.setProperty('--canvas-fullscreen-top', topOffset + 'px');
+
+        mainArea.classList.add('canvas-fullscreen');
+        updateFullscreenButtonIcon(true);
+    } else {
+        mainArea.classList.remove('canvas-fullscreen');
+        document.documentElement.style.removeProperty('--canvas-fullscreen-top');
+        updateFullscreenButtonIcon(false);
+    }
+}
+
 /**
  * Close the split-screen canvas panel.
  */
 export function closeSplitPanel() {
     const panel = document.getElementById('canvas-split-panel');
     if (!panel) return;
+
+    // Exit fullscreen if active
+    if (_isCanvasFullscreen) {
+        _isCanvasFullscreen = false;
+        const mainArea = document.getElementById('main-content-area');
+        if (mainArea) mainArea.classList.remove('canvas-fullscreen');
+        document.documentElement.style.removeProperty('--canvas-fullscreen-top');
+        updateFullscreenButtonIcon(false);
+    }
 
     // Clear bidirectional context tracking
     _activeSplitCanvasState = null;
