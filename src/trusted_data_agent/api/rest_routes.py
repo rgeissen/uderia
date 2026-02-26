@@ -11646,7 +11646,12 @@ async def get_component_renderer(component_id):
             return jsonify({"error": "Renderer file missing"}), 404
 
         js_content = comp.renderer_path.read_text(encoding="utf-8")
-        return js_content, 200, {"Content-Type": "application/javascript; charset=utf-8"}
+        return js_content, 200, {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
 
     except Exception as e:
         app_logger.error(f"Failed to serve renderer for {component_id}: {e}", exc_info=True)

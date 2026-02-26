@@ -217,6 +217,60 @@ async function loadCodeMirror() {
                 { tag: t.invalid, color: '#ff5370' },
             ]));
 
+            // Light editor chrome theme (white bg, slate gutters, blue selection)
+            const oceanicLightTheme = EditorView.theme({
+                '&': { backgroundColor: '#ffffff', color: '#1e293b' },
+                '.cm-gutters': {
+                    backgroundColor: '#f8fafc',
+                    color: '#94a3b8',
+                    borderRight: '1px solid rgba(148,163,184,0.2)',
+                },
+                '.cm-activeLineGutter': { backgroundColor: 'rgba(148,163,184,0.1)' },
+                '.cm-activeLine': { backgroundColor: 'rgba(148,163,184,0.06)' },
+                '&.cm-focused .cm-cursor': { borderLeftColor: '#1e293b' },
+                '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+                    backgroundColor: 'rgba(59,130,246,0.15)',
+                },
+                '.cm-foldPlaceholder': {
+                    backgroundColor: 'rgba(148,163,184,0.1)',
+                    color: '#64748b',
+                    border: '1px solid rgba(148,163,184,0.2)',
+                },
+                '.cm-tooltip': {
+                    backgroundColor: '#ffffff',
+                    border: '1px solid rgba(148,163,184,0.3)',
+                    color: '#1e293b',
+                },
+                '.cm-tooltip-autocomplete': { backgroundColor: '#ffffff' },
+                '&.cm-focused': { outline: 'none' },
+                '.cm-matchingBracket': {
+                    backgroundColor: 'rgba(59,130,246,0.15)',
+                    color: '#1e293b',
+                },
+            }, { dark: false });
+
+            // Light syntax highlighting (rich colors on white background)
+            const oceanicLightStyle = syntaxHighlighting(HighlightStyle.define([
+                { tag: t.keyword, color: '#7c3aed' },                                              // purple
+                { tag: [t.name, t.deleted, t.character, t.macroName], color: '#1e293b' },           // dark slate
+                { tag: t.propertyName, color: '#0d9488' },                                          // teal
+                { tag: [t.function(t.variableName), t.labelName], color: '#2563eb' },               // blue
+                { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: '#b45309' },       // amber
+                { tag: [t.definition(t.name), t.separator], color: '#475569' },                     // slate
+                { tag: [t.typeName, t.className, t.number, t.changed,
+                        t.annotation, t.modifier, t.self, t.namespace], color: '#c2410c' },         // orange
+                { tag: [t.operator, t.operatorKeyword, t.url, t.escape,
+                        t.regexp, t.link, t.special(t.string)], color: '#0369a1' },                 // sky
+                { tag: [t.meta, t.comment], color: '#94a3b8', fontStyle: 'italic' },                // muted slate
+                { tag: t.strong, fontWeight: 'bold' },
+                { tag: t.emphasis, fontStyle: 'italic' },
+                { tag: t.strikethrough, textDecoration: 'line-through' },
+                { tag: t.link, color: '#2563eb', textDecoration: 'underline' },
+                { tag: [t.atom, t.bool, t.special(t.variableName)], color: '#dc2626' },            // red
+                { tag: [t.processingInstruction, t.string, t.inserted], color: '#059669' },         // emerald
+                { tag: t.invalid, color: '#dc2626', textDecoration: 'underline wavy' },
+            ]));
+
             // Construct basicSetup equivalent (mirrors codemirror/src/codemirror.ts)
             const basicSetup = [
                 lineNumbers(),
@@ -250,7 +304,7 @@ async function loadCodeMirror() {
             console.log('[Canvas] CodeMirror 6 loaded successfully from sub-packages',
                 { EditorView: !!EditorView, basicSetup: basicSetup.length, oneDarkTheme: !!oneDarkTheme });
 
-            _cmCache = { EditorView, basicSetup, oneDarkTheme, oceanicStyle, langHtml, langJs, langPy, langSql, langJson, langCss, langMd, Compartment, EditorState };
+            _cmCache = { EditorView, basicSetup, oneDarkTheme, oceanicStyle, oceanicLightTheme, oceanicLightStyle, langHtml, langJs, langPy, langSql, langJson, langCss, langMd, Compartment, EditorState };
             return _cmCache;
         } catch (err) {
             console.warn('[Canvas] CodeMirror 6 load failed, using Prism.js fallback:', err);
@@ -1138,93 +1192,243 @@ const CANVAS_STYLES = `
     white-space: nowrap;
 }
 /* ─── Light Theme Overrides ──────────────────────────────────── */
-[data-theme="light"] .canvas-container {
-    border-color: var(--border-primary);
-    background: var(--card-bg);
+/* Container & header */
+.canvas-container.canvas-light {
+    border-color: rgba(148,163,184,0.35);
+    background: rgba(255,255,255,0.95);
 }
-[data-theme="light"] .canvas-header {
-    background: var(--bg-tertiary);
-    border-bottom-color: var(--border-primary);
+.canvas-split-body .canvas-container.canvas-light {
+    background: transparent;
 }
-[data-theme="light"] .canvas-toolbar-btn {
-    border-color: var(--border-primary);
-    color: var(--text-muted);
+.canvas-light .canvas-header {
+    background: #f1f5f9;
+    border-bottom-color: rgba(148,163,184,0.35);
 }
-[data-theme="light"] .canvas-toolbar-btn:hover {
-    background: var(--hover-bg-strong);
-    color: var(--text-primary);
+.canvas-light .canvas-title {
+    color: #0f172a;
 }
-[data-theme="light"] .canvas-body {
-    background: var(--code-bg);
+/* Tabs */
+.canvas-light .canvas-tab {
+    color: #64748b;
 }
-[data-theme="light"] .canvas-fallback-code {
-    background: var(--code-bg) !important;
-    color: #e2e8f0;
+.canvas-light .canvas-tab:hover {
+    background: rgba(148,163,184,0.1);
+    color: #0f172a;
 }
-[data-theme="light"] .canvas-console-panel {
-    background: var(--code-bg);
+.canvas-light .canvas-tab--active {
+    background: rgba(59, 130, 246, 0.1);
+    color: rgb(37, 99, 235);
 }
-[data-theme="light"] .canvas-console-header {
-    background: var(--code-bg);
+/* Toolbar */
+.canvas-light .canvas-toolbar-btn {
+    border-color: rgba(148,163,184,0.35);
+    color: #64748b;
 }
-[data-theme="light"] .canvas-diff-header {
-    background: var(--code-bg);
+.canvas-light .canvas-toolbar-btn:hover {
+    background: rgba(148,163,184,0.15);
+    color: #0f172a;
 }
-[data-theme="light"] .canvas-diff-panel {
-    background: var(--code-bg);
+.canvas-light .canvas-toolbar-separator {
+    background: rgba(148,163,184,0.35);
 }
-[data-theme="light"] .canvas-progress-bar {
-    background: var(--bg-tertiary);
-    color: var(--text-muted);
+.canvas-light .canvas-info-badge {
+    color: #64748b;
+    background: rgba(148,163,184,0.1);
 }
-[data-theme="light"] .canvas-collapsed-overlay {
-    color: var(--text-muted);
+/* Code body — light background for CodeMirror light theme */
+.canvas-light .canvas-body {
+    background: #ffffff;
 }
-[data-theme="light"] .canvas-collapsed-title {
-    color: var(--text-primary);
+.canvas-light .canvas-fallback-code {
+    background: #f8fafc !important;
+    color: #1e293b;
 }
-[data-theme="light"] .canvas-template-modal {
-    background: var(--card-bg);
-    border-color: var(--border-primary);
+/* Console — light in light mode */
+.canvas-light .canvas-console-panel {
+    background: #f8fafc;
 }
-[data-theme="light"] .canvas-template-card {
-    border-color: var(--border-primary);
-    background: var(--bg-secondary);
+.canvas-light .canvas-console-header {
+    background: #f1f5f9;
+    border-bottom-color: rgba(148,163,184,0.2);
 }
-[data-theme="light"] .canvas-template-card:hover {
-    background: var(--hover-bg-strong);
+/* Diff — light in light mode */
+.canvas-light .canvas-diff-header {
+    background: #f1f5f9;
+    color: #1e293b;
 }
-[data-theme="light"] .canvas-sources-dropdown {
-    background: var(--card-bg);
-    border-color: var(--border-primary);
+.canvas-light .canvas-diff-panel {
+    background: #f8fafc;
 }
-[data-theme="light"] .canvas-inline-ai-btn {
-    background: var(--card-bg);
-    border-color: var(--border-primary);
+/* Live coding animation */
+.canvas-light .canvas-progress-bar {
+    background: #f1f5f9;
+    color: #64748b;
+    border-top-color: rgba(148,163,184,0.35);
 }
-[data-theme="light"] .canvas-inline-ai-input {
-    background: var(--input-bg);
-    color: var(--text-primary);
-    border-color: var(--border-primary);
+.canvas-light .canvas-skip-btn {
+    color: #64748b;
+    border-color: rgba(148,163,184,0.35);
 }
-[data-theme="light"] #canvas-split-panel {
-    background: var(--card-bg);
-    border-left-color: var(--border-primary);
+.canvas-light .canvas-skip-btn:hover {
+    background: rgba(148,163,184,0.1);
+    color: #0f172a;
 }
-[data-theme="light"] .canvas-split-header {
-    background: var(--bg-tertiary);
-    border-bottom-color: var(--border-primary);
+/* Collapsed canvas */
+.canvas-light .canvas-collapsed-overlay {
+    color: #64748b;
 }
-[data-theme="light"] .canvas-responsive-bar {
-    background: var(--bg-tertiary);
-    border-bottom-color: var(--border-primary);
+.canvas-light .canvas-collapsed-title {
+    color: #0f172a;
 }
-[data-theme="light"] .canvas-version-dropdown {
-    background: var(--card-bg);
-    border-color: var(--border-primary);
+/* Template gallery */
+.canvas-light .canvas-template-overlay {
+    background: rgba(15, 23, 42, 0.4);
 }
-[data-theme="light"] .canvas-md-preview code {
-    background: var(--hover-bg-strong);
+.canvas-light .canvas-template-modal {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(148,163,184,0.35);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.canvas-light .canvas-template-header {
+    border-bottom-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-template-header h3 {
+    color: #0f172a;
+}
+.canvas-light .canvas-template-close {
+    color: #64748b;
+}
+.canvas-light .canvas-template-close:hover {
+    color: #0f172a;
+}
+.canvas-light .canvas-template-categories {
+    border-bottom-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-template-cat {
+    color: #64748b;
+}
+.canvas-light .canvas-template-cat:hover {
+    background: rgba(148,163,184,0.1);
+    color: #0f172a;
+}
+.canvas-light .canvas-template-cat--active {
+    background: rgba(59, 130, 246, 0.1);
+    color: rgb(37, 99, 235);
+    border-color: rgba(59, 130, 246, 0.25);
+}
+.canvas-light .canvas-template-card {
+    border-color: rgba(148,163,184,0.35);
+    background: #f8fafc;
+}
+.canvas-light .canvas-template-card:hover {
+    background: rgba(148,163,184,0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+.canvas-light .canvas-template-card-name {
+    color: #0f172a;
+}
+.canvas-light .canvas-template-card-desc {
+    color: #64748b;
+}
+/* Sources dropdown */
+.canvas-light .canvas-sources-dropdown {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(148,163,184,0.35);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}
+.canvas-light .canvas-sources-item {
+    color: #0f172a;
+    border-bottom-color: rgba(148,163,184,0.15);
+}
+/* Inline AI */
+.canvas-light .canvas-inline-ai-btn {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.canvas-light .canvas-inline-ai-prompt {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.canvas-light .canvas-inline-ai-input {
+    background: rgba(241,245,249,0.8);
+    color: #0f172a;
+    border-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-inline-ai-token-badge {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(148,163,184,0.35);
+    color: #64748b;
+}
+/* Split panel */
+#canvas-split-panel.canvas-light {
+    background: rgba(255,255,255,0.95);
+    border-left-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-split-header {
+    background: #f1f5f9;
+    border-bottom-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-split-title-text {
+    color: #0f172a;
+}
+.canvas-light .canvas-split-action-btn {
+    color: #64748b;
+}
+.canvas-light .canvas-split-action-btn:hover {
+    background: rgba(148,163,184,0.15);
+    color: #0f172a;
+}
+/* Responsive viewport bar */
+.canvas-light .canvas-responsive-bar {
+    background: #f1f5f9;
+    border-bottom-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-viewport-btn {
+    color: #64748b;
+}
+.canvas-light .canvas-viewport-btn:hover {
+    background: rgba(148,163,184,0.1);
+    color: #0f172a;
+}
+.canvas-light .canvas-viewport-btn--active {
+    background: rgba(59, 130, 246, 0.08);
+    color: rgb(37, 99, 235);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+.canvas-light .canvas-viewport-label {
+    color: #64748b;
+}
+/* Version history */
+.canvas-light .canvas-version-btn {
+    color: #64748b;
+    border-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-version-btn:hover {
+    background: rgba(148,163,184,0.1);
+    color: #0f172a;
+}
+.canvas-light .canvas-version-dropdown {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(148,163,184,0.35);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}
+.canvas-light .canvas-version-item {
+    color: #0f172a;
+}
+.canvas-light .canvas-version-item:hover {
+    background: rgba(148,163,184,0.1);
+}
+.canvas-light .canvas-version-item--current {
+    background: rgba(59, 130, 246, 0.08);
+}
+.canvas-light .canvas-version-item-time {
+    color: #64748b;
+}
+/* Markdown preview */
+.canvas-light .canvas-md-preview code {
+    background: rgba(148,163,184,0.15);
 }
 /* ─── Inline Card (Split Mode ON — compact summary in chat) ──── */
 .canvas-inline-card {
@@ -1410,45 +1614,78 @@ const CANVAS_STYLES = `
     background: var(--bg-secondary, rgba(0,0,0,0.12));
 }
 /* Light theme overrides for inline modes */
-[data-theme="light"] .canvas-inline-card {
+.canvas-inline-card.canvas-light {
     border-color: rgba(59, 130, 246, 0.2);
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
     box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
 }
-[data-theme="light"] .canvas-inline-card:hover {
+.canvas-inline-card.canvas-light:hover {
     border-color: rgba(59, 130, 246, 0.4);
     box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12), 0 4px 12px rgba(0,0,0,0.1);
 }
-[data-theme="light"] .canvas-inline-card-header {
+.canvas-light .canvas-inline-card-header {
     background: rgba(0,0,0,0.03);
     border-bottom-color: rgba(59, 130, 246, 0.1);
 }
-[data-theme="light"] .canvas-inline-card-title svg {
+.canvas-light .canvas-inline-card-title {
+    color: #0f172a;
+}
+.canvas-light .canvas-inline-card-title svg {
     filter: none;
 }
-[data-theme="light"] .canvas-inline-card-meta {
+.canvas-light .canvas-inline-card-meta {
     background: rgba(59, 130, 246, 0.06);
     border-color: rgba(59, 130, 246, 0.12);
     color: rgba(71, 85, 105, 0.9);
 }
-[data-theme="light"] .canvas-inline-card-preview {
+.canvas-light .canvas-inline-card-preview {
     background: rgba(0,0,0,0.02);
     color: rgba(71, 85, 105, 0.6);
     border-bottom-color: rgba(0,0,0,0.04);
 }
-[data-theme="light"] .canvas-inline-card-action {
+.canvas-light .canvas-inline-card-action {
     background: rgba(59, 130, 246, 0.03);
 }
-[data-theme="light"] .canvas-inline-compact {
-    border-color: var(--border-primary);
-    background: var(--card-bg);
+.canvas-inline-compact.canvas-light {
+    border-color: rgba(148,163,184,0.35);
+    background: rgba(255,255,255,0.95);
 }
-[data-theme="light"] .canvas-inline-compact-header {
-    background: var(--bg-tertiary);
-    border-bottom-color: var(--border-primary);
+.canvas-light .canvas-inline-compact-header {
+    background: #f1f5f9;
+    border-bottom-color: rgba(148,163,184,0.35);
 }
-[data-theme="light"] .canvas-inline-compact-body {
-    background: var(--code-bg);
+.canvas-light .canvas-inline-compact-title {
+    color: #0f172a;
+}
+.canvas-light .canvas-inline-compact-badge {
+    color: #64748b;
+}
+.canvas-light .canvas-inline-compact-btn {
+    border-color: rgba(148,163,184,0.35);
+    color: #64748b;
+}
+.canvas-light .canvas-inline-compact-btn:hover {
+    background: rgba(148,163,184,0.1);
+    color: #0f172a;
+    border-color: rgba(148,163,184,0.35);
+}
+.canvas-light .canvas-inline-compact-open {
+    color: rgb(37, 99, 235);
+    border-color: rgba(59, 130, 246, 0.25);
+}
+.canvas-light .canvas-inline-compact-open:hover {
+    background: rgba(59, 130, 246, 0.08);
+    color: rgb(37, 99, 235);
+    border-color: rgba(59, 130, 246, 0.35);
+}
+.canvas-light .canvas-inline-compact-body {
+    background: #ffffff;
+}
+.canvas-light .canvas-inline-compact-showmore {
+    background: linear-gradient(to bottom, transparent, #ffffff 50%);
+}
+.canvas-light .canvas-inline-compact-body.expanded .canvas-inline-compact-showmore {
+    background: #f1f5f9;
 }
 /* ─── Canvas Fullscreen Mode ──── */
 /* position:fixed takes the panel out of the flex hierarchy entirely,
@@ -1470,12 +1707,41 @@ const CANVAS_STYLES = `
 
 // Inject styles once
 let _stylesInjected = false;
+let _themeObserverSet = false;
 function injectStyles() {
     if (_stylesInjected) return;
     const style = document.createElement('style');
     style.textContent = CANVAS_STYLES;
     document.head.appendChild(style);
     _stylesInjected = true;
+
+    // Watch for theme changes on <body> and toggle .canvas-light on canvas elements
+    if (!_themeObserverSet) {
+        _themeObserverSet = true;
+        const observer = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.attributeName === 'data-theme') {
+                    const light = isLightTheme();
+                    document.querySelectorAll(
+                        '.canvas-container, .canvas-inline-card, .canvas-inline-compact'
+                    ).forEach(el => el.classList.toggle('canvas-light', light));
+                    const panel = document.getElementById('canvas-split-panel');
+                    if (panel) panel.classList.toggle('canvas-light', light);
+                }
+            }
+        });
+        observer.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+}
+
+/** Check if the current theme is light */
+function isLightTheme() {
+    return document.body.getAttribute('data-theme') === 'light';
+}
+
+/** Toggle .canvas-light class on an element based on current theme */
+function applyCanvasLightClass(el) {
+    el.classList.toggle('canvas-light', isLightTheme());
 }
 
 // ─── Lightweight Markdown Renderer ───────────────────────────────────────────
@@ -1570,6 +1836,7 @@ function renderInlineCard(container, spec) {
 
     const card = document.createElement('div');
     card.className = 'canvas-inline-card';
+    applyCanvasLightClass(card);
     card.innerHTML = `
         <div class="canvas-inline-card-header">
             <span class="canvas-inline-card-title">
@@ -1615,6 +1882,7 @@ async function renderInlineCompact(container, spec) {
 
     const wrapper = document.createElement('div');
     wrapper.className = 'canvas-inline-compact';
+    applyCanvasLightClass(wrapper);
 
     // Header with title + copy button
     const header = document.createElement('div');
@@ -1690,10 +1958,11 @@ async function renderInlineCompact(container, spec) {
         const langFn = langMap[language];
         if (langFn) langExt.push(langFn());
 
+        const light = isLightTheme();
         const extensions = [
             ...cm.basicSetup,
-            cm.oneDarkTheme,
-            cm.oceanicStyle,
+            light ? cm.oceanicLightTheme : cm.oneDarkTheme,
+            light ? cm.oceanicLightStyle : cm.oceanicStyle,
             ...langExt,
             cm.EditorView.lineWrapping,
             cm.EditorView.editable.of(false),
@@ -1751,6 +2020,9 @@ async function autoPopOutCanvas(spec) {
     const renderTarget = document.createElement('div');
     renderTarget.id = `canvas-split-render-${Date.now()}`;
     contentArea.appendChild(renderTarget);
+
+    // Apply light theme class to split panel
+    applyCanvasLightClass(panel);
 
     // Show the panel with animation
     panel.style.display = 'flex';
@@ -1879,6 +2151,7 @@ async function renderCanvasFull(containerId, spec) {
     // Build the DOM structure
     const wrapper = document.createElement('div');
     wrapper.className = 'canvas-container';
+    applyCanvasLightClass(wrapper);
 
     // Header
     const header = document.createElement('div');
@@ -2392,12 +2665,12 @@ registerCapability({
                 // For live mode: create a read-only compartment so we can toggle after animation
                 const readOnlyCompartment = isLive ? new this._cm.Compartment() : null;
                 // basicSetup is an array of extensions (constructed in loadCodeMirror)
-                // oneDarkTheme = editor chrome (bg, cursor, selection, gutters)
-                // oceanicStyle = syntax token colors (blue/teal palette)
+                // Theme-aware: pick light or dark editor chrome + syntax colors
+                const _light = isLightTheme();
                 const extensions = [
                     ...this._cm.basicSetup,
-                    this._cm.oneDarkTheme,
-                    this._cm.oceanicStyle,
+                    _light ? this._cm.oceanicLightTheme : this._cm.oneDarkTheme,
+                    _light ? this._cm.oceanicLightStyle : this._cm.oceanicStyle,
                     ...langExt,
                     this._cm.EditorView.lineWrapping,
                 ].filter(Boolean); // Remove any undefined entries
