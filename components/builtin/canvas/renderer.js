@@ -128,6 +128,9 @@ function diffStats(diff) {
 let _cmCache = null;
 let _cmLoadPromise = null;
 
+/** Registry of live CodeMirror editors for theme hot-swap */
+const _liveEditors = new Set();
+
 async function loadCodeMirror() {
     if (_cmCache) return _cmCache;
     if (_cmLoadPromise) return _cmLoadPromise;
@@ -1727,6 +1730,8 @@ function injectStyles() {
                     ).forEach(el => el.classList.toggle('canvas-light', light));
                     const panel = document.getElementById('canvas-split-panel');
                     if (panel) panel.classList.toggle('canvas-light', light);
+                    // Hot-swap CodeMirror editor themes
+                    reconfigureCmEditors();
                 }
             }
         });
@@ -1742,6 +1747,33 @@ function isLightTheme() {
 /** Toggle .canvas-light class on an element based on current theme */
 function applyCanvasLightClass(el) {
     el.classList.toggle('canvas-light', isLightTheme());
+}
+
+/** Reconfigure all live CodeMirror editors for the current theme */
+function reconfigureCmEditors() {
+    if (!_cmCache) return;
+    const light = isLightTheme();
+    for (const entry of _liveEditors) {
+        try {
+            if (!entry.view.dom.isConnected) {
+                _liveEditors.delete(entry);
+                continue;
+            }
+            entry.view.dispatch({
+                effects: [
+                    entry.themeCompartment.reconfigure(
+                        light ? _cmCache.oceanicLightTheme : _cmCache.oneDarkTheme
+                    ),
+                    entry.highlightCompartment.reconfigure(
+                        light ? _cmCache.oceanicLightStyle : _cmCache.oceanicStyle
+                    ),
+                ],
+            });
+        } catch (e) {
+            console.warn('[Canvas] Failed to reconfigure CM theme:', e);
+            _liveEditors.delete(entry);
+        }
+    }
 }
 
 // ─── Lightweight Markdown Renderer ───────────────────────────────────────────
@@ -1812,8 +1844,7 @@ async function activateSplitModeFromCard(spec) {
     // Update the header toggle button appearance and localStorage
     const toggleBtn = document.getElementById('canvas-mode-toggle');
     if (toggleBtn) {
-        toggleBtn.classList.add('bg-white/15', 'text-white', 'ring-1', 'ring-white/20');
-        toggleBtn.classList.remove('text-gray-300');
+        toggleBtn.classList.add('canvas-toggle-active');
         toggleBtn.title = 'Canvas Split Mode (On)';
     }
     localStorage.setItem('canvasSplitMode', 'on');
@@ -1959,20 +1990,23 @@ async function renderInlineCompact(container, spec) {
         if (langFn) langExt.push(langFn());
 
         const light = isLightTheme();
+        const themeCompartment = new cm.Compartment();
+        const highlightCompartment = new cm.Compartment();
         const extensions = [
             ...cm.basicSetup,
-            light ? cm.oceanicLightTheme : cm.oneDarkTheme,
-            light ? cm.oceanicLightStyle : cm.oceanicStyle,
+            themeCompartment.of(light ? cm.oceanicLightTheme : cm.oneDarkTheme),
+            highlightCompartment.of(light ? cm.oceanicLightStyle : cm.oceanicStyle),
             ...langExt,
             cm.EditorView.lineWrapping,
             cm.EditorView.editable.of(false),
             cm.EditorState.readOnly.of(true),
         ].filter(Boolean);
 
-        new cm.EditorView({
+        const view = new cm.EditorView({
             state: cm.EditorState.create({ doc: content, extensions }),
             parent: codeTarget,
         });
+        _liveEditors.add({ view, themeCompartment, highlightCompartment });
     } catch (err) {
         // Fallback: plain <pre> block
         console.warn('[Canvas] CM6 failed for inline compact, using fallback:', err);
@@ -2667,10 +2701,12 @@ registerCapability({
                 // basicSetup is an array of extensions (constructed in loadCodeMirror)
                 // Theme-aware: pick light or dark editor chrome + syntax colors
                 const _light = isLightTheme();
+                const _themeCompartment = new this._cm.Compartment();
+                const _highlightCompartment = new this._cm.Compartment();
                 const extensions = [
                     ...this._cm.basicSetup,
-                    _light ? this._cm.oceanicLightTheme : this._cm.oneDarkTheme,
-                    _light ? this._cm.oceanicLightStyle : this._cm.oceanicStyle,
+                    _themeCompartment.of(_light ? this._cm.oceanicLightTheme : this._cm.oneDarkTheme),
+                    _highlightCompartment.of(_light ? this._cm.oceanicLightStyle : this._cm.oceanicStyle),
                     ...langExt,
                     this._cm.EditorView.lineWrapping,
                 ].filter(Boolean); // Remove any undefined entries
@@ -2704,6 +2740,7 @@ registerCapability({
                     parent: panel,
                 });
                 state._editorView = view;
+                _liveEditors.add({ view, themeCompartment: _themeCompartment, highlightCompartment: _highlightCompartment });
 
                 // Trigger live coding animation
                 if (isLive && content) {
@@ -2738,6 +2775,12 @@ registerCapability({
 
     destroy(state) {
         if (state._editorView) {
+            for (const entry of _liveEditors) {
+                if (entry.view === state._editorView) {
+                    _liveEditors.delete(entry);
+                    break;
+                }
+            }
             state._editorView.destroy();
             state._editorView = null;
         }

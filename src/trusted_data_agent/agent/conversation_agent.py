@@ -31,6 +31,7 @@ Usage:
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Dict, List, Any, Optional, Callable
 
@@ -810,6 +811,10 @@ RESPONSE FORMAT:
                 + "-" * 50
             )
 
+            # Auto-canvas: convert markdown code blocks to Canvas component payloads
+            # when the LLM failed to use TDA_Canvas directly.
+            final_response = self._auto_canvas_code_blocks(final_response)
+
             return {
                 "response": final_response,
                 "tools_used": tools_used,
@@ -862,3 +867,123 @@ RESPONSE FORMAT:
                 return str(obj)
         except Exception:
             return str(obj)
+
+    # ------------------------------------------------------------------
+    # Auto-Canvas: post-process markdown code blocks into Canvas renders
+    # ------------------------------------------------------------------
+
+    _CODE_BLOCK_RE = re.compile(r'```(\w+)?\s*\n(.*?)```', re.DOTALL)
+
+    _CANVAS_LANGUAGES = {
+        "html", "css", "javascript", "python", "sql",
+        "markdown", "json", "svg", "mermaid",
+    }
+
+    _EXTENSION_MAP = {
+        "html": ".html", "css": ".css", "javascript": ".js",
+        "python": ".py", "sql": ".sql", "markdown": ".md",
+        "json": ".json", "svg": ".svg", "mermaid": ".mmd",
+    }
+
+    def _auto_canvas_code_blocks(self, response: str) -> str:
+        """Post-process LLM response: convert markdown code blocks to Canvas payloads.
+
+        When the LLM generates a fenced code block instead of calling TDA_Canvas,
+        this method detects the block, creates a Canvas component payload, and
+        strips the block from the response text so the executor renders it via
+        the component system instead.
+
+        Returns:
+            The response text with code blocks removed (Canvas payloads appended
+            to ``self.component_payloads``).
+        """
+        # Skip if TDA_Canvas is not among the bound tools
+        if not any(t.name == "TDA_Canvas" for t in self.mcp_tools):
+            return response
+
+        # Skip if the LLM already used TDA_Canvas properly
+        if any(cp.get("component_id") == "canvas" for cp in self.component_payloads):
+            return response
+
+        matches = list(self._CODE_BLOCK_RE.finditer(response))
+        if not matches:
+            return response
+
+        # Process in reverse so string indices stay valid
+        converted = 0
+        for match in reversed(matches):
+            lang_hint = (match.group(1) or "").lower().strip()
+            code = match.group(2).strip()
+
+            if not code:
+                continue
+
+            # Resolve language
+            language = lang_hint if lang_hint in self._CANVAS_LANGUAGES else None
+            if not language:
+                language = self._detect_language_hint(code)
+            if not language:
+                continue  # Unrecognised language — leave as markdown
+
+            # Build a canvas component payload (mirrors CanvasComponentHandler.process)
+            line_count = code.count("\n") + 1
+            title = "SQL Query" if language == "sql" else f"{language.title()} Code"
+
+            payload = {
+                "status": "success",
+                "component_id": "canvas",
+                "render_target": "inline",
+                "spec": {
+                    "content": code,
+                    "language": language,
+                    "title": title,
+                    "previewable": language in {"html", "svg", "markdown"},
+                    "line_count": line_count,
+                    "file_extension": self._EXTENSION_MAP.get(language, ".txt"),
+                    "sources": None,
+                },
+                "title": title,
+                "metadata": {
+                    "tool_name": "TDA_Canvas",
+                    "language": language,
+                    "content_length": len(code),
+                    "line_count": line_count,
+                    "auto_canvas": True,
+                },
+            }
+            self.component_payloads.append(payload)
+
+            # Strip the code block from the response text
+            response = response[:match.start()] + response[match.end():]
+            converted += 1
+            logger.info(
+                f"[ConvAgent] Auto-canvas: converted {language} code block "
+                f"({line_count} lines) to canvas payload"
+            )
+
+        if converted:
+            logger.info(f"[ConvAgent] Auto-canvas: {converted} code block(s) converted")
+
+        return response.strip()
+
+    @staticmethod
+    def _detect_language_hint(content: str) -> Optional[str]:
+        """Heuristic language detection for code blocks without a language tag."""
+        c = content.strip()
+        if not c:
+            return None
+        if c.startswith("<!DOCTYPE") or c.startswith("<html") or "<head" in c[:200]:
+            return "html"
+        if c.startswith("<svg"):
+            return "svg"
+        if c.startswith("graph ") or c.startswith("sequenceDiagram"):
+            return "mermaid"
+        if "def " in c[:500] or "import " in c[:200]:
+            return "python"
+        if any(kw in c.upper()[:300] for kw in ["SELECT ", "CREATE TABLE", "INSERT INTO"]):
+            return "sql"
+        if c.startswith("{") and c.endswith("}"):
+            return "json"
+        if c.startswith("# ") or "\n## " in c:
+            return "markdown"
+        return None

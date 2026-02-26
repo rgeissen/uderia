@@ -3599,6 +3599,32 @@ input[type="checkbox"]:disabled:hover {
   border-width: 0;
 }
 
+/* Canvas Split Mode Toggle Button */
+#canvas-mode-toggle {
+    color: var(--text-muted, #9ca3af);
+}
+#canvas-mode-toggle:hover {
+    color: var(--text-primary, #e2e8f0);
+    background: var(--hover-bg, rgba(255, 255, 255, 0.08));
+}
+#canvas-mode-toggle.canvas-toggle-active {
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+[data-theme="light"] #canvas-mode-toggle {
+    color: var(--text-muted, #94a3b8);
+}
+[data-theme="light"] #canvas-mode-toggle:hover {
+    color: var(--text-primary, #0f172a);
+    background: rgba(148, 163, 184, 0.15);
+}
+[data-theme="light"] #canvas-mode-toggle.canvas-toggle-active {
+    color: #0f172a;
+    background: rgba(148, 163, 184, 0.2);
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
 /* Header Profile Badges */
 #header-default-profile,
 #header-override-profile {

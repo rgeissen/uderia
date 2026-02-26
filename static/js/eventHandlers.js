@@ -3536,15 +3536,8 @@ async function handleToggleTurnValidity(badgeEl) {
  * Apply active/inactive styling to the canvas split mode toggle button.
  */
 function applyCanvasToggleStyle(btn, isOn) {
-    if (isOn) {
-        btn.classList.add('bg-white/15', 'text-white', 'ring-1', 'ring-white/20');
-        btn.classList.remove('text-gray-300');
-        btn.title = 'Canvas Split Mode (On)';
-    } else {
-        btn.classList.remove('bg-white/15', 'text-white', 'ring-1', 'ring-white/20');
-        btn.classList.add('text-gray-300');
-        btn.title = 'Canvas Split Mode (Off)';
-    }
+    btn.classList.toggle('canvas-toggle-active', isOn);
+    btn.title = isOn ? 'Canvas Split Mode (On)' : 'Canvas Split Mode (Off)';
 }
 
 // --- Initializer ---
