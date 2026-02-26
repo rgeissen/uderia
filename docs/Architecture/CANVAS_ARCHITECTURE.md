@@ -432,7 +432,7 @@ Renders four toolbar elements:
 The primary capability. During `init()`, loads CodeMirror 6 asynchronously. During `render()`:
 
 1. Determines if live coding animation is active (`window.__canvasLiveMode`)
-2. Creates `EditorView` with extensions: `...basicSetup` (manually constructed array), `oneDarkTheme` (chrome), `oceanicStyle` (syntax colors), language extension, line wrapping — all filtered via `.filter(Boolean)` for safety
+2. Creates `EditorView` with extensions: `...basicSetup` (manually constructed array), theme chrome and syntax colors wrapped in `Compartment`s for live hot-swap (see Theme Awareness), language extension, line wrapping — all filtered via `.filter(Boolean)` for safety
 3. In live mode: starts with empty document, read-only compartment, triggers `animateCodeInsertion()`
 4. In normal mode: starts with full content, attaches inline AI selection listener
 5. Falls back to Prism.js `<pre><code>` if CodeMirror fails to load
@@ -663,7 +663,7 @@ A `</>` toggle button in the conversation header controls how canvases render. I
 
 **Location:** `#canvas-mode-toggle` in `templates/index.html`, placed next to `#window-menu-button` in the header right section.
 
-**Styling:** Same as window menu — `text-gray-300 hover:text-white hover:bg-white/10`. Active state adds `bg-white/15 text-white ring-1 ring-white/20`.
+**Styling:** Defined in `static/css/main.css` as `#canvas-mode-toggle` with `[data-theme="light"]` variant. Active state uses the `.canvas-toggle-active` CSS class (toggled by `applyCanvasToggleStyle()`) which provides visible indicators in both dark mode (white glow/ring) and light mode (slate background/ring).
 
 **State:** Persisted in `localStorage('canvasSplitMode')` and exposed via `window.__canvasSplitMode` (set by `setCanvasSplitMode()` in `state.js`).
 
@@ -985,11 +985,13 @@ The canvas is fully theme-aware across all three themes (legacy, modern, light):
 
 1. **CSS Variables:** All backgrounds, borders, text colors, and hover states use CSS variable wrappers with dark-theme fallbacks — e.g., `var(--bg-secondary, rgba(0,0,0,0.15))`. This ensures the canvas adapts automatically when the theme changes.
 
-2. **Light Theme Overrides:** A `[data-theme="light"]` CSS block (~25 selectors) handles elements that need explicit light-theme treatment — header backgrounds, toolbar borders, template cards, split-panel chrome, etc.
+2. **Light Theme Overrides:** A `.canvas-light` CSS class (~25 selectors) handles elements that need explicit light-theme treatment — header backgrounds, toolbar borders, template cards, split-panel chrome, etc. A `MutationObserver` on `document.body` watches `data-theme` attribute changes and toggles `.canvas-light` on all canvas elements in real time.
 
-3. **Code Areas Stay Dark:** The editor body, console panel, diff panels, and fallback code blocks use `var(--code-bg)` which resolves to `#1e293b` in light theme. This keeps code on a dark background for contrast (same pattern as VS Code).
+3. **Dual CodeMirror Themes:** Two complete theme sets are loaded:
+   - **Dark:** `oneDarkTheme` (editor chrome) + `oceanicStyle` (blue/teal/green syntax palette)
+   - **Light:** `oceanicLightTheme` (white bg, slate gutters, blue selection) + `oceanicLightStyle` (rich colors on white: purple keywords, teal properties, blue functions, emerald strings)
 
-4. **Syntax Highlighting:** The "Oceanic" palette (blue/teal/green tones) works well on both dark and light backgrounds since code areas are always dark.
+4. **Live Theme Hot-Swap:** CodeMirror theme and syntax-highlighting extensions are wrapped in `Compartment`s at creation time. A module-level `_liveEditors` registry tracks all live editor instances. When the theme changes, `reconfigureCmEditors()` iterates the registry and dispatches `compartment.reconfigure()` effects — switching between dark/light themes instantly without recreating editors. Editors are removed from the registry on destroy or when disconnected from the DOM.
 
 ---
 
