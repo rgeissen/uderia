@@ -5706,6 +5706,28 @@ The following domain knowledge may be relevant to this conversation:
         formatter = OutputFormatter(**formatter_kwargs)
         final_html, tts_payload = formatter.render()
 
+        # --- MODIFICATION START: Extract component payloads from execution trace ---
+        # In tool_enabled profiles, component tool results (canvas, chart, etc.) are
+        # stored in turn_action_history with format {"type": "<component_id>", "spec": {...}}.
+        # We must extract these and generate the data-component-id divs so the frontend
+        # renderer can pick them up — matching what llm_only and rag_focused paths do.
+        try:
+            component_payloads = []
+            for entry in self.turn_action_history:
+                result = entry.get("result") if isinstance(entry, dict) else None
+                if isinstance(result, dict) and result.get("spec") and result.get("type"):
+                    component_payloads.append({
+                        "component_id": result["type"],
+                        "spec": result["spec"],
+                        "render_target": result.get("render_target"),
+                    })
+            if component_payloads:
+                from trusted_data_agent.components.utils import generate_component_html
+                final_html += generate_component_html(component_payloads)
+        except Exception as comp_extract_err:
+            app_logger.warning(f"Failed to extract component payloads from execution trace: {comp_extract_err}")
+        # --- MODIFICATION END ---
+
         # --- MODIFICATION START: Decouple UI and LLM history ---
         # First, determine the clean text summary for the LLM
         clean_summary_for_llm = "The agent has completed its work."
