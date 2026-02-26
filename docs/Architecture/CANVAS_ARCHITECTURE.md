@@ -6,7 +6,7 @@
 
 The Canvas component (`TDA_Canvas`) is a feature-rich interactive workspace that transforms LLM-generated code and documents into an editable, previewable, version-tracked environment. Unlike competitor implementations (Claude Artifacts, Gemini Canvas, ChatGPT Canvas), the Uderia Canvas uses a **modular capability plugin architecture** where each feature — editing, preview, diff, execution — is a self-contained plugin that can be added, removed, or replaced independently.
 
-The canvas operates as a deterministic component: the backend handler passes content through without LLM transformation, while the frontend renderer orchestrates 10 registered capabilities to deliver the full interactive experience.
+The canvas operates as a deterministic component: the backend handler passes content through without LLM transformation, while the frontend renderer orchestrates 11 registered capabilities and 4 execution connectors to deliver the full interactive experience.
 
 ---
 
@@ -26,7 +26,8 @@ The canvas operates as a deterministic component: the backend handler passes con
   - [CodeMirror 6 Integration](#codemirror-6-integration)
   - [Capability Registry](#capability-registry)
 - [Capabilities Reference](#capabilities-reference)
-  - [execution_bridge — MCP SQL Execution](#execution_bridge--mcp-sql-execution)
+  - [execution_bridge — Connector-Aware Execution](#execution_bridge--connector-aware-execution)
+  - [credentials — Connector Credential Management](#credentials--connector-credential-management)
   - [sources_badge — RAG Source Attribution](#sources_badge--rag-source-attribution)
   - [template_gallery — Starter Templates](#template_gallery--starter-templates)
   - [toolbar — Copy, Download, Expand, Info](#toolbar--copy-download-expand-info)
@@ -62,9 +63,13 @@ The canvas operates as a deterministic component: the backend handler passes con
 components/builtin/canvas/
 ├── manifest.json           # Component metadata, tool definition, render targets
 ├── handler.py              # CanvasComponentHandler — deterministic pass-through
-├── renderer.js             # Capability-based renderer (~2400 lines)
+├── renderer.js             # Capability + connector-based renderer (~4600 lines)
 ├── instructions.json       # Intensity-keyed LLM guidance (none/medium/heavy)
-└── templates.json          # 12 starter templates for template gallery
+├── templates.json          # 12 starter templates for template gallery
+└── connectors/             # Backend execution connectors (Python)
+    ├── __init__.py         # Connector registry — get_connector(), list_connectors()
+    ├── base.py             # BaseCanvasConnector ABC, ExecutionResult, ConnectionTestResult
+    └── sql.py              # SQLNativeConnector (PostgreSQL, MySQL, SQLite, Teradata)
 ```
 
 ---
@@ -172,7 +177,10 @@ canvasState = {
     _inlineAIPrompt: HTMLElement, // Prompt input container
 
     // Execution bridge
-    _runBtn: HTMLElement,      // SQL run button reference
+    _runBtn: HTMLElement,         // Run button reference
+    _activeConnector: Object,     // Resolved connector for current language
+    _activeConnectionId: string,  // Selected named connection ID (SQL only, null = MCP bridge)
+    _connections: Array,          // Cached list of saved connections
 
     // Methods
     getContent(): string,      // Returns live content from CM6 editor
@@ -344,36 +352,107 @@ Capabilities are registered in this exact order (which determines toolbar button
 
 | # | ID | Type | Languages | Description |
 |---|-----|------|-----------|-------------|
-| 1 | `execution_bridge` | toolbar | `sql` | SQL "Run" button via MCP |
-| 2 | `sources_badge` | toolbar | `*` | RAG knowledge source dropdown |
-| 3 | `template_gallery` | toolbar | `*` | Starter template gallery modal |
-| 4 | `toolbar` | toolbar | `*` | Copy, Download, Expand, info badge |
-| 5 | `code_editor` | tab | `*` | CodeMirror 6 editor with live animation |
-| 6 | `html_preview` | tab | `html` | Sandboxed iframe with responsive viewports |
-| 7 | `markdown_preview` | tab | `markdown` | Lightweight markdown-to-HTML renderer |
-| 8 | `svg_preview` | tab | `svg` | Sanitized inline SVG rendering |
-| 9 | `diff_view` | tab | `*` | LCS-based side-by-side diff (conditional) |
-| 10 | `version_history` | toolbar | `*` | Version dropdown with restore (conditional) |
+| 1 | `code_editor` | tab | `*` | CodeMirror 6 editor with live animation |
+| 2 | `html_preview` | tab | `html` | Sandboxed iframe with responsive viewports |
+| 3 | `markdown_preview` | tab | `markdown` | Lightweight markdown-to-HTML renderer |
+| 4 | `svg_preview` | tab | `svg` | Sanitized inline SVG rendering |
+| 5 | `diff_view` | tab | `*` | LCS-based side-by-side diff (conditional) |
+| 6 | `credentials` | tab | `*` | Dynamic credentials form (conditional — only when connector has credentialSchema) |
+| 7 | `version_history` | toolbar | `*` | Version dropdown with restore (conditional) |
+| 8 | `execution_bridge` | toolbar | `*` | Connector-aware "Run" button for any executable language |
+| 9 | `sources_badge` | toolbar | `*` | RAG knowledge source dropdown |
+| 10 | `template_gallery` | toolbar | `*` | Starter template gallery modal |
+| 11 | `toolbar` | toolbar | `*` | Copy, Download, Expand, info badge |
+
+### Connector Registry
+
+Execution connectors handle code execution for specific languages. Registered in this order:
+
+| # | ID | Languages | Backend? | Named Connections | Description |
+|---|-----|-----------|----------|-------------------|-------------|
+| 1 | `javascript_worker` | `javascript` | No | None | Web Worker sandbox with console capture, 10s timeout |
+| 2 | `html_sandbox` | `html`, `css` | No | None | HTML: Preview tab switch. CSS: Iframe with sample elements |
+| 3 | `python_pyodide` | `python` | No | None | Pyodide WASM (~10MB lazy-load), persistent session |
+| 4 | `sql_native` | `sql` | Yes | Driver, host, port, database, user, password, SSL, JDBC fields | Native DB drivers (asyncpg/aiomysql/aiosqlite/teradatasql/JayDeBeApi). Uses named connections selected via toolbar picker. Falls back to MCP bridge when no connection selected |
 
 ---
 
 ## Capabilities Reference
 
-### execution_bridge — MCP SQL Execution
+### execution_bridge — Connector-Aware Execution
 
-**Type:** toolbar | **Languages:** `sql` only
+**Type:** toolbar | **Languages:** `*` (all — guarded by connector availability)
 
-Adds a green "▶ Run" button as the first toolbar item. Clicking it:
+Adds a green "▶ Run" button as the first toolbar item for any language that has a registered connector. For SQL canvases, a **connection picker** `<select>` dropdown appears next to the Run button, listing "MCP Bridge (default)" plus all saved named connections. The button's tooltip shows which connector will handle execution. Clicking it:
 1. Reads current editor content via `state.getContent()`
-2. Sends `POST /v1/canvas/execute` with code, language, session_id
-3. Displays results in a console panel below the canvas body
+2. Calls `executeViaConnector(state)` which dispatches to the active connector
+3. The connector returns `{ result, error, stats: { rowCount, timeMs } }`
+4. Results displayed in a console panel below the canvas body
+
+**Connector dispatch flow:**
+```
+Run button click → executeViaConnector(state)
+                      ↓
+              state._activeConnector || getConnectorForLanguage(language)
+                      ↓
+              connector.execute(code, null, state)
+                      ↓
+              if state._activeConnectionId:
+                  POST /v1/canvas/execute { connector_id, connection_id }
+                  Backend reads encrypted creds for that connection_id
+              else:
+                  Legacy MCP bridge (executeSqlViaMcp)
+                      ↓
+              showConsolePanel(state, result/error, ...)
+```
+
+**Per-language execution:**
+- **JavaScript**: Web Worker (browser sandbox, 10s timeout, console capture)
+- **Python**: Pyodide WASM (lazy-loaded, persistent session, stdout/stderr capture)
+- **SQL**: Named connection selected → `POST /v1/canvas/execute` with `connector_id` + `connection_id`; otherwise falls back to MCP bridge
+- **HTML**: Switches to Preview tab
+- **CSS**: Shows sample elements in iframe with user CSS applied
 
 The console panel (`showConsolePanel()`) shows:
-- Header: "Console" label, row count badge, execution time, close button
-- Body: Query results as preformatted text
+- Header: "Console" label, count badge (rows for SQL, lines for other languages), execution time, close button
+- Body: Execution results as preformatted text
 - Error state: Red text and "Error" badge
 
-Session ID comes from `window.__currentSessionId` (set by `state.js:setCurrentSessionId()`).
+### credentials — Named Connection Manager
+
+**Type:** tab | **Languages:** `*` (conditional — only shows when connector has `credentialSchema`)
+
+Manages **named SQL connections** — multiple saved database connections per user. The tab has two views:
+
+**List View (default):**
+- Shows all saved connections as cards with driver icon, name, and connection summary
+- Edit/Delete actions per card
+- "New Connection" button to open the form
+
+**Form View (edit/create):**
+- "← Back" to return to list
+- Connection Name field (required)
+- Dynamic fields from connector's `credentialSchema` (driver, host, port, database, user, password, SSL)
+- `hideWhen` conditional visibility (e.g., hide host/port for SQLite/JDBC)
+- `showWhen` conditional visibility (e.g., show JDBC URL/Driver Class/JAR Path only for JDBC driver)
+- Test Connection / Save / Delete buttons
+- Status indicator
+
+**Supported drivers:** PostgreSQL (asyncpg), MySQL (aiomysql), SQLite (aiosqlite), Teradata (teradatasql), JDBC (JayDeBeApi — requires Java runtime)
+
+**Storage:** Named connections use the existing `encrypt_credentials`/`decrypt_credentials` system with provider key `canvas_conn_{connection_id}`. The connection name is stored inside the encrypted credentials dict.
+
+**REST endpoints:**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/v1/canvas/connections` | List all saved connections (passwords masked) |
+| GET | `/v1/canvas/connections/<connection_id>` | Get single connection (password masked) |
+| PUT | `/v1/canvas/connections` | Save connection (create or update, encrypted via Fernet) |
+| DELETE | `/v1/canvas/connections/<connection_id>` | Delete connection |
+| POST | `/v1/canvas/connections/test` | Test connection (credentials in body, not stored) |
+
+**Connection picker integration:** After save/delete, `_refreshConnectionPicker(state)` updates the toolbar dropdown to reflect the current connection list.
 
 ### sources_badge — RAG Source Attribution
 
@@ -1032,13 +1111,37 @@ No changes to CanvasCore, other capabilities, or backend handler are required.
 4. Add `@codemirror/lang-*` import to `loadCodeMirror()` `Promise.all()` and add mapping to `getCmLanguageExt()` in `renderer.js`
 5. Add preview capability if applicable (e.g., `mermaid_preview`)
 
-### Adding a New Execution Language
+### Adding a New Execution Connector
 
-Currently only SQL is supported via MCP. To add another language:
-1. Identify the MCP tool for execution
-2. Add language check in `POST /v1/canvas/execute` endpoint
-3. Update `execution_bridge` capability's `languages` array
-4. Add execution logic for the new language in `executeCode()`
+The connector plugin system makes adding new execution languages straightforward:
+
+```javascript
+registerConnector({
+    id: 'my_connector',
+    name: 'My Language',
+    languages: ['mylang'],
+    requiresBackend: false,    // true = calls /v1/canvas/execute with connector_id
+    credentialSchema: null,    // or array of field definitions for Credentials tab
+
+    async execute(code, credentials, state) {
+        // Execute code and return normalized result
+        return {
+            result: 'output text',
+            error: null,  // or error message string
+            stats: { rowCount: 0, timeMs: 42 },
+        };
+    },
+
+    // Optional: browser-side connection test
+    async testConnection(credentials) {
+        return { valid: true, message: 'Connected', server_info: 'v1.0' };
+    },
+});
+```
+
+The `execution_bridge` capability automatically picks up the new connector — no changes to existing code required. If `credentialSchema` is provided, the Credentials tab appears automatically.
+
+For backend connectors, also create a Python connector class extending `BaseCanvasConnector` in `connectors/` and register it in `connectors/__init__.py`.
 
 ---
 
@@ -1050,9 +1153,13 @@ Currently only SQL is supported via MCP. To add another language:
 |------|-------|---------|
 | `components/builtin/canvas/manifest.json` | ~62 | Component metadata, TDA_Canvas tool definition |
 | `components/builtin/canvas/handler.py` | ~120 | Deterministic pass-through handler |
-| `components/builtin/canvas/renderer.js` | ~2400 | Full frontend: 10 capabilities, CSS, animation, inline AI, split-screen |
+| `components/builtin/canvas/renderer.js` | ~4600 | Full frontend: 11 capabilities, 4 connectors, CSS, animation, inline AI, split-screen |
 | `components/builtin/canvas/instructions.json` | ~5 | LLM guidance at none/medium/heavy intensity |
 | `components/builtin/canvas/templates.json` | ~800 | 12 starter templates |
+| `components/builtin/canvas/connectors/__init__.py` | ~30 | Backend connector registry |
+| `components/builtin/canvas/connectors/base.py` | ~50 | BaseCanvasConnector ABC, ExecutionResult, ConnectionTestResult |
+| `components/builtin/canvas/connectors/sql.py` | ~250 | SQLNativeConnector (PostgreSQL, MySQL, SQLite, Teradata) |
+| `schema/20_canvas_connectors.sql` | ~20 | canvas_connector_credentials table |
 
 ### Modified Integration Files
 
@@ -1062,6 +1169,10 @@ Currently only SQL is supported via MCP. To add another language:
 | `static/js/componentRenderers.js` | Import + register `renderCanvas` |
 | `tda_config.json` | Canvas in all 4 profile componentConfigs |
 | `src/trusted_data_agent/agent/phase_executor.py` | Generic deterministic fast-path |
+| `src/trusted_data_agent/api/rest_routes.py` | Connector-aware execute endpoint + credential CRUD + SQL test |
+| `src/trusted_data_agent/auth/database.py` | Bootstrap `canvas_connector_credentials` table |
+| `src/trusted_data_agent/main.py` | CSP: added `'wasm-unsafe-eval'` for Pyodide WASM |
+| `requirements.txt` | Optional database drivers (asyncpg, aiomysql, aiosqlite, teradatasql) |
 | `static/js/eventHandlers.js` | Live mode flag, canvas context collection |
 | `src/trusted_data_agent/api/routes.py` | Accept `canvas_context` parameter |
 | `src/trusted_data_agent/api/rest_routes.py` | Accept `canvas_context`, 3 canvas endpoints |

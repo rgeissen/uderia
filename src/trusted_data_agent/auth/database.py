@@ -123,6 +123,9 @@ def init_database():
         # Create component settings table (admin governance)
         _create_component_settings_table()
 
+        # Create canvas connector credentials table
+        _create_canvas_connector_tables()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -958,6 +961,35 @@ def _create_component_settings_table():
 
     except Exception as e:
         logger.error(f"Error creating component_settings table: {e}", exc_info=True)
+
+
+def _create_canvas_connector_tables():
+    """
+    DEPRECATED: Canvas connections are now stored in the user_credentials
+    table via encrypt_credentials() with provider key "canvas_conn_{id}".
+    This function is kept as a no-op for backward compatibility with the
+    schema file (20_canvas_connectors.sql creates a legacy table that is
+    no longer read or written by the application).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "20_canvas_connectors.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 20_canvas_connectors.sql (legacy table)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating canvas connector tables: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

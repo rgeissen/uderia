@@ -11783,22 +11783,18 @@ async def canvas_inline_ai():
 @rest_api_bp.route("/v1/canvas/execute", methods=["POST"])
 async def canvas_execute():
     """
-    Execute canvas code via MCP server.
-    Currently supports SQL only (via base_readQuery).
+    Execute canvas code via MCP bridge or native connector.
+
+    If `connector_id` is present → route to native connector (reads creds from encrypted store).
+    If no `connector_id` + language='sql' → legacy MCP bridge.
+    Other languages → 400 (frontend-only execution).
 
     Request body:
     {
-        "code": "SELECT * FROM products WHERE quantity < 10",
+        "code": "SELECT * FROM products",
         "language": "sql",
-        "session_id": "session-xxx"
-    }
-
-    Returns:
-    {
-        "status": "success",
-        "result": "col1 | col2\\n...",
-        "row_count": 15,
-        "execution_time_ms": 234
+        "session_id": "session-xxx",
+        "connector_id": "sql_native"   // optional — triggers native connector
     }
     """
     import time
@@ -11811,12 +11807,59 @@ async def canvas_execute():
     code = data.get("code", "").strip()
     language = data.get("language", "").lower()
     session_id = data.get("session_id")
+    connector_id = data.get("connector_id")
+    connection_id = data.get("connection_id")
 
     if not code:
         return jsonify({"status": "error", "message": "Code is required"}), 400
 
+    # ── Native connector path (via named connection) ─────────────────────────
+    if connector_id or connection_id:
+        try:
+            from components.builtin.canvas.connectors import get_connector
+            from trusted_data_agent.auth.encryption import decrypt_credentials
+
+            cid = connector_id or 'sql_native'
+            connector = get_connector(cid)
+            if not connector:
+                return jsonify({"status": "error", "message": f"Unknown connector: {cid}"}), 400
+
+            # Read credentials from encrypted store
+            if connection_id:
+                creds = decrypt_credentials(user_uuid, f"canvas_conn_{connection_id}")
+            else:
+                creds = decrypt_credentials(user_uuid, f"canvas_{cid}")
+            if not creds:
+                return jsonify({"status": "error", "message": "No credentials found for this connection. Open the Credentials tab to configure it."}), 400
+
+            result = await connector.execute(code, creds)
+
+            if result.error:
+                return jsonify({
+                    "status": "error",
+                    "message": result.error,
+                    "execution_time_ms": result.execution_time_ms,
+                }), 400
+
+            app_logger.info(
+                f"[Canvas Execute] {connector_id} | {result.row_count} rows | "
+                f"{result.execution_time_ms}ms | {len(code)} chars"
+            )
+
+            return jsonify({
+                "status": "success",
+                "result": result.result or "",
+                "row_count": result.row_count,
+                "execution_time_ms": result.execution_time_ms,
+            }), 200
+
+        except Exception as e:
+            app_logger.error(f"Canvas native connector execute failed: {e}", exc_info=True)
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    # ── Legacy MCP bridge path (SQL only) ────────────────────────────────────
     if language != "sql":
-        return jsonify({"status": "error", "message": f"Execution not supported for language: {language}. Only SQL is currently supported."}), 400
+        return jsonify({"status": "error", "message": f"Execution not supported for language: {language}. Only SQL is supported via MCP bridge."}), 400
 
     mcp_client = APP_STATE.get("mcp_client")
     if not mcp_client:
@@ -11850,7 +11893,6 @@ async def canvas_execute():
         result_text = ""
         row_count = 0
         if isinstance(result, dict):
-            # MCP results are usually in result["results"] or result itself
             results_data = result.get("results", result)
             if isinstance(results_data, list):
                 row_count = len(results_data)
@@ -11867,7 +11909,7 @@ async def canvas_execute():
             result_text = str(result)
 
         app_logger.info(
-            f"[Canvas Execute] SQL query | {row_count} rows | "
+            f"[Canvas Execute] MCP SQL | {row_count} rows | "
             f"{execution_time_ms}ms | {len(code)} chars"
         )
 
@@ -11880,6 +11922,166 @@ async def canvas_execute():
 
     except Exception as e:
         app_logger.error(f"Canvas execute failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ─── Canvas Named Connections ─────────────────────────────────────────────────
+
+@rest_api_bp.route("/v1/canvas/connections", methods=["GET"])
+async def canvas_connections_list():
+    """List all saved SQL connections for the current user (passwords masked)."""
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        from trusted_data_agent.auth.encryption import list_user_providers, decrypt_credentials
+
+        providers = list_user_providers(user_uuid)
+        connections = []
+
+        for provider in providers:
+            if not provider.startswith('canvas_conn_'):
+                continue
+            connection_id = provider[len('canvas_conn_'):]
+            creds = decrypt_credentials(user_uuid, provider)
+            if not creds:
+                continue
+
+            # Mask password for frontend display
+            masked = dict(creds)
+            if 'password' in masked and masked['password']:
+                masked['password'] = '••••••••'
+
+            connections.append({
+                'connection_id': connection_id,
+                'name': creds.get('name', connection_id),
+                'driver': creds.get('driver', 'unknown'),
+                'credentials': masked,
+                'has_password': bool(creds.get('password')),
+            })
+
+        return jsonify({"status": "success", "connections": connections}), 200
+
+    except Exception as e:
+        app_logger.error(f"Canvas list connections failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/canvas/connections/<connection_id>", methods=["GET"])
+async def canvas_connection_get(connection_id):
+    """Get a single saved connection (decrypted, password masked)."""
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        from trusted_data_agent.auth.encryption import decrypt_credentials
+
+        creds = decrypt_credentials(user_uuid, f"canvas_conn_{connection_id}")
+        if not creds:
+            return jsonify({"status": "error", "message": "Connection not found"}), 404
+
+        masked = dict(creds)
+        if 'password' in masked and masked['password']:
+            masked['password'] = '••••••••'
+
+        return jsonify({
+            "status": "success",
+            "connection_id": connection_id,
+            "credentials": masked,
+            "has_password": bool(creds.get('password')),
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Canvas get connection failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/canvas/connections", methods=["PUT"])
+async def canvas_connection_save():
+    """Save (create or update) a named SQL connection."""
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        from trusted_data_agent.auth.encryption import encrypt_credentials
+
+        data = await request.get_json()
+        connection_id = data.get("connection_id")
+        credentials = data.get("credentials")
+
+        if not credentials:
+            return jsonify({"status": "error", "message": "credentials are required"}), 400
+
+        # Generate connection_id if not provided (new connection)
+        if not connection_id:
+            import time as _time
+            slug = credentials.get('name', 'conn').lower().replace(' ', '_')[:20]
+            connection_id = f"{slug}_{int(_time.time())}"
+
+        encrypt_credentials(user_uuid, f"canvas_conn_{connection_id}", credentials)
+        app_logger.info(f"[Canvas Connection] Saved connection={connection_id} user={user_uuid[:8]}...")
+
+        return jsonify({"status": "success", "message": "Connection saved", "connection_id": connection_id}), 200
+
+    except Exception as e:
+        app_logger.error(f"Canvas save connection failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/canvas/connections/<connection_id>", methods=["DELETE"])
+async def canvas_connection_delete(connection_id):
+    """Delete a named SQL connection."""
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        from trusted_data_agent.auth.encryption import delete_credentials
+
+        delete_credentials(user_uuid, f"canvas_conn_{connection_id}")
+        app_logger.info(f"[Canvas Connection] Deleted connection={connection_id} user={user_uuid[:8]}...")
+
+        return jsonify({"status": "success", "message": "Connection deleted"}), 200
+
+    except Exception as e:
+        app_logger.error(f"Canvas delete connection failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/canvas/connections/test", methods=["POST"])
+async def canvas_connection_test():
+    """Test SQL connection with provided credentials (not stored)."""
+    user_uuid = _get_user_uuid_from_request()
+    if not user_uuid:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    try:
+        from components.builtin.canvas.connectors import get_connector
+
+        data = await request.get_json()
+        credentials = data.get("credentials")
+
+        if not credentials:
+            return jsonify({"status": "error", "message": "credentials are required"}), 400
+
+        connector = get_connector('sql_native')
+        if not connector:
+            return jsonify({"status": "error", "message": "SQL native connector not available"}), 500
+
+        result = await connector.test_connection(credentials)
+
+        return jsonify({
+            "status": "success" if result.valid else "error",
+            "valid": result.valid,
+            "message": result.message,
+            "server_info": result.server_info,
+        }), 200 if result.valid else 400
+
+    except Exception as e:
+        app_logger.error(f"Canvas SQL test connection failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

@@ -27,6 +27,13 @@ litellm>=1.0.0
 uv>=0.5.0  # Required for uvx command (MCP STDIO servers)
 fastmcp>=2.0.0  # Required for External SME MCP server (agent_packs/vat)
 
+# Canvas SQL connector drivers
+asyncpg>=0.29.0          # PostgreSQL
+aiomysql>=0.2.0          # MySQL
+aiosqlite>=0.20.0        # SQLite (async)
+teradatasql>=20.0.0      # Teradata
+JayDeBeApi>=1.2.3        # JDBC (requires Java runtime)
+
 # Document processing
 PyPDF2==3.0.1
 python-docx==1.1.2

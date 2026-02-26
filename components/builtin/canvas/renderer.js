@@ -21,6 +21,44 @@ function registerCapability(cap) {
     _capabilities.push(cap);
 }
 
+// ─── Connector Registry ─────────────────────────────────────────────────────
+
+/**
+ * Execution connectors — each handles code execution for specific languages.
+ * Connectors implement: { id, name, languages, requiresBackend, credentialSchema,
+ *   execute(code, credentials, canvasState), testConnection?(credentials),
+ *   init?(canvasState), destroy?(), getStatus?() }
+ * @type {Map<string, Object>}
+ */
+const _connectors = new Map();
+
+/**
+ * Register an execution connector plugin.
+ * @param {Object} connector - Connector implementing the execution contract
+ */
+function registerConnector(connector) {
+    _connectors.set(connector.id, connector);
+}
+
+/**
+ * Get the first connector that handles a given language.
+ * @param {string} language - The canvas language
+ * @returns {Object|null} Matching connector or null
+ */
+function getConnectorForLanguage(language) {
+    for (const connector of _connectors.values()) {
+        if (connector.languages.includes(language) || connector.languages.includes('*')) {
+            return connector;
+        }
+    }
+    return null;
+}
+
+// ─── Connection Store (session-scoped, persists across renders) ──────────────
+
+/** Module-level store for selected connection per canvas title. */
+const _canvasConnections = new Map();
+
 // ─── Version Store (session-scoped, persists across renders) ─────────────────
 
 /**
@@ -411,6 +449,15 @@ const CANVAS_STYLES = `
     background: var(--hover-bg, rgba(255,255,255,0.08));
     color: var(--text-primary, #e2e8f0);
 }
+.canvas-toolbar-btn--icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+}
+.canvas-toolbar-btn--icon svg { width: 14px; height: 14px; }
 .canvas-info-badge {
     font-size: 0.7rem;
     color: var(--text-muted, #94a3b8);
@@ -1018,7 +1065,99 @@ const CANVAS_STYLES = `
     line-height: 1.5;
 }
 .canvas-console-body--error { color: #f87171; }
+/* ─── Console Input Panel (Python input() pre-scan) ─── */
+.canvas-console-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+.canvas-console-input-label {
+    font-size: 0.78rem;
+    color: var(--text-muted, #94a3b8);
+    white-space: nowrap;
+}
+.canvas-console-input-field {
+    flex: 1;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    background: var(--input-bg, rgba(0,0,0,0.3));
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.15));
+    border-radius: 0.375rem;
+    color: var(--text-primary, #e2e8f0);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.canvas-console-input-field:focus {
+    border-color: var(--border-focus, rgba(241,95,34,0.5));
+    box-shadow: 0 0 0 2px var(--border-focus-ring, rgba(241,95,34,0.1));
+}
+.canvas-console-exec-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4ade80;
+    background: rgba(74,222,128,0.1);
+    border: 1px solid rgba(74,222,128,0.25);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    margin-top: 0.3rem;
+    float: right;
+    transition: background 0.15s;
+}
+.canvas-console-exec-btn:hover { background: rgba(74,222,128,0.2); }
+.canvas-console-exec-btn svg { width: 12px; height: 12px; }
 .canvas-run-btn { color: #4ade80 !important; font-weight: 600; }
+/* ─── Connection Dropdown (custom, replaces native <select>) ─── */
+.canvas-conn-wrapper { position: relative; display: inline-flex; }
+.canvas-conn-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 0.35rem;
+    min-width: 230px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--card-bg, rgba(15,23,42,0.95));
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.15));
+    border-radius: 0.5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 50;
+    padding: 0.35rem 0;
+}
+.canvas-conn-dropdown--open { display: block; }
+.canvas-conn-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--text-primary, #e2e8f0);
+    transition: background 0.1s;
+}
+.canvas-conn-item:hover { background: rgba(241,95,34,0.12); }
+.canvas-conn-item--active {
+    background: rgba(241,95,34,0.15);
+    border-left: 2px solid rgba(241,95,34,0.7);
+    padding-left: calc(0.75rem - 2px);
+}
+.canvas-conn-item-icon { flex-shrink: 0; width: 16px; height: 16px; }
+.canvas-conn-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-conn-item-check { width: 14px; height: 14px; color: #4ade80; flex-shrink: 0; }
+.canvas-light .canvas-conn-dropdown {
+    background: rgba(255,255,255,0.95);
+    border-color: rgba(148,163,184,0.35);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.canvas-light .canvas-conn-item { color: #1e293b; }
+.canvas-light .canvas-conn-item:hover { background: rgba(241,95,34,0.08); }
+.canvas-light .canvas-conn-item--active { background: rgba(241,95,34,0.1); }
 /* ─── M8.2: Sources Badge ─── */
 .canvas-sources-wrapper { position: relative; }
 .canvas-sources-badge { color: #c084fc !important; }
@@ -2180,6 +2319,10 @@ async function renderCanvasFull(containerId, spec) {
             }
             return this.content;
         },
+        // Connector state (restore persisted connection for this canvas)
+        _activeConnector: getConnectorForLanguage(language),
+        _activeConnectionId: _canvasConnections.get(canvasTitle.toLowerCase().trim()) || null,
+        _connections: [],
     };
 
     // Build the DOM structure
@@ -3055,7 +3198,158 @@ function makeDiffLine(lineNum, text, type) {
     return line;
 }
 
+// ─── Connection Picker Helpers (custom dropdown) ────────────────────────────
+
+const _CONN_DB_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`;
+const _CONN_CHECK = `<svg class="canvas-conn-item-check" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+const _CONN_DRIVER_ICONS = {
+    postgresql: `<svg class="canvas-conn-item-icon" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+    mysql:      `<svg class="canvas-conn-item-icon" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+    sqlite:     `<svg class="canvas-conn-item-icon" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+    teradata:   `<svg class="canvas-conn-item-icon" viewBox="0 0 24 24" fill="none" stroke="#F15F22" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+    jdbc:       `<svg class="canvas-conn-item-icon" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+};
+const _CONN_MCP_ICON = `<svg class="canvas-conn-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`;
+
+/** Build connection dropdown items based on state._connections. */
+function _buildConnectionItems(dropdown, triggerBtn, state) {
+    dropdown.innerHTML = '';
+    const conns = state._connections || [];
+
+    // MCP Bridge option
+    const mcpItem = document.createElement('div');
+    const mcpActive = !state._activeConnectionId;
+    mcpItem.className = `canvas-conn-item${mcpActive ? ' canvas-conn-item--active' : ''}`;
+    mcpItem.innerHTML = `${_CONN_MCP_ICON}<span class="canvas-conn-item-name">MCP Bridge (default)</span>${mcpActive ? _CONN_CHECK : ''}`;
+    const _connKey = (state.title || 'canvas').toLowerCase().trim();
+    mcpItem.addEventListener('click', () => {
+        state._activeConnectionId = null;
+        _canvasConnections.delete(_connKey);
+        _updateConnTrigger(triggerBtn, 'MCP Bridge', null);
+        _buildConnectionItems(dropdown, triggerBtn, state);
+        dropdown.classList.remove('canvas-conn-dropdown--open');
+    });
+    dropdown.appendChild(mcpItem);
+
+    // Saved connections
+    for (const conn of conns) {
+        const isActive = state._activeConnectionId === conn.connection_id;
+        const item = document.createElement('div');
+        item.className = `canvas-conn-item${isActive ? ' canvas-conn-item--active' : ''}`;
+        const driverIcon = _CONN_DRIVER_ICONS[conn.driver] || _CONN_DRIVER_ICONS.jdbc;
+        item.innerHTML = `${driverIcon}<span class="canvas-conn-item-name">${_escAttr(conn.name)}</span>${isActive ? _CONN_CHECK : ''}`;
+        item.addEventListener('click', () => {
+            state._activeConnectionId = conn.connection_id;
+            _canvasConnections.set(_connKey, conn.connection_id);
+            _updateConnTrigger(triggerBtn, conn.name, conn.driver);
+            _buildConnectionItems(dropdown, triggerBtn, state);
+            dropdown.classList.remove('canvas-conn-dropdown--open');
+        });
+        dropdown.appendChild(item);
+    }
+}
+
+/** Update trigger button icon + tooltip after selection change. */
+function _updateConnTrigger(btn, name, driver) {
+    const icon = driver ? (_CONN_DRIVER_ICONS[driver] || _CONN_DB_ICON) : _CONN_DB_ICON;
+    // Replace item-sized icon with 14px trigger-sized icon
+    btn.innerHTML = icon.replace(/class="canvas-conn-item-icon"/, '').replace(/<svg /, '<svg width="14" height="14" ');
+    btn.title = name;
+}
+
+function _escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/** Fetch connections from backend, store in state, build dropdown items. */
+async function _populateConnectionPicker(dropdown, triggerBtn, state) {
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const resp = await fetch('/api/v1/canvas/connections', { headers });
+        const data = await resp.json();
+        if (data.status === 'success') {
+            state._connections = data.connections;
+        }
+    } catch { /* keep empty */ }
+    _buildConnectionItems(dropdown, triggerBtn, state);
+
+    // Restore trigger icon if a persisted connection is active
+    if (state._activeConnectionId && state._connections.length) {
+        const active = state._connections.find(c => c.connection_id === state._activeConnectionId);
+        if (active) {
+            _updateConnTrigger(triggerBtn, active.name, active.driver);
+        } else {
+            // Persisted connection was deleted — reset to default
+            state._activeConnectionId = null;
+            const key = (state.title || 'canvas').toLowerCase().trim();
+            _canvasConnections.delete(key);
+        }
+    }
+}
+
 // ─── Capability: VersionHistory ──────────────────────────────────────────────
+
+/**
+ * Build (or rebuild) the version dropdown items.
+ * Determines "current" by matching state.content against version contents.
+ */
+function _buildVersionItems(dropdown, state) {
+    dropdown.innerHTML = '';
+
+    // Find which version matches the current editor content
+    let activeIdx = -1;
+    for (let j = state.versions.length - 1; j >= 0; j--) {
+        if (state.versions[j].content === state.content) { activeIdx = j; break; }
+    }
+    if (activeIdx === -1) activeIdx = state.versions.length - 1; // fallback: latest
+
+    for (let i = state.versions.length - 1; i >= 0; i--) {
+        const v = state.versions[i];
+        const isCurrent = i === activeIdx;
+        const item = document.createElement('div');
+        item.className = `canvas-version-item${isCurrent ? ' canvas-version-item--current' : ''}`;
+
+        const label = document.createElement('div');
+        label.className = 'canvas-version-item-label';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'canvas-version-item-title';
+        titleSpan.textContent = `Version ${i + 1}${isCurrent ? ' (current)' : ''}`;
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'canvas-version-item-time';
+        const date = new Date(v.timestamp);
+        timeSpan.textContent = `Turn ${v.turnIndex} \u00b7 ${date.toLocaleTimeString()}`;
+
+        label.appendChild(titleSpan);
+        label.appendChild(timeSpan);
+        item.appendChild(label);
+
+        // Restore button for non-current versions
+        if (!isCurrent) {
+            const restoreBtn = document.createElement('button');
+            restoreBtn.className = 'canvas-version-item-restore';
+            restoreBtn.textContent = 'Restore';
+            restoreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                restoreVersion(state, v.content);
+                dropdown.classList.remove('canvas-version-dropdown--open');
+                _buildVersionItems(dropdown, state); // rebuild so markers update
+            });
+            item.appendChild(restoreBtn);
+        }
+
+        // Click to preview version
+        item.addEventListener('click', () => {
+            if (!isCurrent) {
+                previewVersion(state, v.content, i + 1);
+            }
+            dropdown.classList.remove('canvas-version-dropdown--open');
+        });
+
+        dropdown.appendChild(item);
+    }
+}
 
 registerCapability({
     id: 'version_history',
@@ -3081,55 +3375,12 @@ registerCapability({
         const dropdown = document.createElement('div');
         dropdown.className = 'canvas-version-dropdown';
 
-        for (let i = state.versions.length - 1; i >= 0; i--) {
-            const v = state.versions[i];
-            const isCurrent = i === state.versions.length - 1;
-            const item = document.createElement('div');
-            item.className = `canvas-version-item${isCurrent ? ' canvas-version-item--current' : ''}`;
+        _buildVersionItems(dropdown, state);
 
-            const label = document.createElement('div');
-            label.className = 'canvas-version-item-label';
-
-            const titleSpan = document.createElement('span');
-            titleSpan.className = 'canvas-version-item-title';
-            titleSpan.textContent = `Version ${i + 1}${isCurrent ? ' (current)' : ''}`;
-
-            const timeSpan = document.createElement('span');
-            timeSpan.className = 'canvas-version-item-time';
-            const date = new Date(v.timestamp);
-            timeSpan.textContent = `Turn ${v.turnIndex} \u00b7 ${date.toLocaleTimeString()}`;
-
-            label.appendChild(titleSpan);
-            label.appendChild(timeSpan);
-            item.appendChild(label);
-
-            // Restore button for non-current versions
-            if (!isCurrent) {
-                const restoreBtn = document.createElement('button');
-                restoreBtn.className = 'canvas-version-item-restore';
-                restoreBtn.textContent = 'Restore';
-                restoreBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    restoreVersion(state, v.content);
-                    dropdown.classList.remove('canvas-version-dropdown--open');
-                });
-                item.appendChild(restoreBtn);
-            }
-
-            // Click to view version (sets editor content read-only preview)
-            item.addEventListener('click', () => {
-                if (!isCurrent) {
-                    previewVersion(state, v.content, i + 1);
-                }
-                dropdown.classList.remove('canvas-version-dropdown--open');
-            });
-
-            dropdown.appendChild(item);
-        }
-
-        // Toggle dropdown
+        // Toggle dropdown — rebuild items each time so "current" is always fresh
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            _buildVersionItems(dropdown, state);
             dropdown.classList.toggle('canvas-version-dropdown--open');
         });
 
@@ -3371,48 +3622,86 @@ export function closeSplitPanel() {
     panel.addEventListener('transitionend', onTransitionEnd);
 }
 
-// ─── MCP Execution Bridge (M8.1) ─────────────────────────────────────────────
+// ─── Connector Execution Dispatcher ──────────────────────────────────────────
+
+const _PLAY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+const _LOADING_ICON = '\u23F3';
 
 /**
- * Execute canvas code via MCP server (SQL only).
- * Sends code to POST /v1/canvas/execute and displays results in console panel.
+ * Execute canvas code via the registered connector for the current language.
+ * Falls back to legacy MCP bridge for SQL when no connector is registered.
  */
-async function executeCode(state) {
+async function executeViaConnector(state) {
     const code = state.getContent();
     if (!code.trim()) return;
 
+    const connector = state._activeConnector || getConnectorForLanguage(state.language);
+    if (!connector) {
+        showConsolePanel(state, `No execution connector registered for language: ${state.language}`, 0, 0, true);
+        return;
+    }
+
     if (state._runBtn) {
-        state._runBtn.textContent = '\u23F3 Running...';
+        state._runBtn.innerHTML = _LOADING_ICON;
         state._runBtn.disabled = true;
     }
 
-    const sessionId = window.__currentSessionId || null;
-
     try {
-        const resp = await fetch('/api/v1/canvas/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                code: code,
-                language: state.language,
-                session_id: sessionId,
-            }),
-        });
-        const data = await resp.json();
+        const result = await connector.execute(code, null, state);
 
-        if (data.status === 'success') {
-            showConsolePanel(state, data.result, data.row_count, data.execution_time_ms, false);
+        if (result.error) {
+            showConsolePanel(state, result.error, 0, result.stats?.timeMs || 0, true);
         } else {
-            showConsolePanel(state, data.message || 'Execution failed', 0, 0, true);
+            showConsolePanel(
+                state,
+                result.result,
+                result.stats?.rowCount ?? 0,
+                result.stats?.timeMs ?? 0,
+                false,
+            );
         }
     } catch (err) {
-        showConsolePanel(state, `Network error: ${err.message}`, 0, 0, true);
+        showConsolePanel(state, `Execution error: ${err.message}`, 0, 0, true);
     } finally {
         if (state._runBtn) {
-            state._runBtn.textContent = '\u25B6 Run';
+            state._runBtn.innerHTML = _PLAY_ICON;
             state._runBtn.disabled = false;
         }
     }
+}
+
+/**
+ * Legacy MCP execution bridge for SQL — used as fallback when no native
+ * SQL connector is configured (no credentials saved).
+ * @returns {{ result, error, stats }} Normalized connector result
+ */
+async function executeSqlViaMcp(code, _credentials, state) {
+    const sessionId = window.__currentSessionId || null;
+    const token = localStorage.getItem('tda_auth_token');
+
+    const resp = await fetch('/api/v1/canvas/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+            code: code,
+            language: state.language,
+            session_id: sessionId,
+        }),
+    });
+    const data = await resp.json();
+
+    if (data.status === 'success') {
+        return {
+            result: data.result,
+            error: null,
+            stats: { rowCount: data.row_count, timeMs: data.execution_time_ms },
+        };
+    }
+    return {
+        result: null,
+        error: data.message || 'Execution failed',
+        stats: { rowCount: 0, timeMs: 0 },
+    };
 }
 
 /**
@@ -3436,7 +3725,8 @@ function showConsolePanel(state, result, rowCount, timeMs, isError) {
 
     const badge = document.createElement('span');
     badge.className = `canvas-console-badge${isError ? ' canvas-console-badge--error' : ''}`;
-    badge.textContent = isError ? 'Error' : `${rowCount} row${rowCount !== 1 ? 's' : ''}`;
+    const unit = state.language === 'sql' ? 'row' : 'line';
+    badge.textContent = isError ? 'Error' : `${rowCount} ${unit}${rowCount !== 1 ? 's' : ''}`;
 
     header.appendChild(label);
     header.appendChild(badge);
@@ -3470,20 +3760,617 @@ function showConsolePanel(state, result, rowCount, timeMs, isError) {
     }
 }
 
+// ─── JavaScript Worker Connector ─────────────────────────────────────────────
+// Executes JavaScript in a sandboxed Web Worker with console capture and 10s timeout.
+
+registerConnector({
+    id: 'javascript_worker',
+    name: 'JavaScript (Web Worker)',
+    languages: ['javascript'],
+    requiresBackend: false,
+    credentialSchema: null,
+
+    async execute(code, _credentials, _state) {
+        const start = performance.now();
+
+        return new Promise((resolve) => {
+            const workerCode = `
+                const _logs = [];
+                const _mkLog = (level) => (...args) => {
+                    _logs.push('[' + level + '] ' + args.map(a => {
+                        try { return typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a); }
+                        catch { return String(a); }
+                    }).join(' '));
+                };
+                console.log = _mkLog('LOG');
+                console.warn = _mkLog('WARN');
+                console.error = _mkLog('ERR');
+                console.info = _mkLog('INFO');
+
+                try {
+                    const __result = (function() { ${code} })();
+                    const output = _logs.length ? _logs.join('\\n') : '';
+                    const returnVal = __result !== undefined
+                        ? (typeof __result === 'object' ? JSON.stringify(__result, null, 2) : String(__result))
+                        : '';
+                    const combined = [output, returnVal].filter(Boolean).join('\\n');
+                    postMessage({ ok: true, result: combined || '(no output)' });
+                } catch (e) {
+                    const output = _logs.length ? _logs.join('\\n') + '\\n\\n' : '';
+                    postMessage({ ok: false, error: output + e.toString() });
+                }
+            `;
+
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const url = URL.createObjectURL(blob);
+            const worker = new Worker(url);
+
+            const timeout = setTimeout(() => {
+                worker.terminate();
+                URL.revokeObjectURL(url);
+                resolve({
+                    result: null,
+                    error: 'Execution timed out (10 seconds)',
+                    stats: { rowCount: 0, timeMs: Math.round(performance.now() - start) },
+                });
+            }, 10000);
+
+            worker.onmessage = (e) => {
+                clearTimeout(timeout);
+                worker.terminate();
+                URL.revokeObjectURL(url);
+                const elapsed = Math.round(performance.now() - start);
+                if (e.data.ok) {
+                    const lines = e.data.result.split('\n').length;
+                    resolve({
+                        result: e.data.result,
+                        error: null,
+                        stats: { rowCount: lines, timeMs: elapsed },
+                    });
+                } else {
+                    resolve({
+                        result: null,
+                        error: e.data.error,
+                        stats: { rowCount: 0, timeMs: elapsed },
+                    });
+                }
+            };
+
+            worker.onerror = (e) => {
+                clearTimeout(timeout);
+                worker.terminate();
+                URL.revokeObjectURL(url);
+                resolve({
+                    result: null,
+                    error: e.message || 'Worker error',
+                    stats: { rowCount: 0, timeMs: Math.round(performance.now() - start) },
+                });
+            };
+        });
+    },
+});
+
+// ─── HTML/CSS Sandbox Connector ──────────────────────────────────────────────
+// HTML: switches to Preview tab. CSS: wraps in sample HTML and previews in iframe.
+
+registerConnector({
+    id: 'html_sandbox',
+    name: 'HTML/CSS Sandbox',
+    languages: ['html', 'css'],
+    requiresBackend: false,
+    credentialSchema: null,
+
+    async execute(code, _credentials, state) {
+        const start = performance.now();
+
+        if (state.language === 'html') {
+            // Switch to existing html_preview tab
+            const previewTab = state.container?.querySelector('.canvas-tab[data-tab-id="html_preview"]');
+            if (previewTab) {
+                previewTab.click();
+                return {
+                    result: 'Switched to Preview tab',
+                    error: null,
+                    stats: { rowCount: 0, timeMs: Math.round(performance.now() - start) },
+                };
+            }
+            return { result: null, error: 'Preview tab not available', stats: { rowCount: 0, timeMs: 0 } };
+        }
+
+        // CSS: wrap in sample HTML and show in console-area iframe
+        if (state.language === 'css') {
+            const sampleHtml = `<!DOCTYPE html>
+<html><head><style>body{font-family:system-ui,sans-serif;padding:1rem;margin:0;background:#fff;color:#222;}
+${code}</style></head>
+<body>
+  <h1>Heading 1</h1>
+  <h2>Heading 2</h2>
+  <p>Paragraph with <a href="#">a link</a> and <strong>bold text</strong>.</p>
+  <ul><li>List item 1</li><li>List item 2</li><li>List item 3</li></ul>
+  <button>Button</button>
+  <input type="text" placeholder="Input field" />
+  <div class="card" style="border:1px solid #ccc;padding:1rem;margin:1rem 0;border-radius:8px;">
+    <h3>Card Component</h3>
+    <p>Sample card content for testing CSS styles.</p>
+  </div>
+  <table><thead><tr><th>Name</th><th>Value</th></tr></thead>
+  <tbody><tr><td>Alpha</td><td>100</td></tr><tr><td>Beta</td><td>200</td></tr></tbody></table>
+</body></html>`;
+
+            // Show preview in an iframe inside the console panel area
+            const existing = state.container?.querySelector('.canvas-css-preview');
+            if (existing) existing.remove();
+
+            const previewContainer = document.createElement('div');
+            previewContainer.className = 'canvas-css-preview';
+            previewContainer.style.cssText = 'position:relative;border-top:1px solid rgba(255,255,255,0.1);';
+
+            const previewHeader = document.createElement('div');
+            previewHeader.className = 'canvas-console-header';
+            previewHeader.innerHTML = '<span class="canvas-console-label">CSS Preview</span>';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'canvas-console-close';
+            closeBtn.textContent = '\u00d7';
+            closeBtn.title = 'Close preview';
+            closeBtn.addEventListener('click', () => previewContainer.remove());
+            previewHeader.appendChild(closeBtn);
+
+            const iframe = document.createElement('iframe');
+            iframe.sandbox = 'allow-scripts';
+            iframe.srcdoc = sampleHtml;
+            iframe.style.cssText = 'width:100%;height:300px;border:none;border-radius:0 0 8px 8px;background:#fff;';
+
+            previewContainer.appendChild(previewHeader);
+            previewContainer.appendChild(iframe);
+
+            const wrapper = state.container?.querySelector('.canvas-wrapper') || state.container;
+            if (wrapper && wrapper.parentElement) {
+                wrapper.parentElement.appendChild(previewContainer);
+            }
+
+            return {
+                result: 'CSS applied to sample elements',
+                error: null,
+                stats: { rowCount: 0, timeMs: Math.round(performance.now() - start) },
+            };
+        }
+
+        return { result: null, error: `Unsupported language: ${state.language}`, stats: { rowCount: 0, timeMs: 0 } };
+    },
+});
+
+// ─── Python Input Helpers ────────────────────────────────────────────────────
+
+/** Pre-scan Python code for input() calls and extract prompt strings. */
+function _extractInputCalls(code) {
+    const inputs = [];
+    const re = /\binput\s*\(([^)]*)\)/g;
+    let m;
+    while ((m = re.exec(code)) !== null) {
+        let prompt = 'Input required';
+        const arg = m[1].trim();
+        // Extract string literal: "...", '...', f"...", f'...'
+        const strMatch = arg.match(/^f?(['"])(.*?)\1$/);
+        if (strMatch) prompt = strMatch[2];
+        else if (!arg) prompt = '';
+        inputs.push(prompt);
+    }
+    return inputs;
+}
+
+/**
+ * Show input fields in the console panel for pre-scanned input() calls.
+ * Returns a Promise that resolves with an array of user-provided values.
+ */
+function _showInputPanel(state, prompts) {
+    return new Promise((resolve, reject) => {
+        // Remove existing console panel
+        const existing = state.container?.querySelector('.canvas-console-panel');
+        if (existing) existing.remove();
+
+        const panel = document.createElement('div');
+        panel.className = 'canvas-console-panel';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'canvas-console-header';
+
+        const label = document.createElement('span');
+        label.className = 'canvas-console-label';
+        label.textContent = 'Console';
+
+        const badge = document.createElement('span');
+        badge.className = 'canvas-console-badge';
+        badge.textContent = `${prompts.length} input${prompts.length !== 1 ? 's' : ''}`;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'canvas-console-close';
+        closeBtn.textContent = '\u00d7';
+        closeBtn.title = 'Cancel execution';
+        closeBtn.addEventListener('click', () => {
+            panel.remove();
+            reject(new Error('cancelled'));
+        });
+
+        header.appendChild(label);
+        header.appendChild(badge);
+        header.appendChild(closeBtn);
+
+        // Body with input fields
+        const body = document.createElement('div');
+        body.className = 'canvas-console-body';
+
+        const fields = [];
+        for (let i = 0; i < prompts.length; i++) {
+            const row = document.createElement('div');
+            row.className = 'canvas-console-input-row';
+
+            if (prompts[i]) {
+                const lbl = document.createElement('span');
+                lbl.className = 'canvas-console-input-label';
+                lbl.textContent = prompts[i];
+                row.appendChild(lbl);
+            }
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'canvas-console-input-field';
+            input.placeholder = prompts[i] ? '' : 'Enter value...';
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (i < prompts.length - 1) {
+                        fields[i + 1].focus();
+                    } else {
+                        submit();
+                    }
+                }
+            });
+            row.appendChild(input);
+            fields.push(input);
+
+            body.appendChild(row);
+        }
+
+        // Execute button
+        const execBtn = document.createElement('button');
+        execBtn.className = 'canvas-console-exec-btn';
+        execBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Execute`;
+        body.appendChild(execBtn);
+
+        function submit() {
+            const values = fields.map(f => f.value);
+            panel.remove();
+            resolve(values);
+        }
+        execBtn.addEventListener('click', submit);
+
+        panel.appendChild(header);
+        panel.appendChild(body);
+
+        const wrapper = state.container?.querySelector('.canvas-wrapper') || state.container;
+        if (wrapper && wrapper.parentElement) {
+            wrapper.parentElement.appendChild(panel);
+        }
+
+        // Auto-focus first field
+        requestAnimationFrame(() => { if (fields[0]) fields[0].focus(); });
+    });
+}
+
+// ─── Python Pyodide Connector ────────────────────────────────────────────────
+// Executes Python via Pyodide (WASM) in the browser. Lazy-loads ~10MB on first run.
+
+let _pyodide = null;
+let _pyodideLoading = false;
+
+registerConnector({
+    id: 'python_pyodide',
+    name: 'Python (Pyodide)',
+    languages: ['python'],
+    requiresBackend: false,
+    credentialSchema: null,
+
+    getStatus() {
+        if (_pyodide) return 'ready';
+        if (_pyodideLoading) return 'loading';
+        return 'not_loaded';
+    },
+
+    async execute(code, _credentials, state) {
+        const start = performance.now();
+
+        // Lazy-load Pyodide on first execution
+        if (!_pyodide) {
+            if (_pyodideLoading) {
+                return {
+                    result: null,
+                    error: 'Python runtime is still loading — please wait and try again.',
+                    stats: { rowCount: 0, timeMs: 0 },
+                };
+            }
+            _pyodideLoading = true;
+
+            // Update Run button to show loading state
+            if (state._runBtn) {
+                state._runBtn.innerHTML = _LOADING_ICON;
+            }
+            showConsolePanel(state, 'Downloading Python runtime (Pyodide ~10MB)...', 0, 0, false);
+
+            try {
+                const { loadPyodide } = await import(
+                    'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.mjs'
+                );
+                _pyodide = await loadPyodide();
+                _pyodideLoading = false;
+            } catch (err) {
+                _pyodideLoading = false;
+                return {
+                    result: null,
+                    error: `Failed to load Python runtime: ${err.message}`,
+                    stats: { rowCount: 0, timeMs: Math.round(performance.now() - start) },
+                };
+            }
+        }
+
+        // Pre-scan for input() calls and collect values via console UI
+        const inputPrompts = _extractInputCalls(code);
+        if (inputPrompts.length > 0) {
+            try {
+                const values = await _showInputPanel(state, inputPrompts);
+                globalThis._pyodideInputQueue = [...values];
+            } catch {
+                // User cancelled (clicked ×)
+                return { result: null, error: null, stats: { rowCount: 0, timeMs: 0 } };
+            }
+        } else {
+            globalThis._pyodideInputQueue = [];
+        }
+
+        // Execute with stdout/stderr capture + input() queue override
+        try {
+            _pyodide.runPython(`
+import sys, io, builtins, js
+sys.stdout = io.StringIO()
+sys.stderr = io.StringIO()
+def _browser_input(prompt=''):
+    q = js.globalThis._pyodideInputQueue
+    if q.length > 0:
+        val = str(q.shift())
+        print(str(prompt) + val)
+        return val
+    result = js.globalThis.prompt(str(prompt) if prompt else '')
+    if result is None:
+        raise EOFError('User cancelled input')
+    return result
+builtins.input = _browser_input
+`);
+            const pyResult = _pyodide.runPython(code);
+            const stdout = _pyodide.runPython('sys.stdout.getvalue()');
+            const stderr = _pyodide.runPython('sys.stderr.getvalue()');
+
+            // Reset stdout/stderr
+            _pyodide.runPython(`
+sys.stdout = sys.__stdout__
+sys.stderr = sys.__stderr__
+`);
+
+            const parts = [];
+            if (stdout) parts.push(stdout);
+            if (stderr) parts.push(`[stderr] ${stderr}`);
+            if (pyResult !== undefined && pyResult !== null && String(pyResult) !== 'None') {
+                parts.push(String(pyResult));
+            }
+
+            const output = parts.join('\n') || '(no output)';
+            const lines = output.split('\n').length;
+            return {
+                result: output,
+                error: null,
+                stats: { rowCount: lines, timeMs: Math.round(performance.now() - start) },
+            };
+        } catch (err) {
+            // Reset stdout/stderr on error
+            try {
+                _pyodide.runPython('sys.stdout = sys.__stdout__; sys.stderr = sys.__stderr__');
+            } catch { /* ignore cleanup errors */ }
+
+            return {
+                result: null,
+                error: err.message || String(err),
+                stats: { rowCount: 0, timeMs: Math.round(performance.now() - start) },
+            };
+        }
+    },
+});
+
+// ─── SQL Native Connector ────────────────────────────────────────────────────
+// Primary SQL connector with native database drivers (PostgreSQL, MySQL, SQLite, Teradata, JDBC).
+// Uses named connections (selected via toolbar picker). Falls back to MCP bridge when no connection selected.
+
+registerConnector({
+    id: 'sql_native',
+    name: 'SQL (Native)',
+    languages: ['sql'],
+    requiresBackend: true,
+
+    credentialSchema: [
+        {
+            id: 'driver',
+            label: 'Database Driver',
+            type: 'select',
+            required: true,
+            defaultValue: 'postgresql',
+            options: [
+                { value: 'postgresql', label: 'PostgreSQL' },
+                { value: 'mysql', label: 'MySQL' },
+                { value: 'sqlite', label: 'SQLite' },
+                { value: 'teradata', label: 'Teradata' },
+                { value: 'jdbc', label: 'JDBC (Generic)' },
+            ],
+        },
+        {
+            id: 'host',
+            label: 'Host',
+            type: 'text',
+            placeholder: 'localhost',
+            defaultValue: 'localhost',
+            hideWhen: { field: 'driver', values: ['sqlite', 'jdbc'] },
+        },
+        {
+            id: 'port',
+            label: 'Port',
+            type: 'text',
+            placeholder: '5432',
+            defaultValue: '5432',
+            hideWhen: { field: 'driver', values: ['sqlite', 'jdbc'] },
+        },
+        {
+            id: 'database',
+            label: 'Database',
+            type: 'text',
+            placeholder: 'mydb (or file path for SQLite)',
+            required: true,
+            hideWhen: { field: 'driver', values: ['jdbc'] },
+        },
+        {
+            id: 'user',
+            label: 'Username',
+            type: 'text',
+            placeholder: 'postgres',
+            hideWhen: { field: 'driver', values: ['sqlite'] },
+        },
+        {
+            id: 'password',
+            label: 'Password',
+            type: 'password',
+            placeholder: '••••••••',
+            hideWhen: { field: 'driver', values: ['sqlite'] },
+        },
+        {
+            id: 'ssl',
+            label: 'Use SSL',
+            type: 'checkbox',
+            defaultValue: false,
+            hideWhen: { field: 'driver', values: ['sqlite', 'teradata', 'jdbc'] },
+        },
+        // JDBC-specific fields (shown only when driver = 'jdbc')
+        {
+            id: 'jdbc_url',
+            label: 'JDBC URL',
+            type: 'text',
+            placeholder: 'jdbc:oracle:thin:@localhost:1521:xe',
+            required: true,
+            showWhen: { field: 'driver', values: ['jdbc'] },
+        },
+        {
+            id: 'jdbc_driver_class',
+            label: 'JDBC Driver Class',
+            type: 'text',
+            placeholder: 'oracle.jdbc.OracleDriver',
+            required: true,
+            showWhen: { field: 'driver', values: ['jdbc'] },
+        },
+        {
+            id: 'jdbc_driver_path',
+            label: 'JAR Path',
+            type: 'text',
+            placeholder: '/path/to/ojdbc8.jar',
+            required: true,
+            showWhen: { field: 'driver', values: ['jdbc'] },
+        },
+    ],
+
+    async execute(code, _credentials, state) {
+        const connectionId = state._activeConnectionId;
+
+        // If a named connection is selected, execute via native backend connector
+        if (connectionId) {
+            const sessionId = window.__currentSessionId || null;
+            const token = localStorage.getItem('tda_auth_token');
+
+            const resp = await fetch('/api/v1/canvas/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    code: code,
+                    language: 'sql',
+                    session_id: sessionId,
+                    connector_id: 'sql_native',
+                    connection_id: connectionId,
+                }),
+            });
+            const data = await resp.json();
+
+            if (data.status === 'success') {
+                return {
+                    result: data.result,
+                    error: null,
+                    stats: { rowCount: data.row_count, timeMs: data.execution_time_ms },
+                };
+            }
+            return {
+                result: null,
+                error: data.message || 'SQL execution failed',
+                stats: { rowCount: 0, timeMs: data.execution_time_ms || 0 },
+            };
+        }
+
+        // No named connection selected — fall back to MCP bridge
+        return executeSqlViaMcp(code, _credentials, state);
+    },
+});
+
+// ─── Execution Bridge Capability ─────────────────────────────────────────────
+// Connector-aware toolbar button — shows Run for any language with a registered connector.
+
 registerCapability({
     id: 'execution_bridge',
     label: '',
     type: 'toolbar',
-    languages: ['sql'],
+    languages: ['*'],
 
     init() {},
 
     render(toolbar, content, language, state) {
+        const connector = state._activeConnector || getConnectorForLanguage(language);
+        if (!connector) return;
+
+        // Connection picker (SQL only — custom div-based dropdown)
+        if (language === 'sql') {
+            const connWrapper = document.createElement('div');
+            connWrapper.className = 'canvas-conn-wrapper';
+
+            const connBtn = document.createElement('button');
+            connBtn.className = 'canvas-toolbar-btn canvas-toolbar-btn--icon';
+            connBtn.title = 'MCP Bridge (default)';
+            connBtn.innerHTML = _CONN_DB_ICON;
+
+            const connDropdown = document.createElement('div');
+            connDropdown.className = 'canvas-conn-dropdown';
+
+            connBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _buildConnectionItems(connDropdown, connBtn, state);
+                connDropdown.classList.toggle('canvas-conn-dropdown--open');
+            });
+            document.addEventListener('click', () => {
+                connDropdown.classList.remove('canvas-conn-dropdown--open');
+            });
+            connWrapper.addEventListener('click', (e) => e.stopPropagation());
+
+            connWrapper.appendChild(connBtn);
+            connWrapper.appendChild(connDropdown);
+            toolbar.insertBefore(connWrapper, toolbar.firstChild);
+            _populateConnectionPicker(connDropdown, connBtn, state);
+        }
+
+        // Run button — play icon
         const runBtn = document.createElement('button');
-        runBtn.className = 'canvas-toolbar-btn canvas-run-btn';
-        runBtn.textContent = '\u25B6 Run';
-        runBtn.title = 'Execute SQL via MCP server';
-        runBtn.addEventListener('click', () => executeCode(state));
+        runBtn.className = 'canvas-toolbar-btn canvas-toolbar-btn--icon canvas-run-btn';
+        runBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+        runBtn.title = `Run ${language}`;
+        runBtn.addEventListener('click', () => executeViaConnector(state));
         toolbar.insertBefore(runBtn, toolbar.firstChild);
         state._runBtn = runBtn;
     },
@@ -3708,9 +4595,9 @@ registerCapability({
 
     render(toolbar, content, language, state) {
         const btn = document.createElement('button');
-        btn.className = 'canvas-toolbar-btn';
-        btn.textContent = 'Templates';
-        btn.title = 'Browse starter templates';
+        btn.className = 'canvas-toolbar-btn canvas-toolbar-btn--icon';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`;
+        btn.title = 'Templates';
         btn.addEventListener('click', () => openTemplateGallery(state));
         toolbar.appendChild(btn);
     },
@@ -3729,17 +4616,20 @@ registerCapability({
     init() {},
 
     render(toolbar, content, language, state) {
-        // Copy button
+        // Copy button — clipboard icon
+        const _copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+        const _checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
         const copyBtn = document.createElement('button');
-        copyBtn.className = 'canvas-toolbar-btn';
-        copyBtn.textContent = 'Copy';
+        copyBtn.className = 'canvas-toolbar-btn canvas-toolbar-btn--icon';
+        copyBtn.innerHTML = _copyIcon;
+        copyBtn.title = 'Copy to clipboard';
         copyBtn.addEventListener('click', () => {
             const text = state.getContent();
-            navigator.clipboard.writeText(text).then(() => {
-                copyBtn.textContent = 'Copied!';
-                setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-            }).catch(() => {
-                // Fallback for non-HTTPS or older browsers
+            const showCheck = () => {
+                copyBtn.innerHTML = _checkIcon;
+                setTimeout(() => { copyBtn.innerHTML = _copyIcon; }, 1500);
+            };
+            navigator.clipboard.writeText(text).then(showCheck).catch(() => {
                 const ta = document.createElement('textarea');
                 ta.value = text;
                 ta.style.cssText = 'position:fixed;left:-9999px';
@@ -3747,16 +4637,16 @@ registerCapability({
                 ta.select();
                 document.execCommand('copy');
                 document.body.removeChild(ta);
-                copyBtn.textContent = 'Copied!';
-                setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+                showCheck();
             });
         });
         toolbar.appendChild(copyBtn);
 
-        // Download button
+        // Download button — download icon
         const dlBtn = document.createElement('button');
-        dlBtn.className = 'canvas-toolbar-btn';
-        dlBtn.textContent = 'Download';
+        dlBtn.className = 'canvas-toolbar-btn canvas-toolbar-btn--icon';
+        dlBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+        dlBtn.title = 'Download file';
         dlBtn.addEventListener('click', () => {
             const text = state.getContent();
             const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -3771,10 +4661,10 @@ registerCapability({
         });
         toolbar.appendChild(dlBtn);
 
-        // Pop Out button — opens canvas in the split-screen side panel
+        // Pop Out button — expand icon
         const popOutBtn = document.createElement('button');
-        popOutBtn.className = 'canvas-toolbar-btn';
-        popOutBtn.textContent = 'Expand';
+        popOutBtn.className = 'canvas-toolbar-btn canvas-toolbar-btn--icon';
+        popOutBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
         popOutBtn.title = 'Open in side panel';
         popOutBtn.addEventListener('click', () => {
             popOutCanvas(state);

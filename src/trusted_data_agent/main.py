@@ -206,7 +206,7 @@ def create_app():
         # Allow connections to unpkg for G2Plot if needed, adjust connect-src
         csp_policy = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://esm.sh", # Allow inline scripts for auth pages + marked.js + CodeMirror 6 (canvas)
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://esm.sh", # Allow inline scripts for auth pages + marked.js + CodeMirror 6 (canvas) + Pyodide WASM
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net", # Allow inline styles for G2Plot tooltips etc. + Prism.js
             "font-src 'self' https://fonts.gstatic.com",
             "connect-src 'self' *.googleapis.com https://*.withgoogle.com https://unpkg.com https://api.github.com https://cdn.jsdelivr.net https://esm.sh", # Added unpkg, GitHub API, jsdelivr (Prism.js sourcemaps), esm.sh (CodeMirror 6)
