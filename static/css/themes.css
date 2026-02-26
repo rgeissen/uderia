@@ -563,17 +563,25 @@
     color: white !important;
 }
 
-/* Exception: Panel toggle buttons should stay white (on dark/orange backgrounds) */
-[data-theme="light"] #toggle-history-button,
-[data-theme="light"] #toggle-header-button,
-[data-theme="light"] #toggle-status-button {
-    color: white !important;
+/* Panel Toggle Buttons — subtle transparent style */
+.panel-toggle-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    opacity: 0.5;
+    cursor: pointer;
 }
-
-[data-theme="light"] #toggle-history-button svg,
-[data-theme="light"] #toggle-header-button svg,
-[data-theme="light"] #toggle-status-button svg {
-    stroke: white !important;
+.panel-toggle-btn svg {
+    stroke: var(--text-muted);
+}
+.panel-toggle-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--border-primary);
+    color: var(--text-secondary);
+    opacity: 1;
+}
+.panel-toggle-btn:hover svg {
+    stroke: var(--text-secondary);
 }
 
 [data-theme="light"] .text-gray-100,

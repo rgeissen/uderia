@@ -123,6 +123,9 @@ def init_database():
         # Create component settings table (admin governance)
         _create_component_settings_table()
 
+        # Create knowledge graph tables (kg_entities + kg_relationships)
+        _create_knowledge_graph_tables()
+
         # Create canvas connector credentials table
         _create_canvas_connector_tables()
 
@@ -961,6 +964,81 @@ def _create_component_settings_table():
 
     except Exception as e:
         logger.error(f"Error creating component_settings table: {e}", exc_info=True)
+
+
+def _create_knowledge_graph_tables():
+    """
+    Create kg_entities and kg_relationships tables for the Knowledge Graph component.
+    Scoped per (profile_id, user_uuid) for multi-user isolation.
+    Safe to call multiple times (won't recreate if exists).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        # Enable foreign key enforcement for CASCADE deletes
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "21_knowledge_graph.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 21_knowledge_graph.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS kg_entities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id TEXT NOT NULL,
+                    user_uuid TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    properties_json TEXT DEFAULT '{}',
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    source_detail TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(profile_id, user_uuid, name, entity_type)
+                );
+                CREATE TABLE IF NOT EXISTS kg_relationships (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id TEXT NOT NULL,
+                    user_uuid TEXT NOT NULL,
+                    source_entity_id INTEGER NOT NULL,
+                    target_entity_id INTEGER NOT NULL,
+                    relationship_type TEXT NOT NULL,
+                    cardinality TEXT,
+                    metadata_json TEXT DEFAULT '{}',
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (source_entity_id) REFERENCES kg_entities(id) ON DELETE CASCADE,
+                    FOREIGN KEY (target_entity_id) REFERENCES kg_entities(id) ON DELETE CASCADE,
+                    UNIQUE(profile_id, user_uuid, source_entity_id, target_entity_id, relationship_type)
+                );
+                CREATE INDEX IF NOT EXISTS idx_kg_entities_profile_user
+                    ON kg_entities(profile_id, user_uuid);
+                CREATE INDEX IF NOT EXISTS idx_kg_entities_type
+                    ON kg_entities(profile_id, user_uuid, entity_type);
+                CREATE INDEX IF NOT EXISTS idx_kg_entities_name
+                    ON kg_entities(profile_id, user_uuid, name COLLATE NOCASE);
+                CREATE INDEX IF NOT EXISTS idx_kg_relationships_profile_user
+                    ON kg_relationships(profile_id, user_uuid);
+                CREATE INDEX IF NOT EXISTS idx_kg_relationships_source
+                    ON kg_relationships(source_entity_id);
+                CREATE INDEX IF NOT EXISTS idx_kg_relationships_target
+                    ON kg_relationships(target_entity_id);
+                CREATE INDEX IF NOT EXISTS idx_kg_relationships_type
+                    ON kg_relationships(profile_id, user_uuid, relationship_type);
+            """)
+            logger.info("Created knowledge graph tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating knowledge graph tables: {e}", exc_info=True)
 
 
 def _create_canvas_connector_tables():

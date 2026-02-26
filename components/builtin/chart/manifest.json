@@ -69,6 +69,10 @@
     "file": "instructions.json",
     "format": "intensity_keyed",
     "intensity_levels": ["none", "medium", "heavy"],
+    "intensity_tooltips": {
+      "medium": "Chart when explicitly requested or clearly appropriate",
+      "heavy": "Proactively visualize every suitable data result"
+    },
     "placeholder_substitutions": {
       "{G2PLOT_GUIDELINES}": "guidelines.txt"
     }

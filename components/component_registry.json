@@ -19,6 +19,15 @@
       "category": "Code",
       "is_builtin": true,
       "notes": "Interactive code/document workspace with CodeMirror 6 editing, live preview, and syntax highlighting"
+    },
+    {
+      "component_id": "knowledge_graph",
+      "plugin_directory": "knowledge_graph",
+      "status": "active",
+      "display_order": 3,
+      "category": "Knowledge",
+      "is_builtin": true,
+      "notes": "Entity-relationship knowledge graph for context enrichment and LLM guardrail decisions"
     }
   ],
   "component_status_definitions": {

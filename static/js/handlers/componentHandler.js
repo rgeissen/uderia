@@ -572,7 +572,10 @@ async function _loadProfileAssignments(comp) {
                 const label = level.charAt(0).toUpperCase() + level.slice(1);
                 return `<option value="${level}" ${intensity === level ? 'selected' : ''}>${label}</option>`;
             }).join('');
-            const intensityTooltip = 'Medium — Use when explicitly requested or clearly appropriate\nHeavy — Proactively use for every suitable opportunity';
+            const manifestTooltips = comp.manifest?.instructions?.intensity_tooltips || {};
+            const intensityTooltip = intensityLevels
+                .map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} — ${manifestTooltips[l] || (l === 'medium' ? 'Use when appropriate' : 'Proactively use at every opportunity')}`)
+                .join('\n');
             const intensitySelect = isAction ? `
                 <select class="profile-comp-intensity text-xs bg-gray-800 border border-gray-600 text-gray-300 comp-lt-select rounded px-2 py-1"
                         data-profile-id="${profile.id}" ${!isEnabled ? 'disabled' : ''}

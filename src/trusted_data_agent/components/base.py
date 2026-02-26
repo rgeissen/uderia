@@ -195,6 +195,30 @@ class BaseComponentHandler(ABC):
         """
         return True, ""
 
+    async def get_context_enrichment(
+        self,
+        query: str,
+        profile_id: str,
+        user_uuid: str,
+    ) -> str:
+        """
+        Optional: Return context text for planner prompt injection.
+
+        Components that provide domain knowledge (e.g., knowledge graph)
+        override this to inject structured context before strategic planning.
+        The returned text is appended to the knowledge_context_str in the
+        planner, flowing through the existing {knowledge_context} placeholder.
+
+        Args:
+            query: The user's original input query.
+            profile_id: Active profile ID.
+            user_uuid: Current user UUID.
+
+        Returns:
+            Context text for prompt injection, or empty string if none.
+        """
+        return ""
+
 
 # ---------------------------------------------------------------------------
 # Structural handler (no tool call, data-driven)

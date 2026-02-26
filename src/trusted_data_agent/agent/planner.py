@@ -2606,6 +2606,20 @@ Ranking:"""
             else:
                 app_logger.debug("No knowledge context retrieved for planning")
 
+        # --- COMPONENT CONTEXT ENRICHMENT (knowledge graph guardrail) ---
+        try:
+            from trusted_data_agent.components.manager import get_component_context_enrichment
+            kg_enrichment = await get_component_context_enrichment(
+                query=self.executor.original_user_input,
+                profile_id=self.executor.active_profile_id,
+                user_uuid=self.executor.user_uuid,
+            )
+            if kg_enrichment:
+                knowledge_context_str += "\n\n" + kg_enrichment
+                app_logger.info("Component context enrichment injected into planner knowledge context")
+        except Exception as e:
+            app_logger.warning(f"Component context enrichment failed: {e}")
+
         # --- PLANNER REPOSITORIES: Few-shot examples for execution patterns ---
         # Include RAG examples alongside knowledge context - Directive 3 will decide the best approach
         rag_few_shot_examples_str = ""

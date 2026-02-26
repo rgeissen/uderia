@@ -28,6 +28,12 @@ def generate_component_html(component_payloads: List[Dict[str, Any]]) -> str:
             continue
         _comp_id = _cp.get("component_id", "unknown")
         _spec = _cp.get("spec", {})
+        # If payload has pre-rendered HTML but no spec data (e.g., empty graph message),
+        # use the HTML directly instead of trying to render via data-spec
+        _html = _cp.get("html", "")
+        if _html and not _spec:
+            html += f'\n<div class="response-card mb-4">{_html}</div>'
+            continue
         _cid = f"component-{uuid.uuid4().hex[:12]}"
         try:
             _spec_json = json.dumps(_spec).replace("'", "&apos;")
@@ -57,7 +63,7 @@ def extract_component_payload(tool_output: Any) -> Optional[Dict[str, Any]]:
         if (isinstance(_parsed, dict)
                 and _parsed.get("status") == "success"
                 and _parsed.get("component_id")
-                and _parsed.get("spec")):
+                and "spec" in _parsed):
             return _parsed
     except (json.JSONDecodeError, TypeError, AttributeError):
         pass

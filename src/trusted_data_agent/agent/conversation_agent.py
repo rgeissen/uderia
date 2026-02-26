@@ -633,7 +633,7 @@ RESPONSE FORMAT:
                         # Check if this payload targets a sub_window — emit SSE immediately
                         _render_target = _payload.get("render_target", "inline")
                         if _render_target == "sub_window":
-                            await self._emit_event("component_render", {
+                            _cr_payload = {
                                 "component_id": _payload.get("component_id"),
                                 "render_target": "sub_window",
                                 "spec": _payload.get("spec", {}),
@@ -642,7 +642,18 @@ RESPONSE FORMAT:
                                 "action": _payload.get("window_action", "create"),
                                 "interactive": _payload.get("interactive", False),
                                 "session_id": self.session_id,
+                            }
+                            # Collect for session replay
+                            self.collected_events.append({
+                                "type": "component_render",
+                                "payload": dict(_cr_payload),
+                                "timestamp": time.time()
                             })
+                            # Emit as first-class SSE event (NOT wrapped in notification)
+                            # so the frontend handler at eventHandlers.js:1287 receives
+                            # eventName === 'component_render' directly
+                            if self.async_event_handler:
+                                await self.async_event_handler(_cr_payload, "component_render")
                             logger.info(f"[ConvAgent] Emitted sub_window component_render SSE for {_payload['component_id']}")
                         # Always collect for inline rendering (sub_window payloads filtered out in generate_component_html)
                         self.component_payloads.append(_payload)

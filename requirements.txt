@@ -34,6 +34,9 @@ aiosqlite>=0.20.0        # SQLite (async)
 teradatasql>=20.0.0      # Teradata
 JayDeBeApi>=1.2.3        # JDBC (requires Java runtime)
 
+# Knowledge graph algorithms
+networkx>=3.0
+
 # Document processing
 PyPDF2==3.0.1
 python-docx==1.1.2

@@ -90,6 +90,44 @@ def get_component_instructions_for_prompt(
     return ""
 
 
+async def get_component_context_enrichment(
+    query: str,
+    profile_id: Optional[str],
+    user_uuid: Optional[str],
+) -> str:
+    """
+    Gather context enrichment text from all qualifying components.
+
+    Components that set ``supports_context_enrichment: true`` in their manifest
+    and whose handler overrides ``get_context_enrichment()`` contribute text
+    that is appended to the planner's knowledge context.
+
+    Args:
+        query: The user's original input query.
+        profile_id: Active profile ID (for component filtering).
+        user_uuid: Current user UUID.
+
+    Returns:
+        Combined enrichment text, or empty string if none.
+    """
+    try:
+        manager = get_component_manager()
+        profile_config: Dict[str, Any] = {}
+        if profile_id and user_uuid:
+            try:
+                from trusted_data_agent.core.config_manager import get_config_manager
+                cm = get_config_manager()
+                profile_config = cm.get_profile(profile_id, user_uuid) or {}
+            except Exception:
+                pass
+
+        text = await manager.get_context_enrichment(query, profile_id or "", user_uuid or "", profile_config)
+        return text
+    except Exception as e:
+        logger.warning(f"Component context enrichment assembly failed: {e}")
+    return ""
+
+
 def get_component_langchain_tools(
     profile_id: Optional[str],
     user_uuid: Optional[str],
@@ -116,7 +154,7 @@ def get_component_langchain_tools(
             except Exception:
                 pass
 
-        comp_context = {"session_id": session_id, "user_uuid": user_uuid}
+        comp_context = {"session_id": session_id, "user_uuid": user_uuid, "profile_id": profile_id}
 
         # Provide llm_callable for components needing LLM assistance
         # (e.g., chart mapping resolution Stage 4). Mirrors adapter.py:1682-1690.
@@ -614,6 +652,55 @@ class ComponentManager:
         return "\n\n".join(parts) if parts else ""
 
     # ------------------------------------------------------------------
+    # Public API: Context enrichment (guardrail)
+    # ------------------------------------------------------------------
+
+    async def get_context_enrichment(
+        self,
+        query: str,
+        profile_id: str,
+        user_uuid: str,
+        profile_config: Dict[str, Any],
+    ) -> str:
+        """
+        Collect context enrichment text from qualifying components.
+
+        Iterates active components, checks the ``supports_context_enrichment``
+        manifest flag, and calls each qualifying handler's
+        ``get_context_enrichment()`` method.
+
+        Returns:
+            Combined enrichment text, or empty string.
+        """
+        active = self.get_active_components(profile_config)
+        parts: List[str] = []
+
+        for comp in active:
+            # Check manifest flag
+            backend_cfg = (comp.manifest or {}).get("backend", {})
+            if not backend_cfg.get("supports_context_enrichment", False):
+                continue
+
+            handler = comp.handler
+            if handler is None:
+                continue
+
+            try:
+                text = await handler.get_context_enrichment(query, profile_id, user_uuid)
+                if text:
+                    parts.append(text)
+                    logger.info(
+                        f"Component '{comp.component_id}' contributed context enrichment "
+                        f"({len(text)} chars)"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Component '{comp.component_id}' context enrichment failed: {e}"
+                )
+
+        return "\n\n".join(parts) if parts else ""
+
+    # ------------------------------------------------------------------
     # Public API: LangChain tool integration
     # ------------------------------------------------------------------
 
@@ -698,6 +785,10 @@ class ComponentManager:
                         "metadata": payload.metadata,
                         "render_target": payload.render_target.value,
                         "spec": payload.spec,
+                        "html": payload.html,
+                        "window_id": payload.window_id,
+                        "window_action": payload.window_action,
+                        "interactive": payload.interactive,
                     })
                 except Exception as e:
                     return _json.dumps({

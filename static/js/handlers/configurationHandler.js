@@ -2589,7 +2589,7 @@ export async function reconnectAndLoad() {
             // Enable panel toggle buttons after configuration
             if (DOM.toggleHistoryButton) {
                 DOM.toggleHistoryButton.classList.remove('btn-disabled');
-                DOM.toggleHistoryButton.style.opacity = '1';
+                DOM.toggleHistoryButton.style.opacity = '';
                 DOM.toggleHistoryButton.style.cursor = 'pointer';
                 DOM.toggleHistoryButton.style.pointerEvents = 'auto';
                 if (DOM.historyExpandIcon) DOM.historyExpandIcon.classList.remove('hidden');
@@ -2597,7 +2597,7 @@ export async function reconnectAndLoad() {
             }
             if (DOM.toggleStatusButton) {
                 DOM.toggleStatusButton.classList.remove('btn-disabled');
-                DOM.toggleStatusButton.style.opacity = '1';
+                DOM.toggleStatusButton.style.opacity = '';
                 DOM.toggleStatusButton.style.cursor = 'pointer';
                 DOM.toggleStatusButton.style.pointerEvents = 'auto';
                 if (DOM.statusExpandIcon) DOM.statusExpandIcon.classList.remove('hidden');
@@ -2605,7 +2605,7 @@ export async function reconnectAndLoad() {
             }
             if (DOM.toggleHeaderButton) {
                 DOM.toggleHeaderButton.classList.remove('btn-disabled');
-                DOM.toggleHeaderButton.style.opacity = '1';
+                DOM.toggleHeaderButton.style.opacity = '';
                 DOM.toggleHeaderButton.style.cursor = 'pointer';
                 DOM.toggleHeaderButton.style.pointerEvents = 'auto';
                 if (DOM.headerExpandIcon) DOM.headerExpandIcon.classList.remove('hidden');

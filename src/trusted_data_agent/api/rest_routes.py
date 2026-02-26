@@ -12101,3 +12101,304 @@ async def canvas_templates():
         return jsonify({"status": "success", "templates": templates})
     except FileNotFoundError:
         return jsonify({"status": "success", "templates": []})
+
+
+# ─── Knowledge Graph ──────────────────────────────────────────────────────────
+
+def _get_graph_store(user_uuid, profile_id=None):
+    """Instantiate a GraphStore scoped to user + profile."""
+    from components.builtin.knowledge_graph.graph_store import GraphStore
+    if not profile_id:
+        profile_id = request.args.get("profile_id", "__default__")
+    return GraphStore(profile_id=profile_id, user_uuid=user_uuid)
+
+
+@rest_api_bp.route("/v1/knowledge-graph/entities", methods=["POST"])
+@require_auth
+async def kg_add_entity():
+    """Add an entity to the knowledge graph."""
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+
+    name = data.get("name")
+    entity_type = data.get("entity_type")
+    if not name or not entity_type:
+        return jsonify({"status": "error", "message": "name and entity_type are required"}), 400
+
+    store = _get_graph_store(user_uuid, data.get("profile_id"))
+    try:
+        entity_id = await store.add_entity(
+            name=name,
+            entity_type=entity_type,
+            properties=data.get("properties", {}),
+            source=data.get("source", "manual"),
+            source_detail=data.get("source_detail"),
+        )
+        return jsonify({"status": "success", "entity_id": entity_id})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        app_logger.error(f"Knowledge graph add entity failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/entities", methods=["GET"])
+@require_auth
+async def kg_list_entities():
+    """List entities, optionally filtered by type and search text."""
+    user_uuid = _get_user_uuid_from_request()
+    store = _get_graph_store(user_uuid)
+
+    entity_type = request.args.get("type")
+    search = request.args.get("search")
+    limit = int(request.args.get("limit", 100))
+
+    try:
+        if search:
+            entities = await store.search_entities(search, entity_type=entity_type, limit=limit)
+        else:
+            entities = await store.list_entities(entity_type=entity_type, limit=limit)
+        return jsonify({"status": "success", "entities": entities, "count": len(entities)})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph list entities failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/entities/<int:entity_id>", methods=["PUT"])
+@require_auth
+async def kg_update_entity(entity_id):
+    """Update an entity's properties."""
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+    store = _get_graph_store(user_uuid, data.get("profile_id"))
+
+    try:
+        updated = await store.update_entity(
+            entity_id=entity_id,
+            properties=data.get("properties"),
+            name=data.get("name"),
+            entity_type=data.get("entity_type"),
+        )
+        if not updated:
+            return jsonify({"status": "error", "message": "Entity not found"}), 404
+        return jsonify({"status": "success", "updated": True})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph update entity failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/entities/<int:entity_id>", methods=["DELETE"])
+@require_auth
+async def kg_delete_entity(entity_id):
+    """Delete an entity (cascades to relationships)."""
+    user_uuid = _get_user_uuid_from_request()
+    store = _get_graph_store(user_uuid)
+
+    try:
+        deleted = await store.delete_entity(entity_id)
+        if not deleted:
+            return jsonify({"status": "error", "message": "Entity not found"}), 404
+        return jsonify({"status": "success", "deleted": True})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph delete entity failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/relationships", methods=["POST"])
+@require_auth
+async def kg_add_relationship():
+    """Add a relationship between two entities."""
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+
+    source_entity_id = data.get("source_entity_id")
+    target_entity_id = data.get("target_entity_id")
+    relationship_type = data.get("relationship_type")
+
+    if not source_entity_id or not target_entity_id or not relationship_type:
+        return jsonify({
+            "status": "error",
+            "message": "source_entity_id, target_entity_id, and relationship_type are required"
+        }), 400
+
+    store = _get_graph_store(user_uuid, data.get("profile_id"))
+    try:
+        rel_id = await store.add_relationship(
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            relationship_type=relationship_type,
+            cardinality=data.get("cardinality"),
+            metadata=data.get("metadata", {}),
+            source=data.get("source", "manual"),
+        )
+        return jsonify({"status": "success", "relationship_id": rel_id})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        app_logger.error(f"Knowledge graph add relationship failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/relationships", methods=["GET"])
+@require_auth
+async def kg_list_relationships():
+    """List relationships, optionally filtered by entity_id."""
+    user_uuid = _get_user_uuid_from_request()
+    store = _get_graph_store(user_uuid)
+
+    entity_id = request.args.get("entity_id")
+    try:
+        if entity_id:
+            rels = await store.get_relationships(int(entity_id))
+        else:
+            rels = await store.list_relationships()
+        return jsonify({"status": "success", "relationships": rels, "count": len(rels)})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph list relationships failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/relationships/<int:relationship_id>", methods=["DELETE"])
+@require_auth
+async def kg_delete_relationship(relationship_id):
+    """Delete a relationship."""
+    user_uuid = _get_user_uuid_from_request()
+    store = _get_graph_store(user_uuid)
+
+    try:
+        deleted = await store.delete_relationship(relationship_id)
+        if not deleted:
+            return jsonify({"status": "error", "message": "Relationship not found"}), 404
+        return jsonify({"status": "success", "deleted": True})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph delete relationship failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/subgraph", methods=["GET"])
+@require_auth
+async def kg_subgraph():
+    """Extract a subgraph around an entity."""
+    user_uuid = _get_user_uuid_from_request()
+    store = _get_graph_store(user_uuid)
+
+    entity_name = request.args.get("entity_name")
+    depth = int(request.args.get("depth", 2))
+    max_nodes = int(request.args.get("max_nodes", 50))
+
+    try:
+        if entity_name:
+            entity = await store.get_entity_by_name(entity_name)
+            if not entity:
+                return jsonify({"status": "error", "message": f"Entity '{entity_name}' not found"}), 404
+            subgraph = await store.extract_subgraph([entity["id"]], depth=depth, max_nodes=max_nodes)
+        else:
+            subgraph = await store.get_full_graph(max_nodes=max_nodes)
+        return jsonify({"status": "success", **subgraph})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph subgraph failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/stats", methods=["GET"])
+@require_auth
+async def kg_stats():
+    """Get knowledge graph statistics."""
+    user_uuid = _get_user_uuid_from_request()
+    store = _get_graph_store(user_uuid)
+
+    try:
+        stats = await store.get_stats()
+        return jsonify({"status": "success", **stats})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph stats failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/import", methods=["POST"])
+@require_auth
+async def kg_import():
+    """Bulk import entities and relationships."""
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+    store = _get_graph_store(user_uuid, data.get("profile_id"))
+
+    entities = data.get("entities", [])
+    relationships = data.get("relationships", [])
+
+    if not entities and not relationships:
+        return jsonify({"status": "error", "message": "No entities or relationships provided"}), 400
+
+    try:
+        result = await store.import_bulk(entities, relationships)
+        return jsonify({"status": "success", **result})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph import failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/clear", methods=["DELETE"])
+@require_auth
+async def kg_clear():
+    """Clear entire knowledge graph for the current profile."""
+    user_uuid = _get_user_uuid_from_request()
+    profile_id = request.args.get("profile_id", "__default__")
+    store = _get_graph_store(user_uuid, profile_id)
+
+    try:
+        await store.clear_graph()
+        return jsonify({"status": "success", "message": "Knowledge graph cleared"})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph clear failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/discover", methods=["POST"])
+@require_auth
+async def kg_discover():
+    """Trigger MCP schema discovery (V2 stub)."""
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json() or {}
+    profile_id = data.get("profile_id", "__default__")
+
+    try:
+        from components.builtin.knowledge_graph.discovery import MCPSchemaDiscovery
+        discovery = MCPSchemaDiscovery()
+        result = await discovery.discover_from_tools(
+            tools=data.get("tools", []),
+            profile_id=profile_id,
+            user_uuid=user_uuid,
+        )
+        return jsonify({"status": "success", **result})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph discovery failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/context", methods=["GET"])
+@require_auth
+async def kg_context():
+    """Test context enrichment for a query."""
+    user_uuid = _get_user_uuid_from_request()
+    query = request.args.get("query", "")
+    profile_id = request.args.get("profile_id", "__default__")
+
+    if not query:
+        return jsonify({"status": "error", "message": "query parameter is required"}), 400
+
+    try:
+        from trusted_data_agent.components.manager import get_component_context_enrichment
+        enrichment = await get_component_context_enrichment(
+            query=query,
+            profile_id=profile_id,
+            user_uuid=user_uuid,
+        )
+        return jsonify({
+            "status": "success",
+            "query": query,
+            "enrichment": enrichment,
+            "has_context": bool(enrichment),
+        })
+    except Exception as e:
+        app_logger.error(f"Knowledge graph context test failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500

@@ -1,0 +1,109 @@
+{
+  "component_id": "knowledge_graph",
+  "display_name": "Knowledge Graph",
+  "description": "Context-enriching knowledge graph that captures database topology, business concepts, and taxonomies to guide LLM decisions through subgraph injection",
+  "version": "1.0.0",
+  "component_type": "action",
+  "category": "Knowledge",
+
+  "tool_definition": {
+    "name": "TDA_KnowledgeGraph",
+    "description": "Queries and visualizes the knowledge graph. Use 'query' to find related entities, 'visualize' to render a subgraph as an interactive force-directed graph, 'add_entity' to manually enrich the graph, or 'add_relationship' to create connections between entities.",
+    "args": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform: 'query', 'visualize', 'add_entity', 'add_relationship', 'get_context'",
+        "required": true
+      },
+      "entity_name": {
+        "type": "string",
+        "description": "Name of the entity to query, add, or center visualization on",
+        "required": false
+      },
+      "entity_type": {
+        "type": "string",
+        "description": "Type of entity: 'database', 'table', 'column', 'foreign_key', 'business_concept', 'taxonomy', 'metric', 'domain'",
+        "required": false
+      },
+      "properties": {
+        "type": "dict",
+        "description": "Properties for the entity (e.g., description, data_type, business_meaning)",
+        "required": false
+      },
+      "target_entity": {
+        "type": "string",
+        "description": "Target entity name for relationship creation",
+        "required": false
+      },
+      "target_entity_type": {
+        "type": "string",
+        "description": "Target entity type for relationship creation",
+        "required": false
+      },
+      "relationship_type": {
+        "type": "string",
+        "description": "Edge type: 'contains', 'foreign_key', 'is_a', 'has_property', 'measures', 'derives_from', 'depends_on', 'relates_to'",
+        "required": false
+      },
+      "query_text": {
+        "type": "string",
+        "description": "Free-text query for semantic graph search (for 'query' and 'get_context' actions)",
+        "required": false
+      },
+      "depth": {
+        "type": "int",
+        "description": "Traversal depth for subgraph extraction (default: 2)",
+        "required": false
+      },
+      "title": {
+        "type": "string",
+        "description": "Title for the visualization",
+        "required": false
+      }
+    }
+  },
+
+  "instructions": {
+    "file": "instructions.json",
+    "format": "intensity_keyed",
+    "intensity_tooltips": {
+      "medium": "Use graph context as guidance when available",
+      "heavy": "Strictly validate against graph; proactively enrich"
+    }
+  },
+
+  "backend": {
+    "handler_file": "handler.py",
+    "handler_class": "KnowledgeGraphHandler",
+    "fast_path": true,
+    "supports_context_enrichment": true
+  },
+
+  "frontend": {
+    "renderer_file": "renderer.js",
+    "renderer_export": "renderKnowledgeGraph",
+    "cdn_dependencies": [
+      {
+        "name": "d3",
+        "url": "https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js",
+        "global": "d3"
+      }
+    ]
+  },
+
+  "render_targets": {
+    "default": "sub_window",
+    "supports": ["inline", "sub_window"],
+    "sub_window": {
+      "title_template": "Knowledge Graph: {title}",
+      "default_size": { "width": 800, "height": 600 },
+      "resizable": true,
+      "interactive": true
+    }
+  },
+
+  "profile_defaults": {
+    "enabled_for": ["tool_enabled", "llm_only", "rag_focused", "genie"],
+    "default_intensity": "medium"
+  }
+}

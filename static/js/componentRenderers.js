@@ -10,6 +10,7 @@
 
 import { renderChart } from './utils.js';
 import { renderCanvas } from '/api/v1/components/canvas/renderer';
+import { renderKnowledgeGraph } from '/api/v1/components/knowledge_graph/renderer';
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -33,6 +34,9 @@ _renderers.set('chart', renderChart);
 
 // Canvas — interactive code/document workspace with CodeMirror 6
 _renderers.set('canvas', renderCanvas);
+
+// Knowledge Graph — D3.js force-directed graph visualization
+_renderers.set('knowledge_graph', renderKnowledgeGraph);
 
 // ---------------------------------------------------------------------------
 // Public API
