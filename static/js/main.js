@@ -316,6 +316,16 @@ async function initializeRAGAutoCompletion() {
         e.stopPropagation();
     }, { passive: false });
 
+    skillSelector.addEventListener('wheel', (e) => {
+        const { scrollTop, scrollHeight, clientHeight } = skillSelector;
+        const atTop = scrollTop === 0;
+        const atBottom = scrollTop + clientHeight >= scrollHeight;
+        if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+            e.preventDefault();
+        }
+        e.stopPropagation();
+    }, { passive: false });
+
     function highlightSuggestion(index) {
         const items = suggestionsContainer.querySelectorAll('.rag-suggestion-item');
         items.forEach((item, idx) => {
@@ -1114,7 +1124,21 @@ async function initializeRAGAutoCompletion() {
     function highlightSkill(index) {
         const items = skillSelector.querySelectorAll('.skill-item');
         items.forEach((item, idx) => {
-            item.classList.toggle('skill-highlighted', idx === index);
+            if (idx === index) {
+                item.classList.add('skill-highlighted');
+                const container = skillSelector;
+                const itemTop = item.offsetTop;
+                const itemBottom = itemTop + item.offsetHeight;
+                const containerTop = container.scrollTop;
+                const containerBottom = containerTop + container.clientHeight;
+                if (itemTop < containerTop) {
+                    container.scrollTop = itemTop;
+                } else if (itemBottom > containerBottom) {
+                    container.scrollTop = itemBottom - container.clientHeight;
+                }
+            } else {
+                item.classList.remove('skill-highlighted');
+            }
         });
     }
 

@@ -3249,6 +3249,7 @@ button[data-action="delete-mcp"]:hover {
     overscroll-behavior: contain;
     scroll-behavior: smooth;
     z-index: 50;
+    padding: 4px 0;
     box-shadow:
         var(--shadow-3xl),
         0 0 0 1px rgba(251, 191, 36, 0.1) inset,
@@ -3392,6 +3393,7 @@ button[data-action="delete-mcp"]:hover {
     overscroll-behavior: contain;
     scroll-behavior: smooth;
     z-index: 50;
+    padding: 4px 0;
     box-shadow:
         var(--shadow-3xl),
         0 0 0 1px rgba(16, 185, 129, 0.1) inset,
