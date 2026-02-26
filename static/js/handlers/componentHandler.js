@@ -23,6 +23,16 @@ const IMPORT_BTN_ID = 'import-component-btn-top';
 const CATEGORY_FILTERS_ID = 'component-category-filters-top';
 const STATUS_FILTERS_ID = 'component-status-filters-top';
 
+// ─── IFOC Methodology Naming ────────────────────────────────────────────────
+// Canonical mapping from configurationHandler.js ifocTagConfig
+const IFOC_CONFIG = {
+    'llm_only':      { label: 'Ideate',     badgeClass: 'bg-green-500/20 text-green-300 comp-lt-green' },
+    'rag_focused':   { label: 'Focus',      badgeClass: 'bg-blue-500/20 text-blue-300 comp-lt-blue' },
+    'tool_enabled':  { label: 'Optimize',   badgeClass: 'bg-orange-500/20 text-orange-300 comp-lt-orange' },
+    'genie':         { label: 'Coordinate', badgeClass: 'bg-purple-500/20 text-purple-300 comp-lt-purple' },
+};
+const IFOC_ORDER = ['llm_only', 'rag_focused', 'tool_enabled', 'genie'];
+
 /**
  * Entry point called by ui.js performViewSwitch() when navigating to components-view.
  * Loads components and initializes handlers (once).
@@ -163,14 +173,17 @@ async function _onCardClick(componentId) {
     if (!componentId) return;
     _selectedComponentId = componentId;
 
-    // Update selection ring
+    // Update selection outline (uses outline, not ring/box-shadow, to avoid
+    // conflict with .glass-panel:hover box-shadow)
     const grid = document.getElementById(GRID_ID);
     if (grid) {
         grid.querySelectorAll('.component-card').forEach(card => {
             if (card.dataset.componentId === componentId) {
-                card.classList.add('ring-2', 'ring-cyan-400/60');
+                card.style.outline = '2px solid rgba(34,211,238,0.6)';
+                card.style.outlineOffset = '-2px';
             } else {
-                card.classList.remove('ring-2', 'ring-cyan-400/60');
+                card.style.outline = '';
+                card.style.outlineOffset = '';
             }
         });
     }
@@ -226,9 +239,13 @@ function _renderDetailPanel(comp) {
         `<span class="px-2 py-0.5 rounded bg-gray-500/20 text-gray-300 comp-lt-gray text-xs">${t}</span>`
     ).join('');
 
-    const enabledFor = (profileDefaults.enabled_for || []).map(p =>
-        `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 comp-lt-emerald text-xs">${p}</span>`
-    ).join('');
+    const sortedEnabledFor = [...(profileDefaults.enabled_for || [])].sort(
+        (a, b) => (IFOC_ORDER.indexOf(a) >>> 0) - (IFOC_ORDER.indexOf(b) >>> 0)
+    );
+    const enabledFor = sortedEnabledFor.map(p => {
+        const ifoc = IFOC_CONFIG[p] || { label: p, badgeClass: 'bg-gray-500/20 text-gray-300 comp-lt-gray' };
+        return `<span class="px-2 py-0.5 rounded ${ifoc.badgeClass} text-xs">${ifoc.label}</span>`;
+    }).join('');
 
     const headerHTML = `
         <div class="flex items-start gap-4 mb-6">
@@ -516,26 +533,31 @@ async function _loadProfileAssignments(comp) {
         const isAction = comp.component_type === 'action';
         const componentId = comp.component_id;
 
-        const profileTypeClasses = {
-            tool_enabled: 'bg-orange-500/20 text-orange-300 comp-lt-orange',
-            llm_only: 'bg-blue-500/20 text-blue-300 comp-lt-blue',
-            rag_focused: 'bg-purple-500/20 text-purple-300 comp-lt-purple',
-            genie: 'bg-pink-500/20 text-pink-300 comp-lt-pink',
-        };
+        const sortedProfiles = [...profiles].sort((a, b) => {
+            const ia = IFOC_ORDER.indexOf(a.profile_type);
+            const ib = IFOC_ORDER.indexOf(b.profile_type);
+            return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        });
 
-        const rowsHTML = profiles.map(profile => {
+        const rowsHTML = sortedProfiles.map(profile => {
             const compConfig = (profile.componentConfig || {})[componentId] || {};
             const isEnabled = compConfig.enabled !== undefined ? compConfig.enabled : true;
             const intensity = compConfig.intensity || comp.profile_defaults?.default_intensity || 'medium';
-            const typeBadge = profileTypeClasses[profile.profile_type] || 'bg-gray-500/20 text-gray-300 comp-lt-gray';
+            const ifocInfo = IFOC_CONFIG[profile.profile_type] || { label: profile.profile_type, badgeClass: 'bg-gray-500/20 text-gray-300 comp-lt-gray' };
+            const typeBadge = ifocInfo.badgeClass;
 
+            const intensityLevels = (comp.manifest?.instructions?.intensity_levels || ['none', 'medium', 'heavy'])
+                .filter(l => l !== 'none');  // "none" is redundant — the enable toggle covers disabling
+            const intensityOptions = intensityLevels.map(level => {
+                const label = level.charAt(0).toUpperCase() + level.slice(1);
+                return `<option value="${level}" ${intensity === level ? 'selected' : ''}>${label}</option>`;
+            }).join('');
+            const intensityTooltip = 'Medium — Use when explicitly requested or clearly appropriate\nHeavy — Proactively use for every suitable opportunity';
             const intensitySelect = isAction ? `
                 <select class="profile-comp-intensity text-xs bg-gray-800 border border-gray-600 text-gray-300 comp-lt-select rounded px-2 py-1"
-                        data-profile-id="${profile.id}" ${!isEnabled ? 'disabled' : ''}>
-                    <option value="minimal" ${intensity === 'minimal' ? 'selected' : ''}>Minimal</option>
-                    <option value="low" ${intensity === 'low' ? 'selected' : ''}>Low</option>
-                    <option value="medium" ${intensity === 'medium' ? 'selected' : ''}>Medium</option>
-                    <option value="high" ${intensity === 'high' ? 'selected' : ''}>High</option>
+                        data-profile-id="${profile.id}" ${!isEnabled ? 'disabled' : ''}
+                        data-tooltip="${intensityTooltip}">
+                    ${intensityOptions}
                 </select>` : '';
 
             return `
@@ -543,7 +565,7 @@ async function _loadProfileAssignments(comp) {
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 comp-lt-cyan flex-shrink-0">@${_escapeHtml(profile.tag || '?')}</span>
                         <span class="text-sm truncate" style="color:var(--text-primary)">${_escapeHtml(profile.name || profile.id)}</span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded ${typeBadge} uppercase tracking-wider flex-shrink-0">${profile.profile_type}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded ${typeBadge} uppercase tracking-wider flex-shrink-0">${ifocInfo.label}</span>
                     </div>
                     <div class="flex items-center gap-3 flex-shrink-0">
                         ${intensitySelect}

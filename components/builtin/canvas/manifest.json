@@ -33,7 +33,8 @@
   },
   "instructions": {
     "file": "instructions.json",
-    "format": "intensity_keyed"
+    "format": "intensity_keyed",
+    "intensity_levels": ["none", "medium", "heavy"]
   },
   "backend": {
     "handler_file": "handler.py",
@@ -56,7 +57,7 @@
     }
   },
   "profile_defaults": {
-    "enabled_for": ["tool_enabled", "llm_only", "rag_focused", "genie"],
+    "enabled_for": ["llm_only", "rag_focused", "tool_enabled", "genie"],
     "default_intensity": "medium"
   }
 }

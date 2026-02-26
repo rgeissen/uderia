@@ -68,6 +68,7 @@
   "instructions": {
     "file": "instructions.json",
     "format": "intensity_keyed",
+    "intensity_levels": ["none", "medium", "heavy"],
     "placeholder_substitutions": {
       "{G2PLOT_GUIDELINES}": "guidelines.txt"
     }
@@ -99,7 +100,7 @@
     }
   },
   "profile_defaults": {
-    "enabled_for": ["tool_enabled", "llm_only"],
+    "enabled_for": ["llm_only", "rag_focused", "tool_enabled", "genie"],
     "default_intensity": "medium"
   }
 }

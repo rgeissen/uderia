@@ -321,27 +321,41 @@ Files: `src/trusted_data_agent/agent/prompt_encryption.py`, `prompt_loader.py`
 - **Temporary override**: `@TAG` syntax for single-query profile switching
 - **Profile classification**: Light (filter-based) vs Full (LLM-assisted)
 
+**IFOC Methodology Naming (MANDATORY):**
+
+All user-facing UI must use IFOC terminology for profile classes — never display raw internal type strings:
+
+| Internal Type | IFOC Label | Color | UI Tab |
+|---|---|---|---|
+| `llm_only` | **Ideate** | Green (#4ade80) | IDEATE |
+| `rag_focused` | **Focus** | Blue (#3b82f6) | FOCUS |
+| `tool_enabled` | **Optimize** | Orange (#F15F22) | OPTIMIZE |
+| `genie` | **Coordinate** | Purple (#9333ea) | COORDINATE |
+
+Canonical JS source: `ifocTagConfig` in `static/js/handlers/configurationHandler.js:5242-5246`.
+When adding profile type badges/labels in any JS handler, use this mapping — do not display `tool_enabled`, `llm_only`, etc. to users.
+
 **The platform supports 4 profile types:**
 
-1. **Efficiency Focused (Optimizer)** - `tool_enabled`
+1. **Efficiency Focused / Optimize** - `tool_enabled`
    - Runs through Planner/Executor Architecture
    - Strategic & tactical planning with RAG-powered learning
    - Token-optimized with plan hydration
    - Best for: Database queries, complex workflows, multi-step operations
 
-2. **Conversation Focused (LLM)** - `llm_only`
+2. **Conversation Focused / Ideate** - `llm_only`
    - Direct LLM conversation
    - Optional tool calling via LangChain (useMcpTools flag)
    - No strategic planning overhead
    - Best for: Chat, document Q&A, lightweight tasks
 
-3. **Knowledge Focused (RAG)** - `rag_focused`
+3. **Knowledge Focused / Focus** - `rag_focused`
    - Semantic search over knowledge repositories
    - LLM synthesis of retrieved documents
    - No MCP tools or Planner/Executor
    - Best for: Documentation search, reference lookups
 
-4. **Genie (Multi-Profile)** - `genie`
+4. **Genie / Coordinate** - `genie`
    - Coordinates multiple sub-profiles
    - Routes queries to specialized experts
    - Synthesizes results across profiles
