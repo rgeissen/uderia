@@ -36,6 +36,17 @@
       "category": "Knowledge Management",
       "is_builtin": true,
       "notes": "Knowledge template: template_type=knowledge_repository → repository_type=knowledge"
+    },
+    {
+      "template_id": "kg_database_context_v1",
+      "plugin_directory": "kg-database-context",
+      "template_file": "kg-database-context/kg_database_context_v1.json",
+      "manifest_file": "kg-database-context/manifest.json",
+      "status": "active",
+      "display_order": 4,
+      "category": "Knowledge Graph",
+      "is_builtin": true,
+      "notes": "Knowledge Graph template: template_type=knowledge_graph → populates GraphStore (SQLite), not ChromaDB"
     }
   ],
   "template_status_definitions": {
@@ -48,17 +59,17 @@
   "type_concepts": {
     "template_type": {
       "description": "Strategy/execution type - defines HOW the template processes data",
-      "examples": ["sql_query", "api_request", "knowledge_repository"],
+      "examples": ["sql_query", "api_request", "knowledge_repository", "knowledge_graph"],
       "determines": ["Schema validation", "Required fields", "Execution logic"]
     },
     "repository_type": {
       "description": "Storage model - defines HOW collection data is stored in database",
-      "values": ["planner", "knowledge"],
-      "determines": ["Database schema", "Query patterns", "ChromaDB storage"]
+      "values": ["planner", "knowledge", "knowledge_graph"],
+      "determines": ["Database schema", "Query patterns", "ChromaDB storage / GraphStore"]
     },
     "category": {
       "description": "UI grouping - organizes templates in user interface",
-      "examples": ["Database", "Knowledge Management", "API Integration"],
+      "examples": ["Database", "Knowledge Management", "Knowledge Graph", "API Integration"],
       "determines": ["UI organization", "Template filtering", "Help text"]
     }
   }

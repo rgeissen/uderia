@@ -219,10 +219,10 @@ function _populateProfileDropdown() {
     const profiles = window.configState?.profiles || [];
     for (const p of profiles) {
         // Only show profiles that have an MCP server (tool_enabled or genie)
-        if (p.type !== 'tool_enabled' && p.type !== 'genie') continue;
+        if (p.profile_type !== 'tool_enabled' && p.profile_type !== 'genie') continue;
         const opt = document.createElement('option');
         opt.value = p.id;
-        opt.textContent = `@${p.tag || p.name} (${p.type === 'tool_enabled' ? 'Optimize' : 'Coordinate'})`;
+        opt.textContent = `@${p.tag || p.name} (${p.profile_type === 'tool_enabled' ? 'Optimize' : 'Coordinate'})`;
         select.appendChild(opt);
     }
 }

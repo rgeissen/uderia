@@ -688,7 +688,8 @@ export function subscribeToNotifications() {
             case 'knowledge_reranking_complete':
             case 'knowledge_retrieval_complete':
             case 'rag_llm_step':
-            case 'knowledge_search_complete': {
+            case 'knowledge_search_complete':
+            case 'kg_enrichment': {
                 const payload = data.payload || {};
 
                 // Session guard: skip events for other sessions

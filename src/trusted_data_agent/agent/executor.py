@@ -643,6 +643,9 @@ class PlanExecutor:
         self.knowledge_retrieval_event = None  # Store the knowledge retrieval event for replay
         # --- PHASE 2 END ---
 
+        # Knowledge Graph enrichment event for Live Status replay
+        self.kg_enrichment_event = None
+
 
     def _check_cancellation(self):
         """
@@ -4701,7 +4704,7 @@ The following domain knowledge may be relevant to this conversation:
                         elif event_name == "knowledge_retrieval":
                             collections = data.get("collections", [])
                             document_count = data.get("document_count", 0)
-                            
+
                             # Store knowledge access info for turn summary
                             for collection_name in collections:
                                 self.knowledge_accessed.append({
@@ -4709,12 +4712,20 @@ The following domain knowledge may be relevant to this conversation:
                                     "document_count": document_count,
                                     "timestamp": datetime.now(timezone.utc).isoformat()
                                 })
-                            
+
                             # Store the full event for replay when plan is reloaded
                             self.knowledge_retrieval_event = data
                             app_logger.info(f"Tracked knowledge retrieval: {len(collections)} collection(s), {document_count} document(s)")
                             app_logger.debug(f"Stored knowledge_retrieval_event with {len(data.get('chunks', []))} chunks")
                         # --- PHASE 2 END ---
+
+                        # --- KG ENRICHMENT: Track knowledge graph context injection ---
+                        elif event_name == "kg_enrichment":
+                            self.kg_enrichment_event = data
+                            app_logger.info(
+                                f"Tracked KG enrichment: {data.get('total_entities', 0)} entities, "
+                                f"{data.get('total_relationships', 0)} relationships"
+                            )
                         
                         # Pass through to the original event handler
                         if self.event_handler:
@@ -5130,6 +5141,7 @@ The following domain knowledge may be relevant to this conversation:
                     # --- PHASE 2: Add knowledge repository tracking ---
                     "knowledge_accessed": self.knowledge_accessed,  # List of knowledge collections used
                     "knowledge_retrieval_event": self.knowledge_retrieval_event,  # Full event for replay on reload
+                    "kg_enrichment_event": self.kg_enrichment_event,  # KG context injection event for replay
                     # --- PHASE 2 END ---
                     # Status fields for consistency with partial turn data
                     "status": "success",

@@ -2609,7 +2609,7 @@ Ranking:"""
         # --- COMPONENT CONTEXT ENRICHMENT (knowledge graph guardrail) ---
         try:
             from trusted_data_agent.components.manager import get_component_context_enrichment
-            kg_enrichment = await get_component_context_enrichment(
+            kg_enrichment, kg_details = await get_component_context_enrichment(
                 query=self.executor.original_user_input,
                 profile_id=self.executor.active_profile_id,
                 user_uuid=self.executor.user_uuid,
@@ -2617,6 +2617,23 @@ Ranking:"""
             if kg_enrichment:
                 knowledge_context_str += "\n\n" + kg_enrichment
                 app_logger.info("Component context enrichment injected into planner knowledge context")
+
+                # Emit Live Status event for KG enrichment
+                kg_event_data = {
+                    "enrichments": kg_details,
+                    "total_entities": sum(d.get("entity_count", 0) for d in (kg_details or [])),
+                    "total_relationships": sum(d.get("relationship_count", 0) for d in (kg_details or [])),
+                    "session_id": self.executor.session_id,
+                }
+
+                yield self.executor._format_sse_with_depth({
+                    "step": "Knowledge Graph Enrichment",
+                    "type": "kg_enrichment",
+                    "details": kg_event_data
+                })
+
+                if self.event_handler:
+                    await self.event_handler(kg_event_data, "kg_enrichment")
         except Exception as e:
             app_logger.warning(f"Component context enrichment failed: {e}")
 

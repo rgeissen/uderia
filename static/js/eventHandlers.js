@@ -223,6 +223,13 @@ function _getConversationAgentStepTitle(eventType, payload) {
         return getRagFocusedTitle(eventType, payload);
     }
 
+    // Knowledge Graph enrichment event
+    if (eventType === 'kg_enrichment') {
+        const entities = payload?.total_entities || 0;
+        const rels = payload?.total_relationships || 0;
+        return `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`;
+    }
+
     // Component-internal LLM events (e.g., chart mapping resolution)
     if (eventType === 'component_llm_resolution') {
         return payload?.step || 'Component LLM Resolution';
@@ -2122,6 +2129,7 @@ export async function handleReloadPlanClick(element) {
                     turnId,
                     turnData.user_query,
                     turnData.knowledge_retrieval_event || null,
+                    turnData.kg_enrichment_event || null,
                     {
                         turn_input_tokens: turnData.turn_input_tokens || 0,
                         turn_output_tokens: turnData.turn_output_tokens || 0
@@ -2526,6 +2534,7 @@ export async function handleReloadPlanClick(element) {
                     turnId,
                     turnData.user_query || 'N/A',
                     knowledgeEventWithChunks, // Pass the knowledge event with chunks
+                    turnData.kg_enrichment_event || null,
                     {  // Pass turn tokens for display
                         turn_input_tokens: turnData.turn_input_tokens || 0,
                         turn_output_tokens: turnData.turn_output_tokens || 0
@@ -2634,6 +2643,7 @@ export async function handleReloadPlanClick(element) {
             turnId,
             turnData.user_query,
             turnData.knowledge_retrieval_event || null,
+            turnData.kg_enrichment_event || null,
             {
                 turn_input_tokens: turnData.turn_input_tokens || 0,
                 turn_output_tokens: turnData.turn_output_tokens || 0

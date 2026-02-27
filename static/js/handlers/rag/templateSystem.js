@@ -26,10 +26,12 @@ export function getDefaultTemplateId(type = 'planner') {
     // Filter templates by type
     const templates = allTemplates.filter(template => {
         const templateType = template.template_type || '';
-        if (type === 'knowledge') {
-            return templateType === 'knowledge_repository' || templateType.includes('knowledge');
+        if (type === 'knowledge_graph') {
+            return templateType === 'knowledge_graph';
+        } else if (type === 'knowledge') {
+            return templateType === 'knowledge_repository';
         } else {
-            return templateType !== 'knowledge_repository' && !templateType.includes('knowledge');
+            return templateType !== 'knowledge_repository' && templateType !== 'knowledge_graph';
         }
     });
     
@@ -90,11 +92,17 @@ export async function loadTemplateCards() {
     if (plannerContainer) {
         await loadTemplateCardsIntoContainer(plannerContainer, 'planner');
     }
-    
+
     // Load Knowledge repository templates
     const knowledgeContainer = document.getElementById('knowledge-constructors-container');
     if (knowledgeContainer) {
         await loadTemplateCardsIntoContainer(knowledgeContainer, 'knowledge');
+    }
+
+    // Load Knowledge Graph constructor templates
+    const kgContainer = document.getElementById('kg-constructors-container');
+    if (kgContainer) {
+        await loadTemplateCardsIntoContainer(kgContainer, 'knowledge_graph');
     }
 }
 
@@ -116,11 +124,13 @@ async function loadTemplateCardsIntoContainer(container, filterType) {
         // Filter templates by type
         const templates = allTemplates.filter(template => {
             const templateType = template.template_type || '';
-            if (filterType === 'knowledge') {
-                return templateType === 'knowledge_repository' || templateType.includes('knowledge');
+            if (filterType === 'knowledge_graph') {
+                return templateType === 'knowledge_graph';
+            } else if (filterType === 'knowledge') {
+                return templateType === 'knowledge_repository';
             } else {
-                // Planner templates: anything that's not knowledge
-                return templateType !== 'knowledge_repository' && !templateType.includes('knowledge');
+                // Planner templates: anything that's not knowledge or knowledge_graph
+                return templateType !== 'knowledge_repository' && templateType !== 'knowledge_graph';
             }
         });
         
@@ -156,13 +166,14 @@ async function loadTemplateCardsIntoContainer(container, filterType) {
 export function createTemplateCard(template, index, filterType = 'planner') {
     const isComingSoon = template.status === 'coming_soon';
     const isKnowledge = filterType === 'knowledge' || template.template_type === 'knowledge_repository';
-    
+    const isKnowledgeGraph = filterType === 'knowledge_graph' || template.template_type === 'knowledge_graph';
+
     const card = document.createElement('div');
     card.className = `glass-panel rounded-xl p-6 transition-colors ${isComingSoon ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#F15F22] cursor-pointer'}`;
     card.setAttribute('data-template-id', template.template_id);
-    
-    // Icon colors array
-    const iconColors = isKnowledge ? ['green', 'emerald', 'teal'] : ['blue', 'purple', 'orange', 'pink', 'indigo'];
+
+    // Icon colors array — purple/violet for KG, green for knowledge, blue/orange for planner
+    const iconColors = isKnowledgeGraph ? ['purple', 'violet', 'fuchsia'] : isKnowledge ? ['green', 'emerald', 'teal'] : ['blue', 'purple', 'orange', 'pink', 'indigo'];
     const colorIndex = index % iconColors.length;
     const color = iconColors[colorIndex];
     
@@ -310,9 +321,21 @@ export function createTemplateCard(template, index, filterType = 'planner') {
                     window.templateDefaults = defaultsData.defaults;
                 }
                 
-                // Open modal - different modal for knowledge vs planner templates
+                // Open modal - different modal for knowledge_graph vs knowledge vs planner templates
                 console.log('[Deploy] Opening modal...');
-                if (isKnowledge) {
+                if (isKnowledgeGraph) {
+                    // Open KG constructor modal
+                    console.log('[Deploy] Opening knowledge graph constructor modal');
+                    try {
+                        const { openKgConstructorModal } = await import(`./kgConstructorModal.js?v=${Date.now()}`);
+                        openKgConstructorModal(template, defaultsData.defaults || {});
+                    } catch (err) {
+                        console.error('[Deploy] Failed to load KG constructor modal:', err);
+                        if (window.showToast) {
+                            window.showToast('error', 'Knowledge Graph constructor modal not available');
+                        }
+                    }
+                } else if (isKnowledge) {
                     // Open knowledge repository modal with template defaults
                     console.log('[Deploy] Opening knowledge repository modal');
                     if (window.openKnowledgeRepositoryModalWithTemplate) {
@@ -447,6 +470,7 @@ export function getTemplateIcon(templateType) {
         'sql_query': '<path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />',
         'api_request': '<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />',
         'knowledge_repository': '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />',
+        'knowledge_graph': '<circle cx="12" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="19" cy="19" r="2" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v4m-5.2 5.8L11 13m2 0l4.2 3.8" />',
         'default': '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />'
     };
     

@@ -276,10 +276,13 @@ class RAGTemplateManager:
         
         # Determine which schema to use based on template_type
         # template_type="knowledge_repository" uses knowledge schema
+        # template_type="knowledge_graph" has no JSON schema yet (uses basic validation)
         # All other template_types (sql_query, api_request, etc.) use planner schema
         schema_type = None
         if template_type == "knowledge_repository":
             schema_type = "knowledge"
+        elif template_type == "knowledge_graph":
+            schema_type = None  # No JSON schema — use basic validation
         else:
             schema_type = "planner"
         
@@ -458,6 +461,17 @@ class RAGTemplateManager:
             missing_fields = [field for field in knowledge_required if field not in template_data]
             if missing_fields:
                 message = f"Knowledge template missing required fields: {', '.join(missing_fields)}"
+                logger.error(message)
+                raise TemplateValidationError(template_id, message, {"missing_fields": missing_fields})
+        elif template_type == "knowledge_graph":
+            # Knowledge graph templates use extraction_phases instead of strategy_template
+            kg_required = [
+                "input_variables",
+                "extraction_phases"
+            ]
+            missing_fields = [field for field in kg_required if field not in template_data]
+            if missing_fields:
+                message = f"Knowledge graph template missing required fields: {', '.join(missing_fields)}"
                 logger.error(message)
                 raise TemplateValidationError(template_id, message, {"missing_fields": missing_fields})
         else:

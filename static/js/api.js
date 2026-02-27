@@ -717,3 +717,64 @@ export async function importKnowledgeGraph(profileId, entities, relationships) {
     return await res.json();
 }
 
+export async function generateKnowledgeGraph(profileId, databaseContext, executionTrace, databaseName, includeSemantic = true) {
+    const res = await fetch('/api/v1/knowledge-graph/generate', {
+        method: 'POST',
+        headers: _getHeaders(true),
+        body: JSON.stringify({
+            profile_id: profileId,
+            database_context: databaseContext,
+            execution_trace: executionTrace || [],
+            database_name: databaseName,
+            include_semantic: includeSemantic
+        })
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to generate knowledge graph');
+    }
+    return await res.json();
+}
+
+/**
+ * Update profile assignments for a knowledge graph (replace all).
+ * @param {string} kgOwnerProfileId - Profile that owns the KG data
+ * @param {string[]} assignedProfileIds - Profiles that should have access
+ */
+export async function updateKgAssignments(kgOwnerProfileId, assignedProfileIds) {
+    const res = await fetch('/api/v1/knowledge-graph/assignments', {
+        method: 'POST',
+        headers: _getHeaders(true),
+        body: JSON.stringify({
+            kg_owner_profile_id: kgOwnerProfileId,
+            assigned_profile_ids: assignedProfileIds
+        })
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to update KG assignments');
+    }
+    return await res.json();
+}
+
+/**
+ * Activate a specific KG for a profile. Deactivates all others for that profile.
+ * @param {string} kgOwnerProfileId - KG to activate (null to deactivate all)
+ * @param {string} assignedProfileId - Profile to activate the KG for
+ */
+export async function activateKgForProfile(kgOwnerProfileId, assignedProfileId) {
+    const body = { assigned_profile_id: assignedProfileId };
+    if (kgOwnerProfileId) body.kg_owner_profile_id = kgOwnerProfileId;
+
+    const res = await fetch('/api/v1/knowledge-graph/assignments/activate', {
+        method: 'PATCH',
+        headers: _getHeaders(true),
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to activate KG');
+    }
+    return await res.json();
+}
+

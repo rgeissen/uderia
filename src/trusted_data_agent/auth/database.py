@@ -1034,6 +1034,44 @@ def _create_knowledge_graph_tables():
             """)
             logger.info("Created knowledge graph tables (inline fallback)")
 
+        # --- KG Profile Assignments (1:* mapping + active/inactive state) ---
+        # Step 1: Ensure the base table exists (without the is_active-dependent index)
+        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS kg_profile_assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kg_owner_profile_id TEXT NOT NULL,
+                assigned_profile_id TEXT NOT NULL,
+                user_uuid TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 0 CHECK(is_active IN (0, 1)),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(kg_owner_profile_id, assigned_profile_id, user_uuid)
+            );
+            CREATE INDEX IF NOT EXISTS idx_kg_assignments_assigned
+                ON kg_profile_assignments(assigned_profile_id, user_uuid);
+            CREATE INDEX IF NOT EXISTS idx_kg_assignments_owner
+                ON kg_profile_assignments(kg_owner_profile_id, user_uuid);
+        """)
+
+        # Step 2: Migration — add is_active column if missing (existing tables from v1.0)
+        try:
+            cursor.execute("SELECT is_active FROM kg_profile_assignments LIMIT 1")
+        except Exception:
+            try:
+                cursor.execute("ALTER TABLE kg_profile_assignments ADD COLUMN is_active BOOLEAN DEFAULT 0 CHECK(is_active IN (0, 1))")
+                conn.commit()
+                logger.info("Migrated kg_profile_assignments: added is_active column")
+            except Exception as migrate_err:
+                logger.debug(f"kg_profile_assignments migration (is_active) skipped: {migrate_err}")
+
+        # Step 3: Create the partial unique index (requires is_active column to exist)
+        try:
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_one_active_per_profile
+                    ON kg_profile_assignments(assigned_profile_id, user_uuid) WHERE is_active = 1
+            """)
+        except Exception:
+            pass  # Index may already exist or column still missing in edge case
+
         conn.commit()
         conn.close()
 

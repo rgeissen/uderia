@@ -549,7 +549,7 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
  * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = []) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, kgEnrichmentEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = []) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -600,6 +600,17 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         }, DOM.statusWindowContent, false);
     }
     // --- PHASE 2 END ---
+
+    // --- KG ENRICHMENT: Render knowledge graph enrichment event if present ---
+    if (kgEnrichmentEvent) {
+        const entities = kgEnrichmentEvent.total_entities || 0;
+        const rels = kgEnrichmentEvent.total_relationships || 0;
+        _renderConversationAgentStep({
+            step: `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`,
+            details: kgEnrichmentEvent,
+            type: 'kg_enrichment'
+        }, DOM.statusWindowContent, false);
+    }
 
     // 2. Iterate through the execution trace with collapsible phase containers
     // Phase container stack mirrors the live execution's phaseContainerStack
@@ -6045,6 +6056,13 @@ export async function loadRagCollections() {
         if (knowledgeTabBtn) {
             knowledgeTabBtn.textContent = `Knowledge Repositories (${knowledgeCollections.length})`;
         }
+
+        // Update Knowledge Graphs tab counter (load in background — don't block rendering)
+        import('./handlers/knowledgeGraphPanelHandler.js').then(mod => {
+            if (typeof mod.loadKnowledgeGraphsIntelligenceTab === 'function') {
+                mod.loadKnowledgeGraphsIntelligenceTab();
+            }
+        }).catch(() => { /* non-critical */ });
 
         // Render Planner repositories (grouped by agent pack)
         DOM.ragMaintenanceCollectionsContainer.innerHTML = '';

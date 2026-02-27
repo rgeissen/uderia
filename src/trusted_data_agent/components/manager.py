@@ -94,7 +94,7 @@ async def get_component_context_enrichment(
     query: str,
     profile_id: Optional[str],
     user_uuid: Optional[str],
-) -> str:
+) -> tuple:
     """
     Gather context enrichment text from all qualifying components.
 
@@ -108,7 +108,9 @@ async def get_component_context_enrichment(
         user_uuid: Current user UUID.
 
     Returns:
-        Combined enrichment text, or empty string if none.
+        Tuple of (combined_text, enrichment_details) where enrichment_details
+        is a list of metadata dicts from contributing components, or an empty
+        list if none contributed.
     """
     try:
         manager = get_component_manager()
@@ -121,11 +123,11 @@ async def get_component_context_enrichment(
             except Exception:
                 pass
 
-        text = await manager.get_context_enrichment(query, profile_id or "", user_uuid or "", profile_config)
-        return text
+        text, details = await manager.get_context_enrichment(query, profile_id or "", user_uuid or "", profile_config)
+        return text, details
     except Exception as e:
         logger.warning(f"Component context enrichment assembly failed: {e}")
-    return ""
+    return "", []
 
 
 def get_component_langchain_tools(
@@ -661,7 +663,7 @@ class ComponentManager:
         profile_id: str,
         user_uuid: str,
         profile_config: Dict[str, Any],
-    ) -> str:
+    ) -> tuple:
         """
         Collect context enrichment text from qualifying components.
 
@@ -670,10 +672,12 @@ class ComponentManager:
         ``get_context_enrichment()`` method.
 
         Returns:
-            Combined enrichment text, or empty string.
+            Tuple of (combined_text, enrichment_details) where enrichment_details
+            is a list of metadata dicts from contributing components.
         """
         active = self.get_active_components(profile_config)
         parts: List[str] = []
+        details: List[Dict[str, Any]] = []
 
         for comp in active:
             # Check manifest flag
@@ -686,9 +690,18 @@ class ComponentManager:
                 continue
 
             try:
-                text = await handler.get_context_enrichment(query, profile_id, user_uuid)
+                result = await handler.get_context_enrichment(query, profile_id, user_uuid)
+                # Handlers return (text, metadata) tuple or plain string (backward compat)
+                if isinstance(result, tuple):
+                    text, metadata = result
+                else:
+                    text, metadata = result, None
+
                 if text:
                     parts.append(text)
+                    if metadata:
+                        metadata["component_id"] = comp.component_id
+                        details.append(metadata)
                     logger.info(
                         f"Component '{comp.component_id}' contributed context enrichment "
                         f"({len(text)} chars)"
@@ -698,7 +711,7 @@ class ComponentManager:
                     f"Component '{comp.component_id}' context enrichment failed: {e}"
                 )
 
-        return "\n\n".join(parts) if parts else ""
+        return "\n\n".join(parts) if parts else "", details
 
     # ------------------------------------------------------------------
     # Public API: LangChain tool integration

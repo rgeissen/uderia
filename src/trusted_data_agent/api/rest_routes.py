@@ -12420,6 +12420,45 @@ async def kg_list_all(current_user):
         profiles = config_manager.get_profiles(user_uuid)
         profile_map = {p["id"]: p for p in profiles}
 
+        # Load assignment data (including is_active state)
+        import sqlite3 as _sqlite3
+        _conn = _sqlite3.connect(str(DB_PATH))
+        _cursor = _conn.cursor()
+        _cursor.execute(
+            "SELECT kg_owner_profile_id, assigned_profile_id, is_active FROM kg_profile_assignments WHERE user_uuid = ?",
+            (user_uuid,),
+        )
+        assignment_rows = _cursor.fetchall()
+
+        # Lazy migration: ensure every KG has a self-assignment row (owner→owner)
+        existing_self = {row[0] for row in assignment_rows if row[0] == row[1]}
+        kg_profile_ids = {kg["profile_id"] for kg in graphs}
+        missing_self = kg_profile_ids - existing_self
+
+        for pid in missing_self:
+            # Check if any KG is already active for this profile (as assigned_profile_id)
+            has_active = any(r[1] == pid and r[2] == 1 for r in assignment_rows)
+            is_active_val = 0 if has_active else 1  # Active by default if no other KG is active
+            try:
+                _cursor.execute(
+                    "INSERT OR IGNORE INTO kg_profile_assignments "
+                    "(kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) VALUES (?, ?, ?, ?)",
+                    (pid, pid, user_uuid, is_active_val),
+                )
+                assignment_rows.append((pid, pid, is_active_val))
+            except Exception:
+                pass  # Race condition or constraint — safe to ignore
+
+        if missing_self:
+            _conn.commit()
+
+        _conn.close()
+
+        # Build lookup: owner_profile_id → [(assigned_profile_id, is_active)]
+        assignments_by_owner: dict = {}
+        for owner_pid, assigned_pid, is_active_flag in assignment_rows:
+            assignments_by_owner.setdefault(owner_pid, []).append((assigned_pid, is_active_flag))
+
         for kg in graphs:
             profile = profile_map.get(kg["profile_id"])
             if profile:
@@ -12431,6 +12470,27 @@ async def kg_list_all(current_user):
                 kg["profile_name"] = f"Deleted Profile ({kg['profile_id'][:20]}...)"
                 kg["profile_tag"] = ""
                 kg["profile_type"] = None
+
+            # Build assigned profiles list (exclude self-assignment rows)
+            all_assignments = assignments_by_owner.get(kg["profile_id"], [])
+            kg["is_active_for_owner"] = False
+            kg["assigned_profiles"] = []
+
+            for apid, is_active_flag in all_assignments:
+                if apid == kg["profile_id"]:
+                    # Self-assignment — track owner's activation state
+                    kg["is_active_for_owner"] = bool(is_active_flag)
+                else:
+                    # Cross-profile assignment
+                    ap = profile_map.get(apid)
+                    if ap:
+                        kg["assigned_profiles"].append({
+                            "id": apid,
+                            "name": ap.get("name", ""),
+                            "tag": ap.get("tag", ""),
+                            "profile_type": ap.get("profile_type", ""),
+                            "is_active": bool(is_active_flag),
+                        })
 
         return jsonify({"status": "success", "knowledge_graphs": graphs})
     except Exception as e:
@@ -12494,4 +12554,685 @@ async def kg_export(current_user):
         )
     except Exception as e:
         app_logger.error(f"Knowledge graph export failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ─── Knowledge Graph Constructor ─────────────────────────────────────────────
+
+import re as _re
+
+def _parse_structural_entities(database_context: str, execution_trace: list, database_name: str) -> dict:
+    """
+    Phase 1: Deterministic structural parsing of database schema context.
+
+    Extracts databases, tables, columns, and foreign keys from schema text
+    using regex/heuristics. No LLM call required.
+
+    Returns: {"entities": [...], "relationships": [...]}
+    """
+    entities = []
+    relationships = []
+    seen_entities = set()  # (name, entity_type) to avoid duplicates
+
+    def _add_entity(name, entity_type, properties=None):
+        key = (name.lower(), entity_type)
+        if key not in seen_entities:
+            seen_entities.add(key)
+            ent = {"name": name, "entity_type": entity_type, "source": "constructor_structural"}
+            if properties:
+                ent["properties"] = properties
+            entities.append(ent)
+
+    def _add_relationship(src_name, src_type, tgt_name, tgt_type, rel_type, metadata=None):
+        rel = {
+            "source_name": src_name, "source_type": src_type,
+            "target_name": tgt_name, "target_type": tgt_type,
+            "relationship_type": rel_type,
+            "source": "constructor_structural",
+        }
+        if metadata:
+            rel["metadata"] = metadata
+        relationships.append(rel)
+
+    # Combine database_context + execution_trace text into one corpus
+    full_text = database_context or ""
+    if execution_trace and isinstance(execution_trace, list):
+        for trace_item in execution_trace:
+            if not isinstance(trace_item, dict):
+                continue
+            result = trace_item.get("result", {})
+            if not isinstance(result, dict):
+                continue
+            for item in result.get("results", []):
+                if not isinstance(item, dict):
+                    continue
+                for field in ("tool_output", "content", "Request Text", "response"):
+                    val = item.get(field, "")
+                    if val and isinstance(val, str) and len(val.strip()) > 20:
+                        full_text += "\n\n" + val
+
+    if not full_text.strip():
+        return {"entities": entities, "relationships": relationships}
+
+    # --- Database entity ---
+    if database_name:
+        _add_entity(database_name, "database")
+
+    # --- Parse CREATE TABLE statements ---
+    # Pattern: CREATE TABLE [schema.]table_name ( ... )
+    create_table_re = _re.compile(
+        r'CREATE\s+(?:MULTISET\s+|SET\s+)?TABLE\s+'
+        r'(?:[\w"]+\.)?["\']?([\w]+)["\']?\s*[\(,]',
+        _re.IGNORECASE
+    )
+    for match in create_table_re.finditer(full_text):
+        table_name = match.group(1)
+        _add_entity(table_name, "table")
+        if database_name:
+            _add_relationship(database_name, "database", table_name, "table", "contains")
+
+    # --- Parse table listings (common MCP output format) ---
+    # Pattern: "TableName" or "Table Name: description" in tabular outputs
+    # Also: lines like "  tablename  |  comment  " (pipe-separated)
+    table_listing_re = _re.compile(
+        r'^\s*(?:\d+[\.\)]\s+)?["\']?([\w]+)["\']?\s*[\|:]\s*(.+)$',
+        _re.MULTILINE
+    )
+    for match in table_listing_re.finditer(full_text):
+        candidate = match.group(1)
+        desc = match.group(2).strip()
+        # Heuristic: skip if it looks like a column def or SQL keyword
+        if candidate.upper() in ("SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE",
+                                  "CREATE", "DROP", "ALTER", "INDEX", "VIEW", "TABLE",
+                                  "NULL", "NOT", "PRIMARY", "FOREIGN", "KEY", "DEFAULT",
+                                  "INTEGER", "VARCHAR", "CHAR", "DATE", "DECIMAL", "FLOAT",
+                                  "TIMESTAMP", "BIGINT", "SMALLINT", "BYTEINT", "NUMBER"):
+            continue
+        _add_entity(candidate, "table", {"description": desc[:500]})
+        if database_name:
+            _add_relationship(database_name, "database", candidate, "table", "contains")
+
+    # --- Parse column definitions inside CREATE TABLE blocks ---
+    # Find all CREATE TABLE ... ( ... ) blocks
+    create_block_re = _re.compile(
+        r'CREATE\s+(?:MULTISET\s+|SET\s+)?TABLE\s+'
+        r'(?:[\w"]+\.)?["\']?([\w]+)["\']?\s*\((.*?)\)(?:\s*(?:PRIMARY|UNIQUE|NO\s+FALLBACK|;))',
+        _re.IGNORECASE | _re.DOTALL
+    )
+    for block_match in create_block_re.finditer(full_text):
+        table_name = block_match.group(1)
+        body = block_match.group(2)
+
+        # Parse individual column lines
+        col_re = _re.compile(
+            r'^\s*["\']?([\w]+)["\']?\s+([\w]+(?:\s*\([^)]*\))?)',
+            _re.MULTILINE
+        )
+        for col_match in col_re.finditer(body):
+            col_name = col_match.group(1)
+            col_type = col_match.group(2).strip()
+            # Skip constraint keywords
+            if col_name.upper() in ("PRIMARY", "FOREIGN", "UNIQUE", "INDEX", "CONSTRAINT",
+                                     "CHECK", "KEY", "REFERENCES"):
+                continue
+            _add_entity(col_name, "column", {"data_type": col_type, "table": table_name})
+            _add_relationship(table_name, "table", col_name, "column", "contains")
+
+    # --- Parse FOREIGN KEY constraints ---
+    # Pattern: FOREIGN KEY (col) REFERENCES [schema.]table(col)
+    fk_re = _re.compile(
+        r'FOREIGN\s+KEY\s*\(\s*["\']?([\w]+)["\']?\s*\)\s*REFERENCES\s+'
+        r'(?:[\w"]+\.)?["\']?([\w]+)["\']?\s*\(\s*["\']?([\w]+)["\']?\s*\)',
+        _re.IGNORECASE
+    )
+    for fk_match in fk_re.finditer(full_text):
+        fk_col = fk_match.group(1)
+        ref_table = fk_match.group(2)
+        ref_col = fk_match.group(3)
+
+        # Find which table this FK belongs to by searching backwards for CREATE TABLE
+        fk_pos = fk_match.start()
+        owning_table = None
+        for ct_match in create_table_re.finditer(full_text):
+            if ct_match.start() < fk_pos:
+                owning_table = ct_match.group(1)
+            else:
+                break
+
+        fk_name = f"{owning_table or '?'}.{fk_col}_fk_{ref_table}.{ref_col}"
+        _add_entity(fk_name, "foreign_key", {
+            "source_table": owning_table, "source_column": fk_col,
+            "target_table": ref_table, "target_column": ref_col,
+        })
+        _add_relationship(fk_name, "foreign_key", f"{ref_table}", "table", "foreign_key",
+                         metadata={"source_column": fk_col, "target_column": ref_col})
+
+    # --- Parse column description tables (common MCP output) ---
+    # Pattern: "column_name  data_type  nullable  comment"
+    col_desc_re = _re.compile(
+        r'^\s*["\']?([\w]+)["\']?\s+'               # column name
+        r'((?:INTEGER|VARCHAR|CHAR|DATE|DECIMAL|FLOAT|TIMESTAMP|BIGINT|SMALLINT|'
+        r'BYTEINT|NUMBER|CLOB|BLOB|BYTE|VARBYTE|TIME|INTERVAL|PERIOD|JSON|XML|'
+        r'BOOLEAN|DOUBLE|REAL|NUMERIC|INT|TEXT|SERIAL|UUID|ARRAY)'
+        r'(?:\s*\([^)]*\))?)\s',                    # data type
+        _re.IGNORECASE | _re.MULTILINE
+    )
+    # Track which table context we're in (look for table headers above)
+    current_table = None
+    for line in full_text.split('\n'):
+        # Detect table context headers like "Table: tablename" or "== tablename =="
+        table_header_match = _re.match(
+            r'^\s*(?:Table|Object)[:\s]+["\']?([\w]+)["\']?',
+            line, _re.IGNORECASE
+        )
+        if table_header_match:
+            current_table = table_header_match.group(1)
+            continue
+
+        col_match = col_desc_re.match(line)
+        if col_match and current_table:
+            col_name = col_match.group(1)
+            col_type = col_match.group(2).strip()
+            if col_name.upper() not in ("PRIMARY", "FOREIGN", "UNIQUE", "INDEX",
+                                         "CONSTRAINT", "CHECK", "KEY", "REFERENCES",
+                                         "TABLE", "CREATE", "ALTER", "DROP"):
+                _add_entity(col_name, "column", {"data_type": col_type, "table": current_table})
+                _add_relationship(current_table, "table", col_name, "column", "contains")
+
+    return {"entities": entities, "relationships": relationships}
+
+
+def _build_kg_semantic_prompt(prompt_config: dict, database_context: str, database_name: str) -> str:
+    """
+    Build the LLM prompt for Phase 2 semantic extraction from the manifest template.
+    """
+    requirements = prompt_config.get("requirements", [])
+    requirements_text = "\n".join([f"{i+1}. {r}" for i, r in enumerate(requirements)])
+
+    output_format = prompt_config.get("output_format", "")
+    guidelines = prompt_config.get("critical_guidelines", [])
+    guidelines_text = "\n".join([f"- {g}" for g in guidelines])
+
+    prompt = f"""{prompt_config.get('system_role', '')}
+
+{prompt_config.get('task_description', '')}
+
+Database Name: {database_name}
+
+Database Schema Context:
+{database_context}
+
+Requirements:
+{requirements_text}
+
+Output Format:
+{output_format}
+
+CRITICAL GUIDELINES:
+{guidelines_text}"""
+
+    return prompt
+
+
+@rest_api_bp.route("/v1/knowledge-graph/generate", methods=["POST"])
+@require_auth
+async def kg_generate(current_user):
+    """
+    Generate knowledge graph entities/relationships from database context.
+
+    Phase 1: Deterministic structural parsing (always runs) — extracts databases,
+             tables, columns, foreign keys, and containment relationships.
+    Phase 2: LLM semantic enrichment (optional) — infers business concepts,
+             metrics, and taxonomies from schema context.
+
+    Request body:
+    {
+        "profile_id": "profile-xxx",
+        "database_context": "... MCP schema output ...",
+        "execution_trace": [...],
+        "database_name": "my_db",
+        "include_semantic": true
+    }
+
+    Returns:
+    {
+        "status": "success",
+        "structural": {"entities_added": N, "relationships_added": N},
+        "semantic": {"entities_added": N, "relationships_added": N},
+        "total": {"entities_added": N, "relationships_added": N}
+    }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        data = await request.get_json() or {}
+        profile_id = data.get("profile_id", "").strip()
+        database_context = data.get("database_context", "").strip()
+        execution_trace = data.get("execution_trace", [])
+        database_name = data.get("database_name", "").strip()
+        include_semantic = data.get("include_semantic", True)
+
+        if not profile_id:
+            return jsonify({"status": "error", "message": "profile_id is required"}), 400
+        if not database_context:
+            return jsonify({"status": "error", "message": "database_context is required (run Generate Context first)"}), 400
+        if not database_name:
+            return jsonify({"status": "error", "message": "database_name is required"}), 400
+
+        store = _get_graph_store(user_uuid, profile_id)
+
+        # ── Phase 1: Structural parsing (deterministic, no LLM) ──
+        app_logger.info(f"[KG Constructor] Phase 1: Structural parsing for '{database_name}' "
+                        f"(context: {len(database_context)} chars)")
+
+        structural = _parse_structural_entities(database_context, execution_trace, database_name)
+        structural_entities = structural["entities"]
+        structural_relationships = structural["relationships"]
+
+        app_logger.info(f"[KG Constructor] Phase 1 parsed: {len(structural_entities)} entities, "
+                        f"{len(structural_relationships)} relationships")
+
+        # Import structural entities
+        structural_result = store.import_bulk(structural_entities, structural_relationships)
+
+        # ── Phase 2: Semantic enrichment (LLM, optional) ──
+        semantic_result = {"entities_added": 0, "relationships_added": 0}
+
+        if include_semantic:
+            app_logger.info("[KG Constructor] Phase 2: LLM semantic enrichment")
+
+            # Validate user has LLM configured
+            is_valid, error_response = _validate_user_profile(user_uuid)
+            if not is_valid:
+                app_logger.warning(f"[KG Constructor] Phase 2 skipped — profile not valid: {error_response}")
+                return jsonify({
+                    "status": "partial",
+                    "message": "Structural parsing succeeded but LLM not configured for semantic enrichment",
+                    "structural": structural_result,
+                    "semantic": semantic_result,
+                    "total": structural_result,
+                })
+
+            # Switch to user's default profile context for LLM access
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            default_profile_id = config_manager.get_default_profile_id(user_uuid)
+
+            from trusted_data_agent.core.configuration_service import switch_profile_context
+            profile_context = await switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
+
+            llm_instance = APP_STATE.get("llm")
+            if not llm_instance or (isinstance(llm_instance, dict) and llm_instance.get("placeholder")):
+                app_logger.warning("[KG Constructor] Phase 2 skipped — LLM not available")
+                return jsonify({
+                    "status": "partial",
+                    "message": "Structural parsing succeeded but LLM not available for semantic enrichment",
+                    "structural": structural_result,
+                    "semantic": semantic_result,
+                    "total": structural_result,
+                })
+
+            # Build semantic extraction prompt from manifest
+            try:
+                template_manager = APP_STATE.get("template_manager")
+                prompt_config = {}
+                if template_manager:
+                    plugin_info = template_manager.get_plugin_info("kg_database_context_v1")
+                    prompt_config = plugin_info.get("prompt_templates", {}).get("kg_extraction", {})
+
+                if not prompt_config:
+                    raise ValueError("No prompt template in manifest")
+
+                semantic_prompt = _build_kg_semantic_prompt(prompt_config, database_context, database_name)
+
+            except Exception as e:
+                app_logger.warning(f"[KG Constructor] Falling back to inline prompt: {e}")
+                semantic_prompt = f"""You are a database schema analyst. Analyze the following database schema and extract semantic entities and relationships.
+
+Database: {database_name}
+
+Schema Context:
+{database_context}
+
+Extract:
+1. Business concepts that tables represent (entity_type: "business_concept")
+2. Metrics derivable from numeric columns (entity_type: "metric") — include formula in properties
+3. Taxonomy hierarchies from categorical columns (entity_type: "taxonomy")
+
+For relationships, use ONLY these types: measures, derives_from, is_a, has_property, relates_to
+Reference existing table/column names exactly as they appear in the schema.
+
+Return ONLY a JSON object (no other text):
+{{
+  "entities": [
+    {{"name": "...", "entity_type": "business_concept|metric|taxonomy", "properties": {{"description": "..."}}}}
+  ],
+  "relationships": [
+    {{"source_name": "...", "source_type": "...", "target_name": "...", "target_type": "...", "relationship_type": "..."}}
+  ]
+}}"""
+
+            # Call LLM
+            from trusted_data_agent.llm import handler as llm_handler
+
+            response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
+                llm_instance=llm_instance,
+                prompt=semantic_prompt,
+                user_uuid=user_uuid,
+                session_id=None,
+                dependencies={"STATE": APP_STATE, "CONFIG": APP_CONFIG},
+                reason="Knowledge Graph Constructor — semantic enrichment",
+                disabled_history=True,
+                source="kg_constructor_semantic",
+            )
+
+            app_logger.info(f"[KG Constructor] Phase 2 LLM response: {input_tokens} in, {output_tokens} out")
+
+            # Parse LLM JSON response
+            try:
+                json_text = response_text.strip()
+                if json_text.startswith("```json"):
+                    json_text = json_text[7:]
+                elif json_text.startswith("```"):
+                    json_text = json_text[3:]
+                if json_text.endswith("```"):
+                    json_text = json_text[:-3]
+                json_text = json_text.strip()
+
+                llm_output = json.loads(json_text)
+                if not isinstance(llm_output, dict):
+                    raise ValueError("LLM response is not a JSON object")
+
+                semantic_entities = llm_output.get("entities", [])
+                semantic_relationships = llm_output.get("relationships", [])
+
+                # Validate and tag with source
+                from components.builtin.knowledge_graph.graph_store import ENTITY_TYPES, RELATIONSHIP_TYPES
+
+                valid_entities = []
+                for ent in semantic_entities:
+                    if not isinstance(ent, dict):
+                        continue
+                    if ent.get("entity_type") not in ENTITY_TYPES:
+                        app_logger.warning(f"[KG Constructor] Skipping entity with invalid type: {ent.get('entity_type')}")
+                        continue
+                    ent["source"] = "constructor_semantic"
+                    valid_entities.append(ent)
+
+                valid_relationships = []
+                for rel in semantic_relationships:
+                    if not isinstance(rel, dict):
+                        continue
+                    if rel.get("relationship_type") not in RELATIONSHIP_TYPES:
+                        app_logger.warning(f"[KG Constructor] Skipping relationship with invalid type: {rel.get('relationship_type')}")
+                        continue
+                    rel["source"] = "constructor_semantic"
+                    valid_relationships.append(rel)
+
+                app_logger.info(f"[KG Constructor] Phase 2 parsed: {len(valid_entities)} entities, "
+                                f"{len(valid_relationships)} relationships")
+
+                # Import semantic entities
+                semantic_result = store.import_bulk(valid_entities, valid_relationships)
+
+            except (json.JSONDecodeError, ValueError) as e:
+                app_logger.error(f"[KG Constructor] Phase 2 JSON parse failed: {e}")
+                app_logger.error(f"[KG Constructor] LLM response: {response_text[:500]}")
+                return jsonify({
+                    "status": "partial",
+                    "message": f"Structural parsing succeeded but semantic enrichment failed: {e}",
+                    "structural": structural_result,
+                    "semantic": semantic_result,
+                    "total": structural_result,
+                })
+
+        # ── Combined results ──
+        total_result = {
+            "entities_added": structural_result.get("entities_added", 0) + semantic_result.get("entities_added", 0),
+            "relationships_added": structural_result.get("relationships_added", 0) + semantic_result.get("relationships_added", 0),
+        }
+
+        app_logger.info(f"[KG Constructor] Complete: {total_result['entities_added']} entities, "
+                        f"{total_result['relationships_added']} relationships")
+
+        return jsonify({
+            "status": "success",
+            "structural": structural_result,
+            "semantic": semantic_result,
+            "total": total_result,
+        })
+
+    except Exception as e:
+        app_logger.error(f"[KG Constructor] Generation failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ── Knowledge Graph Profile Assignments ──────────────────────────────────────
+
+
+@rest_api_bp.route("/v1/knowledge-graph/assignments", methods=["GET"])
+@require_auth
+async def kg_assignments_list(current_user):
+    """List profile assignments for a knowledge graph.
+
+    Query params:
+        kg_owner_profile_id: Profile that owns the KG
+    """
+    user_uuid = _get_user_uuid_from_request()
+    kg_owner_profile_id = request.args.get("kg_owner_profile_id")
+
+    if not kg_owner_profile_id:
+        return jsonify({"status": "error", "message": "kg_owner_profile_id query parameter is required"}), 400
+
+    try:
+        db_path = str(DB_PATH)
+
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT assigned_profile_id, is_active, created_at FROM kg_profile_assignments "
+            "WHERE kg_owner_profile_id = ? AND user_uuid = ?",
+            (kg_owner_profile_id, user_uuid),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Enrich with profile metadata
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        profiles = config_manager.get_profiles(user_uuid)
+        profile_map = {p["id"]: p for p in profiles}
+
+        assignments = []
+        for row in rows:
+            profile = profile_map.get(row[0])
+            assignments.append({
+                "assigned_profile_id": row[0],
+                "profile_name": profile.get("name", "") if profile else "",
+                "profile_tag": profile.get("tag", "") if profile else "",
+                "profile_type": profile.get("profile_type", "") if profile else "",
+                "is_active": bool(row[1]),
+                "created_at": row[2],
+            })
+
+        return jsonify({"status": "success", "assignments": assignments})
+    except Exception as e:
+        app_logger.error(f"KG assignment list failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/assignments", methods=["POST"])
+@require_auth
+async def kg_assignments_update(current_user):
+    """Set the profile assignments for a knowledge graph (replaces existing).
+
+    Request body:
+    {
+        "kg_owner_profile_id": "profile-xxx",
+        "assigned_profile_ids": ["profile-aaa", "profile-bbb"]
+    }
+    """
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+
+    kg_owner_profile_id = data.get("kg_owner_profile_id")
+    assigned_profile_ids = data.get("assigned_profile_ids", [])
+
+    if not kg_owner_profile_id:
+        return jsonify({"status": "error", "message": "kg_owner_profile_id is required"}), 400
+
+    # Don't allow assigning a KG to its own owner via this endpoint (self-assignment is auto-managed)
+    assigned_profile_ids = [pid for pid in assigned_profile_ids if pid != kg_owner_profile_id]
+
+    try:
+        db_path = str(DB_PATH)
+
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Replace cross-profile assignments only — preserve self-assignment row
+        cursor.execute(
+            "DELETE FROM kg_profile_assignments "
+            "WHERE kg_owner_profile_id = ? AND assigned_profile_id != ? AND user_uuid = ?",
+            (kg_owner_profile_id, kg_owner_profile_id, user_uuid),
+        )
+
+        for pid in assigned_profile_ids:
+            cursor.execute(
+                "INSERT OR IGNORE INTO kg_profile_assignments "
+                "(kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) VALUES (?, ?, ?, 0)",
+                (kg_owner_profile_id, pid, user_uuid),
+            )
+
+        conn.commit()
+        conn.close()
+
+        app_logger.info(
+            f"[KG Assignments] Updated assignments for KG owner={kg_owner_profile_id}: "
+            f"{len(assigned_profile_ids)} profiles assigned"
+        )
+
+        return jsonify({
+            "status": "success",
+            "kg_owner_profile_id": kg_owner_profile_id,
+            "assigned_count": len(assigned_profile_ids),
+        })
+    except Exception as e:
+        app_logger.error(f"KG assignment update failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/assignments", methods=["DELETE"])
+@require_auth
+async def kg_assignments_delete(current_user):
+    """Remove a single profile assignment from a knowledge graph.
+
+    Request body:
+    {
+        "kg_owner_profile_id": "profile-xxx",
+        "assigned_profile_id": "profile-aaa"
+    }
+    """
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+
+    kg_owner_profile_id = data.get("kg_owner_profile_id")
+    assigned_profile_id = data.get("assigned_profile_id")
+
+    if not kg_owner_profile_id or not assigned_profile_id:
+        return jsonify({"status": "error", "message": "Both kg_owner_profile_id and assigned_profile_id are required"}), 400
+
+    # Prevent deleting self-assignment rows (they're auto-managed)
+    if kg_owner_profile_id == assigned_profile_id:
+        return jsonify({"status": "error", "message": "Cannot remove self-assignment (owner's own KG link)"}), 400
+
+    try:
+        db_path = str(DB_PATH)
+
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM kg_profile_assignments "
+            "WHERE kg_owner_profile_id = ? AND assigned_profile_id = ? AND user_uuid = ?",
+            (kg_owner_profile_id, assigned_profile_id, user_uuid),
+        )
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "success", "deleted": deleted})
+    except Exception as e:
+        app_logger.error(f"KG assignment delete failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/assignments/activate", methods=["PATCH"])
+@require_auth
+async def kg_assignments_activate(current_user):
+    """Activate a specific KG for a profile. Deactivates all other KGs for that profile.
+
+    Request body:
+    {
+        "kg_owner_profile_id": "profile-xxx",
+        "assigned_profile_id": "profile-aaa"
+    }
+
+    To deactivate all KGs for a profile (no active KG), omit kg_owner_profile_id:
+    {
+        "assigned_profile_id": "profile-aaa"
+    }
+    """
+    user_uuid = _get_user_uuid_from_request()
+    data = await request.get_json()
+
+    kg_owner_profile_id = data.get("kg_owner_profile_id")
+    assigned_profile_id = data.get("assigned_profile_id")
+
+    if not assigned_profile_id:
+        return jsonify({"status": "error", "message": "assigned_profile_id is required"}), 400
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+
+        # Step 1: Deactivate ALL KGs for this profile
+        cursor.execute(
+            "UPDATE kg_profile_assignments SET is_active = 0 "
+            "WHERE assigned_profile_id = ? AND user_uuid = ?",
+            (assigned_profile_id, user_uuid),
+        )
+
+        activated = False
+        if kg_owner_profile_id:
+            # Step 2: Activate the specified KG
+            cursor.execute(
+                "UPDATE kg_profile_assignments SET is_active = 1 "
+                "WHERE kg_owner_profile_id = ? AND assigned_profile_id = ? AND user_uuid = ?",
+                (kg_owner_profile_id, assigned_profile_id, user_uuid),
+            )
+            activated = cursor.rowcount > 0
+
+        conn.commit()
+        conn.close()
+
+        action = "activated" if activated else "deactivated all"
+        app_logger.info(
+            f"[KG Assignments] {action} KG for profile={assigned_profile_id} "
+            f"(owner={kg_owner_profile_id or 'none'})"
+        )
+
+        return jsonify({
+            "status": "success",
+            "kg_owner_profile_id": kg_owner_profile_id,
+            "assigned_profile_id": assigned_profile_id,
+            "activated": activated,
+        })
+    except Exception as e:
+        app_logger.error(f"KG assignment activation failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500

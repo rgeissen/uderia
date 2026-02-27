@@ -118,32 +118,60 @@ class KnowledgeGraphHandler(BaseComponentHandler):
         query: str,
         profile_id: str,
         user_uuid: str,
-    ) -> str:
+    ) -> tuple:
         """
         Context enrichment for the planner — the core guardrail mechanism.
 
         Extracts a relevant subgraph based on keyword matching of the query
         against entity names, descriptions, and business meanings. Returns
-        formatted text suitable for prompt injection.
+        a tuple of (formatted_text, metadata_dict) suitable for prompt
+        injection and Live Status event emission.
+
+        Uses ONLY the active KG for this profile. At most one KG can be active
+        per profile at a time (enforced by kg_profile_assignments.is_active).
+        Falls back to the profile's own KG if no assignment row exists yet
+        (backward compatibility for profiles created before the assignment system).
 
         Called by ComponentManager.get_context_enrichment() before strategic planning.
+
+        Returns:
+            (text, metadata) where metadata is a dict with entity/relationship
+            counts for the Live Status event, or ("", None) if no enrichment.
         """
-        store = self._get_store_direct(profile_id, user_uuid)
+        # Determine which KG to use: the active one from the assignment table
+        active_kg_owner = self._get_active_kg_owner(profile_id, user_uuid)
 
-        # 1. Extract candidate entity names from query via keyword matching
+        if active_kg_owner:
+            kg_pid = active_kg_owner
+        else:
+            # Fallback: no assignment rows yet — use the profile's own KG
+            kg_pid = profile_id
+
+        store = self._get_store_direct(kg_pid, user_uuid)
         entities = self._search_entities_for_query(store, query)
-        if not entities:
-            return ""
 
-        # 2. Expand to connected subgraph (depth=2, max_nodes=30)
+        if not entities:
+            return "", None
+
         entity_ids = [e["id"] for e in entities]
         subgraph = store.extract_subgraph(entity_ids, depth=2, max_nodes=30)
 
-        if not subgraph["entities"]:
-            return ""
+        if not subgraph.get("entities"):
+            return "", None
 
-        # 3. Format as structured text for prompt injection
-        return self._format_subgraph_for_prompt(subgraph)
+        # Collect entity type names for the event
+        entity_types = list({e["entity_type"] for e in subgraph["entities"]})
+        relationships = subgraph.get("relationships", [])
+
+        metadata = {
+            "kg_owner_profile_id": kg_pid,
+            "entity_count": len(subgraph["entities"]),
+            "relationship_count": len(relationships),
+            "entity_types": entity_types,
+        }
+
+        # Format as structured text for prompt injection
+        return self._format_subgraph_for_prompt(subgraph), metadata
 
     def _search_entities_for_query(self, store: Any, query: str) -> List[Dict]:
         """
@@ -546,3 +574,34 @@ class KnowledgeGraphHandler(BaseComponentHandler):
         from components.builtin.knowledge_graph.graph_store import GraphStore
 
         return GraphStore(profile_id, user_uuid)
+
+    def _get_active_kg_owner(self, profile_id: str, user_uuid: str) -> Optional[str]:
+        """
+        Look up which KG is currently ACTIVE for this profile via kg_profile_assignments.
+
+        Returns the owner profile_id of the active KG, or None if no KG is active.
+        The active KG could be the profile's own (self-assignment) or another profile's KG.
+        Only one KG can be active per profile at a time (enforced by partial unique index).
+        """
+        import sqlite3
+
+        try:
+            from trusted_data_agent.core.config import APP_CONFIG
+            db_path = APP_CONFIG.AUTH_DB_PATH.replace("sqlite:///", "")
+        except Exception:
+            db_path = "tda_auth.db"
+
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT kg_owner_profile_id FROM kg_profile_assignments "
+                "WHERE assigned_profile_id = ? AND user_uuid = ? AND is_active = 1",
+                (profile_id, user_uuid),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] if row else None
+        except Exception as e:
+            logger.warning(f"Failed to query active KG assignment: {e}")
+            return None

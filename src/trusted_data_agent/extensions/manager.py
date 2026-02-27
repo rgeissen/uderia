@@ -550,13 +550,16 @@ class ExtensionManager:
             return False
 
         # 4. Find the Extension subclass in the module
+        from trusted_data_agent.extensions.base import SimpleExtension, LLMExtension
+
         ext_class = None
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
             if (
                 isinstance(attr, type)
                 and issubclass(attr, Extension)
-                and attr is not Extension
+                and attr not in (Extension, SimpleExtension, LLMExtension)
+                and not inspect.isabstract(attr)
             ):
                 ext_class = attr
                 break
