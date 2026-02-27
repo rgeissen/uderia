@@ -589,34 +589,35 @@ export class TemplateEditModal {
      */
     async resetDefaults() {
         console.log('resetDefaults called');
-        if (!confirm('Reset all customizations to system defaults?')) {
-            console.log('User cancelled reset');
-            return;
-        }
+        window.showConfirmation(
+            'Reset Customizations',
+            '<p>Reset all customizations to system defaults?</p><p class="mt-2 text-sm text-gray-400">This cannot be undone.</p>',
+            async () => {
+                try {
+                    const response = await fetch(`/api/v1/rag/templates/${this.currentTemplate.template_id}/defaults`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('tda_auth_token')}` }
+                    });
 
-        try {
-            const response = await fetch(`/api/v1/rag/templates/${this.currentTemplate.template_id}/defaults`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('tda_auth_token')}` }
-            });
+                    if (!response.ok) {
+                        throw new Error('Failed to reset defaults');
+                    }
 
-            if (!response.ok) {
-                throw new Error('Failed to reset defaults');
+                    const showMsg = window.showToast || window.showNotification;
+                    if (showMsg) showMsg('success', 'Reset to system defaults');
+
+                    // Reload defaults and re-render
+                    await this.loadDefaults(this.currentTemplate.template_id);
+                    this.renderParameters();
+                    this.isDirty = false;
+
+                } catch (error) {
+                    console.error('Error resetting defaults:', error);
+                    const showMsg = window.showToast || window.showNotification;
+                    if (showMsg) showMsg('error', 'Failed to reset defaults');
+                }
             }
-
-            const showMsg = window.showToast || window.showNotification;
-            if (showMsg) showMsg('success', 'Reset to system defaults');
-            
-            // Reload defaults and re-render
-            await this.loadDefaults(this.currentTemplate.template_id);
-            this.renderParameters();
-            this.isDirty = false;
-            
-        } catch (error) {
-            console.error('Error resetting defaults:', error);
-            const showMsg = window.showToast || window.showNotification;
-            if (showMsg) showMsg('error', 'Failed to reset defaults');
-        }
+        );
     }
 
     /**
@@ -624,17 +625,24 @@ export class TemplateEditModal {
      */
     closeModal() {
         console.log('closeModal called, isDirty:', this.isDirty);
-        
-        if (this.isDirty && !confirm('You have unsaved changes. Close anyway?')) {
-            console.log('User cancelled close due to unsaved changes');
+
+        const doClose = () => {
+            if (this.modal) {
+                console.log('Removing modal from DOM');
+                this.modal.remove();
+                this.modal = null;
+            }
+        };
+
+        if (this.isDirty) {
+            window.showConfirmation(
+                'Unsaved Changes',
+                '<p>You have unsaved changes. Close anyway?</p>',
+                () => { doClose(); }
+            );
             return;
         }
-        
-        if (this.modal) {
-            console.log('Removing modal from DOM');
-            this.modal.remove();
-            this.modal = null;
-        }
+        doClose();
     }
 }
 

@@ -549,30 +549,33 @@ class CostManagementHandler {
     }
 
     async deleteCost(costId) {
-        if (!confirm('Are you sure you want to delete this cost entry?')) {
-            return;
-        }
+        window.showConfirmation(
+            'Delete Cost Entry',
+            '<p>Are you sure you want to <strong>delete</strong> this cost entry?</p>',
+            async () => {
+                try {
+                    const response = await fetch(`/api/v1/costs/models/${costId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${window.authClient.getToken()}`
+                        }
+                    });
 
-        try {
-            const response = await fetch(`/api/v1/costs/models/${costId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${window.authClient.getToken()}`
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        window.showNotification('Cost entry deleted', 'success');
+                        await this.loadCostData();
+                    } else {
+                        window.showNotification(`Delete failed: ${data.message || 'Unknown error'}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('[CostManagement] Delete cost error:', error);
+                    window.showNotification(`Delete failed: ${error.message}`, 'error');
                 }
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                window.showNotification('Cost entry deleted', 'success');
-                await this.loadCostData();
-            } else {
-                window.showNotification(`Delete failed: ${data.message || 'Unknown error'}`, 'error');
             }
-        } catch (error) {
-            console.error('[CostManagement] Delete cost error:', error);
-            window.showNotification(`Delete failed: ${error.message}`, 'error');
-        }
+        );
+        return;
     }
 
     async saveFallbackCost() {

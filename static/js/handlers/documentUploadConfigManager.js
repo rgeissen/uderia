@@ -311,43 +311,47 @@ const DocumentUploadConfigManager = {
             return;
         }
 
-        if (!confirm(`Reset configuration for ${this.currentProvider} to defaults?`)) {
-            return;
-        }
+        const provider = this.currentProvider;
+        window.showConfirmation(
+            'Reset Configuration',
+            `<p>Reset configuration for <strong>${provider}</strong> to defaults?</p>`,
+            async () => {
+                console.log('[DocumentUploadConfigManager] Resetting configuration for', provider);
 
-        console.log('[DocumentUploadConfigManager] Resetting configuration for', this.currentProvider);
+                try {
+                    const token = localStorage.getItem('tda_auth_token');
+                    const response = await fetch(`/api/v1/admin/config/document-upload/${provider}/reset`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
 
-        try {
-            const token = localStorage.getItem('tda_auth_token');
-            const response = await fetch(`/api/v1/admin/config/document-upload/${this.currentProvider}/reset`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        console.log('[DocumentUploadConfigManager] Configuration reset successfully');
+                        this.hideConfigModal();
+                        await this.loadConfigurations();
+
+                        // Show success message
+                        this.showToast('Configuration reset to defaults', 'success');
+                    } else {
+                        throw new Error(data.message || 'Failed to reset configuration');
+                    }
+
+                } catch (error) {
+                    console.error('[DocumentUploadConfigManager] Error resetting configuration:', error);
+                    this.showToast(`Failed to reset configuration: ${error.message}`, 'error');
                 }
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                console.log('[DocumentUploadConfigManager] Configuration reset successfully');
-                this.hideConfigModal();
-                await this.loadConfigurations();
-                
-                // Show success message
-                this.showToast('Configuration reset to defaults', 'success');
-            } else {
-                throw new Error(data.message || 'Failed to reset configuration');
-            }
-
-        } catch (error) {
-            console.error('[DocumentUploadConfigManager] Error resetting configuration:', error);
-            this.showToast(`Failed to reset configuration: ${error.message}`, 'error');
-        }
+        );
+        return;
     },
 
     /**

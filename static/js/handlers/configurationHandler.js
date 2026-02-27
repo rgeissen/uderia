@@ -4250,28 +4250,15 @@ function attachProfileEventListeners() {
                 }
 
                 // Use window.showConfirmation for HTML support
-                if (window.showConfirmation) {
-                    window.showConfirmation('Delete Profile', message, doDelete);
-                } else {
-                    // Fallback to simple confirmation
-                    if (confirm(`Delete profile "${profileName}"?`)) {
-                        await doDelete();
-                    }
-                }
+                window.showConfirmation('Delete Profile', message, doDelete);
             } catch (err) {
                 // Fallback to basic confirmation if check fails
                 console.error('Failed to check active sessions:', err);
-                if (window.showConfirmation) {
-                    window.showConfirmation(
-                        'Delete Profile',
-                        `Are you sure you want to delete profile <strong>${escapeHtml(profileName)}</strong>?`,
-                        doDelete
-                    );
-                } else {
-                    if (confirm(`Delete profile "${profileName}"?`)) {
-                        await doDelete();
-                    }
-                }
+                window.showConfirmation(
+                    'Delete Profile',
+                    `Are you sure you want to delete profile <strong>${escapeHtml(profileName)}</strong>?`,
+                    doDelete
+                );
             }
         });
     });

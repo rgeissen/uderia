@@ -970,11 +970,7 @@ async function handleUninstallAgentPack(installationId, packName) {
             const blockerMessage = `<strong>${_esc(packName)}</strong> cannot be uninstalled:<br><br><span style="font-size: 0.95em;">${blockerMessages}</span>`;
 
             // Use showConfirmation with null callback = alert mode (only OK button)
-            if (window.showConfirmation) {
-                window.showConfirmation('Cannot Uninstall', blockerMessage, null);
-            } else {
-                alert(blockerMessage.replace(/<[^>]*>/g, ''));
-            }
+            window.showConfirmation('Cannot Uninstall', blockerMessage, null);
             return;
         }
 
@@ -1010,27 +1006,15 @@ async function handleUninstallAgentPack(installationId, packName) {
             }
         }
 
-        if (window.showConfirmation) {
-            window.showConfirmation('Uninstall Agent Pack', message, doUninstall);
-        } else {
-            if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
-                await doUninstall();
-            }
-        }
+        window.showConfirmation('Uninstall Agent Pack', message, doUninstall);
     } catch (err) {
         // Fallback to basic confirmation if check fails
         console.error('Failed to check active sessions:', err);
-        if (window.showConfirmation) {
-            window.showConfirmation(
-                'Uninstall Agent Pack',
-                `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`,
-                doUninstall
-            );
-        } else {
-            if (confirm(`Uninstall "${packName}"? This will delete all profiles and collections.`)) {
-                await doUninstall();
-            }
-        }
+        window.showConfirmation(
+            'Uninstall Agent Pack',
+            `Are you sure you want to uninstall <strong>${_esc(packName)}</strong>? This will permanently delete all profiles and collections created by this pack.`,
+            doUninstall
+        );
     }
 }
 
@@ -1340,63 +1324,61 @@ function _updatePublishPackButtonText() {
  * Unpublish an agent pack from My Assets card.
  */
 async function handleUnpublishFromMyAssets(marketplacePackId) {
-    if (!confirm('Are you sure you want to unpublish this agent pack from the marketplace?')) return;
-    try {
-        const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}`, {
-            method: 'DELETE',
-            headers: _headers(false),
-        });
-        const data = await res.json();
-        if (!res.ok || data.status === 'error') {
-            throw new Error(data.message || `Unpublish failed (${res.status})`);
+    window.showConfirmation(
+        'Unpublish Agent Pack',
+        '<p>Are you sure you want to unpublish this agent pack from the marketplace?</p>',
+        async () => {
+            try {
+                const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}`, {
+                    method: 'DELETE',
+                    headers: _headers(false),
+                });
+                const data = await res.json();
+                if (!res.ok || data.status === 'error') {
+                    throw new Error(data.message || `Unpublish failed (${res.status})`);
+                }
+                _notify('success', 'Agent pack unpublished from marketplace');
+                await loadAgentPacks();
+                if (window.refreshMarketplace) window.refreshMarketplace();
+            } catch (err) {
+                _notify('error', `Failed: ${err.message}`);
+            }
         }
-        _notify('success', 'Agent pack unpublished from marketplace');
-        await loadAgentPacks();
-        if (window.refreshMarketplace) window.refreshMarketplace();
-    } catch (err) {
-        _notify('error', `Failed: ${err.message}`);
-    }
+    );
 }
 
 // ── Unsubscribe from Agent Pack ───────────────────────────────────────────────
 
 async function handleUnsubscribeAgentPack(marketplacePackId, packName) {
-    const confirmed = window.showConfirmation
-        ? await new Promise(resolve => {
-            window.showConfirmation(
-                'Unsubscribe from Agent Pack',
-                `Are you sure you want to unsubscribe from "${packName}"?\n\nAll subscribed profiles and collection subscriptions from this pack will be removed.`,
-                () => resolve(true),
-                () => resolve(false)
-            );
-        })
-        : confirm(`Unsubscribe from "${packName}"?`);
-
-    if (!confirmed) return;
-
-    try {
-        const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}/subscribe`, {
-            method: 'DELETE',
-            headers: _headers(false),
-        });
-        const data = await res.json();
-        if (!res.ok || data.status === 'error') {
-            throw new Error(data.message || `Unsubscribe failed (${res.status})`);
+    window.showConfirmation(
+        'Unsubscribe from Agent Pack',
+        `<p>Are you sure you want to unsubscribe from <strong>${_esc(packName)}</strong>?</p><p>All subscribed profiles and collection subscriptions from this pack will be removed.</p>`,
+        async () => {
+            try {
+                const res = await fetch(`/api/v1/marketplace/agent-packs/${marketplacePackId}/subscribe`, {
+                    method: 'DELETE',
+                    headers: _headers(false),
+                });
+                const data = await res.json();
+                if (!res.ok || data.status === 'error') {
+                    throw new Error(data.message || `Unsubscribe failed (${res.status})`);
+                }
+                _notify('success', `Unsubscribed from ${packName}`);
+                await loadAgentPacks();
+                if (window.refreshMarketplace) window.refreshMarketplace();
+                // Refresh profiles and collections so unsubscribed resources disappear
+                if (window.configState?.loadProfiles) {
+                    await window.configState.loadProfiles();
+                    if (window.renderProfiles) window.renderProfiles();
+                }
+                if (window.loadRagCollections) {
+                    window.loadRagCollections();
+                }
+            } catch (err) {
+                _notify('error', `Failed: ${err.message}`);
+            }
         }
-        _notify('success', `Unsubscribed from ${packName}`);
-        await loadAgentPacks();
-        if (window.refreshMarketplace) window.refreshMarketplace();
-        // Refresh profiles and collections so unsubscribed resources disappear
-        if (window.configState?.loadProfiles) {
-            await window.configState.loadProfiles();
-            if (window.renderProfiles) window.renderProfiles();
-        }
-        if (window.loadRagCollections) {
-            window.loadRagCollections();
-        }
-    } catch (err) {
-        _notify('error', `Failed: ${err.message}`);
-    }
+    );
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────

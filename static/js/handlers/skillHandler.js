@@ -315,16 +315,21 @@ function _createSkillCard(skill, activation) {
         deleteBtn.style.cssText = 'color: var(--text-muted);';
         deleteBtn.title = 'Delete skill';
         deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>';
-        deleteBtn.addEventListener('click', async () => {
-            if (!confirm(`Delete skill "${skill.name || skill.skill_id}"? This cannot be undone.`)) return;
-            try {
-                await _deleteSkillFromDisk(skill.skill_id);
-                await _refreshSkillData();
-                if (window.loadActivatedSkills) window.loadActivatedSkills();
-                _notify('success', `Skill deleted`);
-            } catch (err) {
-                _notify('error', `Delete failed: ${err.message}`);
-            }
+        deleteBtn.addEventListener('click', () => {
+            window.showConfirmation(
+                'Delete Skill',
+                `<p>Delete skill <strong>"${skill.name || skill.skill_id}"</strong>?</p><p>This cannot be undone.</p>`,
+                async () => {
+                    try {
+                        await _deleteSkillFromDisk(skill.skill_id);
+                        await _refreshSkillData();
+                        if (window.loadActivatedSkills) window.loadActivatedSkills();
+                        _notify('success', `Skill deleted`);
+                    } catch (err) {
+                        _notify('error', `Delete failed: ${err.message}`);
+                    }
+                }
+            );
         });
         actions.appendChild(deleteBtn);
     }
@@ -822,29 +827,34 @@ function _createMktSkillCard(skill) {
     // Wire unpublish button
     const unpubBtn = card.querySelector('.skill-mkt-unpublish');
     if (unpubBtn) {
-        unpubBtn.addEventListener('click', async () => {
-            if (!confirm(`Unpublish "${skill.name}" from the marketplace?`)) return;
-            unpubBtn.disabled = true;
-            unpubBtn.textContent = 'Removing...';
-            try {
-                const res = await fetch(`/api/v1/marketplace/skills/${skill.id}`, {
-                    method: 'DELETE',
-                    headers: _authHeaders(),
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    _notify('success', data.message || 'Skill unpublished');
-                    _loadMktSkills();
-                } else {
-                    _notify('error', data.error || 'Unpublish failed');
-                    unpubBtn.textContent = 'Unpublish';
-                    unpubBtn.disabled = false;
+        unpubBtn.addEventListener('click', () => {
+            window.showConfirmation(
+                'Unpublish Skill',
+                `<p>Unpublish <strong>"${skill.name}"</strong> from the marketplace?</p>`,
+                async () => {
+                    unpubBtn.disabled = true;
+                    unpubBtn.textContent = 'Removing...';
+                    try {
+                        const res = await fetch(`/api/v1/marketplace/skills/${skill.id}`, {
+                            method: 'DELETE',
+                            headers: _authHeaders(),
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                            _notify('success', data.message || 'Skill unpublished');
+                            _loadMktSkills();
+                        } else {
+                            _notify('error', data.error || 'Unpublish failed');
+                            unpubBtn.textContent = 'Unpublish';
+                            unpubBtn.disabled = false;
+                        }
+                    } catch (err) {
+                        _notify('error', 'Unpublish failed: ' + err.message);
+                        unpubBtn.textContent = 'Unpublish';
+                        unpubBtn.disabled = false;
+                    }
                 }
-            } catch (err) {
-                _notify('error', 'Unpublish failed: ' + err.message);
-                unpubBtn.textContent = 'Unpublish';
-                unpubBtn.disabled = false;
-            }
+            );
         });
     }
 
@@ -1678,16 +1688,26 @@ function openSkillEditor(existingSkill = null) {
     }
 
     function closeEditor() {
-        if (hasChanges && !confirm('You have unsaved changes. Close anyway?')) return;
-        // Animate out
-        overlay.style.opacity = '0';
-        editorPanel.style.transform = 'scale(0.97)';
-        editorPanel.style.opacity = '0';
-        editorPanel.style.transition = `all 150ms ${SPRING_EASE}`;
-        setTimeout(() => {
-            overlay.remove();
-            document.removeEventListener('keydown', escHandler);
-        }, 160);
+        const doClose = () => {
+            // Animate out
+            overlay.style.opacity = '0';
+            editorPanel.style.transform = 'scale(0.97)';
+            editorPanel.style.opacity = '0';
+            editorPanel.style.transition = `all 150ms ${SPRING_EASE}`;
+            setTimeout(() => {
+                overlay.remove();
+                document.removeEventListener('keydown', escHandler);
+            }, 160);
+        };
+        if (hasChanges) {
+            window.showConfirmation(
+                'Unsaved Changes',
+                '<p>You have unsaved changes. Close anyway?</p>',
+                doClose
+            );
+            return;
+        }
+        doClose();
     }
 
     const escHandler = (e) => { if (e.key === 'Escape') closeEditor(); };

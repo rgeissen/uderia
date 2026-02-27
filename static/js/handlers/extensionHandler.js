@@ -1420,12 +1420,20 @@ function showExtensionEditor(name, source, tier, isNew = false, readOnly = false
     }
 
     // ── Close handlers ──
-    const closeEditor = () => {
-        if (hasChanges) {
-            if (!confirm('You have unsaved changes. Close anyway?')) return;
-        }
+    const doCloseEditor = () => {
         overlay.remove();
         document.removeEventListener('keydown', escHandler);
+    };
+    const closeEditor = () => {
+        if (hasChanges) {
+            window.showConfirmation(
+                'Unsaved Changes',
+                '<p>You have unsaved changes. Close anyway?</p>',
+                () => { doCloseEditor(); }
+            );
+            return;
+        }
+        doCloseEditor();
     };
     editor.querySelectorAll('.close-btn').forEach(btn => btn.addEventListener('click', closeEditor));
     const escHandler = (e) => { if (e.key === 'Escape') closeEditor(); };

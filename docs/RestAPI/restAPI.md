@@ -28,7 +28,10 @@
    - [Consumption & Analytics](#317-consumption--analytics)
    - [Cost Management](#318-cost-management)
    - [Genie Multi-Profile Coordination](#319-genie-multi-profile-coordination)
-   - [Admin Endpoints](#320-admin-endpoints)
+   - [Extension Management](#320-extension-management)
+   - [Skill Management](#321-skill-management)
+   - [Admin Endpoints](#322-admin-endpoints)
+   - [Component Architecture](#323-component-architecture)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -7868,6 +7871,1020 @@ Check application logs for confirmation:
 ```
 INFO - PromptLoader cache cleared by admin request
 ```
+
+---
+
+### 3.23. Component Architecture
+
+The Uderia platform includes a pluggable **Component Architecture** that provides rich interactive capabilities beyond plain text responses. Components are auto-discovered from `components/builtin/`, user directories (`~/.tda/components/`), and agent packs. Each component has a backend handler, a frontend renderer (served dynamically), and a manifest defining its capabilities.
+
+**Three builtin components:**
+
+| Component | ID | Tool | Description |
+|-----------|----|------|-------------|
+| Data Visualization | `chart` | `TDA_Charting` | G2Plot-based charts (16 types) |
+| Canvas Workspace | `canvas` | `TDA_Canvas` | CodeMirror 6 code editor with execution |
+| Knowledge Graph | `knowledge_graph` | `TDA_KnowledgeGraph` | D3.js entity-relationship graph |
+
+**Authentication Required:** All component endpoints require JWT authentication (`Authorization: Bearer $JWT`).
+
+---
+
+#### 3.23.1. Component Management
+
+Manage installed components — list, inspect, reload, and serve renderers.
+
+##### List All Components
+
+```bash
+curl -X GET http://localhost:5050/api/v1/components \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "components": [
+    {
+      "component_id": "chart",
+      "name": "Data Visualization",
+      "source": "builtin",
+      "version": "1.0.0",
+      "description": "Interactive chart visualization using G2Plot"
+    },
+    {
+      "component_id": "canvas",
+      "name": "Canvas Workspace",
+      "source": "builtin",
+      "version": "1.0.0"
+    },
+    {
+      "component_id": "knowledge_graph",
+      "name": "Knowledge Graph",
+      "source": "builtin",
+      "version": "1.0.0"
+    }
+  ],
+  "_settings": {
+    "user_components_enabled": true,
+    "marketplace_enabled": false
+  }
+}
+```
+
+**Notes:**
+- Respects governance settings — disabled components are filtered out
+- `_settings` reflects the admin-level component toggle state
+
+---
+
+##### Get Component Details
+
+```bash
+curl -X GET http://localhost:5050/api/v1/components/knowledge_graph \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "component": {
+    "component_id": "knowledge_graph",
+    "name": "Knowledge Graph",
+    "description": "Entity-relationship knowledge graph with D3.js visualization",
+    "version": "1.0.0",
+    "source": "builtin",
+    "manifest": { },
+    "capabilities": ["action"],
+    "supported_types": ["database", "table", "column", "foreign_key", "business_concept", "taxonomy", "metric", "domain"]
+  }
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Component found |
+| `404` | Component not found |
+
+---
+
+##### Serve Component Renderer
+
+Returns the component's JavaScript renderer file for dynamic frontend loading.
+
+```bash
+curl -X GET http://localhost:5050/api/v1/components/chart/renderer \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:** Raw JavaScript (`Content-Type: application/javascript; charset=utf-8`)
+
+**Notes:**
+- No-cache headers applied (`Cache-Control: no-cache, no-store, must-revalidate`)
+- Used by the frontend `ComponentRendererRegistry` to load renderers at runtime
+- Returns `403` if component is disabled by governance settings
+- Returns `404` if renderer file not found
+
+---
+
+##### Get Frontend Manifest
+
+Returns the combined manifest for all components, used by the frontend to register renderers at startup.
+
+```bash
+curl -X GET http://localhost:5050/api/v1/components/manifest \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "manifest": {
+    "chart": {
+      "name": "Data Visualization",
+      "renderer_path": "/api/v1/components/chart/renderer",
+      "version": "1.0.0",
+      "capabilities": ["action"]
+    },
+    "canvas": {
+      "name": "Canvas Workspace",
+      "renderer_path": "/api/v1/components/canvas/renderer",
+      "version": "1.0.0",
+      "capabilities": ["action"]
+    },
+    "knowledge_graph": {
+      "name": "Knowledge Graph",
+      "renderer_path": "/api/v1/components/knowledge_graph/renderer",
+      "version": "1.0.0",
+      "capabilities": ["action"]
+    }
+  }
+}
+```
+
+---
+
+##### Hot-Reload Components
+
+Re-discover and reinitialize all components from disk without restarting the application.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/components/reload \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "loaded": 3
+}
+```
+
+**Notes:**
+- Scans `components/builtin/`, `~/.tda/components/`, and agent pack component directories
+- Useful after installing new user components or updating manifests
+
+---
+
+#### 3.23.2. Data Visualization (Chart Component)
+
+The Chart component (`TDA_Charting`) renders interactive charts via G2Plot v2.4.31. It has no dedicated REST endpoints — charts are produced when the LLM invokes the `TDA_Charting` tool during query execution. The component renderer is served via the generic `/v1/components/chart/renderer` endpoint (section 3.23.1).
+
+**Supported Chart Types (16):**
+
+| Type | Description |
+|------|-------------|
+| `bar` | Horizontal bar chart |
+| `column` | Vertical column chart |
+| `line` | Line chart |
+| `area` | Area chart |
+| `pie` | Pie / donut chart |
+| `scatter` | Scatter plot |
+| `histogram` | Histogram |
+| `heatmap` | Heat map |
+| `boxplot` | Box-and-whisker plot |
+| `wordcloud` | Word cloud |
+| `waterfall` | Waterfall chart |
+| `radar` | Radar / spider chart |
+| `rose` | Rose chart |
+| `funnel` | Funnel chart |
+| `gauge` | Gauge chart |
+| `dualaxes` | Dual-axis chart |
+| `treemap` | Treemap chart |
+
+**Render Targets:**
+- `inline` — compact chart embedded in chat message
+- `sub_window` — split panel (resizable, 800x600 default)
+
+**Profile Integration:**
+Charts are enabled per-profile via `componentConfig`:
+```json
+{
+  "componentConfig": {
+    "chart": {
+      "enabled": true,
+      "intensity": "medium"
+    }
+  }
+}
+```
+
+Intensity levels: `none` (disabled), `medium` (balanced), `heavy` (aggressive charting instructions to LLM).
+
+---
+
+#### 3.23.3. Canvas Workspace
+
+The Canvas component provides an interactive code editor (CodeMirror 6) with inline AI editing and code execution via MCP bridge or native SQL connectors.
+
+##### Inline AI Code Editing
+
+Lightweight LLM endpoint for modifying selected code based on a natural language instruction. Targets sub-2-second latency (no planner/executor overhead).
+
+```bash
+curl -X POST http://localhost:5050/api/v1/canvas/inline-ai \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "selected_code": "SELECT * FROM users",
+    "instruction": "Add a WHERE clause for active users only",
+    "full_content": "SELECT * FROM users;\nSELECT * FROM orders;",
+    "language": "sql"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "modified_code": "SELECT * FROM users WHERE is_active = 1",
+  "input_tokens": 245,
+  "output_tokens": 32
+}
+```
+
+**Notes:**
+- Direct LLM call — no planner/executor pipeline
+- Automatically strips markdown fences if the LLM wraps output
+- Preserves original indentation
+
+---
+
+##### Execute Code
+
+Execute canvas code via MCP bridge (SQL) or native connector.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/canvas/execute \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "SELECT COUNT(*) AS total FROM customers",
+    "language": "sql",
+    "session_id": "session-abc-123"
+  }'
+```
+
+**With native connector:**
+```bash
+curl -X POST http://localhost:5050/api/v1/canvas/execute \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "SELECT COUNT(*) AS total FROM customers",
+    "language": "sql",
+    "connection_id": "my-teradata-conn"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "result": "total\n-----\n1523",
+  "row_count": 1,
+  "execution_time_ms": 245
+}
+```
+
+**Notes:**
+- **Dual execution path**: If `connector_id` or `connection_id` is provided, uses native connector; otherwise falls back to MCP bridge
+- Returns specific error if MCP is not connected or credentials are missing
+
+---
+
+##### List Saved Connections
+
+```bash
+curl -X GET http://localhost:5050/api/v1/canvas/connections \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "connections": [
+    {
+      "connection_id": "my-teradata-conn",
+      "name": "Production TD",
+      "driver": "ODBC",
+      "credentials": {
+        "host": "td-prod.example.com",
+        "port": 1025,
+        "username": "dba_user",
+        "password": "••••••••"
+      },
+      "has_password": true
+    }
+  ]
+}
+```
+
+**Notes:**
+- Passwords are always masked with `••••••••` in responses
+
+---
+
+##### Get Connection Details
+
+```bash
+curl -X GET http://localhost:5050/api/v1/canvas/connections/my-teradata-conn \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "connection_id": "my-teradata-conn",
+  "credentials": {
+    "host": "td-prod.example.com",
+    "port": 1025,
+    "username": "dba_user",
+    "password": "••••••••"
+  },
+  "has_password": true
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Connection found |
+| `404` | Connection not found |
+
+---
+
+##### Save Connection
+
+Create or update a named SQL connection. Credentials are encrypted before storage.
+
+```bash
+curl -X PUT http://localhost:5050/api/v1/canvas/connections \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "connection_id": "my-teradata-conn",
+    "credentials": {
+      "name": "Production TD",
+      "driver": "ODBC",
+      "host": "td-prod.example.com",
+      "port": 1025,
+      "username": "dba_user",
+      "password": "s3cret"
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Connection saved",
+  "connection_id": "my-teradata-conn"
+}
+```
+
+**Notes:**
+- If `connection_id` is omitted, one is auto-generated from the connection name + timestamp
+- Credentials are encrypted via Fernet before database storage
+
+---
+
+##### Delete Connection
+
+```bash
+curl -X DELETE http://localhost:5050/api/v1/canvas/connections/my-teradata-conn \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Connection deleted"
+}
+```
+
+---
+
+##### Test Connection
+
+Test SQL connection with provided credentials without storing them.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/canvas/connections/test \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "credentials": {
+      "driver": "ODBC",
+      "host": "td-prod.example.com",
+      "port": 1025,
+      "username": "dba_user",
+      "password": "s3cret"
+    }
+  }'
+```
+
+**Response (success):**
+```json
+{
+  "status": "success",
+  "valid": true,
+  "message": "Connection successful"
+}
+```
+
+**Response (failure):**
+```json
+{
+  "status": "error",
+  "valid": false,
+  "message": "Connection refused: host unreachable"
+}
+```
+
+---
+
+##### Get Starter Templates
+
+Returns canvas starter templates for the template picker UI.
+
+```bash
+curl -X GET http://localhost:5050/api/v1/canvas/templates
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "templates": [
+    {
+      "id": "sql-basic",
+      "name": "Basic SQL Query",
+      "description": "Simple SELECT query template",
+      "language": "sql",
+      "code": "SELECT * FROM my_table\nWHERE condition = 'value'\nLIMIT 100;"
+    }
+  ]
+}
+```
+
+**Notes:**
+- Templates are loaded from `components/builtin/canvas/templates.json`
+- Returns empty `templates` array if the file is not found (graceful degradation)
+- This endpoint does not require authentication
+
+---
+
+#### 3.23.4. Knowledge Graph
+
+The Knowledge Graph component manages entity-relationship graphs scoped per profile and per user. It stores data in SQLite with NetworkX for graph algorithms, and renders interactive D3.js force-directed visualizations.
+
+**Profile Scoping:** All endpoints accept an optional `profile_id` query/body parameter. If omitted, defaults to `__default__`. Each profile maintains its own isolated graph.
+
+**Entity Types:** `database`, `table`, `column`, `foreign_key`, `business_concept`, `taxonomy`, `metric`, `domain`
+
+**Relationship Types:** `contains`, `foreign_key`, `is_a`, `has_property`, `measures`, `derives_from`, `depends_on`, `relates_to`
+
+---
+
+##### Add Entity
+
+```bash
+curl -X POST http://localhost:5050/api/v1/knowledge-graph/entities \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "customers",
+    "entity_type": "table",
+    "properties": {
+      "description": "Main customer table",
+      "data_type": "table",
+      "business_meaning": "Stores customer demographics"
+    },
+    "source": "manual",
+    "profile_id": "profile-abc"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "entity_id": 42
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Entity created (or upserted if name+type already exists) |
+| `400` | Missing `name` or `entity_type` |
+
+---
+
+##### List / Search Entities
+
+```bash
+# List all entities (up to 100)
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/entities?profile_id=profile-abc" \
+  -H "Authorization: Bearer $JWT"
+
+# Search by name
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/entities?search=customer&limit=20" \
+  -H "Authorization: Bearer $JWT"
+
+# Filter by type
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/entities?type=table" \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Query Parameters:**
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `search` | — | Substring search on entity names |
+| `type` | — | Filter by entity type |
+| `limit` | `100` | Maximum results |
+| `profile_id` | `__default__` | Profile scope |
+
+**Response:**
+```json
+{
+  "status": "success",
+  "entities": [
+    {
+      "id": 42,
+      "name": "customers",
+      "entity_type": "table",
+      "properties": {
+        "description": "Main customer table",
+        "data_type": "table"
+      },
+      "source": "manual",
+      "created_at": "2026-02-27T10:30:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+##### Update Entity
+
+```bash
+curl -X PUT http://localhost:5050/api/v1/knowledge-graph/entities/42 \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "properties": {
+      "description": "Updated customer table description",
+      "row_count": "1.2M"
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "updated": true
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Entity updated |
+| `404` | Entity not found |
+
+---
+
+##### Delete Entity
+
+Deletes the entity and **cascade-deletes** all relationships where this entity is a source or target.
+
+```bash
+curl -X DELETE http://localhost:5050/api/v1/knowledge-graph/entities/42 \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "deleted": true
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Entity and connected relationships deleted |
+| `404` | Entity not found |
+
+---
+
+##### Add Relationship
+
+```bash
+curl -X POST http://localhost:5050/api/v1/knowledge-graph/relationships \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_entity_id": 42,
+    "target_entity_id": 55,
+    "relationship_type": "contains",
+    "cardinality": "1:N",
+    "metadata": {
+      "description": "customers table contains customer_id column"
+    },
+    "profile_id": "profile-abc"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "relationship_id": 17
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Relationship created |
+| `400` | Missing `source_entity_id`, `target_entity_id`, or `relationship_type` |
+
+---
+
+##### List Relationships
+
+```bash
+# All relationships
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/relationships?profile_id=profile-abc" \
+  -H "Authorization: Bearer $JWT"
+
+# Relationships connected to a specific entity
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/relationships?entity_id=42" \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Query Parameters:**
+| Parameter | Description |
+|-----------|-------------|
+| `entity_id` | Filter to relationships involving this entity (source or target) |
+| `profile_id` | Profile scope (default: `__default__`) |
+
+**Response:**
+```json
+{
+  "status": "success",
+  "relationships": [
+    {
+      "id": 17,
+      "source_entity_id": 42,
+      "target_entity_id": 55,
+      "relationship_type": "contains",
+      "cardinality": "1:N",
+      "metadata": {},
+      "created_at": "2026-02-27T10:35:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+##### Delete Relationship
+
+```bash
+curl -X DELETE http://localhost:5050/api/v1/knowledge-graph/relationships/17 \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "deleted": true
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Relationship deleted |
+| `404` | Relationship not found |
+
+---
+
+##### Extract Subgraph
+
+Extracts a subgraph centered on an entity using breadth-first traversal.
+
+```bash
+# Subgraph around a specific entity (depth 2, max 50 nodes)
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/subgraph?entity_name=customers&depth=2&max_nodes=50" \
+  -H "Authorization: Bearer $JWT"
+
+# Full graph (no entity_name)
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/subgraph?max_nodes=100" \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Query Parameters:**
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `entity_name` | — | Center entity for subgraph extraction |
+| `depth` | `2` | Maximum BFS traversal depth |
+| `max_nodes` | `50` | Maximum nodes to return |
+| `profile_id` | `__default__` | Profile scope |
+
+**Response:**
+```json
+{
+  "status": "success",
+  "nodes": [
+    {
+      "id": 42,
+      "name": "customers",
+      "entity_type": "table",
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": 17,
+      "source_entity_id": 42,
+      "target_entity_id": 55,
+      "relationship_type": "contains"
+    }
+  ],
+  "depth": 2,
+  "node_count": 8
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Subgraph extracted |
+| `404` | `entity_name` provided but not found |
+
+---
+
+##### Get Graph Statistics
+
+```bash
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/stats?profile_id=profile-abc" \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "entity_count": 35,
+  "relationship_count": 22,
+  "entity_types": {
+    "table": 12,
+    "column": 18,
+    "foreign_key": 5
+  },
+  "relationship_types": {
+    "contains": 18,
+    "foreign_key": 4
+  },
+  "graph_density": 0.037,
+  "largest_component_size": 30
+}
+```
+
+---
+
+##### Test Context Enrichment
+
+Test whether the knowledge graph has relevant context for a given query. This is the same enrichment mechanism used automatically during query execution to inject graph context into the planner prompt.
+
+```bash
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/context?query=Show%20all%20customers&profile_id=profile-abc" \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "query": "Show all customers",
+  "enrichment": {
+    "context_text": "--- KNOWLEDGE GRAPH CONTEXT ---\nTABLE ENTITIES:\n  - customers (Main customer table)\n..."
+  },
+  "has_context": true
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Enrichment computed |
+| `400` | Missing `query` parameter |
+
+---
+
+##### MCP Schema Discovery
+
+Trigger automated entity/relationship discovery from MCP tool schemas. Analyzes tool parameters and descriptions to extract database objects.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/knowledge-graph/discover \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tools": ["base_readQuery", "base_columnDescription"],
+    "profile_id": "profile-abc"
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "discovered_entities": 12,
+  "discovered_relationships": 8
+}
+```
+
+**Notes:**
+- V2 feature — uses `MCPSchemaDiscovery` to analyze tool schemas
+- Discovered entities are tagged with `source: "mcp_discovery"`
+
+---
+
+##### Bulk Import
+
+Import entities and relationships in a single operation.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/knowledge-graph/import \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "profile_id": "profile-abc",
+    "entities": [
+      {
+        "name": "customers",
+        "entity_type": "table",
+        "properties": {"description": "Customer master data"},
+        "source": "manual"
+      },
+      {
+        "name": "orders",
+        "entity_type": "table",
+        "properties": {"description": "Order transactions"},
+        "source": "manual"
+      }
+    ],
+    "relationships": [
+      {
+        "source_entity_id": 0,
+        "target_entity_id": 1,
+        "relationship_type": "foreign_key",
+        "cardinality": "1:N"
+      }
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "entities_imported": 2,
+  "relationships_imported": 1
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Import completed |
+| `400` | Neither `entities` nor `relationships` provided |
+
+---
+
+##### Clear Graph
+
+Delete all entities and relationships for a profile. This is destructive and cannot be undone.
+
+```bash
+curl -X DELETE "http://localhost:5050/api/v1/knowledge-graph/clear?profile_id=profile-abc" \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Knowledge graph cleared"
+}
+```
+
+---
+
+##### List All User Graphs
+
+List all knowledge graphs for the current user across all profiles, with profile metadata.
+
+```bash
+curl -X GET http://localhost:5050/api/v1/knowledge-graph/list \
+  -H "Authorization: Bearer $JWT"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "knowledge_graphs": [
+    {
+      "profile_id": "profile-abc",
+      "profile_name": "CRM Optimizer",
+      "profile_tag": "OPTIM",
+      "profile_type": "tool_enabled",
+      "entity_count": 35,
+      "relationship_count": 22,
+      "created_at": "2026-02-10T08:00:00Z",
+      "last_modified": "2026-02-27T10:35:00Z"
+    }
+  ]
+}
+```
+
+**Notes:**
+- Orphaned graphs (profile was deleted) show as `"profile_name": "Deleted Profile (abc...)"` with empty tag/type
+
+---
+
+##### Export Graph
+
+Download a knowledge graph as a JSON file.
+
+```bash
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/export?profile_id=profile-abc" \
+  -H "Authorization: Bearer $JWT" \
+  -o knowledge-graph.json
+```
+
+**Response:** File download (`Content-Disposition: attachment`)
+
+```json
+{
+  "export_version": "1.0",
+  "profile_id": "profile-abc",
+  "profile_name": "CRM Optimizer",
+  "profile_tag": "OPTIM",
+  "exported_at": "2026-02-27T10:40:00Z",
+  "stats": {
+    "entity_count": 35,
+    "relationship_count": 22
+  },
+  "entities": [ ],
+  "relationships": [ ]
+}
+```
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Graph exported as JSON file |
+| `400` | Missing `profile_id` parameter |
 
 ---
 

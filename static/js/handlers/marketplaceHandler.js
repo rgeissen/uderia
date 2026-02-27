@@ -526,23 +526,28 @@ function createExtensionMarketplaceCard(ext) {
     const unpublishBtn = card.querySelector('.ext-mkt-unpublish');
     if (unpublishBtn) {
         unpublishBtn.addEventListener('click', async () => {
-            if (!confirm('Unpublish this extension from the marketplace? Existing installations will remain.')) return;
-            try {
-                const token = await window.authClient.getToken();
-                const resp = await fetch(`/api/v1/marketplace/extensions/${ext.id}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
-                if (resp.ok) {
-                    showNotification('success', 'Extension unpublished');
-                    loadMarketplaceExtensions(); // refresh
-                } else {
-                    const data = await resp.json();
-                    showNotification('error', data.error || 'Unpublish failed');
+            window.showConfirmation(
+                'Unpublish Extension',
+                '<p>Unpublish this extension from the marketplace?</p><p class="mt-2 text-sm text-gray-400">Existing installations will remain.</p>',
+                async () => {
+                    try {
+                        const token = await window.authClient.getToken();
+                        const resp = await fetch(`/api/v1/marketplace/extensions/${ext.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                        });
+                        if (resp.ok) {
+                            showNotification('success', 'Extension unpublished');
+                            loadMarketplaceExtensions(); // refresh
+                        } else {
+                            const data = await resp.json();
+                            showNotification('error', data.error || 'Unpublish failed');
+                        }
+                    } catch (err) {
+                        showNotification('error', 'Unpublish failed: ' + err.message);
+                    }
                 }
-            } catch (err) {
-                showNotification('error', 'Unpublish failed: ' + err.message);
-            }
+            );
         });
     }
 
@@ -1063,14 +1068,14 @@ async function handleAgentPackInstall(packOrId, button) {
  * Handle agent pack unpublish from marketplace
  */
 async function handleAgentPackUnpublish(packId, packName, button) {
-    const confirmed = window.showConfirmation ? await new Promise(resolve => {
+    const confirmed = await new Promise(resolve => {
         window.showConfirmation(
             'Unpublish Agent Pack',
-            `Are you sure you want to remove "${packName}" from the marketplace?`,
+            `<p>Are you sure you want to remove <strong>${packName}</strong> from the marketplace?</p>`,
             () => resolve(true),
             () => resolve(false)
         );
-    }) : confirm(`Remove "${packName}" from the marketplace?`);
+    });
 
     if (!confirmed) return;
 
@@ -1120,16 +1125,14 @@ async function handleAgentPackUnpublish(packId, packName, button) {
  * Unsubscribe from a marketplace agent pack (remove sharing grant).
  */
 async function handleAgentPackUnsubscribe(pack, button) {
-    const confirmed = window.showConfirmation
-        ? await new Promise(resolve => {
-            window.showConfirmation(
-                'Unsubscribe from Agent Pack',
-                `Are you sure you want to unsubscribe from "${pack.name}"?\n\nYou will lose read-only access to this pack.`,
-                () => resolve(true),
-                () => resolve(false)
-            );
-        })
-        : confirm(`Unsubscribe from "${pack.name}"?`);
+    const confirmed = await new Promise(resolve => {
+        window.showConfirmation(
+            'Unsubscribe from Agent Pack',
+            `<p>Are you sure you want to unsubscribe from <strong>${pack.name}</strong>?</p><p class="mt-2 text-sm text-gray-400">You will lose read-only access to this pack.</p>`,
+            () => resolve(true),
+            () => resolve(false)
+        );
+    });
 
     if (!confirmed) return;
 
@@ -1642,24 +1645,29 @@ function createSkillMarketplaceCard(skill) {
     // Wire unpublish button
     const unpublishBtn = card.querySelector('.skill-mkt-unpublish');
     if (unpublishBtn) {
-        unpublishBtn.addEventListener('click', async () => {
-            if (!confirm('Unpublish this skill from the marketplace? Existing installations will remain.')) return;
-            try {
-                const token = await window.authClient.getToken();
-                const resp = await fetch(`/api/v1/marketplace/skills/${skill.id}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
-                if (resp.ok) {
-                    showNotification('success', 'Skill unpublished');
-                    loadMarketplaceSkills();
-                } else {
-                    const data = await resp.json();
-                    showNotification('error', data.error || 'Unpublish failed');
+        unpublishBtn.addEventListener('click', () => {
+            window.showConfirmation(
+                'Unpublish Skill',
+                '<p>Unpublish this skill from the marketplace?</p><p class="mt-2 text-sm text-gray-400">Existing installations will remain.</p>',
+                async () => {
+                    try {
+                        const token = await window.authClient.getToken();
+                        const resp = await fetch(`/api/v1/marketplace/skills/${skill.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                        });
+                        if (resp.ok) {
+                            showNotification('success', 'Skill unpublished');
+                            loadMarketplaceSkills();
+                        } else {
+                            const data = await resp.json();
+                            showNotification('error', data.error || 'Unpublish failed');
+                        }
+                    } catch (err) {
+                        showNotification('error', 'Unpublish failed: ' + err.message);
+                    }
                 }
-            } catch (err) {
-                showNotification('error', 'Unpublish failed: ' + err.message);
-            }
+            );
         });
     }
 
@@ -2398,83 +2406,43 @@ export async function unsubscribeFromCollection(subscriptionId, collectionName) 
         return;
     }
     
-    // Use custom confirmation if available
-    if (window.showConfirmation) {
-        window.showConfirmation(
-            'Unsubscribe from Collection',
-            `Are you sure you want to unsubscribe from "${collectionName}"?\n\nYou will lose access to this collection's cases.`,
-            async () => {
-                try {
-                    const token = window.authClient?.getToken();
-                    if (!token) {
-                        showNotification('error', 'Authentication required. Please log in.');
-                        return;
-                    }
-
-                    const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.message || error.error || 'Unsubscribe failed');
-                    }
-                    
-                    showNotification('success', `Successfully unsubscribed from "${collectionName}"`);
-
-                    // Reload both marketplace and RAG collections
-                    loadMarketplaceCollections();
-                    if (window.loadRagCollections) {
-                        await window.loadRagCollections();
-                    }
-
-                } catch (error) {
-                    console.error('Unsubscribe failed:', error);
-                    showNotification('error', 'Failed to unsubscribe: ' + error.message);
+    window.showConfirmation(
+        'Unsubscribe from Collection',
+        `<p>Are you sure you want to unsubscribe from <strong>${collectionName}</strong>?</p><p class="mt-2 text-sm text-gray-400">You will lose access to this collection's cases.</p>`,
+        async () => {
+            try {
+                const token = window.authClient?.getToken();
+                if (!token) {
+                    showNotification('error', 'Authentication required. Please log in.');
+                    return;
                 }
-            }
-        );
-    } else {
-        // Fallback without confirmation
-        if (!confirm(`Are you sure you want to unsubscribe from "${collectionName}"?`)) {
-            return;
-        }
-        
-        try {
-            const token = window.authClient?.getToken();
-            if (!token) {
-                showNotification('error', 'Authentication required. Please log in.');
-                return;
-            }
 
-            const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
+                const response = await fetch(`/api/v1/marketplace/subscriptions/${subscriptionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || error.error || 'Unsubscribe failed');
                 }
-            });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || error.error || 'Unsubscribe failed');
-            }
+                showNotification('success', `Successfully unsubscribed from "${collectionName}"`);
 
-            showNotification('success', `Successfully unsubscribed from "${collectionName}"`);
-            
-            // Reload both marketplace and RAG collections
-            loadMarketplaceCollections();
-            if (window.loadRagCollections) {
-                await window.loadRagCollections();
+                // Reload both marketplace and RAG collections
+                loadMarketplaceCollections();
+                if (window.loadRagCollections) {
+                    await window.loadRagCollections();
+                }
+
+            } catch (error) {
+                console.error('Unsubscribe failed:', error);
+                showNotification('error', 'Failed to unsubscribe: ' + error.message);
             }
-            
-        } catch (error) {
-            console.error('Unsubscribe failed:', error);
-            showNotification('error', 'Failed to unsubscribe: ' + error.message);
         }
-    }
+    );
 }
 
 /**
@@ -2938,15 +2906,15 @@ async function handlePublish() {
  */
 async function handleUnpublish(collectionId, collectionName, button) {
     // Confirm unpublish
-    const confirmed = window.showConfirmation ? await new Promise(resolve => {
+    const confirmed = await new Promise(resolve => {
         window.showConfirmation(
             'Unpublish Collection',
-            `Are you sure you want to remove "${collectionName}" from the marketplace?\n\nExisting subscribers will retain read-only access, but new users won't be able to subscribe.`,
+            `<p>Are you sure you want to remove <strong>${collectionName}</strong> from the marketplace?</p><p class="mt-2 text-sm text-gray-400">Existing subscribers will retain read-only access, but new users won't be able to subscribe.</p>`,
             () => resolve(true),
             () => resolve(false)
         );
-    }) : confirm(`Remove "${collectionName}" from the marketplace?\n\nExisting subscribers will keep access.`);
-    
+    });
+
     if (!confirmed) return;
     
     const originalText = button?.textContent || 'Unpublish';

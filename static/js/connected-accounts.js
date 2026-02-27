@@ -155,35 +155,37 @@ class ConnectedAccountsComponent {
      */
     async handleDisconnect(event) {
         const provider = event.target.dataset.provider;
-        
-        if (!confirm(`Are you sure you want to disconnect your ${provider} account?`)) {
-            return;
-        }
-
-        event.target.disabled = true;
         const originalText = event.target.textContent;
-        event.target.textContent = 'Disconnecting...';
 
-        try {
-            const result = await this.oauth.disconnectOAuthAccount(provider);
-            
-            if (result.success) {
-                this.showMessage(`${provider} account disconnected successfully`, 'success');
-                // Reload component after a short delay
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
-            } else {
-                this.showMessage(result.message || 'Failed to disconnect account', 'error');
-                event.target.disabled = false;
-                event.target.textContent = originalText;
+        window.showConfirmation(
+            'Disconnect Account',
+            `<p>Are you sure you want to <strong>disconnect</strong> your <strong>${provider}</strong> account?</p>`,
+            async () => {
+                event.target.disabled = true;
+                event.target.textContent = 'Disconnecting...';
+
+                try {
+                    const result = await this.oauth.disconnectOAuthAccount(provider);
+
+                    if (result.success) {
+                        this.showMessage(`${provider} account disconnected successfully`, 'success');
+                        // Reload component after a short delay
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        this.showMessage(result.message || 'Failed to disconnect account', 'error');
+                        event.target.disabled = false;
+                        event.target.textContent = originalText;
+                    }
+                } catch (error) {
+                    console.error('Error disconnecting account:', error);
+                    this.showMessage('An error occurred while disconnecting', 'error');
+                    event.target.disabled = false;
+                    event.target.textContent = originalText;
+                }
             }
-        } catch (error) {
-            console.error('Error disconnecting account:', error);
-            this.showMessage('An error occurred while disconnecting', 'error');
-            event.target.disabled = false;
-            event.target.textContent = originalText;
-        }
+        );
     }
 
     /**
@@ -198,12 +200,12 @@ class ConnectedAccountsComponent {
      * Show message to user
      */
     showMessage(message, type = 'info') {
-        // Try to use existing alert system if available
-        if (window.showAlert) {
-            window.showAlert(message, type);
+        if (window.showNotification) {
+            window.showNotification(type, message);
+        } else if (window.showAppBanner) {
+            window.showAppBanner(message, type, 4000);
         } else {
-            // Fallback: simple alert
-            alert(message);
+            console.warn('[ConnectedAccounts]', type, message);
         }
     }
 

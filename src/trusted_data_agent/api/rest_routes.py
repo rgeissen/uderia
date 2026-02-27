@@ -12317,7 +12317,7 @@ async def kg_stats():
 
 @rest_api_bp.route("/v1/knowledge-graph/import", methods=["POST"])
 @require_auth
-async def kg_import():
+async def kg_import(current_user):
     """Bulk import entities and relationships."""
     user_uuid = _get_user_uuid_from_request()
     data = await request.get_json()
@@ -12330,7 +12330,7 @@ async def kg_import():
         return jsonify({"status": "error", "message": "No entities or relationships provided"}), 400
 
     try:
-        result = await store.import_bulk(entities, relationships)
+        result = store.import_bulk(entities, relationships)
         return jsonify({"status": "success", **result})
     except Exception as e:
         app_logger.error(f"Knowledge graph import failed: {e}", exc_info=True)
@@ -12401,4 +12401,97 @@ async def kg_context():
         })
     except Exception as e:
         app_logger.error(f"Knowledge graph context test failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/list", methods=["GET"])
+@require_auth
+async def kg_list_all(current_user):
+    """List all knowledge graphs for the current user across all profiles."""
+    user_uuid = _get_user_uuid_from_request()
+
+    try:
+        from components.builtin.knowledge_graph.graph_store import GraphStore
+        graphs = GraphStore.list_all_graphs(user_uuid)
+
+        # Enrich with profile metadata (name, tag, type)
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        profiles = config_manager.get_profiles(user_uuid)
+        profile_map = {p["id"]: p for p in profiles}
+
+        for kg in graphs:
+            profile = profile_map.get(kg["profile_id"])
+            if profile:
+                kg["profile_name"] = profile.get("name", "")
+                kg["profile_tag"] = profile.get("tag", "")
+                kg["profile_type"] = profile.get("profile_type", "tool_enabled")
+            else:
+                # Orphaned KG — profile was deleted
+                kg["profile_name"] = f"Deleted Profile ({kg['profile_id'][:20]}...)"
+                kg["profile_tag"] = ""
+                kg["profile_type"] = None
+
+        return jsonify({"status": "success", "knowledge_graphs": graphs})
+    except Exception as e:
+        app_logger.error(f"Knowledge graph list failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/export", methods=["GET"])
+@require_auth
+async def kg_export(current_user):
+    """Export a knowledge graph as a downloadable JSON file."""
+    user_uuid = _get_user_uuid_from_request()
+    profile_id = request.args.get("profile_id")
+
+    if not profile_id:
+        return jsonify({"status": "error", "message": "profile_id query parameter is required"}), 400
+
+    try:
+        store = _get_graph_store(user_uuid, profile_id)
+        entities = store.list_entities(limit=10000)
+        relationships = store.list_relationships()
+        stats = store.get_stats()
+
+        # Resolve profile name for the export
+        profile_name = profile_id
+        profile_tag = ""
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            profiles = config_manager.get_profiles(user_uuid)
+            profile = next((p for p in profiles if p.get("id") == profile_id), None)
+            if profile:
+                profile_name = profile.get("name", profile_id)
+                profile_tag = profile.get("tag", "")
+        except Exception:
+            pass  # Use profile_id as fallback name
+
+        export_data = {
+            "export_version": "1.0",
+            "profile_id": profile_id,
+            "profile_name": profile_name,
+            "profile_tag": profile_tag,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "stats": stats,
+            "entities": entities,
+            "relationships": relationships,
+        }
+
+        export_json = json.dumps(export_data, indent=2, default=str)
+
+        # Build filename
+        tag_part = f"-{profile_tag}" if profile_tag else ""
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        filename = f"knowledge-graph{tag_part}-{timestamp}.json"
+
+        from quart import Response
+        return Response(
+            export_json,
+            mimetype="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        app_logger.error(f"Knowledge graph export failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500

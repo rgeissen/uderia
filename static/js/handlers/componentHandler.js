@@ -815,19 +815,24 @@ async function _renderConnectionList(container) {
         });
     });
     container.querySelectorAll('.conn-del-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
             const connId = btn.dataset.connectionId;
             const connName = btn.dataset.connectionName;
-            if (!confirm(`Delete connection "${connName}"?`)) return;
-            try {
-                await fetch(`/api/v1/canvas/connections/${connId}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                _renderConnectionList(container);
-            } catch (err) {
-                console.error('[ComponentHandler] Delete connection error:', err);
-            }
+            window.showConfirmation(
+                'Delete Connection',
+                `<p>Delete connection <strong>"${connName}"</strong>?</p>`,
+                async () => {
+                    try {
+                        await fetch(`/api/v1/canvas/connections/${connId}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        _renderConnectionList(container);
+                    } catch (err) {
+                        console.error('[ComponentHandler] Delete connection error:', err);
+                    }
+                }
+            );
         });
     });
     container.querySelector('.conn-new-btn')?.addEventListener('click', () => {
@@ -979,17 +984,23 @@ function _renderConnectionForm(container, connectionId, existingCreds) {
     });
 
     // Delete (edit mode only)
-    container.querySelector('.conn-delete-btn')?.addEventListener('click', async () => {
-        if (!confirm(`Delete connection "${existingCreds?.name || connectionId}"?`)) return;
-        try {
-            await fetch(`/api/v1/canvas/connections/${connectionId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            _renderConnectionList(container);
-        } catch (err) {
-            showStatus(false, err.message);
-        }
+    container.querySelector('.conn-delete-btn')?.addEventListener('click', () => {
+        const displayName = existingCreds?.name || connectionId;
+        window.showConfirmation(
+            'Delete Connection',
+            `<p>Delete connection <strong>"${displayName}"</strong>?</p>`,
+            async () => {
+                try {
+                    await fetch(`/api/v1/canvas/connections/${connectionId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    _renderConnectionList(container);
+                } catch (err) {
+                    showStatus(false, err.message);
+                }
+            }
+        );
     });
 }
 

@@ -721,3 +721,89 @@ class GraphStore:
             "source": row["source"],
             "created_at": row["created_at"],
         }
+
+    # -------------------------------------------------------------------
+    # Cross-profile enumeration (static — no instance needed)
+    # -------------------------------------------------------------------
+
+    @staticmethod
+    def list_all_graphs(user_uuid: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List all knowledge graphs for a user across all profiles.
+
+        Returns one entry per profile_id that has at least one entity,
+        with summary statistics (entity/relationship counts, type breakdowns).
+        Ordered by most recently updated first.
+        """
+        if not db_path:
+            try:
+                from trusted_data_agent.core.config import APP_CONFIG
+                db_path = APP_CONFIG.AUTH_DB_PATH.replace("sqlite:///", "")
+            except Exception:
+                db_path = "tda_auth.db"
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            # Profiles with KG data — aggregated stats
+            rows = conn.execute(
+                """
+                SELECT profile_id,
+                       COUNT(*) AS entity_count,
+                       MIN(created_at) AS first_created,
+                       MAX(updated_at) AS last_updated
+                FROM kg_entities
+                WHERE user_uuid = ?
+                GROUP BY profile_id
+                ORDER BY MAX(updated_at) DESC
+                """,
+                (user_uuid,),
+            ).fetchall()
+
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                pid = row["profile_id"]
+
+                # Relationship count
+                rel_count = conn.execute(
+                    "SELECT COUNT(*) FROM kg_relationships WHERE profile_id = ? AND user_uuid = ?",
+                    (pid, user_uuid),
+                ).fetchone()[0]
+
+                # Entity type breakdown
+                type_rows = conn.execute(
+                    """
+                    SELECT entity_type, COUNT(*) AS cnt
+                    FROM kg_entities
+                    WHERE profile_id = ? AND user_uuid = ?
+                    GROUP BY entity_type
+                    """,
+                    (pid, user_uuid),
+                ).fetchall()
+                entity_types = {r["entity_type"]: r["cnt"] for r in type_rows}
+
+                # Relationship type breakdown
+                rel_type_rows = conn.execute(
+                    """
+                    SELECT relationship_type, COUNT(*) AS cnt
+                    FROM kg_relationships
+                    WHERE profile_id = ? AND user_uuid = ?
+                    GROUP BY relationship_type
+                    """,
+                    (pid, user_uuid),
+                ).fetchall()
+                relationship_types = {r["relationship_type"]: r["cnt"] for r in rel_type_rows}
+
+                results.append({
+                    "profile_id": pid,
+                    "total_entities": row["entity_count"],
+                    "total_relationships": rel_count,
+                    "entity_types": entity_types,
+                    "relationship_types": relationship_types,
+                    "first_created": row["first_created"],
+                    "last_updated": row["last_updated"],
+                })
+
+            return results
+        finally:
+            conn.close()

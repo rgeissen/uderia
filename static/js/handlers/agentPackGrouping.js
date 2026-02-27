@@ -508,40 +508,45 @@ async function handleExportAll(containerCard, resourceType) {
     const token = localStorage.getItem('tda_auth_token');
     if (!token) return;
 
-    window.showAppBanner?.(`Exporting ${repoIds.length} repositories...`, 'info');
+    window.showConfirmation(
+        'Export All Collections',
+        `<p>This will download <strong>${repoIds.length}</strong> collection files.</p><p class="mt-2 text-sm text-gray-400">Your browser may ask for permission to download multiple files.</p>`,
+        async () => {
+            let exported = 0;
+            for (const id of repoIds) {
+                window.showAppBanner?.(`Exporting collection ${exported + 1} of ${repoIds.length}...`, 'info');
+                try {
+                    const response = await fetch(`/api/v1/rag/collections/${id}/export`, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!response.ok) continue;
 
-    let exported = 0;
-    for (const id of repoIds) {
-        try {
-            const response = await fetch(`/api/v1/rag/collections/${id}/export`, {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) continue;
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `collection_${id}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                    exported++;
 
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `collection_${id}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-            exported++;
-
-            if (exported < repoIds.length) {
-                await new Promise(r => setTimeout(r, 500));
+                    if (exported < repoIds.length) {
+                        await new Promise(r => setTimeout(r, 1500));
+                    }
+                } catch (err) {
+                    console.error(`[PackGrouping] Export failed for ${id}:`, err);
+                }
             }
-        } catch (err) {
-            console.error(`[PackGrouping] Export failed for ${id}:`, err);
-        }
-    }
 
-    window.showAppBanner?.(
-        exported > 0 ? `Exported ${exported} repositories` : 'Export failed',
-        exported > 0 ? 'success' : 'error',
-        3000
+            window.showAppBanner?.(
+                exported > 0 ? `Exported ${exported} repositories` : 'Export failed',
+                exported > 0 ? 'success' : 'error',
+                3000
+            );
+        }
     );
 }
 

@@ -655,3 +655,65 @@ export async function getRagCollections() {
     return await res.json();
 }
 
+// ============================================================================
+// KNOWLEDGE GRAPH MANAGEMENT API
+// ============================================================================
+
+export async function loadKnowledgeGraphList() {
+    const res = await fetch('/api/v1/knowledge-graph/list', { headers: _getHeaders(false) });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to fetch knowledge graphs');
+    }
+    return await res.json();
+}
+
+export async function exportKnowledgeGraph(profileId) {
+    const res = await fetch(`/api/v1/knowledge-graph/export?profile_id=${encodeURIComponent(profileId)}`, {
+        headers: _getHeaders(false)
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to export knowledge graph');
+    }
+    // Trigger file download from the response blob
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+    const filename = filenameMatch ? filenameMatch[1] : 'knowledge-graph.json';
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+export async function deleteKnowledgeGraph(profileId) {
+    const res = await fetch(`/api/v1/knowledge-graph/clear?profile_id=${encodeURIComponent(profileId)}`, {
+        method: 'DELETE',
+        headers: _getHeaders(false)
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to delete knowledge graph');
+    }
+    return await res.json();
+}
+
+export async function importKnowledgeGraph(profileId, entities, relationships) {
+    const res = await fetch('/api/v1/knowledge-graph/import', {
+        method: 'POST',
+        headers: _getHeaders(true),
+        body: JSON.stringify({ profile_id: profileId, entities, relationships })
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to import knowledge graph');
+    }
+    return await res.json();
+}
+

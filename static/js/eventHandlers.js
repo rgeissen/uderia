@@ -25,6 +25,7 @@ import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, 
 import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
+import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -2995,6 +2996,11 @@ function handleResourceTabClick(e) {
         document.querySelectorAll('.resource-panel').forEach(panel => {
             panel.style.display = panel.id === `${type}-panel` ? 'flex' : 'none';
         });
+
+        // Lazy-load Knowledge Graphs panel on first click (or refresh on subsequent)
+        if (type === 'knowledge-graphs') {
+            loadKnowledgeGraphsPanel();
+        }
     }
 }
 
@@ -3546,6 +3552,13 @@ export function initializeEventListeners() {
     DOM.chatForm.addEventListener('submit', handleChatSubmit);
     DOM.newChatButton.addEventListener('click', handleStartNewSession);
     DOM.resourceTabs.addEventListener('click', handleResourceTabClick);
+
+    // Delegated click handler for Knowledge Graphs panel actions (export, delete)
+    const kgPanelContent = document.getElementById('knowledge-graphs-content');
+    if (kgPanelContent) {
+        kgPanelContent.addEventListener('click', handleKnowledgeGraphPanelClick);
+    }
+
     DOM.keyObservationsToggleButton.addEventListener('click', handleKeyObservationsToggleClick);
 
     // Voice button click toggles locked voice mode (same as Shift+Ctrl)
@@ -4043,34 +4056,10 @@ export function initializeEventListeners() {
     });
 }
 // --- Repository Tab Switching ---
+// DEPRECATED: Tab switching now handled by initializeRepositoryTabs() in ragCollectionManagement.js
+// which supports all 3 tabs (Planner, Knowledge, Knowledge Graphs) via .active class.
 export function wireRepositoryTabs() {
-    if (DOM.plannerRepoTab) {
-        DOM.plannerRepoTab.addEventListener('click', () => {
-            // Update tab styles
-            DOM.plannerRepoTab.classList.add('border-[#F15F22]', 'text-[#F15F22]');
-            DOM.plannerRepoTab.classList.remove('border-transparent', 'text-gray-400');
-            DOM.knowledgeRepoTab.classList.remove('border-[#F15F22]', 'text-[#F15F22]');
-            DOM.knowledgeRepoTab.classList.add('border-transparent', 'text-gray-400');
-            
-            // Show/hide content
-            DOM.plannerRepoContent.classList.remove('hidden');
-            DOM.knowledgeRepoContent.classList.add('hidden');
-        });
-    }
-    
-    if (DOM.knowledgeRepoTab) {
-        DOM.knowledgeRepoTab.addEventListener('click', () => {
-            // Update tab styles
-            DOM.knowledgeRepoTab.classList.add('border-[#F15F22]', 'text-[#F15F22]');
-            DOM.knowledgeRepoTab.classList.remove('border-transparent', 'text-gray-400');
-            DOM.plannerRepoTab.classList.remove('border-[#F15F22]', 'text-[#F15F22]');
-            DOM.plannerRepoTab.classList.add('border-transparent', 'text-gray-400');
-            
-            // Show/hide content
-            DOM.knowledgeRepoContent.classList.remove('hidden');
-            DOM.plannerRepoContent.classList.add('hidden');
-        });
-    }
+    // No-op — kept for backward compatibility with existing import in main.js
 }
 
 // --- Export harmonization functions for use in event reload ---

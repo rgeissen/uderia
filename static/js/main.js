@@ -25,6 +25,7 @@ import './conversationInitializer.js';
 import './handlers/splitViewHandler.js';
 // Import document upload initialization for chat conversations
 import { initializeUploadUI, initializeUploadCapabilities } from './handlers/chatDocumentUpload.js';
+import { updateKnowledgeGraphActiveIndicator } from './handlers/knowledgeGraphPanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -510,6 +511,9 @@ async function initializeRAGAutoCompletion() {
             // window.activeProfileOverrideId is lost (e.g., page refresh)
             state.currentResourcePanelProfileId = profileId;
             console.log(`📦 [Resource Panel] Profile ID stored: ${profileId}`);
+
+            // Update Knowledge Graphs panel active indicator (survives @TAG overrides)
+            updateKnowledgeGraphActiveIndicator();
 
             let tools, prompts;
 
@@ -2561,12 +2565,17 @@ function _setupUserTtsButtons() {
 
     if (deleteBtn) {
         deleteBtn.onclick = async () => {
-            if (!confirm('Delete your TTS credentials?')) return;
-            try {
-                await fetch('/api/user/tts-credentials', { method: 'DELETE', headers });
-                if (statusEl) { statusEl.textContent = 'Credentials deleted'; statusEl.className = 'text-xs text-gray-400'; }
-                deleteBtn.classList.add('hidden');
-            } catch (e) { console.error('[TTS] Delete error:', e); }
+            window.showConfirmation(
+                'Delete TTS Credentials',
+                '<p>Are you sure you want to <strong>delete</strong> your Text-to-Speech credentials?</p>',
+                async () => {
+                    try {
+                        await fetch('/api/user/tts-credentials', { method: 'DELETE', headers });
+                        if (statusEl) { statusEl.textContent = 'Credentials deleted'; statusEl.className = 'text-xs text-gray-400'; }
+                        deleteBtn.classList.add('hidden');
+                    } catch (e) { console.error('[TTS] Delete error:', e); }
+                }
+            );
         };
     }
 }

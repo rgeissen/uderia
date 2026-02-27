@@ -798,7 +798,13 @@ export async function loadKnowledgeRepositories() {
         
         const data = await response.json();
         const knowledgeRepos = data.collections?.filter(c => c.repository_type === 'knowledge') || [];
-        
+
+        // Update tab counter
+        const knowledgeTabBtn = document.getElementById('knowledge-repo-tab');
+        if (knowledgeTabBtn) {
+            knowledgeTabBtn.textContent = `Knowledge Repositories (${knowledgeRepos.length})`;
+        }
+
         console.log('[Knowledge] Loaded repositories:', knowledgeRepos);
         if (knowledgeRepos.length > 0) {
             console.log('[Knowledge] First repo structure:', knowledgeRepos[0]);

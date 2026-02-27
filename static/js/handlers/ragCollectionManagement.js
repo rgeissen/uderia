@@ -4075,43 +4075,41 @@ if (document.readyState === 'loading') {
  * Initialize repository tabs for Planner Repositories and Knowledge Repositories
  */
 function initializeRepositoryTabs() {
-    const plannerRepoTab = document.getElementById('planner-repo-tab');
-    const knowledgeRepoTab = document.getElementById('knowledge-repo-tab');
-    const plannerRepoContent = document.getElementById('planner-repo-content');
-    const knowledgeRepoContent = document.getElementById('knowledge-repo-content');
-    
-    if (!plannerRepoTab || !knowledgeRepoTab || !plannerRepoContent || !knowledgeRepoContent) {
-        console.warn('[Repository Tabs] Tab elements not found');
+    const allTabs = document.querySelectorAll('.repository-tab');
+    const allContents = document.querySelectorAll('.repository-tab-content');
+
+    if (allTabs.length === 0) {
+        console.warn('[Repository Tabs] No tab elements found');
         return;
     }
-    
-    // Tab click handler
-    const switchTab = (activeTab, activeContent, inactiveTab, inactiveContent) => {
-        // Update tab styling
-        activeTab.classList.add('active');
-        inactiveTab.classList.remove('active');
 
-        // Update content visibility
-        activeContent.classList.remove('hidden');
-        inactiveContent.classList.add('hidden');
-    };
-    
-    // Planner Repositories tab click
-    plannerRepoTab.addEventListener('click', () => {
-        switchTab(plannerRepoTab, plannerRepoContent, knowledgeRepoTab, knowledgeRepoContent);
+    allTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Deactivate all tabs + hide all content
+            allTabs.forEach(t => t.classList.remove('active'));
+            allContents.forEach(c => c.classList.add('hidden'));
+
+            // Activate clicked tab
+            tab.classList.add('active');
+
+            // Show matching content (via data-content attribute)
+            const contentId = tab.dataset.content;
+            if (contentId) {
+                const content = document.getElementById(contentId);
+                if (content) content.classList.remove('hidden');
+            }
+
+            // Lazy-load handlers per tab
+            if (tab.id === 'knowledge-repo-tab' && window.knowledgeRepositoryHandler) {
+                window.knowledgeRepositoryHandler.loadKnowledgeRepositories();
+            }
+            if (tab.id === 'knowledge-graphs-tab' && window.knowledgeGraphsIntelligenceHandler) {
+                window.knowledgeGraphsIntelligenceHandler.loadKnowledgeGraphsIntelligenceTab();
+            }
+        });
     });
-    
-    // Knowledge Repositories tab click
-    knowledgeRepoTab.addEventListener('click', () => {
-        switchTab(knowledgeRepoTab, knowledgeRepoContent, plannerRepoTab, plannerRepoContent);
-        
-        // Load Knowledge repositories when tab is clicked
-        if (window.knowledgeRepositoryHandler) {
-            window.knowledgeRepositoryHandler.loadKnowledgeRepositories();
-        }
-    });
-    
-    console.log('[Repository Tabs] Initialized successfully');
+
+    console.log(`[Repository Tabs] Initialized ${allTabs.length} tabs`);
 }
 
 /**
@@ -4138,15 +4136,36 @@ async function initializeKnowledgeRepositoryHandlers() {
     }
 }
 
-// Initialize repository tabs and Knowledge handlers on page load
+/**
+ * Initialize Knowledge Graph intelligence tab handlers
+ */
+async function initializeKnowledgeGraphIntelligenceHandlers() {
+    try {
+        const { loadKnowledgeGraphsIntelligenceTab, initializeImportHandler } = await import('./knowledgeGraphPanelHandler.js');
+
+        window.knowledgeGraphsIntelligenceHandler = {
+            loadKnowledgeGraphsIntelligenceTab
+        };
+
+        initializeImportHandler();
+
+        console.log('[Knowledge Graphs] Intelligence tab handlers loaded');
+    } catch (error) {
+        console.error('[Knowledge Graphs] Failed to load intelligence tab handlers:', error);
+    }
+}
+
+// Initialize repository tabs and handlers on page load
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeRepositoryTabs();
         initializeKnowledgeRepositoryHandlers();
+        initializeKnowledgeGraphIntelligenceHandlers();
     });
 } else {
     initializeRepositoryTabs();
     initializeKnowledgeRepositoryHandlers();
+    initializeKnowledgeGraphIntelligenceHandlers();
 }
 
 // Export functions for use in other modules

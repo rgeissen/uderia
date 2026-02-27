@@ -6035,7 +6035,17 @@ export async function loadRagCollections() {
         
         sortCollections(plannerCollections);
         sortCollections(knowledgeCollections);
-        
+
+        // Update tab counters
+        const plannerTabBtn = document.getElementById('planner-repo-tab');
+        if (plannerTabBtn) {
+            plannerTabBtn.textContent = `Planner Repositories (${plannerCollections.length})`;
+        }
+        const knowledgeTabBtn = document.getElementById('knowledge-repo-tab');
+        if (knowledgeTabBtn) {
+            knowledgeTabBtn.textContent = `Knowledge Repositories (${knowledgeCollections.length})`;
+        }
+
         // Render Planner repositories (grouped by agent pack)
         DOM.ragMaintenanceCollectionsContainer.innerHTML = '';
         if (!plannerCollections.length) {

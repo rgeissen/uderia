@@ -551,30 +551,35 @@ class UserProfileManager {
 
     async _handleDisconnect(event) {
         const provider = event.target.dataset.provider;
-        if (!confirm(`Disconnect your ${provider} account?`)) return;
 
-        event.target.disabled = true;
-        event.target.textContent = 'Disconnecting...';
+        window.showConfirmation(
+            'Disconnect Account',
+            `<p>Are you sure you want to <strong>disconnect</strong> your <strong>${provider}</strong> account?</p>`,
+            async () => {
+                event.target.disabled = true;
+                event.target.textContent = 'Disconnecting...';
 
-        try {
-            const oauth = window.oauthClient || (typeof OAuthClient !== 'undefined' ? new OAuthClient() : null);
-            if (oauth) {
-                const result = await oauth.disconnectOAuthAccount(provider);
-                if (result.success) {
-                    window.showAppBanner?.(`${provider} account disconnected`, 'success', 3000);
-                    await this._loadAllData();
-                    this._renderSections();
-                } else {
-                    window.showAppBanner?.(result.message || 'Failed to disconnect', 'error', 4000);
+                try {
+                    const oauth = window.oauthClient || (typeof OAuthClient !== 'undefined' ? new OAuthClient() : null);
+                    if (oauth) {
+                        const result = await oauth.disconnectOAuthAccount(provider);
+                        if (result.success) {
+                            window.showAppBanner?.(`${provider} account disconnected`, 'success', 3000);
+                            await this._loadAllData();
+                            this._renderSections();
+                        } else {
+                            window.showAppBanner?.(result.message || 'Failed to disconnect', 'error', 4000);
+                            event.target.disabled = false;
+                            event.target.textContent = 'Disconnect';
+                        }
+                    }
+                } catch (err) {
+                    console.error('[Profile] Disconnect error:', err);
                     event.target.disabled = false;
                     event.target.textContent = 'Disconnect';
                 }
             }
-        } catch (err) {
-            console.error('[Profile] Disconnect error:', err);
-            event.target.disabled = false;
-            event.target.textContent = 'Disconnect';
-        }
+        );
     }
 
     _handleLinkProvider(event) {

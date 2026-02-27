@@ -1488,29 +1488,34 @@ const AdminManager = {
             return;
         }
 
-        if (!confirm(`Delete profile "${profile.name}"?`)) return;
+        window.showConfirmation(
+            'Delete Consumption Profile',
+            `<p>Are you sure you want to delete the consumption profile <strong>${profile.name}</strong>?</p><p>This action cannot be undone.</p>`,
+            async () => {
+                try {
+                    const token = localStorage.getItem('tda_auth_token');
+                    const response = await fetch(`/api/v1/auth/admin/consumption-profiles/${profileId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    const data = await response.json();
 
-        try {
-            const token = localStorage.getItem('tda_auth_token');
-            const response = await fetch(`/api/v1/auth/admin/consumption-profiles/${profileId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
+                    if (data.status === 'success') {
+                        window.showNotification('success', 'Profile deleted successfully');
+                        await this.loadProfiles();
+                    } else {
+                        window.showNotification('error', data.message || 'Failed to delete profile');
+                    }
+                } catch (error) {
+                    console.error('[AdminManager] Error deleting profile:', error);
+                    window.showNotification('error', 'Failed to delete profile');
                 }
-            });
-            const data = await response.json();
-
-            if (data.status === 'success') {
-                window.showNotification('success', 'Profile deleted successfully');
-                await this.loadProfiles();
-            } else {
-                window.showNotification('error', data.message || 'Failed to delete profile');
             }
-        } catch (error) {
-            console.error('[AdminManager] Error deleting profile:', error);
-            window.showNotification('error', 'Failed to delete profile');
-        }
+        );
+        return;
     },
 
     /**
@@ -4143,38 +4148,43 @@ const AdminManager = {
      * Delete global TTS credentials
      */
     async _deleteGlobalTtsCredentials() {
-        if (!confirm('Delete global TTS credentials? Users in global mode will lose TTS access.')) return;
+        window.showConfirmation(
+            'Delete Global TTS Credentials',
+            '<p>Are you sure you want to delete the global TTS credentials?</p><p>Users in <strong>global mode</strong> will lose TTS access until new credentials are configured.</p>',
+            async () => {
+                try {
+                    const token = localStorage.getItem('tda_auth_token');
+                    const resp = await fetch('/api/v1/admin/tts-config', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ delete_global_credentials: true })
+                    });
+                    const data = await resp.json();
 
-        try {
-            const token = localStorage.getItem('tda_auth_token');
-            const resp = await fetch('/api/v1/admin/tts-config', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ delete_global_credentials: true })
-            });
-            const data = await resp.json();
-
-            if (resp.ok) {
-                const statusEl = document.getElementById('tts-global-status');
-                const deleteBtn = document.getElementById('tts-delete-global-btn');
-                if (statusEl) {
-                    statusEl.textContent = 'No global credentials configured';
-                    statusEl.className = 'text-xs text-gray-400';
-                }
-                if (deleteBtn) deleteBtn.classList.add('hidden');
-                if (window.showNotification) {
-                    window.showNotification('success', 'Global TTS credentials deleted');
+                    if (resp.ok) {
+                        const statusEl = document.getElementById('tts-global-status');
+                        const deleteBtn = document.getElementById('tts-delete-global-btn');
+                        if (statusEl) {
+                            statusEl.textContent = 'No global credentials configured';
+                            statusEl.className = 'text-xs text-gray-400';
+                        }
+                        if (deleteBtn) deleteBtn.classList.add('hidden');
+                        if (window.showNotification) {
+                            window.showNotification('success', 'Global TTS credentials deleted');
+                        }
+                    }
+                } catch (err) {
+                    console.error('[AdminManager] TTS delete error:', err);
+                    if (window.showNotification) {
+                        window.showNotification('error', 'Failed to delete TTS credentials');
+                    }
                 }
             }
-        } catch (err) {
-            console.error('[AdminManager] TTS delete error:', err);
-            if (window.showNotification) {
-                window.showNotification('error', 'Failed to delete TTS credentials');
-            }
-        }
+        );
+        return;
     },
 
     /**
@@ -5018,7 +5028,8 @@ const AdminManager = {
                     cancelBtn.addEventListener('click', cancelHandler, { once: true });
                 }
             } else {
-                resolve(confirm(`Activate version ${versionNumber}?`));
+                // showConfirmation not available — cancel gracefully
+                resolve(false);
             }
         });
         
@@ -5174,17 +5185,8 @@ const AdminManager = {
                     'Close'
                 );
             } else {
-                // Fallback: just load into editor
-                const textarea = document.getElementById('system-prompt-editor-textarea');
-                if (textarea && confirm(`Load version ${versionNumber} into the editor?`)) {
-                    textarea.value = data.content;
-                    textarea.dataset.originalContent = textarea.value;
-                    this.updateCharCount();
-                    this.updateSaveButtonState();
-                    if (window.showNotification) {
-                        window.showNotification('info', `Loaded version ${versionNumber} into editor`);
-                    }
-                }
+                // showConfirmation not available — skip loading
+                console.warn('[AdminManager] showConfirmation not available, cannot show version preview');
             }
 
         } catch (error) {
@@ -5634,16 +5636,22 @@ const AdminManager = {
             }
 
             const data = await response.json();
-            
-            // Show in a modal or replace current content
-            if (confirm(`View version ${version} content in editor?\n\nNote: This will replace the current editor content.`)) {
-                const textarea = document.getElementById('system-prompt-editor-textarea');
-                if (textarea) {
-                    textarea.value = data.content;
-                    this.updateCharCount();
-                    showNotification(`Loaded version ${version} (read-only)`, 'info');
-                }
-            }
+
+            // Show in a styled modal before replacing editor content
+            window.showConfirmation(
+                `View Version ${version}`,
+                `<p>This will load version <strong>${version}</strong> into the editor.</p><p>The current editor content will be replaced.</p>`,
+                () => {
+                    const textarea = document.getElementById('system-prompt-editor-textarea');
+                    if (textarea) {
+                        textarea.value = data.content;
+                        this.updateCharCount();
+                        showNotification(`Loaded version ${version} (read-only)`, 'info');
+                    }
+                },
+                'Load into Editor',
+                'Cancel'
+            );
 
         } catch (error) {
             console.error('[AdminManager] Error loading version content:', error);
