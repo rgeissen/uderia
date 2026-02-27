@@ -593,6 +593,15 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         }
     } catch (e) { /* canvas component may not be loaded */ }
 
+    // Close KG split panel when switching sessions
+    try {
+        const kgPanel = document.getElementById('kg-split-panel');
+        if (kgPanel && kgPanel.classList.contains('kg-split--open')) {
+            const { closeKGSplitPanel } = await import('/api/v1/components/knowledge_graph/renderer');
+            closeKGSplitPanel();
+        }
+    } catch (e) { /* knowledge_graph component may not be loaded */ }
+
     // --- MODIFICATION START: Clear task ID display on session load ---
     UI.updateTaskIdDisplay(null);
     // --- MODIFICATION END ---

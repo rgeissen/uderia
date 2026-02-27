@@ -101,10 +101,11 @@ function _renderMiniGraph(container, spec) {
     const colors = spec.entity_type_colors || {};
 
     if (nodes.length === 0) {
-        container.innerHTML = '<p style="color:#6b7280;text-align:center;padding:2rem;font-size:13px">Empty graph</p>';
+        container.innerHTML = '<p style="color:var(--text-muted, #6b7280);text-align:center;padding:2rem;font-size:13px">Empty graph</p>';
         return;
     }
 
+    const fallbackColor = _themeColor('--text-muted', '#6b7280');
     const width = container.clientWidth || 500;
     const height = 200;
 
@@ -133,7 +134,6 @@ function _renderMiniGraph(container, spec) {
         .data(links)
         .join('line')
         .attr('class', 'kg-mini-link')
-        .attr('stroke', '#4b5563')
         .attr('stroke-width', 1)
         .attr('stroke-opacity', 0.4);
 
@@ -143,9 +143,9 @@ function _renderMiniGraph(container, spec) {
         .join('circle')
         .attr('class', 'kg-mini-node')
         .attr('r', d => d.is_center ? 8 : 5 + (d.importance || 0) * 10)
-        .attr('fill', d => colors[d.type] || '#6b7280')
+        .attr('fill', d => colors[d.type] || fallbackColor)
         .attr('fill-opacity', 0.7)
-        .attr('stroke', d => colors[d.type] || '#6b7280')
+        .attr('stroke', d => colors[d.type] || fallbackColor)
         .attr('stroke-width', d => d.is_center ? 2 : 1);
 
     // Labels for larger graphs only on center/important nodes
@@ -156,7 +156,6 @@ function _renderMiniGraph(container, spec) {
             .attr('class', 'kg-mini-label')
             .text(d => d.name.length > 12 ? d.name.slice(0, 10) + '\u2026' : d.name)
             .attr('font-size', '8px')
-            .attr('fill', '#9ca3af')
             .attr('dx', 10)
             .attr('dy', 3)
             .style('pointer-events', 'none');
@@ -315,7 +314,7 @@ function renderKGFull(containerId, spec) {
     const title = spec.title || 'Knowledge Graph';
 
     if (nodes.length === 0) {
-        container.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:2rem">No entities in graph</p>';
+        container.innerHTML = '<p style="color:var(--text-muted, #9ca3af);text-align:center;padding:2rem">No entities in graph</p>';
         return null;
     }
 
@@ -325,7 +324,7 @@ function renderKGFull(containerId, spec) {
 
     // ─── Graph Container ───────────────────────────────────────────
     const graphContainer = document.createElement('div');
-    graphContainer.style.cssText = 'flex:1;position:relative;background:rgba(0,0,0,0.3);border-radius:0 0 8px 8px;overflow:hidden;min-height:0;';
+    graphContainer.style.cssText = `flex:1;position:relative;background:var(--bg-secondary, rgba(0,0,0,0.3));border-radius:0 0 8px 8px;overflow:hidden;min-height:0;`;
     container.appendChild(graphContainer);
 
     // Wait for layout so dimensions are available
@@ -379,9 +378,10 @@ function _buildToolbar(parentContainer, nodes, links, colors, spec) {
         types.forEach(type => {
             const pill = document.createElement('button');
             pill.className = 'kg-toolbar-filter-pill';
-            pill.style.borderColor = (colors[type] || '#6b7280') + '60';
-            pill.style.background = (colors[type] || '#6b7280') + '20';
-            pill.style.color = colors[type] || '#6b7280';
+            const typeColor = colors[type] || _themeColor('--text-muted', '#6b7280');
+            pill.style.borderColor = typeColor + '60';
+            pill.style.background = typeColor + '20';
+            pill.style.color = typeColor;
             pill.textContent = type;
             pill.dataset.entityType = type;
             pill.addEventListener('click', () => {
@@ -422,6 +422,8 @@ function _buildToolbar(parentContainer, nodes, links, colors, spec) {
 
 
 function _renderFullGraph(container, nodes, links, colors, width, height, toolbar) {
+    const fallbackColor = _themeColor('--text-muted', '#6b7280');
+
     // ─── SVG Setup ───────────────────────────────────────────────────
     const svg = d3.select(container)
         .append('svg')
@@ -461,8 +463,8 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         const sourceType = nodes[typeof link.source === 'object' ? link.source.index : link.source]?.type;
         const targetType = nodes[typeof link.target === 'object' ? link.target.index : link.target]?.type;
         const grad = defs.append('linearGradient').attr('id', `kg-grad-${i}`).attr('gradientUnits', 'userSpaceOnUse');
-        grad.append('stop').attr('offset', '0%').attr('stop-color', colors[sourceType] || '#6b7280');
-        grad.append('stop').attr('offset', '100%').attr('stop-color', colors[targetType] || '#6b7280');
+        grad.append('stop').attr('offset', '0%').attr('stop-color', colors[sourceType] || fallbackColor);
+        grad.append('stop').attr('offset', '100%').attr('stop-color', colors[targetType] || fallbackColor);
     });
 
     // Arrowhead marker
@@ -473,8 +475,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         .attr('markerWidth', 6).attr('markerHeight', 6)
         .attr('orient', 'auto')
         .append('path')
-        .attr('d', 'M0,-4L8,0L0,4')
-        .attr('fill', '#555');
+        .attr('d', 'M0,-4L8,0L0,4');
 
     // ─── Zoom ────────────────────────────────────────────────────────
     const g = svg.append('g');
@@ -511,15 +512,13 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
 
     const linkLines = linkGroup.select('line');
 
-    // Edge labels
+    // Edge labels (fill + opacity via CSS .kg-edge-label for theme compliance)
     linkGroup.append('text')
         .attr('class', 'kg-edge-label')
         .text(d => d.type)
         .attr('font-size', '9px')
-        .attr('fill', '#6b7280')
         .attr('text-anchor', 'middle')
-        .attr('dy', -6)
-        .style('opacity', 0.3);
+        .attr('dy', -6);
 
     // ─── Nodes ───────────────────────────────────────────────────────
     const nodeGroup = g.selectAll('.kg-node')
@@ -541,7 +540,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         .attr('class', 'kg-center-ring')
         .attr('r', 24)
         .attr('fill', 'none')
-        .attr('stroke', d => colors[d.type] || '#6b7280')
+        .attr('stroke', d => colors[d.type] || fallbackColor)
         .attr('stroke-width', 2);
 
     // Node: rounded rectangle card
@@ -550,8 +549,8 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         .attr('x', -nodeW / 2).attr('y', -nodeH / 2)
         .attr('width', nodeW).attr('height', nodeH)
         .attr('rx', 8).attr('ry', 8)
-        .attr('fill', d => (colors[d.type] || '#6b7280') + '30')
-        .attr('stroke', d => colors[d.type] || '#6b7280')
+        .attr('fill', d => (colors[d.type] || fallbackColor) + '30')
+        .attr('stroke', d => colors[d.type] || fallbackColor)
         .attr('stroke-width', 1.5)
         .attr('filter', 'url(#kg-shadow)');
 
@@ -559,14 +558,13 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
     nodeGroups.append('circle')
         .attr('cx', 0).attr('cy', 0)
         .attr('r', d => 5 + (d.importance || 0) * 15)
-        .attr('fill', d => colors[d.type] || '#6b7280');
+        .attr('fill', d => colors[d.type] || fallbackColor);
 
-    // Node: label
+    // Node: label (fill via CSS .kg-node-name for theme compliance)
     nodeGroups.append('text')
-        .attr('class', 'kg-node-label')
+        .attr('class', 'kg-node-label kg-node-name')
         .text(d => d.name.length > 18 ? d.name.slice(0, 16) + '\u2026' : d.name)
         .attr('font-size', '11px')
-        .attr('fill', '#e5e7eb')
         .attr('dx', nodeW / 2 + 6).attr('dy', 4)
         .attr('font-weight', d => d.is_center ? '600' : '400');
 
@@ -575,7 +573,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         .attr('class', 'kg-node-label')
         .text(d => d.type)
         .attr('font-size', '8px')
-        .attr('fill', d => colors[d.type] || '#6b7280')
+        .attr('fill', d => colors[d.type] || fallbackColor)
         .attr('dx', nodeW / 2 + 6).attr('dy', 16);
 
     // ─── Interaction: Hover Glow ─────────────────────────────────────
@@ -587,7 +585,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         })
         .on('mouseleave', function() {
             d3.select(this).select('rect').attr('filter', 'url(#kg-shadow)');
-            linkGroup.select('text').style('opacity', 0.3);
+            linkGroup.select('text').style('opacity', null);  // CSS controls base opacity
             linkLines.attr('stroke-opacity', 0.5);
         });
 
@@ -600,7 +598,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
             focusedNode = null;
             nodeGroups.style('opacity', 1);
             linkLines.attr('stroke-opacity', 0.5);
-            linkGroup.select('text').style('opacity', 0.3);
+            linkGroup.select('text').style('opacity', null);
         } else {
             focusedNode = d;
             const connected = new Set([d.id]);
@@ -628,7 +626,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         focusedNode = null;
         nodeGroups.style('opacity', 1);
         linkLines.attr('stroke-opacity', 0.5);
-        linkGroup.select('text').style('opacity', 0.3);
+        linkGroup.select('text').style('opacity', null);
     });
 
     // ─── Interaction: Drag ───────────────────────────────────────────
@@ -647,26 +645,16 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
     // ─── Tooltip ─────────────────────────────────────────────────────
     const tooltip = d3.select(container)
         .append('div')
-        .style('position', 'absolute')
-        .style('display', 'none')
-        .style('background', 'rgba(15, 15, 20, 0.95)')
-        .style('border', '1px solid rgba(255,255,255,0.1)')
-        .style('border-radius', '8px')
-        .style('padding', '10px 14px')
-        .style('font-size', '12px')
-        .style('color', '#e5e7eb')
-        .style('pointer-events', 'none')
-        .style('z-index', '10')
-        .style('max-width', '280px')
-        .style('backdrop-filter', 'blur(8px)');
+        .attr('class', 'kg-tooltip');
 
     nodeGroups
         .on('mouseenter.tooltip', function(event, d) {
             const props = d.properties || {};
-            let html = `<div style="font-weight:600;color:${colors[d.type] || '#fff'}">${_escapeHtml(d.name)}</div>`;
-            html += `<div style="color:#9ca3af;font-size:11px;margin-bottom:4px">${_escapeHtml(d.type)}</div>`;
+            const typeColor = colors[d.type] || '';
+            let html = `<div style="font-weight:600;${typeColor ? `color:${typeColor}` : ''}">${_escapeHtml(d.name)}</div>`;
+            html += `<div style="color:var(--text-muted, #9ca3af);font-size:11px;margin-bottom:4px">${_escapeHtml(d.type)}</div>`;
             if (props.description) html += `<div>${_escapeHtml(props.description)}</div>`;
-            if (props.data_type) html += `<div style="color:#9ca3af">Type: ${_escapeHtml(props.data_type)}</div>`;
+            if (props.data_type) html += `<div style="color:var(--text-muted, #9ca3af)">Type: ${_escapeHtml(props.data_type)}</div>`;
             if (props.business_meaning) html += `<div style="color:#a78bfa">Business: ${_escapeHtml(props.business_meaning)}</div>`;
             tooltip.html(html).style('display', 'block');
         })
@@ -753,12 +741,12 @@ function _renderLegend(container, colors, nodes) {
     legend.className = 'kg-legend';
 
     presentTypes.forEach(type => {
-        const color = colors[type] || '#6b7280';
+        const color = colors[type] || _themeColor('--text-muted', '#6b7280');
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:6px;margin:2px 0;';
         row.innerHTML = `
             <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>
-            <span style="color:#d1d5db">${_escapeHtml(type)}</span>
+            <span style="color:var(--text-secondary, #d1d5db)">${_escapeHtml(type)}</span>
         `;
         legend.appendChild(row);
     });
@@ -781,7 +769,7 @@ function _exportPNG(svgNode, width, height) {
         canvas.width = width * 2;
         canvas.height = height * 2;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#0f172a';
+        ctx.fillStyle = _themeColor('--bg-primary', '#0f172a');
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         URL.revokeObjectURL(url);
@@ -814,6 +802,11 @@ function _escapeHtml(str) {
     return div.innerHTML;
 }
 
+/** Read a CSS variable from the current theme (for D3 inline SVG attributes). */
+function _themeColor(varName, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || fallback;
+}
+
 
 // ─── Style Injection ────────────────────────────────────────────────────
 
@@ -824,14 +817,14 @@ function injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
 /* ═══════════════════════════════════════════════════════════════════
-   Knowledge Graph Component Styles
+   Knowledge Graph Component Styles (theme-compliant)
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ─── Inline Compact ────────────────────────────────────────────── */
 .kg-inline-compact {
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid var(--border-secondary, rgba(255,255,255,0.08));
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.5);
+    background: var(--glass-bg, rgba(15, 23, 42, 0.5));
     overflow: hidden;
 }
 .kg-inline-compact-header {
@@ -839,7 +832,7 @@ function injectStyles() {
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border-subtle, var(--border-secondary, rgba(255,255,255,0.06)));
 }
 .kg-inline-compact-title {
     display: flex;
@@ -847,12 +840,12 @@ function injectStyles() {
     gap: 8px;
     font-size: 13px;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--text-primary, #e2e8f0);
 }
 .kg-inline-compact-badge {
     font-size: 11px;
-    color: #9ca3af;
-    background: rgba(255,255,255,0.06);
+    color: var(--text-muted, #9ca3af);
+    background: var(--hover-bg, rgba(255,255,255,0.06));
     padding: 2px 8px;
     border-radius: 10px;
 }
@@ -868,11 +861,11 @@ function injectStyles() {
     display: flex;
     justify-content: flex-end;
     padding: 8px 14px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--border-subtle, var(--border-secondary, rgba(255,255,255,0.06)));
 }
 .kg-inline-open-btn {
     font-size: 12px;
-    color: #60a5fa;
+    color: var(--status-info, #60a5fa);
     background: none;
     border: none;
     cursor: pointer;
@@ -881,15 +874,14 @@ function injectStyles() {
     transition: all 0.15s;
 }
 .kg-inline-open-btn:hover {
-    background: rgba(96, 165, 250, 0.1);
-    color: #93bbfc;
+    background: var(--status-info-bg, rgba(59,130,246,0.1));
 }
 .kg-inline-open-btn--active {
-    color: #9ca3af;
+    color: var(--text-muted, #9ca3af);
 }
 .kg-inline-open-btn--active:hover {
-    background: rgba(255,255,255,0.05);
-    color: #9ca3af;
+    background: var(--hover-bg, rgba(255,255,255,0.05));
+    color: var(--text-muted, #9ca3af);
 }
 
 /* ─── Split Panel ───────────────────────────────────────────────── */
@@ -914,8 +906,8 @@ function injectStyles() {
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    background: rgba(15,23,42,0.8);
+    border-bottom: 1px solid var(--border-secondary, rgba(255,255,255,0.08));
+    background: var(--bg-overlay, var(--bg-primary, rgba(15,23,42,0.8)));
     flex-shrink: 0;
 }
 .kg-split-title-text {
@@ -976,8 +968,8 @@ function injectStyles() {
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: rgba(15, 15, 20, 0.9);
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: var(--header-bg, var(--bg-primary, rgba(15, 15, 20, 0.9)));
+    border-bottom: 1px solid var(--border-secondary, rgba(255,255,255,0.08));
     flex-shrink: 0;
     flex-wrap: wrap;
 }
@@ -985,8 +977,8 @@ function injectStyles() {
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--input-bg, rgba(255,255,255,0.06));
+    border: 1px solid var(--border-secondary, rgba(255,255,255,0.08));
     border-radius: 6px;
     padding: 4px 8px;
 }
@@ -994,18 +986,18 @@ function injectStyles() {
     background: transparent;
     border: none;
     outline: none;
-    color: #e5e7eb;
+    color: var(--text-primary, #e5e7eb);
     font-size: 12px;
     width: 130px;
 }
 .kg-toolbar-search-input::placeholder {
-    color: #6b7280;
+    color: var(--text-subtle, var(--text-muted, #6b7280));
 }
 .kg-toolbar-stats {
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--text-muted, #9ca3af);
     padding: 3px 8px;
-    background: rgba(255,255,255,0.04);
+    background: var(--hover-bg, rgba(255,255,255,0.04));
     border-radius: 10px;
     white-space: nowrap;
 }
@@ -1030,9 +1022,9 @@ function injectStyles() {
     width: 28px;
     height: 28px;
     border-radius: 6px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: #e5e7eb;
+    background: var(--button-bg, rgba(255,255,255,0.06));
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.1));
+    color: var(--text-primary, #e5e7eb);
     font-size: 14px;
     cursor: pointer;
     display: flex;
@@ -1041,7 +1033,7 @@ function injectStyles() {
     transition: background 0.2s;
 }
 .kg-toolbar-btn:hover {
-    background: rgba(255,255,255,0.12);
+    background: var(--hover-bg-strong, rgba(255,255,255,0.12));
 }
 
 /* ─── Legend ─────────────────────────────────────────────────────── */
@@ -1049,14 +1041,43 @@ function injectStyles() {
     position: absolute;
     bottom: 10px;
     right: 10px;
-    background: rgba(15,15,20,0.85);
+    background: var(--glass-bg-strong, var(--glass-bg, rgba(15,15,20,0.85)));
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
     border-radius: 10px;
     padding: 8px 12px;
     z-index: 5;
     font-size: 11px;
 }
+
+/* ─── SVG Theme-Aware Fills ─────────────────────────────────────── */
+/* CSS fill/stroke properties override SVG presentation attributes, */
+/* ensuring CSS variables are evaluated live by the browser engine. */
+.kg-node-name  { fill: var(--text-primary, #e5e7eb); }
+.kg-edge-label { fill: var(--text-muted, #6b7280); opacity: 0.5; }
+.kg-mini-label { fill: var(--text-muted, #9ca3af); }
+.kg-mini-link  { stroke: var(--border-primary, #4b5563); }
+#kg-arrow path { fill: var(--text-muted, #555); }
+
+/* ─── Tooltip (HTML overlay) ────────────────────────────────────── */
+.kg-tooltip {
+    position: absolute;
+    display: none;
+    background: var(--bg-overlay, var(--bg-primary, rgba(15,15,20,0.95)));
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.1));
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-primary, #e5e7eb);
+    pointer-events: none;
+    z-index: 10;
+    max-width: 280px;
+    backdrop-filter: blur(8px);
+}
+
+/* ─── Light Theme Adjustments ───────────────────────────────────── */
+[data-theme="light"] .kg-edge-label { opacity: 0.7; }
+[data-theme="light"] .kg-mini-link  { stroke-opacity: 0.6; }
     `;
     document.head.appendChild(style);
 }
