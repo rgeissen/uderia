@@ -324,11 +324,9 @@ class KnowledgeGraphHandler(BaseComponentHandler):
                     "metadata": rel.get("metadata", {}),
                 })
 
-        window_id = f"kg-{uuid.uuid4().hex[:8]}"
-
         return ComponentRenderPayload(
             component_id=self.component_id,
-            render_target=RenderTarget.SUB_WINDOW,
+            render_target=RenderTarget.INLINE,
             spec={
                 "nodes": nodes,
                 "links": links,
@@ -338,9 +336,6 @@ class KnowledgeGraphHandler(BaseComponentHandler):
                 "entity_type_colors": ENTITY_TYPE_COLORS,
             },
             title=title,
-            window_id=window_id,
-            window_action="create",
-            interactive=True,
             metadata={
                 "tool_name": self.tool_name,
                 "node_count": len(nodes),

@@ -92,7 +92,7 @@
   },
 
   "render_targets": {
-    "default": "sub_window",
+    "default": "inline",
     "supports": ["inline", "sub_window"],
     "sub_window": {
       "title_template": "Knowledge Graph: {title}",

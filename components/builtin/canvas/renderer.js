@@ -2186,6 +2186,19 @@ async function autoPopOutCanvas(spec) {
         _collapsedSourceWrapper = null;
     }
 
+    // Mutual exclusion: close KG split panel if open
+    const kgPanel = document.getElementById('kg-split-panel');
+    if (kgPanel && kgPanel.classList.contains('kg-split--open')) {
+        kgPanel.classList.remove('kg-split--open');
+        setTimeout(() => {
+            if (!kgPanel.classList.contains('kg-split--open')) {
+                kgPanel.style.display = 'none';
+                const kgContent = document.getElementById('kg-split-content');
+                if (kgContent) kgContent.innerHTML = '';
+            }
+        }, 350);
+    }
+
     // Clear previous content
     contentArea.innerHTML = '';
 
