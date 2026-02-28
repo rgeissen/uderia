@@ -25,7 +25,7 @@ import './conversationInitializer.js';
 import './handlers/splitViewHandler.js';
 // Import document upload initialization for chat conversations
 import { initializeUploadUI, initializeUploadCapabilities } from './handlers/chatDocumentUpload.js';
-import { updateKnowledgeGraphActiveIndicator } from './handlers/knowledgeGraphPanelHandler.js';
+import { loadKnowledgeGraphsPanel } from './handlers/knowledgeGraphPanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -513,7 +513,7 @@ async function initializeRAGAutoCompletion() {
             console.log(`📦 [Resource Panel] Profile ID stored: ${profileId}`);
 
             // Update Knowledge Graphs panel active indicator (survives @TAG overrides)
-            updateKnowledgeGraphActiveIndicator();
+            loadKnowledgeGraphsPanel();
 
             let tools, prompts;
 
