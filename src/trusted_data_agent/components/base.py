@@ -1,12 +1,15 @@
 """
 Base classes for Generative UI Components.
 
-Two-tier hierarchy:
+Three-tier hierarchy:
   - BaseComponentHandler:  Full component handler with tool processing
   - StructuralHandler:     Simpler handler for data-driven rendering (no tool call)
+  - SystemHandler:         Infrastructure handler for platform-level concerns (no tool, no UI)
 
 Component handlers process LLM tool-call arguments into ComponentRenderPayload
 objects that the frontend's ComponentRendererRegistry knows how to render.
+System handlers manage platform resources (context window, etc.) and produce
+metrics for observability rather than rendered output.
 """
 
 from __future__ import annotations
@@ -240,3 +243,55 @@ class StructuralHandler(BaseComponentHandler):
     @property
     def is_deterministic(self) -> bool:
         return True
+
+
+# ---------------------------------------------------------------------------
+# System handler (infrastructure, no tool call, no UI rendering)
+# ---------------------------------------------------------------------------
+
+class SystemHandler(ABC):
+    """
+    Base class for system components that manage platform infrastructure.
+
+    System components differ fundamentally from action/structural components:
+      - No tool definition (the LLM doesn't call them)
+      - No LLM instructions injection (they manage LLM input, not guide it)
+      - Render target: status_panel only (metrics and observability)
+      - Different lifecycle: orchestrate resources rather than process tool calls
+
+    The Context Window Manager is the reference implementation — it orchestrates
+    context budget allocation across pluggable context modules.
+
+    Subclasses must implement:
+        component_id  — unique identifier matching the manifest
+        get_metrics() — return current metrics for observability
+    """
+
+    @property
+    @abstractmethod
+    def component_id(self) -> str:
+        """Unique component identifier (e.g., 'context_window')."""
+
+    @property
+    def component_type(self) -> str:
+        """System components are always type 'system'."""
+        return "system"
+
+    @property
+    def tool_name(self) -> str:
+        """System components don't expose tools to the LLM."""
+        return ""
+
+    @property
+    def is_deterministic(self) -> bool:
+        """System components are infrastructure — always deterministic."""
+        return True
+
+    @abstractmethod
+    async def get_metrics(self) -> Dict[str, Any]:
+        """
+        Return current metrics for observability.
+
+        Returns a dict suitable for SSE event emission and Live Status
+        panel rendering. The structure is component-specific.
+        """

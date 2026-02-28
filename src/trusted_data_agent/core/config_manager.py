@@ -1736,6 +1736,141 @@ class ConfigManager:
         return self.save_config(config, user_uuid)
 
     # =========================================================================
+    # Context Window Type Management
+    # =========================================================================
+
+    def get_context_window_types(self, user_uuid: Optional[str] = None) -> list:
+        """
+        Get all context window types.
+
+        Args:
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            List of context window type dictionaries
+        """
+        config = self.load_config(user_uuid)
+        return config.get("context_window_types", [])
+
+    def get_context_window_type(self, type_id: str, user_uuid: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get a single context window type by ID.
+
+        Args:
+            type_id: Unique ID of the context window type
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Context window type dict, or None if not found
+        """
+        types = self.get_context_window_types(user_uuid)
+        return next((t for t in types if t.get("id") == type_id), None)
+
+    def get_default_context_window_type(self, user_uuid: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get the default context window type (is_default=true, or first).
+
+        Args:
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Default context window type dict, or None if none defined
+        """
+        types = self.get_context_window_types(user_uuid)
+        default = next((t for t in types if t.get("is_default")), None)
+        return default or (types[0] if types else None)
+
+    def save_context_window_types(self, context_window_types: list, user_uuid: Optional[str] = None) -> bool:
+        """
+        Save context window types.
+
+        Args:
+            context_window_types: List of context window type dictionaries
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            True if successful, False otherwise
+        """
+        config = self.load_config(user_uuid)
+        config["context_window_types"] = context_window_types
+        return self.save_config(config, user_uuid)
+
+    def add_context_window_type(self, context_window_type: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
+        """
+        Add a new context window type.
+
+        Args:
+            context_window_type: Context window type dictionary
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            True if successful, False otherwise
+        """
+        context_window_types = self.get_context_window_types(user_uuid)
+        context_window_types.append(context_window_type)
+        return self.save_context_window_types(context_window_types, user_uuid)
+
+    def update_context_window_type(self, type_id: str, updates: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
+        """
+        Update an existing context window type.
+
+        Args:
+            type_id: Unique ID of the context window type to update
+            updates: Dictionary of fields to update
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            True if successful, False otherwise
+        """
+        context_window_types = self.get_context_window_types(user_uuid)
+        cwt = next((t for t in context_window_types if t.get("id") == type_id), None)
+
+        if not cwt:
+            app_logger.warning(f"Context window type with ID {type_id} not found for update")
+            return False
+
+        cwt.update(updates)
+        return self.save_context_window_types(context_window_types, user_uuid)
+
+    def remove_context_window_type(self, type_id: str, user_uuid: Optional[str] = None) -> tuple:
+        """
+        Remove a context window type.
+        Prevents deletion if any profiles are assigned to this type.
+
+        Args:
+            type_id: Unique ID of the context window type to remove
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str])
+        """
+        # Check if any profiles are assigned to this context window type
+        profiles = self.get_profiles(user_uuid)
+        assigned_profiles = [
+            p for p in profiles
+            if p.get("contextWindowTypeId") == type_id
+        ]
+
+        if assigned_profiles:
+            profile_tags = [p.get("tag", "Unknown") for p in assigned_profiles]
+            tags_list = ", ".join(profile_tags)
+            error_msg = f"Cannot delete context window type: {len(assigned_profiles)} profile(s) assigned: {tags_list}"
+            app_logger.warning(f"{error_msg} (Type ID: {type_id})")
+            return False, error_msg
+
+        context_window_types = self.get_context_window_types(user_uuid)
+        original_count = len(context_window_types)
+        context_window_types = [t for t in context_window_types if t.get("id") != type_id]
+
+        if len(context_window_types) == original_count:
+            error_msg = "Context window type not found"
+            app_logger.warning(f"Context window type with ID {type_id} not found for removal")
+            return False, error_msg
+
+        success = self.save_context_window_types(context_window_types, user_uuid)
+        return success, None if success else "Failed to save context window types"
+
+    # =========================================================================
     # Genie Global Settings Management
     # =========================================================================
 

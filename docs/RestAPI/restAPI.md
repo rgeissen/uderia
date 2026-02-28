@@ -8980,6 +8980,346 @@ Three detection signals (any match creates an edge):
 
 ---
 
+### 3.24. Context Window Management
+
+The Context Window Management API provides CRUD operations for **context window types** (named compositions of context modules with budget allocations) and management of **context modules** (pluggable units that contribute content to the LLM context window).
+
+Context window types are bound to profiles via `contextWindowTypeId`, controlling how the LLM context budget is allocated across modules like system prompt, tool definitions, conversation history, RAG context, and more.
+
+**Authentication Required:** All endpoints require JWT authentication (`Authorization: Bearer $JWT`).
+
+**Architecture Reference:** See [Context Window Architecture — Section 13](../Architecture/CONTEXT_WINDOW_ARCHITECTURE.md) for the full system design.
+
+---
+
+#### 3.24.1. List Context Window Types
+
+**Endpoint:** `GET /v1/context-window-types`
+
+**Purpose:** Retrieve all context window types configured for the authenticated user.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "context_window_types": [
+    {
+      "id": "cwt-default-balanced",
+      "name": "Balanced",
+      "description": "Default balanced allocation for general use",
+      "is_default": true,
+      "output_reserve_pct": 12,
+      "modules": {
+        "system_prompt": { "active": true, "target_pct": 10, "min_pct": 5, "max_pct": 15, "priority": 95 },
+        "tool_definitions": { "active": true, "target_pct": 22, "min_pct": 0, "max_pct": 40, "priority": 85 },
+        "conversation_history": { "active": true, "target_pct": 22, "min_pct": 10, "max_pct": 60, "priority": 80 },
+        "rag_context": { "active": true, "target_pct": 15, "min_pct": 0, "max_pct": 30, "priority": 75 },
+        "knowledge_context": { "active": true, "target_pct": 10, "min_pct": 0, "max_pct": 25, "priority": 70 },
+        "plan_hydration": { "active": true, "target_pct": 8, "min_pct": 0, "max_pct": 15, "priority": 65 },
+        "document_context": { "active": true, "target_pct": 5, "min_pct": 0, "max_pct": 15, "priority": 60 },
+        "component_instructions": { "active": true, "target_pct": 4, "min_pct": 0, "max_pct": 10, "priority": 55 },
+        "workflow_history": { "active": true, "target_pct": 4, "min_pct": 0, "max_pct": 10, "priority": 50 }
+      },
+      "condensation_order": [
+        "workflow_history", "component_instructions", "document_context",
+        "plan_hydration", "knowledge_context", "rag_context",
+        "conversation_history", "tool_definitions"
+      ],
+      "dynamic_adjustments": [
+        { "condition": "high_confidence_rag", "action": { "reduce": "tool_definitions", "by_pct": 50 } }
+      ]
+    }
+  ]
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5050/api/v1/context-window-types \
+  -H "Authorization: Bearer $JWT"
+```
+
+---
+
+#### 3.24.2. Create Context Window Type
+
+**Endpoint:** `POST /v1/context-window-types`
+
+**Purpose:** Create a new context window type.
+
+**Request Body:**
+```json
+{
+  "name": "RAG Heavy",
+  "description": "Maximizes RAG and knowledge context",
+  "is_default": false,
+  "output_reserve_pct": 15,
+  "modules": {
+    "system_prompt": { "active": true, "target_pct": 8, "min_pct": 5, "max_pct": 15, "priority": 95 },
+    "rag_context": { "active": true, "target_pct": 30, "min_pct": 10, "max_pct": 50, "priority": 85 },
+    "knowledge_context": { "active": true, "target_pct": 25, "min_pct": 5, "max_pct": 40, "priority": 80 },
+    "conversation_history": { "active": true, "target_pct": 20, "min_pct": 10, "max_pct": 40, "priority": 75 },
+    "tool_definitions": { "active": false, "target_pct": 0, "min_pct": 0, "max_pct": 0, "priority": 70 }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Display name (must be unique) |
+| `description` | string | No | Description of the type's purpose |
+| `is_default` | boolean | No | Whether this is the default type |
+| `output_reserve_pct` | number | No | Percentage of context reserved for LLM output (default: 12) |
+| `modules` | object | Yes | Per-module configuration (active, target_pct, min_pct, max_pct, priority) |
+| `condensation_order` | array | No | Order in which modules are condensed when over budget |
+| `dynamic_adjustments` | array | No | Runtime adjustment rules |
+
+**Response (201 Created):**
+```json
+{
+  "status": "success",
+  "message": "Context window type created successfully",
+  "context_window_type": { "id": "cwt-1709312000000-a1b2c3d4", "name": "RAG Heavy", "..." }
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Name already in use or ID already exists |
+| `400` | Missing required `name` field |
+| `500` | Internal server error |
+
+---
+
+#### 3.24.3. Get Context Window Type
+
+**Endpoint:** `GET /v1/context-window-types/{id}`
+
+**Purpose:** Retrieve a single context window type by ID.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "context_window_type": {
+    "id": "cwt-default-balanced",
+    "name": "Balanced",
+    "description": "Default balanced allocation for general use",
+    "is_default": true,
+    "output_reserve_pct": 12,
+    "modules": { "..." },
+    "condensation_order": ["..."],
+    "dynamic_adjustments": ["..."]
+  }
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `404` | Context window type not found |
+
+---
+
+#### 3.24.4. Update Context Window Type
+
+**Endpoint:** `PUT /v1/context-window-types/{id}`
+
+**Purpose:** Update an existing context window type. Supports partial updates.
+
+**Request Body:**
+```json
+{
+  "description": "Updated description",
+  "output_reserve_pct": 15,
+  "modules": {
+    "rag_context": { "active": true, "target_pct": 25, "min_pct": 10, "max_pct": 40, "priority": 75 }
+  }
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "message": "Context window type updated successfully"
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Name already in use by another type |
+| `404` | Context window type not found |
+
+---
+
+#### 3.24.5. Delete Context Window Type
+
+**Endpoint:** `DELETE /v1/context-window-types/{id}`
+
+**Purpose:** Delete a context window type. Fails if any profiles are assigned to it.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "message": "Context window type deleted successfully"
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Type is assigned to one or more profiles (cannot delete) |
+| `404` | Context window type not found |
+
+**Note:** Unassign the type from all profiles before deleting. The error response includes the message identifying which profiles are still assigned.
+
+---
+
+#### 3.24.6. List Installed Modules
+
+**Endpoint:** `GET /v1/context-window/modules`
+
+**Purpose:** List all installed context modules from the module registry, including built-in and user-installed modules.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "modules": [
+    {
+      "module_id": "system_prompt",
+      "display_name": "System Prompt",
+      "version": "1.0.0",
+      "description": "Base system prompt with provider-specific formatting",
+      "category": "system",
+      "source": "builtin",
+      "capabilities": {
+        "condensable": false,
+        "purgeable": false,
+        "has_cache": false
+      },
+      "applicability": {
+        "profile_types": ["tool_enabled", "llm_only", "rag_focused", "genie"],
+        "required": true
+      },
+      "defaults": {
+        "priority": 95,
+        "target_pct": 10,
+        "min_pct": 5,
+        "max_pct": 15
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### 3.24.7. Purge Module Data
+
+**Endpoint:** `POST /v1/context-window/modules/{module_id}/purge`
+
+**Purpose:** Clear cached or accumulated data for a specific module (e.g., conversation history, workflow history, uploaded documents).
+
+**Request Body:**
+```json
+{
+  "session_id": "optional-session-id"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `session_id` | string | No | Specific session to purge (empty string for all sessions) |
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "result": {
+    "purged": true,
+    "details": "Cleared conversation history for session abc123"
+  }
+}
+```
+
+**Notes:**
+- Only modules with `capabilities.purgeable: true` can be purged
+- Non-purgeable modules return `{"purged": false, "reason": "Module is not purgeable"}`
+- Purgeable modules: `conversation_history`, `rag_context`, `knowledge_context`, `plan_hydration`, `document_context`, `workflow_history`
+
+---
+
+#### 3.24.8. Get Active Context Window for Profile
+
+**Endpoint:** `GET /v1/context-window/active/{profile_id}`
+
+**Purpose:** Get the resolved context window type for a specific profile, including installed module metadata. Useful for debugging which context configuration a profile will use.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "context_window_type": {
+    "id": "cwt-default-balanced",
+    "name": "Balanced",
+    "description": "Default balanced allocation for general use",
+    "modules": { "..." }
+  },
+  "profile_id": "profile-default-chat",
+  "profile_type": "llm_only",
+  "installed_modules": [
+    {
+      "module_id": "system_prompt",
+      "display_name": "System Prompt",
+      "capabilities": { "condensable": false, "purgeable": false }
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `404` | Profile not found or no context window type configured |
+
+**Notes:**
+- If the profile has no `contextWindowTypeId`, the default context window type is returned
+- The `installed_modules` array includes all modules in the registry, not just those active in the type
+- Use this endpoint to verify the module composition before submitting queries
+
+---
+
+#### 3.24.9. Profile Binding
+
+Context window types are bound to profiles via the `contextWindowTypeId` field in the profile configuration.
+
+**Set Context Window Type for a Profile:**
+
+Use the existing profile update endpoint (Section 3.10) with the `contextWindowTypeId` field:
+
+```bash
+curl -X PUT "http://localhost:5050/api/v1/profiles/$PROFILE_ID" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contextWindowTypeId": "cwt-default-balanced"
+  }'
+```
+
+**Note:** If a profile has no `contextWindowTypeId`, the system falls back to the default context window type (the one with `is_default: true`).
+
+---
+
 ## 4. Data Models
 
 ### 4.1. The Task Object

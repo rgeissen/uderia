@@ -1000,16 +1000,23 @@
         "mode": "combined",
         "statements": [
           "Educate yourself on the the table ddls in fitness_db database",
-          "If you would like to create sql please follow the following conversation rules:\n**Conversion Rules:**\n  1. TOP clause:\n    - Always use \"SELECT TOP n ...\" instead of \"LIMIT n\" to restrict rows\n    - Combine with QUALIFY for OFFSET handling when needed\n\n  2. Boolean literals:\n    - Replace \"true\" with 1\n    - Replace \"false\" with 0\n    - If schema convention uses 'Y'/'N', replace accordingly.\n\n  3. LIMIT / OFFSET:\n    - Replace \"LIMIT n OFFSET m\" with \"QUALIFY ROW_NUMBER() OVER (ORDER BY \u2026) > m\" plus \"TOP n\"\n    - If only \"LIMIT n\" is used, replace with \"TOP n\"\n\n  4. String concatenation:\n    - SQLAlchemy: \"col1 || col2\"\n    - Teradata: Use \"col1 || col2\" if both are string types\n    - Otherwise CAST non-strings to VARCHAR before concatenation\n\n  5. Autoincrement / identity columns:\n    - Replace \"AUTO_INCREMENT\" or similar with:\n      \"GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647)\"\n  \n  6. CAST usage:\n  - Always explicitly CAST when mixing data types\n  - Examples:\n    - Concatenation: CAST(int_col AS VARCHAR(50)) || str_col\n    - Comparisons: CAST(date_col AS VARCHAR(10)) = '2025-01-01'\n    - Numeric/string: CAST(str_col AS INTEGER) for math operations\n\n  7. Datetime functions:\n    - Replace \"NOW()\" with \"CURRENT_TIMESTAMP\"\n\n  8. Case-insensitive LIKE:\n    - Replace \"ILIKE\" with \"UPPER(col) LIKE UPPER(pattern)\"\n\n  9. Schema handling:\n    - Interpret \"schema.table\" as \"database.table\"\n\n  10. Identifier quoting:\n    - Unquoted identifiers become uppercase\n    - Double quotes preserve case sensitivity\n\n  11. LISTAGG(DISTINCT ...)\n    - Teradata does not support LISTAGG(DISTINCT ...). Use a subquery with DISTINCT instead."
+          "If you would like to create sql please follow the following conversation rules:\n**Conversion Rules:**\n  1. TOP clause:\n    - Always use \"SELECT TOP n ...\" instead of \"LIMIT n\" to restrict rows\n    - Combine with QUALIFY for OFFSET handling when needed\n\n  2. Boolean literals:\n    - Replace \"true\" with 1\n    - Replace \"false\" with 0\n    - If schema convention uses 'Y'/'N', replace accordingly.\n\n  3. LIMIT / OFFSET:\n    - Replace \"LIMIT n OFFSET m\" with \"QUALIFY ROW_NUMBER() OVER (ORDER BY …) > m\" plus \"TOP n\"\n    - If only \"LIMIT n\" is used, replace with \"TOP n\"\n\n  4. String concatenation:\n    - SQLAlchemy: \"col1 || col2\"\n    - Teradata: Use \"col1 || col2\" if both are string types\n    - Otherwise CAST non-strings to VARCHAR before concatenation\n\n  5. Autoincrement / identity columns:\n    - Replace \"AUTO_INCREMENT\" or similar with:\n      \"GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647)\"\n  \n  6. CAST usage:\n  - Always explicitly CAST when mixing data types\n  - Examples:\n    - Concatenation: CAST(int_col AS VARCHAR(50)) || str_col\n    - Comparisons: CAST(date_col AS VARCHAR(10)) = '2025-01-01'\n    - Numeric/string: CAST(str_col AS INTEGER) for math operations\n\n  7. Datetime functions:\n    - Replace \"NOW()\" with \"CURRENT_TIMESTAMP\"\n\n  8. Case-insensitive LIKE:\n    - Replace \"ILIKE\" with \"UPPER(col) LIKE UPPER(pattern)\"\n\n  9. Schema handling:\n    - Interpret \"schema.table\" as \"database.table\"\n\n  10. Identifier quoting:\n    - Unquoted identifiers become uppercase\n    - Double quotes preserve case sensitivity\n\n  11. LISTAGG(DISTINCT ...)\n    - Teradata does not support LISTAGG(DISTINCT ...). Use a subquery with DISTINCT instead."
         ]
       },
       "needs_reclassification": false,
       "agent_packs": [],
       "dualModelConfig": null,
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" },
-        "canvas": { "enabled": true, "intensity": "medium" }
-      }
+        "chart": {
+          "enabled": true,
+          "intensity": "medium"
+        },
+        "canvas": {
+          "enabled": true,
+          "intensity": "medium"
+        }
+      },
+      "contextWindowTypeId": "cwt-default-balanced"
     },
     {
       "id": "profile-1764006444002-z0hdduce9",
@@ -2145,15 +2152,22 @@
         "mode": "combined",
         "statements": [
           "Educate yourself on the the table ddls in fitness_db database",
-          "If you would like to create sql please follow the following conversation rules:\n**Conversion Rules:**\n  1. TOP clause:\n    - Always use \"SELECT TOP n ...\" instead of \"LIMIT n\" to restrict rows\n    - Combine with QUALIFY for OFFSET handling when needed\n\n  2. Boolean literals:\n    - Replace \"true\" with 1\n    - Replace \"false\" with 0\n    - If schema convention uses 'Y'/'N', replace accordingly.\n\n  3. LIMIT / OFFSET:\n    - Replace \"LIMIT n OFFSET m\" with \"QUALIFY ROW_NUMBER() OVER (ORDER BY \u2026) > m\" plus \"TOP n\"\n    - If only \"LIMIT n\" is used, replace with \"TOP n\"\n\n  4. String concatenation:\n    - SQLAlchemy: \"col1 || col2\"\n    - Teradata: Use \"col1 || col2\" if both are string types\n    - Otherwise CAST non-strings to VARCHAR before concatenation\n\n  5. Autoincrement / identity columns:\n    - Replace \"AUTO_INCREMENT\" or similar with:\n      \"GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647)\"\n  \n  6. CAST usage:\n  - Always explicitly CAST when mixing data types\n  - Examples:\n    - Concatenation: CAST(int_col AS VARCHAR(50)) || str_col\n    - Comparisons: CAST(date_col AS VARCHAR(10)) = '2025-01-01'\n    - Numeric/string: CAST(str_col AS INTEGER) for math operations\n\n  7. Datetime functions:\n    - Replace \"NOW()\" with \"CURRENT_TIMESTAMP\"\n\n  8. Case-insensitive LIKE:\n    - Replace \"ILIKE\" with \"UPPER(col) LIKE UPPER(pattern)\"\n\n  9. Schema handling:\n    - Interpret \"schema.table\" as \"database.table\"\n\n  10. Identifier quoting:\n    - Unquoted identifiers become uppercase\n    - Double quotes preserve case sensitivity\n\n  11. LISTAGG(DISTINCT ...)\n    - Teradata does not support LISTAGG(DISTINCT ...). Use a subquery with DISTINCT instead."
+          "If you would like to create sql please follow the following conversation rules:\n**Conversion Rules:**\n  1. TOP clause:\n    - Always use \"SELECT TOP n ...\" instead of \"LIMIT n\" to restrict rows\n    - Combine with QUALIFY for OFFSET handling when needed\n\n  2. Boolean literals:\n    - Replace \"true\" with 1\n    - Replace \"false\" with 0\n    - If schema convention uses 'Y'/'N', replace accordingly.\n\n  3. LIMIT / OFFSET:\n    - Replace \"LIMIT n OFFSET m\" with \"QUALIFY ROW_NUMBER() OVER (ORDER BY …) > m\" plus \"TOP n\"\n    - If only \"LIMIT n\" is used, replace with \"TOP n\"\n\n  4. String concatenation:\n    - SQLAlchemy: \"col1 || col2\"\n    - Teradata: Use \"col1 || col2\" if both are string types\n    - Otherwise CAST non-strings to VARCHAR before concatenation\n\n  5. Autoincrement / identity columns:\n    - Replace \"AUTO_INCREMENT\" or similar with:\n      \"GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647)\"\n  \n  6. CAST usage:\n  - Always explicitly CAST when mixing data types\n  - Examples:\n    - Concatenation: CAST(int_col AS VARCHAR(50)) || str_col\n    - Comparisons: CAST(date_col AS VARCHAR(10)) = '2025-01-01'\n    - Numeric/string: CAST(str_col AS INTEGER) for math operations\n\n  7. Datetime functions:\n    - Replace \"NOW()\" with \"CURRENT_TIMESTAMP\"\n\n  8. Case-insensitive LIKE:\n    - Replace \"ILIKE\" with \"UPPER(col) LIKE UPPER(pattern)\"\n\n  9. Schema handling:\n    - Interpret \"schema.table\" as \"database.table\"\n\n  10. Identifier quoting:\n    - Unquoted identifiers become uppercase\n    - Double quotes preserve case sensitivity\n\n  11. LISTAGG(DISTINCT ...)\n    - Teradata does not support LISTAGG(DISTINCT ...). Use a subquery with DISTINCT instead."
         ]
       },
       "needs_reclassification": true,
       "agent_packs": [],
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" },
-        "canvas": { "enabled": true, "intensity": "medium" }
-      }
+        "chart": {
+          "enabled": true,
+          "intensity": "medium"
+        },
+        "canvas": {
+          "enabled": true,
+          "intensity": "medium"
+        }
+      },
+      "contextWindowTypeId": "cwt-default-balanced"
     },
     {
       "id": "profile-default-rag",
@@ -2201,7 +2215,7 @@
         "mode": "combined",
         "statements": [
           "Educate yourself on the the table ddls in fitness_db database",
-          "If you would like to create sql please follow the following conversation rules:\n**Conversion Rules:**\n  1. TOP clause:\n    - Always use \"SELECT TOP n ...\" instead of \"LIMIT n\" to restrict rows\n    - Combine with QUALIFY for OFFSET handling when needed\n\n  2. Boolean literals:\n    - Replace \"true\" with 1\n    - Replace \"false\" with 0\n    - If schema convention uses 'Y'/'N', replace accordingly.\n\n  3. LIMIT / OFFSET:\n    - Replace \"LIMIT n OFFSET m\" with \"QUALIFY ROW_NUMBER() OVER (ORDER BY \u2026) > m\" plus \"TOP n\"\n    - If only \"LIMIT n\" is used, replace with \"TOP n\"\n\n  4. String concatenation:\n    - SQLAlchemy: \"col1 || col2\"\n    - Teradata: Use \"col1 || col2\" if both are string types\n    - Otherwise CAST non-strings to VARCHAR before concatenation\n\n  5. Autoincrement / identity columns:\n    - Replace \"AUTO_INCREMENT\" or similar with:\n      \"GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647)\"\n  \n  6. CAST usage:\n  - Always explicitly CAST when mixing data types\n  - Examples:\n    - Concatenation: CAST(int_col AS VARCHAR(50)) || str_col\n    - Comparisons: CAST(date_col AS VARCHAR(10)) = '2025-01-01'\n    - Numeric/string: CAST(str_col AS INTEGER) for math operations\n\n  7. Datetime functions:\n    - Replace \"NOW()\" with \"CURRENT_TIMESTAMP\"\n\n  8. Case-insensitive LIKE:\n    - Replace \"ILIKE\" with \"UPPER(col) LIKE UPPER(pattern)\"\n\n  9. Schema handling:\n    - Interpret \"schema.table\" as \"database.table\"\n\n  10. Identifier quoting:\n    - Unquoted identifiers become uppercase\n    - Double quotes preserve case sensitivity\n\n  11. LISTAGG(DISTINCT ...)\n    - Teradata does not support LISTAGG(DISTINCT ...). Use a subquery with DISTINCT instead."
+          "If you would like to create sql please follow the following conversation rules:\n**Conversion Rules:**\n  1. TOP clause:\n    - Always use \"SELECT TOP n ...\" instead of \"LIMIT n\" to restrict rows\n    - Combine with QUALIFY for OFFSET handling when needed\n\n  2. Boolean literals:\n    - Replace \"true\" with 1\n    - Replace \"false\" with 0\n    - If schema convention uses 'Y'/'N', replace accordingly.\n\n  3. LIMIT / OFFSET:\n    - Replace \"LIMIT n OFFSET m\" with \"QUALIFY ROW_NUMBER() OVER (ORDER BY …) > m\" plus \"TOP n\"\n    - If only \"LIMIT n\" is used, replace with \"TOP n\"\n\n  4. String concatenation:\n    - SQLAlchemy: \"col1 || col2\"\n    - Teradata: Use \"col1 || col2\" if both are string types\n    - Otherwise CAST non-strings to VARCHAR before concatenation\n\n  5. Autoincrement / identity columns:\n    - Replace \"AUTO_INCREMENT\" or similar with:\n      \"GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647)\"\n  \n  6. CAST usage:\n  - Always explicitly CAST when mixing data types\n  - Examples:\n    - Concatenation: CAST(int_col AS VARCHAR(50)) || str_col\n    - Comparisons: CAST(date_col AS VARCHAR(10)) = '2025-01-01'\n    - Numeric/string: CAST(str_col AS INTEGER) for math operations\n\n  7. Datetime functions:\n    - Replace \"NOW()\" with \"CURRENT_TIMESTAMP\"\n\n  8. Case-insensitive LIKE:\n    - Replace \"ILIKE\" with \"UPPER(col) LIKE UPPER(pattern)\"\n\n  9. Schema handling:\n    - Interpret \"schema.table\" as \"database.table\"\n\n  10. Identifier quoting:\n    - Unquoted identifiers become uppercase\n    - Double quotes preserve case sensitivity\n\n  11. LISTAGG(DISTINCT ...)\n    - Teradata does not support LISTAGG(DISTINCT ...). Use a subquery with DISTINCT instead."
         ]
       },
       "classification_results": {
@@ -2215,9 +2229,16 @@
       "agent_packs": [],
       "dualModelConfig": null,
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" },
-        "canvas": { "enabled": true, "intensity": "medium" }
-      }
+        "chart": {
+          "enabled": true,
+          "intensity": "medium"
+        },
+        "canvas": {
+          "enabled": true,
+          "intensity": "medium"
+        }
+      },
+      "contextWindowTypeId": "cwt-default-balanced"
     },
     {
       "id": "profile-default-genie",
@@ -2274,9 +2295,16 @@
       "agent_packs": [],
       "dualModelConfig": null,
       "componentConfig": {
-        "chart": { "enabled": true, "intensity": "medium" },
-        "canvas": { "enabled": true, "intensity": "medium" }
-      }
+        "chart": {
+          "enabled": true,
+          "intensity": "medium"
+        },
+        "canvas": {
+          "enabled": true,
+          "intensity": "medium"
+        }
+      },
+      "contextWindowTypeId": "cwt-default-balanced"
     }
   ],
   "active_profile_id": null,
@@ -2739,5 +2767,382 @@
     "disabled_components": [],
     "user_components_enabled": true,
     "user_components_marketplace_enabled": true
-  }
+  },
+  "context_window_types": [
+    {
+      "id": "cwt-default-balanced",
+      "name": "Balanced",
+      "description": "Default balanced allocation for general use — all 9 modules active with even distribution",
+      "is_default": true,
+      "output_reserve_pct": 12,
+      "modules": {
+        "system_prompt": {
+          "active": true,
+          "target_pct": 10,
+          "min_pct": 5,
+          "max_pct": 15,
+          "priority": 95
+        },
+        "tool_definitions": {
+          "active": true,
+          "target_pct": 22,
+          "min_pct": 0,
+          "max_pct": 40,
+          "priority": 85
+        },
+        "conversation_history": {
+          "active": true,
+          "target_pct": 22,
+          "min_pct": 10,
+          "max_pct": 60,
+          "priority": 80
+        },
+        "rag_context": {
+          "active": true,
+          "target_pct": 15,
+          "min_pct": 0,
+          "max_pct": 30,
+          "priority": 75
+        },
+        "knowledge_context": {
+          "active": true,
+          "target_pct": 10,
+          "min_pct": 0,
+          "max_pct": 25,
+          "priority": 70
+        },
+        "plan_hydration": {
+          "active": true,
+          "target_pct": 8,
+          "min_pct": 0,
+          "max_pct": 15,
+          "priority": 65
+        },
+        "document_context": {
+          "active": true,
+          "target_pct": 5,
+          "min_pct": 0,
+          "max_pct": 15,
+          "priority": 60
+        },
+        "component_instructions": {
+          "active": true,
+          "target_pct": 4,
+          "min_pct": 0,
+          "max_pct": 10,
+          "priority": 55
+        },
+        "workflow_history": {
+          "active": true,
+          "target_pct": 4,
+          "min_pct": 0,
+          "max_pct": 10,
+          "priority": 50
+        }
+      },
+      "condensation_order": [
+        "workflow_history",
+        "component_instructions",
+        "document_context",
+        "plan_hydration",
+        "knowledge_context",
+        "rag_context",
+        "conversation_history",
+        "tool_definitions"
+      ],
+      "dynamic_adjustments": [
+        {
+          "condition": "first_turn",
+          "action": {
+            "force_full": "tool_definitions"
+          }
+        },
+        {
+          "condition": "no_documents_attached",
+          "action": {
+            "transfer": "document_context",
+            "to": "conversation_history"
+          }
+        },
+        {
+          "condition": "long_conversation",
+          "threshold": 10,
+          "action": {
+            "condense": "conversation_history",
+            "strategy": "sliding_window"
+          }
+        },
+        {
+          "condition": "high_confidence_rag",
+          "action": {
+            "reduce": "tool_definitions",
+            "by_pct": 50
+          }
+        }
+      ]
+    },
+    {
+      "id": "cwt-knowledge-heavy",
+      "name": "Knowledge Heavy",
+      "description": "RAG and knowledge focus — maximum budget for knowledge retrieval, tools deactivated",
+      "is_default": false,
+      "output_reserve_pct": 12,
+      "modules": {
+        "system_prompt": {
+          "active": true,
+          "target_pct": 8,
+          "min_pct": 5,
+          "max_pct": 12,
+          "priority": 95
+        },
+        "tool_definitions": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 85
+        },
+        "conversation_history": {
+          "active": true,
+          "target_pct": 15,
+          "min_pct": 10,
+          "max_pct": 30,
+          "priority": 80
+        },
+        "rag_context": {
+          "active": true,
+          "target_pct": 20,
+          "min_pct": 5,
+          "max_pct": 40,
+          "priority": 75
+        },
+        "knowledge_context": {
+          "active": true,
+          "target_pct": 40,
+          "min_pct": 10,
+          "max_pct": 60,
+          "priority": 70
+        },
+        "plan_hydration": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 65
+        },
+        "document_context": {
+          "active": true,
+          "target_pct": 10,
+          "min_pct": 0,
+          "max_pct": 20,
+          "priority": 60
+        },
+        "component_instructions": {
+          "active": true,
+          "target_pct": 3,
+          "min_pct": 0,
+          "max_pct": 8,
+          "priority": 55
+        },
+        "workflow_history": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 50
+        }
+      },
+      "condensation_order": [
+        "component_instructions",
+        "document_context",
+        "rag_context",
+        "conversation_history",
+        "knowledge_context"
+      ],
+      "dynamic_adjustments": []
+    },
+    {
+      "id": "cwt-conversation-first",
+      "name": "Conversation First",
+      "description": "Chat focus — maximum budget for conversation history, minimal tools",
+      "is_default": false,
+      "output_reserve_pct": 12,
+      "modules": {
+        "system_prompt": {
+          "active": true,
+          "target_pct": 8,
+          "min_pct": 5,
+          "max_pct": 12,
+          "priority": 95
+        },
+        "tool_definitions": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 85
+        },
+        "conversation_history": {
+          "active": true,
+          "target_pct": 50,
+          "min_pct": 20,
+          "max_pct": 70,
+          "priority": 80
+        },
+        "rag_context": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 75
+        },
+        "knowledge_context": {
+          "active": true,
+          "target_pct": 15,
+          "min_pct": 0,
+          "max_pct": 25,
+          "priority": 70
+        },
+        "plan_hydration": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 65
+        },
+        "document_context": {
+          "active": true,
+          "target_pct": 15,
+          "min_pct": 0,
+          "max_pct": 25,
+          "priority": 60
+        },
+        "component_instructions": {
+          "active": true,
+          "target_pct": 5,
+          "min_pct": 0,
+          "max_pct": 10,
+          "priority": 55
+        },
+        "workflow_history": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 50
+        }
+      },
+      "condensation_order": [
+        "component_instructions",
+        "document_context",
+        "knowledge_context",
+        "conversation_history"
+      ],
+      "dynamic_adjustments": [
+        {
+          "condition": "long_conversation",
+          "threshold": 15,
+          "action": {
+            "condense": "conversation_history",
+            "strategy": "sliding_window"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cwt-token-efficient",
+      "name": "Token Efficient",
+      "description": "Minimum viable context — tight budgets, most modules deactivated for maximum savings",
+      "is_default": false,
+      "output_reserve_pct": 15,
+      "modules": {
+        "system_prompt": {
+          "active": true,
+          "target_pct": 12,
+          "min_pct": 8,
+          "max_pct": 18,
+          "priority": 95
+        },
+        "tool_definitions": {
+          "active": true,
+          "target_pct": 20,
+          "min_pct": 0,
+          "max_pct": 30,
+          "priority": 85
+        },
+        "conversation_history": {
+          "active": true,
+          "target_pct": 40,
+          "min_pct": 15,
+          "max_pct": 55,
+          "priority": 80
+        },
+        "rag_context": {
+          "active": true,
+          "target_pct": 15,
+          "min_pct": 0,
+          "max_pct": 25,
+          "priority": 75
+        },
+        "knowledge_context": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 70
+        },
+        "plan_hydration": {
+          "active": true,
+          "target_pct": 8,
+          "min_pct": 0,
+          "max_pct": 12,
+          "priority": 65
+        },
+        "document_context": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 60
+        },
+        "component_instructions": {
+          "active": false,
+          "target_pct": 0,
+          "min_pct": 0,
+          "max_pct": 0,
+          "priority": 55
+        },
+        "workflow_history": {
+          "active": true,
+          "target_pct": 5,
+          "min_pct": 0,
+          "max_pct": 8,
+          "priority": 50
+        }
+      },
+      "condensation_order": [
+        "workflow_history",
+        "plan_hydration",
+        "rag_context",
+        "conversation_history",
+        "tool_definitions"
+      ],
+      "dynamic_adjustments": [
+        {
+          "condition": "first_turn",
+          "action": {
+            "force_full": "tool_definitions"
+          }
+        },
+        {
+          "condition": "long_conversation",
+          "threshold": 5,
+          "action": {
+            "condense": "conversation_history",
+            "strategy": "sliding_window"
+          }
+        }
+      ]
+    }
+  ]
 }

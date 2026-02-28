@@ -16,6 +16,7 @@ import { loadAgentPacks } from './agentPackHandler.js';
 import { loadExtensions, initializeExtensionHandlers } from './extensionHandler.js';
 import { loadSkills, initializeSkillHandlers } from './skillHandler.js';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers } from './agentPackGrouping.js';
+import { loadContextWindowTypes, initContextWindowTab, populateContextWindowTypeDropdown, getContextWindowTypes } from './contextWindowHandler.js';
 
 // ============================================================================
 // SESSION PAGINATION STATE
@@ -2840,6 +2841,11 @@ function initializeConfigTabs() {
                     content.classList.remove('active');
                 }
             });
+
+            // Lazy-load context window types when tab is activated
+            if (targetTabId === 'context-window-tab') {
+                loadContextWindowTypes().then(() => initContextWindowTab());
+            }
 
             // Lazy-load agent packs when tab is activated
             if (targetTabId === 'agent-packs-tab') {
@@ -5841,6 +5847,23 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         })
         .join('');
 
+    // Populate context window type dropdown
+    const cwtSelect = modal.querySelector('#profile-modal-context-window-type');
+    if (cwtSelect) {
+        const cwtTypes = getContextWindowTypes();
+        if (cwtTypes.length > 0) {
+            const selectedCwtId = profile?.contextWindowTypeId || cwtTypes.find(t => t.is_default)?.id || cwtTypes[0]?.id;
+            populateContextWindowTypeDropdown(cwtSelect, selectedCwtId);
+        } else {
+            // Types not yet loaded — fetch them now
+            loadContextWindowTypes().then(() => {
+                const types = getContextWindowTypes();
+                const selectedCwtId = profile?.contextWindowTypeId || types.find(t => t.is_default)?.id || types[0]?.id;
+                populateContextWindowTypeDropdown(cwtSelect, selectedCwtId);
+            });
+        }
+    }
+
     // Populate strategic and tactical model dropdowns (for dual-model feature)
     const strategicSelect = modal.querySelector('#profile-modal-strategic-model');
     const tacticalSelect = modal.querySelector('#profile-modal-tactical-model');
@@ -6819,6 +6842,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             profile_type: selectedProfileType,
             llmConfigurationId: llmSelect.value,
             mcpServerId: (selectedProfileType === 'genie' || (selectedProfileType === 'llm_only' && !useMcpTools)) ? null : mcpSelect.value,
+            contextWindowTypeId: modal.querySelector('#profile-modal-context-window-type')?.value || null,
             classification_mode: classificationMode,
             tools: selectedTools.length === allTools.length ? ['*'] : selectedTools,
             prompts: selectedPrompts.length === allPrompts.length ? ['*'] : selectedPrompts,

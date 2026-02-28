@@ -18,11 +18,12 @@ import inspect
 import json
 import logging
 import sys
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from trusted_data_agent.components.base import BaseComponentHandler, StructuralHandler
+from trusted_data_agent.components.base import BaseComponentHandler, StructuralHandler, SystemHandler
 from trusted_data_agent.components.models import ComponentDefinition
 
 logger = logging.getLogger("quart.app")
@@ -492,19 +493,49 @@ class ComponentManager:
         handler_path: Path,
         handler_class_name: Optional[str],
         comp_id: str,
-    ) -> Optional[BaseComponentHandler]:
+    ) -> Optional[Any]:
         """Import and instantiate a component handler from a Python file."""
         module_name = f"component_handler_{comp_id}"
 
         try:
-            spec = importlib.util.spec_from_file_location(module_name, handler_path)
-            if spec is None or spec.loader is None:
-                logger.error(f"Component '{comp_id}': cannot create module spec for {handler_path}")
-                return None
+            handler_dir = handler_path.parent
+            init_file = handler_dir / "__init__.py"
 
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+            # If the component directory has __init__.py, register it as a
+            # package so that relative imports (from .base import X) work.
+            if init_file.exists():
+                package_name = f"component_pkg_{comp_id}"
+                handler_module_name = f"{package_name}.handler"
+
+                if package_name not in sys.modules:
+                    pkg = types.ModuleType(package_name)
+                    pkg.__path__ = [str(handler_dir)]
+                    pkg.__file__ = str(init_file)
+                    pkg.__package__ = package_name
+                    sys.modules[package_name] = pkg
+
+                spec = importlib.util.spec_from_file_location(
+                    handler_module_name, handler_path
+                )
+                if spec is None or spec.loader is None:
+                    logger.error(f"Component '{comp_id}': cannot create module spec for {handler_path}")
+                    return None
+
+                module = importlib.util.module_from_spec(spec)
+                module.__package__ = package_name
+                sys.modules[handler_module_name] = module
+                # Also register under the flat name for backward compatibility
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+            else:
+                spec = importlib.util.spec_from_file_location(module_name, handler_path)
+                if spec is None or spec.loader is None:
+                    logger.error(f"Component '{comp_id}': cannot create module spec for {handler_path}")
+                    return None
+
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
 
             # Find the handler class
             if handler_class_name:
@@ -516,7 +547,7 @@ class ComponentManager:
                     )
                     return None
             else:
-                # Auto-detect: first BaseComponentHandler subclass
+                # Auto-detect: first BaseComponentHandler or SystemHandler subclass
                 cls = None
                 for _, obj in inspect.getmembers(module, inspect.isclass):
                     if (
@@ -526,11 +557,17 @@ class ComponentManager:
                     ):
                         cls = obj
                         break
+                    if (
+                        issubclass(obj, SystemHandler)
+                        and obj is not SystemHandler
+                    ):
+                        cls = obj
+                        break
 
                 if cls is None:
                     logger.error(
-                        f"Component '{comp_id}': no BaseComponentHandler subclass "
-                        f"found in {handler_path}"
+                        f"Component '{comp_id}': no BaseComponentHandler or SystemHandler "
+                        f"subclass found in {handler_path}"
                     )
                     return None
 
@@ -568,6 +605,29 @@ class ComponentManager:
     def get_builtin_components(self) -> List[ComponentDefinition]:
         """Get only built-in components."""
         return [c for c in self.components.values() if c.source == "builtin"]
+
+    def get_system_components(self) -> List[ComponentDefinition]:
+        """Get all system components (component_type == 'system')."""
+        return [c for c in self.components.values() if c.component_type == "system"]
+
+    def get_system_component(self, component_id: str) -> Optional[ComponentDefinition]:
+        """
+        Get a system component by ID.
+
+        System components (like context_window) manage platform infrastructure
+        and have different lifecycle than action/structural components — they
+        don't expose tools or inject LLM instructions.
+
+        Args:
+            component_id: The system component's unique identifier.
+
+        Returns:
+            ComponentDefinition if found and is a system component, else None.
+        """
+        comp = self.components.get(component_id)
+        if comp and comp.component_type == "system":
+            return comp
+        return None
 
     # ------------------------------------------------------------------
     # Public API: Profile-filtered queries

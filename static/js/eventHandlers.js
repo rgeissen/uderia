@@ -26,6 +26,7 @@ import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
+import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
 let _kgAnimBridge = null;
@@ -1177,6 +1178,15 @@ async function processStream(responseBody, originSessionId) {
                                 details: extPayload,
                                 type: 'extension_complete'
                             }, false, 'extension');
+                        } else if (eventData.type === 'context_window_snapshot') {
+                            // Context Window Manager snapshot — render budget visualization
+                            const snapshotPayload = eventData.payload || {};
+                            const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
+                            UI.updateStatusWindow({
+                                step: eventData.step || 'Context Window Assembly',
+                                details: snapshotHtml,
+                                type: 'context_window_snapshot'
+                            }, false, 'context_window');
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full CCR (Champion Case Retrieval) data
@@ -3079,6 +3089,11 @@ function handleResourceTabClick(e) {
         // Lazy-load Knowledge Graphs panel on first click (or refresh on subsequent)
         if (type === 'knowledge-graphs') {
             loadKnowledgeGraphsPanel();
+        }
+
+        // Lazy-load Context panel on first click
+        if (type === 'context') {
+            loadContextPanel();
         }
     }
 }

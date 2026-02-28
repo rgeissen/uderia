@@ -1,0 +1,30 @@
+{
+  "module_id": "rag_context",
+  "display_name": "RAG Cases",
+  "version": "1.0.0",
+  "description": "Champion case retrieval from planner repositories via semantic search",
+  "category": "knowledge",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": true,
+    "has_cache": true
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 75,
+    "target_pct": 15,
+    "min_pct": 0,
+    "max_pct": 30
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "RAGContextModule"
+  }
+}

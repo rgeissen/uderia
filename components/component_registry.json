@@ -28,6 +28,15 @@
       "category": "Knowledge",
       "is_builtin": true,
       "notes": "Entity-relationship knowledge graph for context enrichment and LLM guardrail decisions"
+    },
+    {
+      "component_id": "context_window",
+      "plugin_directory": "context_window",
+      "status": "active",
+      "display_order": 4,
+      "category": "System",
+      "is_builtin": true,
+      "notes": "Context window orchestrator — budget-aware assembly of LLM context from pluggable modules"
     }
   ],
   "component_status_definitions": {

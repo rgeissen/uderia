@@ -1,0 +1,30 @@
+{
+  "module_id": "plan_hydration",
+  "display_name": "Plan Hydration",
+  "version": "1.0.0",
+  "description": "Previous turn result injection for multi-turn token optimization",
+  "category": "optimization",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": true,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 65,
+    "target_pct": 8,
+    "min_pct": 0,
+    "max_pct": 15
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "PlanHydrationModule"
+  }
+}

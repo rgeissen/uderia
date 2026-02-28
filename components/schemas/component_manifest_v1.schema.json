@@ -25,12 +25,12 @@
     },
     "component_type": {
       "type": "string",
-      "enum": ["action", "structural"],
-      "description": "action = LLM-invoked via tool call, structural = data-driven"
+      "enum": ["action", "structural", "system"],
+      "description": "action = LLM-invoked via tool call, structural = data-driven, system = platform infrastructure"
     },
     "category": {
       "type": "string",
-      "enum": ["Visualization", "Media", "Code", "Layout", "General"],
+      "enum": ["Visualization", "Media", "Code", "Layout", "General", "System"],
       "description": "UI category for filtering"
     },
     "agent_pack_id": {

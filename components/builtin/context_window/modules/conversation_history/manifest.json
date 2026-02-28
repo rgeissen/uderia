@@ -1,0 +1,30 @@
+{
+  "module_id": "conversation_history",
+  "display_name": "Conversation History",
+  "version": "1.0.0",
+  "description": "Multi-turn conversation history with sliding window condensation",
+  "category": "history",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": true,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled", "llm_only", "rag_focused", "genie"],
+    "required": true
+  },
+
+  "defaults": {
+    "priority": 80,
+    "target_pct": 22,
+    "min_pct": 10,
+    "max_pct": 60
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "ConversationHistoryModule"
+  }
+}

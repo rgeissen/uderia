@@ -37,7 +37,7 @@ class ComponentDefinition:
     """Semantic version string."""
 
     component_type: str = "action"
-    """'action' (LLM-invoked via tool call) or 'structural' (data-driven)."""
+    """'action' (LLM-invoked), 'structural' (data-driven), or 'system' (infrastructure)."""
 
     category: str = "General"
     """UI category for filtering (e.g., 'Visualization', 'Media', 'Code')."""

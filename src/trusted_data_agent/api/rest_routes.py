@@ -5408,6 +5408,251 @@ async def activate_llm_configuration(config_id: str):
 
 
 # ============================================================================
+# CONTEXT WINDOW TYPE ENDPOINTS
+# ============================================================================
+
+@rest_api_bp.route("/v1/context-window-types", methods=["GET"])
+async def get_context_window_types():
+    """Get all context window types."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        context_window_types = config_manager.get_context_window_types(user_uuid)
+
+        return jsonify({
+            "status": "success",
+            "context_window_types": context_window_types
+        }), 200
+    except Exception as e:
+        app_logger.error(f"Error getting context window types: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window-types", methods=["POST"])
+async def create_context_window_type():
+    """Create a new context window type."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        data = await request.get_json()
+
+        if not data.get("name"):
+            return jsonify({
+                "status": "error",
+                "message": "Missing required field: name"
+            }), 400
+
+        # Generate ID if not provided
+        if not data.get("id"):
+            import time
+            data["id"] = f"cwt-{int(time.time() * 1000)}-{__import__('secrets').token_hex(4)}"
+
+        # Validate name uniqueness
+        context_window_types = config_manager.get_context_window_types(user_uuid)
+        if any(c.get("name") == data["name"] for c in context_window_types):
+            return jsonify({
+                "status": "error",
+                "message": f"Context window type name '{data['name']}' is already in use."
+            }), 400
+
+        if any(c.get("id") == data["id"] for c in context_window_types):
+            return jsonify({
+                "status": "error",
+                "message": "Context window type ID already exists."
+            }), 400
+
+        success = config_manager.add_context_window_type(data, user_uuid)
+
+        if success:
+            app_logger.info(f"Created context window type: {data['name']}")
+            return jsonify({
+                "status": "success",
+                "message": "Context window type created successfully",
+                "context_window_type": data
+            }), 201
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Failed to create context window type"
+            }), 500
+
+    except Exception as e:
+        app_logger.error(f"Error creating context window type: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window-types/<context_window_type_id>", methods=["GET"])
+async def get_context_window_type(context_window_type_id: str):
+    """Get a single context window type by ID."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        cwt = config_manager.get_context_window_type(context_window_type_id, user_uuid)
+        if not cwt:
+            return jsonify({"status": "error", "message": "Context window type not found"}), 404
+
+        return jsonify({
+            "status": "success",
+            "context_window_type": cwt
+        }), 200
+    except Exception as e:
+        app_logger.error(f"Error getting context window type: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window-types/<context_window_type_id>", methods=["PUT"])
+async def update_context_window_type(context_window_type_id: str):
+    """Update an existing context window type."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        data = await request.get_json()
+
+        # If name is being updated, check uniqueness
+        if "name" in data:
+            context_window_types = config_manager.get_context_window_types(user_uuid)
+            if any(c.get("name") == data["name"] and c.get("id") != context_window_type_id for c in context_window_types):
+                return jsonify({
+                    "status": "error",
+                    "message": f"Context window type name '{data['name']}' is already in use."
+                }), 400
+
+        success = config_manager.update_context_window_type(context_window_type_id, data, user_uuid)
+
+        if success:
+            app_logger.info(f"Updated context window type: {context_window_type_id}")
+            return jsonify({
+                "status": "success",
+                "message": "Context window type updated successfully"
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Context window type not found"
+            }), 404
+
+    except Exception as e:
+        app_logger.error(f"Error updating context window type: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window-types/<context_window_type_id>", methods=["DELETE"])
+async def delete_context_window_type(context_window_type_id: str):
+    """Delete a context window type."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        success, error_message = config_manager.remove_context_window_type(
+            context_window_type_id, user_uuid
+        )
+
+        if success:
+            app_logger.info(f"Deleted context window type: {context_window_type_id}")
+            return jsonify({
+                "status": "success",
+                "message": "Context window type deleted successfully"
+            }), 200
+        else:
+            status_code = 400 if error_message and "assigned" in error_message else 404
+            return jsonify({
+                "status": "error",
+                "message": error_message or "Failed to delete context window type"
+            }), status_code
+
+    except Exception as e:
+        app_logger.error(f"Error deleting context window type: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window/modules", methods=["GET"])
+async def get_context_modules():
+    """Get all installed context modules from the module registry."""
+    try:
+        from components.builtin.context_window.module_registry import get_module_registry
+        registry = get_module_registry()
+        modules = registry.get_installed_modules()
+
+        return jsonify({
+            "status": "success",
+            "modules": modules
+        }), 200
+    except Exception as e:
+        app_logger.error(f"Error getting context modules: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window/modules/<module_id>/purge", methods=["POST"])
+async def purge_context_module(module_id: str):
+    """Purge a context module's cached/accumulated data."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        data = await request.get_json() or {}
+        session_id = data.get("session_id", "")
+
+        from components.builtin.context_window.module_registry import get_module_registry
+        registry = get_module_registry()
+        result = await registry.purge_module(module_id, session_id, user_uuid)
+
+        status_code = 200 if result.get("purged") else 400
+        return jsonify({
+            "status": "success" if result.get("purged") else "error",
+            **result
+        }), status_code
+    except Exception as e:
+        app_logger.error(f"Error purging context module: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/context-window/active/<profile_id>", methods=["GET"])
+async def get_active_context_window(profile_id: str):
+    """Get the resolved context window type for a profile."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        # Get profile to find contextWindowTypeId
+        profile = config_manager.get_profile(profile_id, user_uuid)
+        if not profile:
+            return jsonify({"status": "error", "message": "Profile not found"}), 404
+
+        cwt_id = profile.get("contextWindowTypeId")
+        if cwt_id:
+            cwt = config_manager.get_context_window_type(cwt_id, user_uuid)
+        else:
+            cwt = config_manager.get_default_context_window_type(user_uuid)
+
+        if not cwt:
+            return jsonify({"status": "error", "message": "No context window type configured"}), 404
+
+        # Get installed modules for enrichment
+        from components.builtin.context_window.module_registry import get_module_registry
+        registry = get_module_registry()
+        installed_modules = registry.get_installed_modules()
+
+        return jsonify({
+            "status": "success",
+            "context_window_type": cwt,
+            "profile_id": profile_id,
+            "profile_type": profile.get("profile_type"),
+            "installed_modules": installed_modules,
+        }), 200
+    except Exception as e:
+        app_logger.error(f"Error getting active context window: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ============================================================================
 # PROFILE CONFIGURATION ENDPOINTS
 # ============================================================================
 

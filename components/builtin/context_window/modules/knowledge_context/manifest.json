@@ -1,0 +1,30 @@
+{
+  "module_id": "knowledge_context",
+  "display_name": "Knowledge Documents",
+  "version": "1.0.0",
+  "description": "Domain knowledge retrieval from knowledge repositories via semantic search",
+  "category": "knowledge",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": true,
+    "has_cache": true
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled", "llm_only", "rag_focused"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 70,
+    "target_pct": 10,
+    "min_pct": 0,
+    "max_pct": 25
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "KnowledgeContextModule"
+  }
+}

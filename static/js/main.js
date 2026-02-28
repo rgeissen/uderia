@@ -26,6 +26,7 @@ import './handlers/splitViewHandler.js';
 // Import document upload initialization for chat conversations
 import { initializeUploadUI, initializeUploadCapabilities } from './handlers/chatDocumentUpload.js';
 import { loadKnowledgeGraphsPanel } from './handlers/knowledgeGraphPanelHandler.js';
+import { loadContextPanel } from './handlers/contextPanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -514,6 +515,9 @@ async function initializeRAGAutoCompletion() {
 
             // Update Knowledge Graphs panel active indicator (survives @TAG overrides)
             loadKnowledgeGraphsPanel();
+
+            // Update Context panel to reflect the active profile's context window type
+            loadContextPanel();
 
             let tools, prompts;
 

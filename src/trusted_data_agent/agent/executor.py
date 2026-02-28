@@ -1382,6 +1382,96 @@ class PlanExecutor:
         yield (session_name, name_input_tokens, name_output_tokens, collected_events)
 
 
+    async def _run_context_window_assembly(self, profile_type: str, profile_config: dict):
+        """
+        Run the Context Window Manager orchestrator to assemble context
+        and emit a snapshot event for observability.
+
+        Only called when APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER is True.
+        In Phase 4 (feature-flagged), this runs alongside existing code paths
+        for observability only — it does NOT replace the actual context assembly.
+        """
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            from components.builtin.context_window.handler import ContextWindowHandler
+            from components.builtin.context_window.base import AssemblyContext
+
+            config_manager = get_config_manager()
+
+            # Resolve context window type for the active profile
+            cwt_id = profile_config.get("contextWindowTypeId")
+            if cwt_id:
+                cwt = config_manager.get_context_window_type(cwt_id, self.user_uuid)
+            else:
+                cwt = config_manager.get_default_context_window_type(self.user_uuid)
+
+            if not cwt:
+                app_logger.debug("No context window type configured — skipping assembly")
+                return None
+
+            # Resolve model context limit from litellm model metadata
+            model_context_limit = 128_000  # Safe default
+            try:
+                import litellm
+                model_key = f"{self.current_provider}/{self.current_model}" if self.current_provider else self.current_model
+                model_info = litellm.model_cost.get(model_key) or litellm.model_cost.get(self.current_model or "")
+                if model_info:
+                    model_context_limit = model_info.get("max_input_tokens") or model_info.get("max_tokens") or 128_000
+                    app_logger.debug(f"Resolved model context limit: {model_context_limit:,} tokens for {model_key}")
+            except Exception as e:
+                app_logger.debug(f"Could not resolve model context limit from litellm: {e}")
+
+            # Build assembly context
+            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+
+            # Enrich dependencies: modules expect top-level keys like
+            # 'current_provider' and 'structured_tools' that live on self
+            # or nested under dependencies['STATE'].
+            enriched_deps = dict(self.dependencies)
+            enriched_deps['current_provider'] = getattr(self, 'current_provider', '') or ''
+            enriched_deps['current_model'] = getattr(self, 'current_model', '') or ''
+            app_state = enriched_deps.get('STATE')
+            if app_state and isinstance(app_state, dict):
+                enriched_deps['structured_tools'] = app_state.get('structured_tools', {})
+                enriched_deps['mcp_tools'] = app_state.get('mcp_tools', {})
+
+            # Enrich session_data: modules like RAGContextModule and
+            # KnowledgeContextModule expect 'current_query' which is on
+            # self.original_user_input, not in session_manager data.
+            enriched_session = dict(session_data) if session_data else {}
+            enriched_session['current_query'] = self.original_user_input or ''
+
+            ctx = AssemblyContext(
+                profile_type=profile_type,
+                profile_id=self.active_profile_id or "",
+                session_id=self.session_id,
+                user_uuid=self.user_uuid,
+                session_data=enriched_session,
+                turn_number=getattr(self, "current_turn_number", 1),
+                is_first_turn=getattr(self, "current_turn_number", 1) == 1,
+                model_context_limit=model_context_limit,
+                dependencies=enriched_deps,
+                profile_config=profile_config,
+            )
+
+            # Run orchestrator
+            handler = ContextWindowHandler()
+            assembled = await handler.assemble(cwt, ctx)
+
+            # Log snapshot
+            if assembled.snapshot:
+                app_logger.info(
+                    f"Context Window Snapshot: "
+                    f"{assembled.snapshot.total_used:,}/{assembled.snapshot.available_budget:,} tokens "
+                    f"({assembled.snapshot.utilization_pct:.1f}% utilization)"
+                )
+
+            return assembled
+
+        except Exception as e:
+            app_logger.warning(f"Context window assembly failed (non-critical): {e}")
+            return None
+
     def _detect_profile_type(self) -> str:
         """Detect whether current profile is llm_only, rag_focused, or tool_enabled."""
         if self.force_profile_type:
@@ -2447,6 +2537,21 @@ Response:"""
         profile_label = "rag_focused" if is_rag_focused else ("llm_only" if is_llm_only else "tool_enabled")
         app_logger.info(f"PlanExecutor initialized for {profile_label} turn: {self.current_turn_number}")
         # --- MODIFICATION END ---
+
+        # --- CONTEXT WINDOW MANAGER (Feature-Flagged) ---
+        if APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
+            assembled_context = await self._run_context_window_assembly(profile_type, profile_config)
+            if assembled_context and assembled_context.snapshot:
+                # Emit snapshot as SSE event for observability
+                snapshot_event = {
+                    "step": "Context Window Assembly",
+                    "type": "context_window_snapshot",
+                    "details": assembled_context.snapshot.to_summary_text(),
+                    "payload": assembled_context.snapshot.to_sse_event(),
+                }
+                self._log_system_event(snapshot_event)
+                yield self._format_sse_with_depth(snapshot_event)
+        # --- CONTEXT WINDOW MANAGER END ---
 
         # --- PROFILE LLM INSTANCE: Create profile-specific LLM client when provider differs ---
         # The global APP_STATE['llm'] is set at login from the user's default profile.
