@@ -2620,6 +2620,8 @@ Ranking:"""
 
             if self.event_handler:
                 await self.event_handler(self.executor.kg_enrichment_event, "kg_enrichment")
+        else:
+            app_logger.debug("KG enrichment returned empty — no schema context injected into planner")
 
         # --- PLANNER REPOSITORIES: Few-shot examples for execution patterns ---
         # Include RAG examples alongside knowledge context - Directive 3 will decide the best approach

@@ -325,6 +325,9 @@ function renderKGFull(containerId, spec) {
     const container = document.getElementById(containerId);
     if (!container || !spec || !spec.nodes) return null;
 
+    // Clear any previous animation state (prevents stale refs when switching between split panel and inspect)
+    _clearAllAnimations();
+
     container.innerHTML = '';
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
@@ -851,6 +854,400 @@ function _themeColor(varName, fallback) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════
+// LIVE ANIMATION BRIDGE — Entity extraction, animation, auto-zoom
+// ═══════════════════════════════════════════════════════════════════════
+
+// SQL keywords to exclude from entity extraction
+const _SQL_KEYWORDS = new Set([
+    'select', 'from', 'where', 'and', 'or', 'not', 'in', 'is', 'null',
+    'join', 'inner', 'outer', 'left', 'right', 'on', 'as', 'order', 'by',
+    'group', 'having', 'limit', 'offset', 'insert', 'into', 'values',
+    'update', 'set', 'delete', 'create', 'drop', 'alter', 'table',
+    'index', 'view', 'database', 'schema', 'like', 'between', 'exists',
+    'case', 'when', 'then', 'else', 'end', 'distinct', 'count', 'sum',
+    'avg', 'min', 'max', 'asc', 'desc', 'union', 'all', 'top', 'with',
+]);
+
+/**
+ * Extract entity names from an event payload.
+ * Returns an array of candidate names to match against graph nodes.
+ */
+function _extractEntityNames(eventType, payload) {
+    const names = new Set();
+    if (!payload) return [];
+
+    // Tier 1: Direct argument fields
+    const args = payload.arguments || payload.details?.arguments || {};
+    if (args.database_name) names.add(args.database_name);
+    if (args.object_name) names.add(args.object_name);
+    if (args.table_name) names.add(args.table_name);
+    if (args.column_name) names.add(args.column_name);
+
+    // Tier 2: SQL parsing via regex
+    const sql = args.sql || payload.details?.sql || '';
+    if (sql) {
+        const patterns = [
+            /\bFROM\s+(\w+)/gi,
+            /\bJOIN\s+(\w+)/gi,
+            /\bINTO\s+(\w+)/gi,
+            /\bUPDATE\s+(\w+)/gi,
+            /\bTABLE\s+(\w+)/gi,
+        ];
+        for (const pat of patterns) {
+            let m;
+            while ((m = pat.exec(sql)) !== null) {
+                const candidate = m[1];
+                if (!_SQL_KEYWORDS.has(candidate.toLowerCase())) {
+                    names.add(candidate);
+                }
+            }
+        }
+    }
+
+    // Tier 3: Match known node names against phase goal text
+    if ((eventType === 'plan_generated' || eventType === 'phase_start') && _graphState) {
+        const goal = payload.goal || '';
+        if (goal) {
+            const goalLower = goal.toLowerCase();
+            for (const node of _graphState.nodes) {
+                if (node.name.length >= 3 && goalLower.includes(node.name.toLowerCase())) {
+                    names.add(node.name);
+                }
+            }
+        }
+        // Also extract from plan phases
+        const phases = payload.phases || [];
+        for (const phase of phases) {
+            const phaseGoal = phase.goal || phase.goal_template || '';
+            if (phaseGoal) {
+                const gl = phaseGoal.toLowerCase();
+                for (const node of _graphState.nodes) {
+                    if (node.name.length >= 3 && gl.includes(node.name.toLowerCase())) {
+                        names.add(node.name);
+                    }
+                }
+            }
+        }
+    }
+
+    return [...names];
+}
+
+/**
+ * Match extracted entity names against graph nodes (case-insensitive).
+ * Returns array of matched node data objects.
+ */
+function _matchNodesToNames(entityNames) {
+    if (!_graphState || !entityNames.length) return [];
+    const matched = [];
+    const nameLookup = new Map();
+    for (const n of entityNames) nameLookup.set(n.toLowerCase(), true);
+    for (const node of _graphState.nodes) {
+        if (nameLookup.has(node.name.toLowerCase())) {
+            matched.push(node);
+        }
+    }
+    return matched;
+}
+
+/**
+ * Get 1-hop neighbor node IDs for a set of source node IDs.
+ */
+function _getNeighborIds(sourceIds) {
+    if (!_graphState) return new Set();
+    const neighbors = new Set();
+    const srcSet = new Set(sourceIds);
+    for (const link of _graphState.links) {
+        const sid = typeof link.source === 'object' ? link.source.id : link.source;
+        const tid = typeof link.target === 'object' ? link.target.id : link.target;
+        if (srcSet.has(sid)) neighbors.add(tid);
+        if (srcSet.has(tid)) neighbors.add(sid);
+    }
+    // Remove the source nodes themselves
+    for (const id of sourceIds) neighbors.delete(id);
+    return neighbors;
+}
+
+// ─── Animation: Pulse a single node ────────────────────────────────────
+
+function _pulseNode(nodeData) {
+    if (!_graphState) return;
+    const { nodeGroups, colors } = _graphState;
+
+    // Find the node group element
+    const nodeEl = nodeGroups.filter(d => d.id === nodeData.id);
+    if (nodeEl.empty()) return;
+
+    // Remove any existing activity ring on this node
+    nodeEl.selectAll('.kg-activity-ring').remove();
+
+    const color = colors[nodeData.type] || '#F15F22';
+
+    // Append expanding ring (CSS animation handles the rest)
+    nodeEl.append('circle')
+        .attr('class', 'kg-activity-ring')
+        .attr('r', 16)
+        .attr('fill', 'none')
+        .attr('stroke', color)
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.7);
+
+    // Apply activity glow filter to the rect temporarily
+    nodeEl.select('rect')
+        .transition('activity')
+        .duration(300)
+        .attr('filter', 'url(#kg-activity-glow)');
+
+    // Revert rect filter after animation
+    const revertTimeout = setTimeout(() => {
+        if (!_graphState) return;
+        nodeEl.select('rect')
+            .transition('activity')
+            .duration(600)
+            .attr('filter', 'url(#kg-shadow)');
+    }, 1200);
+
+    // Clean up the ring element after animation completes
+    const cleanupTimeout = setTimeout(() => {
+        nodeEl.selectAll('.kg-activity-ring').remove();
+    }, 1400);
+
+    // Track for cleanup
+    const existing = _activeAnimations.get(nodeData.id);
+    if (existing) {
+        clearTimeout(existing.revertTimeout);
+        clearTimeout(existing.cleanupTimeout);
+    }
+    _activeAnimations.set(nodeData.id, { revertTimeout, cleanupTimeout });
+}
+
+// ─── Animation: Brighten connected edges ───────────────────────────────
+
+function _rippleEdges(nodeData) {
+    if (!_graphState) return;
+    const { linkLines, linkGroup } = _graphState;
+
+    // Brighten connected edges
+    linkLines
+        .filter(l => l.source === nodeData || l.target === nodeData ||
+                     l.source.id === nodeData.id || l.target.id === nodeData.id)
+        .transition('activity')
+        .delay(150)
+        .duration(400)
+        .attr('stroke-opacity', 0.85)
+        .attr('stroke-width', 2.5)
+        .transition('activity')
+        .duration(800)
+        .attr('stroke-opacity', 0.5)
+        .attr('stroke-width', 1.5);
+
+    // Brighten connected edge labels
+    linkGroup.selectAll('text')
+        .filter(l => l.source === nodeData || l.target === nodeData ||
+                     l.source.id === nodeData.id || l.target.id === nodeData.id)
+        .transition('activity')
+        .delay(150)
+        .duration(400)
+        .style('opacity', 0.85)
+        .transition('activity')
+        .duration(800)
+        .style('opacity', null);
+}
+
+// ─── Animation: Soft glow on neighbor nodes ────────────────────────────
+
+function _glowNeighbors(nodeData) {
+    if (!_graphState) return;
+    const { nodeGroups } = _graphState;
+    const neighborIds = _getNeighborIds([nodeData.id]);
+
+    nodeGroups
+        .filter(d => neighborIds.has(d.id))
+        .each(function(d) {
+            const el = d3.select(this);
+            // Skip hidden/filtered nodes
+            if (el.style('display') === 'none') return;
+
+            el.select('rect')
+                .transition('neighbor-glow')
+                .delay(300)
+                .duration(400)
+                .attr('filter', `url(#kg-glow-${d.type})`)
+                .transition('neighbor-glow')
+                .delay(200)
+                .duration(600)
+                .attr('filter', 'url(#kg-shadow)');
+        });
+}
+
+// ─── Animation: Orchestrate all layers for matched nodes ───────────────
+
+function _animateNodes(matchedNodes) {
+    if (!_graphState || matchedNodes.length === 0) return;
+    const { nodeGroups } = _graphState;
+
+    for (const node of matchedNodes) {
+        // Skip hidden nodes (filtered out by type pills)
+        const nodeEl = nodeGroups.filter(d => d.id === node.id);
+        if (nodeEl.empty() || nodeEl.style('display') === 'none') continue;
+
+        _pulseNode(node);
+        _rippleEdges(node);
+        _glowNeighbors(node);
+    }
+}
+
+// ─── Auto-Zoom: Smooth camera to relevant subgraph ────────────────────
+
+function _zoomToNodes(matchedNodes) {
+    if (!_graphState || matchedNodes.length === 0) return;
+    if (_userZoomOverride) return; // User manually panned — skip this event
+
+    const { svg, zoom, width, height, nodes } = _graphState;
+
+    // Collect positions of matched nodes + 1-hop neighbors
+    const matchedIds = matchedNodes.map(n => n.id);
+    const neighborIds = _getNeighborIds(matchedIds);
+    const allRelevantIds = new Set([...matchedIds, ...neighborIds]);
+
+    const relevantNodes = nodes.filter(n => allRelevantIds.has(n.id) && n.x != null && n.y != null);
+    if (relevantNodes.length === 0) return;
+
+    // Compute bounding box with padding
+    const pad = 80;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const n of relevantNodes) {
+        if (n.x < minX) minX = n.x;
+        if (n.x > maxX) maxX = n.x;
+        if (n.y < minY) minY = n.y;
+        if (n.y > maxY) maxY = n.y;
+    }
+    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+
+    const bboxW = maxX - minX;
+    const bboxH = maxY - minY;
+    if (bboxW <= 0 || bboxH <= 0) return;
+
+    // Calculate scale to fit bbox in viewport
+    const scaleX = width / bboxW;
+    const scaleY = height / bboxH;
+    let scale = Math.min(scaleX, scaleY);
+    scale = Math.max(0.4, Math.min(scale, 2.5)); // Clamp
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+
+    const transform = d3.zoomIdentity
+        .translate(width / 2, height / 2)
+        .scale(scale)
+        .translate(-cx, -cy);
+
+    // Debounce: cancel any pending auto-zoom
+    if (_autozoomDebounce) clearTimeout(_autozoomDebounce);
+    _autozoomDebounce = setTimeout(() => {
+        if (!_graphState) return;
+        svg.transition('autozoom')
+            .duration(800)
+            .ease(d3.easeCubicInOut)
+            .call(zoom.transform, transform);
+        _autozoomDebounce = null;
+    }, 200);
+}
+
+function _zoomToFitAll() {
+    if (!_graphState) return;
+    const { svg, zoom, width, height } = _graphState;
+
+    if (_autozoomDebounce) clearTimeout(_autozoomDebounce);
+
+    svg.transition('autozoom')
+        .duration(1000)
+        .ease(d3.easeCubicInOut)
+        .call(
+            zoom.transform,
+            d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8).translate(-width / 2, -height / 2)
+        );
+}
+
+// ─── Cleanup ───────────────────────────────────────────────────────────
+
+function _clearAllAnimations() {
+    // Remove all activity rings
+    if (_graphState) {
+        _graphState.nodeGroups.selectAll('.kg-activity-ring').remove();
+        // Reset filters to baseline
+        _graphState.nodeGroups.select('rect')
+            .interrupt('activity')
+            .attr('filter', 'url(#kg-shadow)');
+        // Reset edges to baseline
+        _graphState.linkLines
+            .interrupt('activity')
+            .attr('stroke-opacity', 0.5)
+            .attr('stroke-width', 1.5);
+        // Reset neighbor glows
+        _graphState.nodeGroups.select('rect').interrupt('neighbor-glow');
+    }
+
+    // Cancel all tracked timeouts
+    for (const [, entry] of _activeAnimations) {
+        clearTimeout(entry.revertTimeout);
+        clearTimeout(entry.cleanupTimeout);
+    }
+    _activeAnimations.clear();
+
+    if (_autozoomDebounce) {
+        clearTimeout(_autozoomDebounce);
+        _autozoomDebounce = null;
+    }
+
+    _userZoomOverride = false;
+}
+
+// ─── Exported Bridge API ───────────────────────────────────────────────
+
+/** Check if KG split panel is open and graph is rendered. */
+export function isKGPanelActive() {
+    return !!_graphState && !!_activeSpec;
+}
+
+/**
+ * Main entry point — called from eventHandlers.js processStream().
+ * Parses event for entity references and triggers animations + auto-zoom.
+ */
+export function dispatchKGAnimation(eventType, payload) {
+    if (!_graphState || !_activeSpec) return;
+
+    const entityNames = _extractEntityNames(eventType, payload);
+    const matchedNodes = _matchNodesToNames(entityNames);
+    if (matchedNodes.length === 0) return;
+
+    // Clear user zoom override on new entity match (resume auto-zoom)
+    _userZoomOverride = false;
+
+    _animateNodes(matchedNodes);
+    _zoomToNodes(matchedNodes);
+}
+
+/**
+ * Graceful wind-down — called on execution_complete or final_answer.
+ * Lets in-flight animations finish, then cleans up and zooms to fit-all.
+ */
+export function endKGExecutionAnimations() {
+    if (!_graphState) return;
+
+    // Let in-flight animations finish naturally, then clean up
+    setTimeout(() => {
+        _clearAllAnimations();
+    }, 500);
+
+    // Smooth zoom back to full view
+    setTimeout(() => {
+        _zoomToFitAll();
+    }, 600);
+}
+
+
 // ─── Style Injection ────────────────────────────────────────────────────
 
 function injectStyles() {
@@ -1118,7 +1515,18 @@ function injectStyles() {
     backdrop-filter: blur(8px);
 }
 
-/* ─── Light Theme Adjustments ───────────────────────────────────── */
+/* ─── Live Execution Animation ─────────────────────────────────── */
+@keyframes kg-activity-expand {
+    0%   { stroke-opacity: 0.7; r: 16; }
+    40%  { stroke-opacity: 0.5; r: 22; }
+    100% { stroke-opacity: 0;   r: 28; }
+}
+.kg-activity-ring {
+    animation: kg-activity-expand 1.2s ease-out forwards;
+    pointer-events: none;
+}
+
+/* ─── Light Theme Adjustments ─────────────────────────────────── */
 [data-theme="light"] .kg-edge-label { opacity: 0.7; }
 [data-theme="light"] .kg-mini-link  { stroke-opacity: 0.6; }
     `;

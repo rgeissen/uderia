@@ -120,13 +120,17 @@ async def get_component_context_enrichment(
                 from trusted_data_agent.core.config_manager import get_config_manager
                 cm = get_config_manager()
                 profile_config = cm.get_profile(profile_id, user_uuid) or {}
-            except Exception:
-                pass
+            except Exception as profile_err:
+                logger.warning(f"Component context enrichment: profile lookup failed for {profile_id}: {profile_err}")
 
         text, details = await manager.get_context_enrichment(query, profile_id or "", user_uuid or "", profile_config)
+        logger.debug(
+            f"Component context enrichment: text_len={len(text) if text else 0}, "
+            f"details_count={len(details) if details else 0}"
+        )
         return text, details
     except Exception as e:
-        logger.warning(f"Component context enrichment assembly failed: {e}")
+        logger.warning(f"Component context enrichment assembly failed: {e}", exc_info=True)
     return "", []
 
 
@@ -679,6 +683,7 @@ class ComponentManager:
         parts: List[str] = []
         details: List[Dict[str, Any]] = []
 
+        enrichment_capable_count = 0
         for comp in active:
             # Check manifest flag
             backend_cfg = (comp.manifest or {}).get("backend", {})
@@ -689,6 +694,7 @@ class ComponentManager:
             if handler is None:
                 continue
 
+            enrichment_capable_count += 1
             try:
                 result = await handler.get_context_enrichment(query, profile_id, user_uuid)
                 # Handlers return (text, metadata) tuple or plain string (backward compat)
@@ -706,10 +712,18 @@ class ComponentManager:
                         f"Component '{comp.component_id}' contributed context enrichment "
                         f"({len(text)} chars)"
                     )
+                else:
+                    logger.debug(f"Component '{comp.component_id}' returned empty enrichment")
             except Exception as e:
                 logger.warning(
-                    f"Component '{comp.component_id}' context enrichment failed: {e}"
+                    f"Component '{comp.component_id}' context enrichment failed: {e}",
+                    exc_info=True,
                 )
+
+        logger.debug(
+            f"Context enrichment: {enrichment_capable_count} capable component(s), "
+            f"{len(parts)} contributed text"
+        )
 
         return "\n\n".join(parts) if parts else "", details
 

@@ -26,6 +26,34 @@ import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
+
+// ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
+let _kgAnimBridge = null;
+let _kgAnimLoadAttempted = false;
+async function _loadKGAnimBridge() {
+    if (_kgAnimLoadAttempted) return _kgAnimBridge;
+    _kgAnimLoadAttempted = true;
+    try {
+        _kgAnimBridge = await import('/api/v1/components/knowledge_graph/renderer');
+    } catch { _kgAnimBridge = null; }
+    return _kgAnimBridge;
+}
+function _tryKGAnimate(eventType, payload) {
+    if (!_kgAnimBridge) return;
+    try {
+        if (_kgAnimBridge.isKGPanelActive()) {
+            _kgAnimBridge.dispatchKGAnimation(eventType, payload);
+        }
+    } catch { /* KG component not available */ }
+}
+function _tryKGAnimateEnd() {
+    if (!_kgAnimBridge) return;
+    try {
+        if (_kgAnimBridge.isKGPanelActive()) {
+            _kgAnimBridge.endKGExecutionAnimations();
+        }
+    } catch { /* KG component not available */ }
+}
 import {
     // handleCloseConfigModalRequest, // REMOVED
     // handleConfigActionButtonClick, // REMOVED
@@ -874,6 +902,9 @@ function getProfileDisplayName(profileType) {
 // ============================================================================
 
 async function processStream(responseBody, originSessionId) {
+    // Lazy-load KG animation bridge on first stream (non-blocking)
+    if (!_kgAnimLoadAttempted) _loadKGAnimBridge();
+
     const reader = responseBody.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -1042,6 +1073,12 @@ async function processStream(responseBody, originSessionId) {
 
                                 // Delegate to conversation agent handler for state tracking (after UI update)
                                 handleConversationAgentEvent(eventData.type, payload);
+
+                                // KG Live Animation: dispatch tool invoked/completed events
+                                if (eventData.type === 'conversation_tool_invoked' ||
+                                    eventData.type === 'conversation_tool_completed') {
+                                    _tryKGAnimate(eventData.type, payload);
+                                }
                             }
                         } else if (eventData.type === 'llm_execution' ||
                                    eventData.type === 'llm_execution_complete' ||
@@ -1115,6 +1152,9 @@ async function processStream(responseBody, originSessionId) {
                                 type: eventData.type,
                                 metadata: eventData.metadata
                             }, isFinal, 'lifecycle');
+
+                            // KG Live Animation: end animations on execution complete/error/cancelled
+                            if (isFinal) _tryKGAnimateEnd();
                         } else if (eventData.type === 'skills_applied') {
                             // Skill pre-processing transparency — emerald green
                             const skillsPayload = eventData.payload || {};
@@ -1360,6 +1400,14 @@ async function processStream(responseBody, originSessionId) {
                             details: eventData,
                             type: eventName
                         }, eventName === 'genie_coordination_complete', 'genie');
+
+                        // KG Live Animation: dispatch genie tool events
+                        if (eventName === 'genie_slave_invoked' || eventName === 'genie_slave_completed' ||
+                            eventName === 'genie_component_invoked' || eventName === 'genie_component_completed') {
+                            _tryKGAnimate(eventName, eventData);
+                        }
+                        // KG Live Animation: end animations on genie coordination complete
+                        if (eventName === 'genie_coordination_complete') _tryKGAnimateEnd();
                     } else if (eventName === 'cancelled') {
                         const lastStep = document.getElementById(`status-step-${state.currentStatusId}`);
                         if (lastStep) {
@@ -1396,6 +1444,9 @@ async function processStream(responseBody, originSessionId) {
                         // Note: "Finished" status step removed - redundant with execution_complete events
                         // All profile types now emit execution_complete with profile-specific KPIs
                         UI.setExecutionState(false);
+
+                        // KG Live Animation: end animations on final answer
+                        _tryKGAnimateEnd();
 
                         // Auto-focus input field so user can immediately type next question
                         if (DOM.userInput) {
@@ -1465,6 +1516,11 @@ async function processStream(responseBody, originSessionId) {
                         // Don't call updateStatusWindow - skip this event entirely
                     } else {
                         UI.updateStatusWindow(eventData);
+
+                        // KG Live Animation: dispatch tool_enabled events (phase_start, plan_generated, kg_enrichment)
+                        if (eventData.type) {
+                            _tryKGAnimate(eventData.type, eventData.details || eventData.payload || eventData);
+                        }
                     }
                 } catch (e) {
                     console.error("Error parsing SSE data line:", dataLine, e);

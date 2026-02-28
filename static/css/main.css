@@ -2192,6 +2192,12 @@ div.app-view {
     flex-direction: column;
 }
 
+/* Knowledge Graph inspect view needs flex to fill height */
+#kg-inspect-view.active {
+    display: flex;
+    flex-direction: column;
+}
+
 /* Highlighted session card animation */
 .session-card-highlighted {
     animation: highlight-pulse 1.5s ease-in-out;

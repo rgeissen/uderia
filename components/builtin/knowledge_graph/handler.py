@@ -147,8 +147,12 @@ class KnowledgeGraphHandler(BaseComponentHandler):
             # Fallback: no assignment rows yet — use the profile's own KG
             kg_pid = profile_id
 
+        logger.debug(f"KG enrichment: resolved kg_pid={kg_pid} for profile_id={profile_id}")
+
         store = self._get_store_direct(kg_pid, user_uuid)
         entities = self._search_entities_for_query(store, query)
+
+        logger.debug(f"KG enrichment: found {len(entities)} matching entities for query")
 
         if not entities:
             return "", None
@@ -157,6 +161,7 @@ class KnowledgeGraphHandler(BaseComponentHandler):
         subgraph = store.extract_subgraph(entity_ids, depth=2, max_nodes=30)
 
         if not subgraph.get("entities"):
+            logger.debug("KG enrichment: subgraph extraction returned no entities")
             return "", None
 
         # Collect entity type names for the event

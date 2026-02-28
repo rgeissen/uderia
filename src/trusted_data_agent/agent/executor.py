@@ -658,6 +658,10 @@ class PlanExecutor:
             Enrichment text to inject into LLM context, or empty string.
         """
         try:
+            app_logger.debug(
+                f"KG enrichment: starting for profile_id={self.active_profile_id}, "
+                f"user_uuid={self.user_uuid}, query='{self.original_user_input[:80]}'"
+            )
             from trusted_data_agent.components.manager import get_component_context_enrichment
             kg_text, kg_details = await get_component_context_enrichment(
                 query=self.original_user_input,
@@ -676,8 +680,12 @@ class PlanExecutor:
                     f"{self.kg_enrichment_event['total_relationships']} relationships"
                 )
                 return kg_text
+            else:
+                app_logger.debug(
+                    f"KG enrichment: returned empty (kg_text={bool(kg_text)}, kg_details={bool(kg_details)})"
+                )
         except Exception as e:
-            app_logger.warning(f"KG enrichment failed: {e}")
+            app_logger.warning(f"KG enrichment failed: {e}", exc_info=True)
         return ""
 
     def _check_cancellation(self):
@@ -5803,6 +5811,8 @@ The following domain knowledge may be relevant to this conversation:
             for entry in self.turn_action_history:
                 result = entry.get("result") if isinstance(entry, dict) else None
                 if isinstance(result, dict) and result.get("spec") and result.get("type"):
+                    if result.get("type") == "chart":
+                        continue  # Formatter handles charts via structured_collected_data with paired table details
                     component_payloads.append({
                         "component_id": result["type"],
                         "spec": result["spec"],
