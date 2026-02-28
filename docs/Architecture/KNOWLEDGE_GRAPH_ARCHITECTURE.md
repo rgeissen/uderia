@@ -166,8 +166,8 @@ templates/
                     │  ┌────────────────┐  ┌────────────────────┐ │
                     │  │  SQLite Layer  │  │  NetworkX Layer    │ │
                     │  │                │  │                    │ │
-                    │  │  add_entity()  │  │  extract_subgraph()│ │
-                    │  │  get_entity()  │  │  get_full_graph()  │ │
+                    │  │  add_entity()  │  │  extract_subgraph_ │ │
+                    │  │  get_entity()  │  │    adaptive()      │ │
                     │  │  search()      │  │  shortest_path()   │ │
                     │  │  list()        │  │  centrality()      │ │
                     │  │  update()      │  │  detect_cycles()   │ │
@@ -270,13 +270,15 @@ templates/
 | `depends_on` | Dependency | `Report depends_on Daily ETL` |
 | `relates_to` | Generic association | `Marketing relates_to Sales` |
 
-**Source Origins (3):**
+**Source Origins (5):**
 
 | Source | Meaning | Set By |
 |--------|---------|--------|
 | `manual` | User-created via REST API or import | REST endpoints, import |
 | `mcp_discovery` | Auto-discovered from MCP schemas | Discovery module (V2) |
 | `llm_inferred` | Created by LLM during conversation | `TDA_KnowledgeGraph` tool |
+| `constructor_structural` | Inferred during KG generation (Phase 3 gap-fill) | `kg_generate()` pipeline |
+| `constructor_fk_inferred` | FK relationships inferred from naming conventions, shared columns, or column properties (Phase 3.5) | `kg_generate()` pipeline |
 
 ---
 
@@ -344,13 +346,63 @@ All graph algorithm methods lazy-load the full graph from SQLite into a `network
 
 | Method | Signature | Algorithm | Use Case |
 |--------|-----------|-----------|----------|
-| `extract_subgraph()` | `(entity_ids, depth?, max_nodes?) → {entities, relationships}` | BFS traversal (both directions) from seed entities | Context enrichment, visualization |
+| `extract_subgraph_adaptive()` | `(seed_entity_ids, query_entity_ids?, max_nodes?) → {entities, relationships}` | Three-phase entity-type-aware extraction (see below) | Context enrichment, visualization |
+| `extract_subgraph()` | `(entity_ids, depth?, max_nodes?) → {entities, relationships}` | Legacy BFS traversal (both directions) from seed entities | Deprecated — use `extract_subgraph_adaptive()` |
 | `get_full_graph()` | `(max_nodes?) → {entities, relationships}` | Full graph export (capped) | Full visualization |
 | `find_shortest_path()` | `(source_id, target_id) → list[int]?` | Undirected shortest path | "How are these tables related?" |
 | `get_connected_entities()` | `(entity_id) → {descendants, ancestors}` | Directed reachability | Impact analysis |
 | `get_entity_importance()` | `() → {entity_id: float}` | Degree centrality | Node sizing in visualization |
 | `detect_cycles()` | `() → list[list[int]]` | Simple cycle detection (capped at 20) | Taxonomy validation |
 | `get_stats()` | `() → dict` | Entity/relationship type breakdowns, connected components, density, cycle detection | Dashboard, card metadata |
+
+#### Adaptive Subgraph Extraction Algorithm
+
+The `extract_subgraph_adaptive()` method replaces the fixed-depth BFS with a scalable, entity-type-aware algorithm designed for schemas with 1000s of entities. It uses three phases:
+
+```
+Phase 1: Structural Discovery (unbounded)
+├── Phase 1a: FK-Chain Traversal
+│   BFS from seeds through table/foreign_key nodes ONLY.
+│   NO depth limit → handles 3, 4, 5, N-way JOIN chains.
+│   Skips database hub (would explode), columns (detail), semantic nodes.
+│
+├── Phase 1b: Joinable Table Discovery
+│   For each discovered table → collect its column names.
+│   Find OTHER tables sharing those column names → join candidates.
+│   Iterate up to 3 rounds for transitive joins:
+│     Round 1: orders(customer_id) → discovers customers(customer_id)
+│     Round 2: customers(region_id) → discovers regions(region_id)
+│     Round 3: regions(country_id) → discovers countries(country_id)
+│
+└── Phase 1c: Database Context
+    For each discovered table → add its parent database entity.
+    Context only — don't expand from database nodes.
+
+Phase 2: Column Expansion (budget-aware)
+    column_budget = max_nodes - structural_count
+    Sort tables: query-matched first, then by distance from seeds.
+    Add columns per-table until budget exhausted.
+
+Phase 3: Semantic Enrichment (capped at 50)
+    Add business_concept, metric, taxonomy, domain nodes
+    connected to discovered structural entities.
+```
+
+**Key design choices:**
+- **Entity-type awareness**: Only `table` and `foreign_key` nodes are expanded during structural discovery. Database hub nodes (which connect to all tables) are explicitly excluded to prevent explosion.
+- **No fixed depth limit**: FK chains are traversed without bound, ensuring 3, 4, 5, or N-way JOINs are always discovered.
+- **Iterative joinable-table discovery**: Even without explicit FK edges, tables are connected through shared column names (e.g., `customer_id` in both `orders` and `customers`). Up to 3 iterative rounds discover transitive join paths.
+- **Budget-aware column expansion**: Columns are added only after structural discovery, prioritizing query-matched tables and limiting to the remaining node budget.
+- **Default `max_nodes=500`** (up from 50): Supports schemas with hundreds of tables while keeping output manageable.
+
+**Scalability:**
+| Schema size | Typical result |
+|-------------|---------------|
+| 10 tables | All tables + all columns (~100 nodes) |
+| 100 tables | ~30-50 relevant tables + columns for top priority (~300 nodes) |
+| 1000 tables | ~30-100 relevant tables + columns for top ~50 (~500 nodes) |
+
+All phases are O(V + E) combined.
 
 ### Cross-Profile Enumeration
 
@@ -418,11 +470,11 @@ User Query: "Show me orders with high revenue customers"
                     │
                     ▼
     ┌───────────────────────────────┐
-    │  3. BFS expansion             │
-    │     depth=2, max_nodes=30     │
-    │     → discover: order_id,     │
-    │       customer_id (FK),       │
-    │       order_date, amount      │
+    │  3. Adaptive extraction       │
+    │     max_nodes=500             │
+    │     → FK chains (unbounded),  │
+    │       joinable tables,        │
+    │       budget-aware columns    │
     └───────────────┬───────────────┘
                     │
                     ▼
@@ -622,11 +674,12 @@ All endpoints are JWT-authenticated and scoped to the current user. The `profile
 
 | Endpoint | Method | Parameters | Response |
 |----------|--------|------------|----------|
-| `/v1/knowledge-graph/subgraph` | `GET` | Query: `profile_id`, `entity_name`, `depth?` | `{status, subgraph: {entities, relationships}}` |
+| `/v1/knowledge-graph/subgraph` | `GET` | Query: `profile_id`, `entity_name`, `max_nodes?` | `{status, nodes, edges, node_count}` |
 | `/v1/knowledge-graph/stats` | `GET` | Query: `profile_id` | `{status, stats: {total_entities, total_relationships, entity_types, ...}}` |
 | `/v1/knowledge-graph/import` | `POST` | Body: `{profile_id, entities: [...], relationships: [...]}` | `{status, entities_added, relationships_added}` |
 | `/v1/knowledge-graph/clear` | `DELETE` | Query: `profile_id` | `{status, entities_deleted, relationships_deleted}` |
 | `/v1/knowledge-graph/context` | `GET` | Query: `profile_id`, `query` | `{status, context_text, entity_count}` |
+| `/v1/knowledge-graph/generate` | `POST` | Body: `{profile_id, llm_config_id?}` | `{status, structural, semantic, phase3_relationships, phase3_5_fk_relationships, phase4_relationships, total}` |
 | `/v1/knowledge-graph/discover` | `POST` | Body: `{profile_id, tools: [...]}` | `{status, entities_discovered, relationships_discovered}` (V2 stub) |
 
 ### Management Endpoints
@@ -675,7 +728,8 @@ ComponentManager.get_context_enrichment()
 KnowledgeGraphHandler.get_context_enrichment()
     │   (handler.py:116)
     │   1. Search entities for query keywords
-    │   2. BFS expand to subgraph (depth=2, max=30 nodes)
+    │   2. Adaptive subgraph extraction (max_nodes=500)
+    │      → FK chains, joinable tables, budget-aware columns
     │   3. Format as structured text
     ▼
 knowledge_context_str += enrichment
@@ -784,10 +838,12 @@ The `MCPSchemaDiscovery` class provides a placeholder for automatic knowledge gr
 | Entity CRUD | O(1) per operation | SQLite indexed by profile + user |
 | Substring search | O(n) | Scans entities within profile scope; V2 will use embedding-based search |
 | NetworkX load | O(E + V) | Full graph loaded from SQLite on first algorithm call |
-| Subgraph BFS | O(V + E) | Bounded by `max_nodes` parameter |
+| Adaptive subgraph extraction | O(V + E) | Three-phase: structural (unbounded FK chains), column expansion (budget-aware), semantic enrichment (capped) |
+| Legacy subgraph BFS | O(V + E) | Bounded by `depth` and `max_nodes` parameters (deprecated) |
 | Centrality | O(V + E) | Computed over full graph |
 | Cycle detection | O(V + E) | Capped at 20 cycles |
-| Context enrichment | ~5-15ms | Search + BFS + format for typical graphs (<500 entities) |
+| Context enrichment | ~5-20ms | Search + adaptive extraction + format for typical graphs (<500 entities) |
+| FK inference (ingestion) | O(T² × C) | T=tables, C=avg columns per table; runs once during KG generation |
 | D3 rendering | Browser-side | Force simulation self-terminates; mini graph stops after 3s |
 
 **NetworkX cache invalidation:** Any write operation (add, update, delete, import, clear) sets `self._graph = None`. The next graph algorithm call re-loads the full graph from SQLite. For write-heavy workloads, consider batching mutations before querying algorithms.
@@ -804,6 +860,8 @@ The `MCPSchemaDiscovery` class provides a placeholder for automatic knowledge gr
 | Resource Panel management | **Shipped** | Browse, export, delete across profiles |
 | Intelligence Performance tab | **Shipped** | Import, export, delete with IFOC badges |
 | Bulk import/export | **Shipped** | JSON file format with profile metadata |
+| Adaptive subgraph extraction | **Shipped** | Entity-type-aware, unbounded FK chains, budget-aware columns (replaces fixed-depth BFS) |
+| FK edge inference (Phase 3.5) | **Shipped** | Deterministic FK detection via column properties, naming conventions, and shared column names |
 | Promote (cross-profile copy) | **Planned** | Copy KG from one profile to another |
 | MCP schema auto-discovery | **V2 Stub** | Parse MCP tool schemas to populate graph automatically |
 | Embedding-based semantic search | **Planned** | Replace substring matching with vector similarity |

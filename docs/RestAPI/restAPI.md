@@ -8608,11 +8608,15 @@ curl -X DELETE http://localhost:5050/api/v1/knowledge-graph/relationships/17 \
 
 ##### Extract Subgraph
 
-Extracts a subgraph centered on an entity using breadth-first traversal.
+Extracts a subgraph centered on an entity using adaptive, entity-type-aware extraction. The algorithm uses three phases:
+
+1. **Phase 1 — Structural Discovery** (unbounded): Traverses FK chains and discovers joinable tables through shared column names (up to 3 iterative rounds for transitive joins). Handles N-way JOIN chains of any length.
+2. **Phase 2 — Column Expansion** (budget-aware): Adds columns for discovered tables, prioritizing query-matched tables, until `max_nodes` budget is reached.
+3. **Phase 3 — Semantic Enrichment** (capped at 50): Adds `business_concept`, `metric`, `taxonomy`, and `domain` nodes connected to discovered structural entities.
 
 ```bash
-# Subgraph around a specific entity (depth 2, max 50 nodes)
-curl -X GET "http://localhost:5050/api/v1/knowledge-graph/subgraph?entity_name=customers&depth=2&max_nodes=50" \
+# Subgraph around a specific entity (adaptive extraction, max 500 nodes)
+curl -X GET "http://localhost:5050/api/v1/knowledge-graph/subgraph?entity_name=customers&max_nodes=500" \
   -H "Authorization: Bearer $JWT"
 
 # Full graph (no entity_name)
@@ -8624,8 +8628,7 @@ curl -X GET "http://localhost:5050/api/v1/knowledge-graph/subgraph?max_nodes=100
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `entity_name` | — | Center entity for subgraph extraction |
-| `depth` | `2` | Maximum BFS traversal depth |
-| `max_nodes` | `50` | Maximum nodes to return |
+| `max_nodes` | `500` | Maximum nodes to return (budget for column + semantic expansion) |
 | `profile_id` | `__default__` | Profile scope |
 
 **Response:**
@@ -8648,10 +8651,16 @@ curl -X GET "http://localhost:5050/api/v1/knowledge-graph/subgraph?max_nodes=100
       "relationship_type": "contains"
     }
   ],
-  "depth": 2,
   "node_count": 8
 }
 ```
+
+**Scalability characteristics:**
+| Schema size | Typical result |
+|-------------|---------------|
+| 10 tables | All tables + all columns (~100 nodes) |
+| 100 tables | ~30-50 relevant tables + top-priority columns (~300 nodes) |
+| 1000 tables | ~30-100 relevant tables + columns for top ~50 (~500 nodes) |
 
 **Status Codes:**
 | Code | Condition |
@@ -8885,6 +8894,89 @@ curl -X GET "http://localhost:5050/api/v1/knowledge-graph/export?profile_id=prof
 |------|-----------|
 | `200` | Graph exported as JSON file |
 | `400` | Missing `profile_id` parameter |
+
+---
+
+##### Generate Knowledge Graph
+
+Auto-generates a knowledge graph from MCP server context using a multi-phase ingestion pipeline. The pipeline extracts structural entities (databases, tables, columns) and semantic entities (business concepts, metrics, taxonomies) via LLM-driven analysis, then runs deterministic post-processing phases.
+
+```bash
+curl -X POST http://localhost:5050/api/v1/knowledge-graph/generate \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "profile_id": "profile-abc",
+    "llm_config_id": "llm-config-456"
+  }'
+```
+
+**Body Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `profile_id` | Yes | Profile whose MCP server provides schema context |
+| `llm_config_id` | No | LLM configuration for semantic analysis (Phase 2). If omitted, uses profile default. |
+
+**Ingestion Pipeline Phases:**
+
+| Phase | Name | Type | Description |
+|-------|------|------|-------------|
+| 1 | Structural extraction | LLM-driven | Extracts databases, tables, columns from MCP tool traces |
+| 2 | Semantic enrichment | LLM-driven | Identifies business concepts, metrics, taxonomies via LLM |
+| 3 | Gap-fill | Deterministic | Infers missing `database → table` containment relationships |
+| **3.5** | **FK inference** | **Deterministic** | **Infers `foreign_key` relationships between tables using three signals: (A) column properties (FK/References indicators), (B) naming conventions (`<table>_id` patterns), (C) shared column names across tables** |
+| 4 | Cross-layer linking | Deterministic | Links semantic entities to structural entities (`relates_to`) |
+
+**Response:**
+```json
+{
+  "status": "success",
+  "session_id": "kg-session-abc123",
+  "structural": {
+    "entities_added": 25,
+    "relationships_added": 20
+  },
+  "semantic": {
+    "entities_added": 8,
+    "relationships_added": 5
+  },
+  "phase3_relationships": 3,
+  "phase3_5_fk_relationships": 12,
+  "phase4_relationships": 6,
+  "total": {
+    "entities_added": 33,
+    "relationships_added": 46
+  }
+}
+```
+
+**Phase 3.5 FK Inference Details:**
+
+The FK inference phase creates `table --[foreign_key]--> table` edges with metadata:
+
+```json
+{
+  "relationship_type": "foreign_key",
+  "cardinality": "1:N",
+  "metadata": {
+    "inferred_via": "naming_convention",
+    "join_column": "customer_id"
+  },
+  "source": "constructor_fk_inferred"
+}
+```
+
+Three detection signals (any match creates an edge):
+- **Signal A — Column properties**: Scans column properties for FK indicators (`ForeignKey=Y`, `References=TableName`, `IsForeignKey=true`)
+- **Signal B — Naming conventions**: Matches `<table_name>_id` or `<table_singular>_id` patterns (e.g., `customer_id` → `customers` table)
+- **Signal C — Shared column names**: Finds columns appearing in 2+ tables (excluding generic names like `id`, `name`, `status`). PK-aware: if a column is PK in one table and non-PK in another, cardinality is `1:N`; otherwise `N:M`
+
+**Status Codes:**
+| Code | Condition |
+|------|-----------|
+| `200` | Knowledge graph generated successfully |
+| `400` | Missing required parameters |
+| `500` | LLM or MCP server error during generation |
 
 ---
 
