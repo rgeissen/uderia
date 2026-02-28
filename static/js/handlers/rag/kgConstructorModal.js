@@ -1,11 +1,13 @@
 /**
  * Knowledge Graph Constructor Modal
  *
- * Two-step workflow:
- *   Step 1 — Generate Context: Execute an MCP prompt to retrieve database schema
- *   Step 2 — Generate Knowledge Graph: Parse schema (structural) + optional LLM enrichment (semantic)
+ * Single-step workflow: Select profile + enter database name → agent-driven
+ * system session discovers structure via MCP tools and populates the KG.
  *
- * Outputs entities/relationships into the Knowledge Graph (GraphStore) for a selected profile.
+ * Turn 1: Agent discovers tables/columns via MCP tools → structural entities
+ * Turn 2 (optional): Agent analyzes business concepts → semantic entities
+ *
+ * The system session is visible in the session gallery (purple border + gear badge).
  */
 
 import { generateKnowledgeGraph } from '../../api.js';
@@ -14,8 +16,6 @@ import { showAppBanner } from '../../bannerSystem.js';
 // ── State ────────────────────────────────────────────────────────────────────
 
 let _overlay = null;
-let _generatedContext = '';
-let _executionTrace = [];
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -24,8 +24,6 @@ let _executionTrace = [];
  * Called from the template system Deploy button handler.
  */
 export function openKgConstructorModal(template, defaults = {}) {
-    _generatedContext = '';
-    _executionTrace = [];
     _ensureModalExists();
     _populateProfileDropdown();
     _resetModalState();
@@ -56,7 +54,7 @@ function _ensureModalExists() {
                     </div>
                     <div>
                         <h3 class="text-xl font-bold text-white">Knowledge Graph Constructor</h3>
-                        <p class="text-xs text-gray-400">Auto-populate from database schema context</p>
+                        <p class="text-xs text-gray-400">Agent-driven database structure discovery</p>
                     </div>
                 </div>
                 <button id="kg-constructor-close-btn"
@@ -67,17 +65,12 @@ function _ensureModalExists() {
                 </button>
             </div>
 
-            <!-- ─── Step 1: Generate Context ─── -->
-            <div id="kg-step1" class="mb-6">
-                <div class="flex items-center gap-2 mb-4">
-                    <span class="flex items-center justify-center w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 text-xs font-bold">1</span>
-                    <h4 class="text-sm font-semibold text-white">Generate Context</h4>
-                </div>
-
+            <!-- Configuration -->
+            <div class="mb-6">
                 <!-- Profile selector -->
                 <div class="mb-3">
                     <label class="block text-xs text-gray-400 mb-1">Target Profile</label>
-                    <select id="kg-constructor-profile" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+                    <select id="kg-constructor-profile" class="w-full p-2 text-sm text-white rounded-lg outline-none cursor-pointer appearance-none" style="background: rgba(30, 30, 40, 0.8); border: 1px solid rgba(147, 51, 234, 0.3); background-image: url('data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%239ca3af%22 d=%22M2 4l4 4 4-4%22/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0.75rem center;">
                         <option value="">Select a profile...</option>
                     </select>
                 </div>
@@ -89,57 +82,13 @@ function _ensureModalExists() {
                            class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" />
                 </div>
 
-                <!-- MCP context prompt -->
-                <div class="mb-3">
-                    <label class="block text-xs text-gray-400 mb-1">MCP Context Prompt</label>
-                    <input id="kg-constructor-mcp-prompt" type="text" value="base_databaseBusinessDesc"
-                           class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" />
-                    <p class="text-xs text-gray-500 mt-1">MCP prompt name to execute for schema discovery</p>
-                </div>
-
-                <!-- Generate Context button -->
-                <button id="kg-constructor-gen-context-btn"
-                        class="card-btn card-btn--primary w-full flex items-center justify-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                    </svg>
-                    Generate Context
-                </button>
-
-                <!-- Context status -->
-                <div id="kg-context-status" class="hidden mt-3 text-xs text-gray-400 flex items-center gap-2">
-                    <svg class="w-4 h-4 animate-spin text-purple-400" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                    </svg>
-                    <span id="kg-context-status-text">Executing MCP prompt...</span>
-                </div>
-            </div>
-
-            <!-- ─── Step 2: Generate Knowledge Graph (hidden until context ready) ─── -->
-            <div id="kg-step2" class="hidden">
-                <div class="my-4 border-t border-white/10"></div>
-
-                <div class="flex items-center gap-2 mb-4">
-                    <span class="flex items-center justify-center w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 text-xs font-bold">2</span>
-                    <h4 class="text-sm font-semibold text-white">Generate Knowledge Graph</h4>
-                </div>
-
-                <!-- Context preview -->
-                <div class="mb-3">
-                    <label class="block text-xs text-gray-400 mb-1">Database Schema Context</label>
-                    <textarea id="kg-constructor-context-preview" rows="8"
-                              class="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-xs text-gray-300 font-mono focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none resize-y"></textarea>
-                    <p class="text-xs text-gray-500 mt-1">Review and edit the schema context before extraction</p>
-                </div>
-
-                <!-- Semantic enrichment toggle -->
+                <!-- Business analysis toggle -->
                 <div class="mb-4 flex items-center gap-3">
                     <input id="kg-constructor-semantic-toggle" type="checkbox" checked
                            class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0" />
                     <label for="kg-constructor-semantic-toggle" class="text-sm text-gray-300">
-                        Include semantic enrichment
-                        <span class="text-xs text-gray-500 ml-1">(business concepts, metrics, taxonomies — requires LLM)</span>
+                        Include business analysis
+                        <span class="text-xs text-gray-500 ml-1">(business concepts, metrics, taxonomies)</span>
                     </label>
                 </div>
 
@@ -159,7 +108,7 @@ function _ensureModalExists() {
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
-                    <span id="kg-generate-status-text">Parsing schema...</span>
+                    <span id="kg-generate-status-text">Initializing...</span>
                 </div>
             </div>
 
@@ -203,10 +152,7 @@ function _attachEventListeners() {
     // Done button (in results section)
     _overlay.querySelector('#kg-constructor-done-btn').addEventListener('click', _hideModal);
 
-    // Step 1: Generate Context
-    _overlay.querySelector('#kg-constructor-gen-context-btn').addEventListener('click', _handleGenerateContext);
-
-    // Step 2: Generate Knowledge Graph
+    // Generate Knowledge Graph
     _overlay.querySelector('#kg-constructor-generate-btn').addEventListener('click', _handleGenerateKG);
 }
 
@@ -216,23 +162,30 @@ function _populateProfileDropdown() {
     const select = _overlay.querySelector('#kg-constructor-profile');
     select.innerHTML = '<option value="">Select a profile...</option>';
 
+    const ifocLabels = {
+        'llm_only': 'Ideate', 'rag_focused': 'Focus',
+        'tool_enabled': 'Optimize', 'genie': 'Coordinate'
+    };
+
     const profiles = window.configState?.profiles || [];
     for (const p of profiles) {
-        // Only show profiles that have an MCP server (tool_enabled or genie)
-        if (p.profile_type !== 'tool_enabled' && p.profile_type !== 'genie') continue;
+        // Require MCP server + tool-calling capability (tool_enabled or conversation with tools)
+        if (!p.mcpServerId) continue;
+        const hasToolCalling = p.profile_type === 'tool_enabled' || (p.profile_type === 'llm_only' && p.useMcpTools);
+        if (!hasToolCalling) continue;
         const opt = document.createElement('option');
         opt.value = p.id;
-        opt.textContent = `@${p.tag || p.name} (${p.profile_type === 'tool_enabled' ? 'Optimize' : 'Coordinate'})`;
+        opt.textContent = `@${p.tag || p.name} (${ifocLabels[p.profile_type] || p.profile_type})`;
         select.appendChild(opt);
     }
 }
 
-// ── Step 1: Generate Context ─────────────────────────────────────────────────
+// ── Generate Knowledge Graph ─────────────────────────────────────────────────
 
-async function _handleGenerateContext() {
+async function _handleGenerateKG() {
     const profileId = _overlay.querySelector('#kg-constructor-profile').value;
     const dbName = _overlay.querySelector('#kg-constructor-dbname').value.trim();
-    const mcpPrompt = _overlay.querySelector('#kg-constructor-mcp-prompt').value.trim() || 'base_databaseBusinessDesc';
+    const includeSemantic = _overlay.querySelector('#kg-constructor-semantic-toggle').checked;
 
     if (!profileId) {
         showAppBanner('Please select a target profile.', 'error');
@@ -243,133 +196,45 @@ async function _handleGenerateContext() {
         return;
     }
 
-    const contextBtn = _overlay.querySelector('#kg-constructor-gen-context-btn');
-    const statusEl = _overlay.querySelector('#kg-context-status');
-    const statusText = _overlay.querySelector('#kg-context-status-text');
-
-    try {
-        // Show loading
-        contextBtn.disabled = true;
-        contextBtn.classList.add('opacity-50');
-        statusEl.classList.remove('hidden');
-        statusText.textContent = `Executing ${mcpPrompt} prompt...`;
-
-        // Find MCP server ID from the selected profile
-        const profiles = window.configState?.profiles || [];
-        const profile = profiles.find(p => p.id === profileId);
-        const mcpServerId = profile?.mcpServerId || profile?.mcp_server_id || '';
-
-        // Call the execute-raw endpoint
-        const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch(`/api/v1/prompts/${mcpPrompt}/execute-raw`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                arguments: { database_name: dbName },
-                ...(mcpServerId ? { mcp_server_id: mcpServerId } : {})
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || `HTTP ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        // Extract context text
-        let contextText = result.final_answer_text || '';
-
-        // If final answer is empty or looks like JSON, try execution trace
-        if (!contextText || contextText.startsWith('[') || contextText.startsWith('{')) {
-            for (let i = (result.execution_trace || []).length - 1; i >= 0; i--) {
-                const trace = result.execution_trace[i];
-                if (trace.action?.tool_name === 'TDA_FinalReport' &&
-                    trace.result?.results?.[0]?.direct_answer) {
-                    contextText = trace.result.results[0].direct_answer;
-                    break;
-                }
-            }
-        }
-
-        // Also extract detailed schema from execution trace
-        let schemaDetails = '';
-        for (const trace of (result.execution_trace || [])) {
-            if (!trace?.action || !trace?.result) continue;
-            const toolName = trace.action.tool_name || '';
-            if (toolName === 'TDA_SystemLog' || toolName === 'TDA_FinalReport') continue;
-            for (const item of (trace.result.results || [])) {
-                const content = item?.tool_output || item?.content || item?.['Request Text'] || '';
-                if (content && typeof content === 'string' && content.length > 50) {
-                    schemaDetails += '\n\n' + content;
-                }
-            }
-        }
-
-        if (schemaDetails) {
-            contextText += '\n\n=== Detailed Schema Information ===' + schemaDetails;
-        }
-
-        _generatedContext = contextText;
-        _executionTrace = result.execution_trace || [];
-
-        // Show Step 2
-        statusEl.classList.add('hidden');
-        const step2 = _overlay.querySelector('#kg-step2');
-        step2.classList.remove('hidden');
-
-        const preview = _overlay.querySelector('#kg-constructor-context-preview');
-        preview.value = contextText;
-
-        showAppBanner('Database context generated successfully.', 'success');
-
-    } catch (err) {
-        console.error('[KG Constructor] Generate context failed:', err);
-        statusText.textContent = `Error: ${err.message}`;
-        showAppBanner(`Failed to generate context: ${err.message}`, 'error');
-    } finally {
-        contextBtn.disabled = false;
-        contextBtn.classList.remove('opacity-50');
-    }
-}
-
-// ── Step 2: Generate Knowledge Graph ─────────────────────────────────────────
-
-async function _handleGenerateKG() {
-    const profileId = _overlay.querySelector('#kg-constructor-profile').value;
-    const dbName = _overlay.querySelector('#kg-constructor-dbname').value.trim();
-    const contextText = _overlay.querySelector('#kg-constructor-context-preview').value.trim();
-    const includeSemantic = _overlay.querySelector('#kg-constructor-semantic-toggle').checked;
-
-    if (!contextText) {
-        showAppBanner('No schema context available. Run Step 1 first.', 'error');
-        return;
-    }
-
     const generateBtn = _overlay.querySelector('#kg-constructor-generate-btn');
     const statusEl = _overlay.querySelector('#kg-generate-status');
     const statusText = _overlay.querySelector('#kg-generate-status-text');
+
+    // Progressive status messages
+    const statusMessages = [
+        { delay: 0, text: 'Creating system session...' },
+        { delay: 3000, text: 'Discovering database structure via MCP tools...' },
+        { delay: 15000, text: 'Agent is calling tools to list tables and columns...' },
+        { delay: 30000, text: 'Parsing structural entities from tool results...' },
+    ];
+    if (includeSemantic) {
+        statusMessages.push(
+            { delay: 40000, text: 'Running business analysis (Turn 2)...' },
+            { delay: 55000, text: 'Extracting semantic entities...' },
+        );
+    }
+    statusMessages.push({ delay: 70000, text: 'Finalizing knowledge graph...' });
+
+    const timers = [];
 
     try {
         generateBtn.disabled = true;
         generateBtn.classList.add('opacity-50');
         statusEl.classList.remove('hidden');
-        statusText.textContent = 'Parsing schema structure...';
 
-        if (includeSemantic) {
-            // Update status after a short delay to show semantic phase
-            setTimeout(() => {
+        // Schedule progressive status updates
+        for (const msg of statusMessages) {
+            const timer = setTimeout(() => {
                 if (!generateBtn.disabled) return; // already done
-                statusText.textContent = 'Running semantic analysis (LLM)...';
-            }, 2000);
+                statusText.textContent = msg.text;
+            }, msg.delay);
+            timers.push(timer);
         }
 
-        const result = await generateKnowledgeGraph(
-            profileId, contextText, _executionTrace, dbName, includeSemantic
-        );
+        const result = await generateKnowledgeGraph(profileId, dbName, includeSemantic);
+
+        // Clear timers
+        timers.forEach(t => clearTimeout(t));
 
         // Hide status spinner
         statusEl.classList.add('hidden');
@@ -382,21 +247,32 @@ async function _handleGenerateKG() {
         const s = result.structural || {};
         const sem = result.semantic || {};
         const t = result.total || {};
+        const sessionId = result.session_id || '';
 
         resultsBody.innerHTML = `
             <div class="flex justify-between py-1 border-b border-white/5">
-                <span class="text-gray-400">Structural</span>
+                <span class="text-gray-400">Structural (tables, columns)</span>
                 <span class="text-green-400">${s.entities_added || 0} entities, ${s.relationships_added || 0} relationships</span>
             </div>
             ${includeSemantic ? `
             <div class="flex justify-between py-1 border-b border-white/5">
-                <span class="text-gray-400">Semantic</span>
+                <span class="text-gray-400">Semantic (business concepts)</span>
                 <span class="text-purple-400">${sem.entities_added || 0} entities, ${sem.relationships_added || 0} relationships</span>
+            </div>` : ''}
+            ${result.phase3_relationships ? `
+            <div class="flex justify-between py-1 border-b border-white/5">
+                <span class="text-gray-400">Gap-fill relationships</span>
+                <span class="text-blue-400">${result.phase3_relationships}</span>
             </div>` : ''}
             <div class="flex justify-between py-1 font-bold">
                 <span class="text-white">Total</span>
                 <span class="text-white">${t.entities_added || 0} entities, ${t.relationships_added || 0} relationships</span>
             </div>
+            ${sessionId ? `
+            <div class="flex justify-between py-1 mt-2 border-t border-white/10 pt-2">
+                <span class="text-gray-500">System session</span>
+                <span class="text-indigo-400 text-xs cursor-pointer hover:underline" onclick="document.querySelector('[data-session-id=&quot;${sessionId}&quot;]')?.click()" title="Click to view the discovery session">${sessionId.substring(0, 8)}...</span>
+            </div>` : ''}
         `;
 
         const statusLabel = result.status === 'partial' ? 'partially completed' : 'completed';
@@ -414,6 +290,7 @@ async function _handleGenerateKG() {
         } catch (_) { /* non-critical */ }
 
     } catch (err) {
+        timers.forEach(t => clearTimeout(t));
         console.error('[KG Constructor] Generation failed:', err);
         statusText.textContent = `Error: ${err.message}`;
         showAppBanner(`Knowledge Graph generation failed: ${err.message}`, 'error');
@@ -444,26 +321,18 @@ function _hideModal() {
 }
 
 function _resetModalState() {
-    // Reset step 2 and results to hidden
-    const step2 = _overlay.querySelector('#kg-step2');
+    // Reset results to hidden
     const results = _overlay.querySelector('#kg-results');
-    const contextStatus = _overlay.querySelector('#kg-context-status');
     const genStatus = _overlay.querySelector('#kg-generate-status');
 
-    step2.classList.add('hidden');
     results.classList.add('hidden');
-    contextStatus.classList.add('hidden');
     genStatus.classList.add('hidden');
 
-    // Clear previous values
-    _overlay.querySelector('#kg-constructor-context-preview').value = '';
+    // Reset toggle
     _overlay.querySelector('#kg-constructor-semantic-toggle').checked = true;
 
-    // Re-enable buttons
-    const contextBtn = _overlay.querySelector('#kg-constructor-gen-context-btn');
+    // Re-enable button
     const generateBtn = _overlay.querySelector('#kg-constructor-generate-btn');
-    contextBtn.disabled = false;
-    contextBtn.classList.remove('opacity-50');
     generateBtn.disabled = false;
     generateBtn.classList.remove('opacity-50');
 }

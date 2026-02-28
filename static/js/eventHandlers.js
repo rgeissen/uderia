@@ -769,6 +769,11 @@ function getGenieTitle(eventType, payload) {
             return `Component: ${payload.tool_name || 'Tool'}`;
         case 'genie_component_completed':
             return `Component Complete: ${payload.component_id || payload.tool_name || 'Tool'}`;
+        case 'kg_enrichment': {
+            const entities = payload?.total_entities || 0;
+            const rels = payload?.total_relationships || 0;
+            return `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`;
+        }
         case 'session_name_generation_start':
             return 'Generating Session Name';
         case 'session_name_generation_complete':
@@ -2320,6 +2325,16 @@ export async function handleReloadPlanClick(element) {
                     type: eventType
                 };
                 UI.renderConversationAgentStepForReload(knowledgeEventData, DOM.statusWindowContent, false);
+            }
+
+            // Render KG enrichment event if present
+            if (turnData.kg_enrichment_event) {
+                const kgEventData = {
+                    step: _getConversationAgentStepTitle('kg_enrichment', turnData.kg_enrichment_event),
+                    details: turnData.kg_enrichment_event,
+                    type: 'kg_enrichment'
+                };
+                UI.renderConversationAgentStepForReload(kgEventData, DOM.statusWindowContent, false);
             }
 
             if (agentEvents.length > 0) {

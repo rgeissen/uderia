@@ -186,21 +186,28 @@ export async function loadKnowledgeGraphsPanel() {
         const graphs = response.knowledge_graphs || [];
         state.resourceData.knowledgeGraphs = graphs;
 
-        // Update tab counter
+        const activeProfileId = state.currentResourcePanelProfileId;
+
+        // Filter to only KGs that are owned by or assigned to the current profile
+        const visibleGraphs = graphs.filter(kg => {
+            const kgState = _getKgStateForProfile(kg, activeProfileId);
+            return kgState.isAvailable;
+        });
+
+        // Update tab counter with visible count only
         const tabBtn = document.querySelector('.resource-tab[data-type="knowledge-graphs"]');
         if (tabBtn) {
-            tabBtn.textContent = `Knowledge Graphs (${graphs.length})`;
+            tabBtn.textContent = `Knowledge Graphs (${visibleGraphs.length})`;
         }
 
-        if (graphs.length === 0) {
+        if (visibleGraphs.length === 0) {
             renderEmptyState(container);
             return;
         }
 
-        const activeProfileId = state.currentResourcePanelProfileId;
         container.innerHTML = '';
 
-        for (const kg of graphs) {
+        for (const kg of visibleGraphs) {
             const kgState = _getKgStateForProfile(kg, activeProfileId);
             const card = createKnowledgeGraphCard(kg, kgState);
             container.appendChild(card);
@@ -780,43 +787,80 @@ export function initializeImportHandler() {
                 const text = await file.text();
                 const data = JSON.parse(text);
 
-                const profileId = data.profile_id;
                 const entities = data.entities || [];
                 const relationships = data.relationships || [];
 
-                if (!profileId) {
-                    showAppBanner('Import file is missing profile_id', 'error');
-                    return;
-                }
                 if (!entities.length && !relationships.length) {
                     showAppBanner('Import file contains no entities or relationships', 'error');
                     return;
                 }
 
-                importBtn.disabled = true;
-                importBtn.textContent = 'Importing...';
+                // Build profile dropdown options
+                const profiles = window.configState?.profiles || [];
+                const fileProfileId = data.profile_id || '';
+                const ifocLabels = {
+                    llm_only: 'Ideate', rag_focused: 'Focus',
+                    tool_enabled: 'Optimize', genie: 'Coordinate'
+                };
 
-                const result = await API.importKnowledgeGraph(profileId, entities, relationships);
-                showAppBanner(
-                    `Imported ${result.entities_added || 0} entities and ${result.relationships_added || 0} relationships`,
-                    'success'
+                const optionsHtml = profiles.map(p => {
+                    const label = `@${p.tag || p.name} (${ifocLabels[p.profile_type] || p.profile_type})`;
+                    const selected = p.id === fileProfileId ? ' selected' : '';
+                    return `<option value="${p.id}"${selected}>${label}</option>`;
+                }).join('');
+
+                const summary = `<span class="text-gray-400">${entities.length} entities, ${relationships.length} relationships</span>`;
+
+                showConfirmation(
+                    'Import Knowledge Graph',
+                    `<div class="space-y-3">
+                        <p class="text-sm text-gray-300">File: <span class="text-white font-medium">${file.name}</span> — ${summary}</p>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Target Profile</label>
+                            <select id="kg-import-profile-select"
+                                    class="w-full p-2 text-sm text-white rounded-lg outline-none cursor-pointer appearance-none"
+                                    style="background: rgba(30, 30, 40, 0.8); border: 1px solid rgba(147, 51, 234, 0.3); background-image: url('data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%239ca3af%22 d=%22M2 4l4 4 4-4%22/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0.75rem center;">
+                                ${optionsHtml}
+                            </select>
+                        </div>
+                    </div>`,
+                    async () => {
+                        const selectedProfileId = document.getElementById('kg-import-profile-select')?.value;
+                        if (!selectedProfileId) {
+                            showAppBanner('Please select a target profile', 'error');
+                            return;
+                        }
+
+                        importBtn.disabled = true;
+                        importBtn.textContent = 'Importing...';
+
+                        try {
+                            const result = await API.importKnowledgeGraph(selectedProfileId, entities, relationships);
+                            showAppBanner(
+                                `Imported ${result.entities_added || 0} entities and ${result.relationships_added || 0} relationships`,
+                                'success'
+                            );
+                            await loadKnowledgeGraphsIntelligenceTab();
+                            if (state.resourceData.knowledgeGraphs !== null) {
+                                await loadKnowledgeGraphsPanel();
+                            }
+                        } catch (importErr) {
+                            console.error('[KG Import] Failed:', importErr);
+                            showAppBanner(`Import failed: ${importErr.message}`, 'error');
+                        } finally {
+                            importBtn.disabled = false;
+                            importBtn.innerHTML = `
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                </svg>
+                                Import
+                            `;
+                        }
+                    }
                 );
-                await loadKnowledgeGraphsIntelligenceTab();
-                // Also refresh resource panel if it was loaded
-                if (state.resourceData.knowledgeGraphs !== null) {
-                    await loadKnowledgeGraphsPanel();
-                }
             } catch (err) {
-                console.error('[KG Import] Failed:', err);
+                console.error('[KG Import] Parse failed:', err);
                 showAppBanner(`Import failed: ${err.message}`, 'error');
-            } finally {
-                importBtn.disabled = false;
-                importBtn.innerHTML = `
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                    </svg>
-                    Import
-                `;
             }
         });
 

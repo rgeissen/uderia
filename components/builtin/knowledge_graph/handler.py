@@ -214,6 +214,19 @@ class KnowledgeGraphHandler(BaseComponentHandler):
             "The following known entities and relationships may inform your planning:",
         ]
 
+        # Build entity→database lookup from 'contains' relationships
+        # Pattern: database --[contains]--> table --[contains]--> column
+        entity_db_map: Dict[str, str] = {}
+        db_entities = {e["name"] for e in subgraph["entities"] if e["entity_type"] == "database"}
+        for rel in subgraph.get("relationships", []):
+            if rel["relationship_type"] == "contains" and rel["source_name"] in db_entities:
+                entity_db_map[rel["target_name"]] = rel["source_name"]
+        # Propagate: if a table is in a database, its columns are too
+        table_db = dict(entity_db_map)
+        for rel in subgraph.get("relationships", []):
+            if rel["relationship_type"] == "contains" and rel["source_name"] in table_db:
+                entity_db_map[rel["target_name"]] = table_db[rel["source_name"]]
+
         # Group entities by type
         by_type: Dict[str, List] = {}
         for entity in subgraph["entities"]:
@@ -229,6 +242,7 @@ class KnowledgeGraphHandler(BaseComponentHandler):
                 desc = props.get("description", "")
                 biz = props.get("business_meaning", "")
                 dtype = props.get("data_type", "")
+                db_name = entity_db_map.get(e["name"], "")
 
                 line = f"  - {e['name']}"
                 parts = []
@@ -236,6 +250,8 @@ class KnowledgeGraphHandler(BaseComponentHandler):
                     parts.append(desc)
                 if dtype:
                     parts.append(f"type: {dtype}")
+                if db_name:
+                    parts.append(f"database: {db_name}")
                 if biz:
                     parts.append(f"business: {biz}")
                 if parts:
@@ -561,13 +577,18 @@ class KnowledgeGraphHandler(BaseComponentHandler):
     # -------------------------------------------------------------------
 
     def _get_store(self, context: Optional[Dict]) -> Any:
-        """Get GraphStore scoped to the active profile + user."""
+        """Get GraphStore scoped to the active KG owner for this profile + user."""
         from components.builtin.knowledge_graph.graph_store import GraphStore
 
         ctx = context or {}
         profile_id = ctx.get("profile_id", "__default__")
         user_uuid = ctx.get("user_uuid", "system")
-        return GraphStore(profile_id, user_uuid)
+
+        # Resolve through assignment table (same logic as get_context_enrichment)
+        active_kg_owner = self._get_active_kg_owner(profile_id, user_uuid)
+        kg_pid = active_kg_owner if active_kg_owner else profile_id
+
+        return GraphStore(kg_pid, user_uuid)
 
     def _get_store_direct(self, profile_id: str, user_uuid: str) -> Any:
         """Get GraphStore with explicit profile/user (for context enrichment)."""

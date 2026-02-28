@@ -12339,14 +12339,14 @@ async def kg_import(current_user):
 
 @rest_api_bp.route("/v1/knowledge-graph/clear", methods=["DELETE"])
 @require_auth
-async def kg_clear():
+async def kg_clear(current_user):
     """Clear entire knowledge graph for the current profile."""
     user_uuid = _get_user_uuid_from_request()
     profile_id = request.args.get("profile_id", "__default__")
     store = _get_graph_store(user_uuid, profile_id)
 
     try:
-        await store.clear_graph()
+        store.clear_graph()
         return jsonify({"status": "success", "message": "Knowledge graph cleared"})
     except Exception as e:
         app_logger.error(f"Knowledge graph clear failed: {e}", exc_info=True)
@@ -12559,190 +12559,426 @@ async def kg_export(current_user):
 
 # ─── Knowledge Graph Constructor ─────────────────────────────────────────────
 
-import re as _re
 
-def _parse_structural_entities(database_context: str, execution_trace: list, database_name: str) -> dict:
+def _find_field(obj: dict, field_names: set) -> str:
+    """Find first matching field name in a dict, return its string value."""
+    for key in obj:
+        if key in field_names:
+            val = obj[key]
+            return str(val).strip() if val else ""
+    return ""
+
+
+def _parse_trace_for_structural_entities(execution_trace: list, database_name: str) -> dict:
     """
-    Phase 1: Deterministic structural parsing of database schema context.
+    Extract structural KG entities from agent execution trace tool results.
 
-    Extracts databases, tables, columns, and foreign keys from schema text
-    using regex/heuristics. No LLM call required.
+    Scans tool results for table-like and column-like objects using flexible
+    field-name matching (handles different MCP server naming conventions).
 
     Returns: {"entities": [...], "relationships": [...]}
     """
     entities = []
     relationships = []
-    seen_entities = set()  # (name, entity_type) to avoid duplicates
+    tables_found = {}   # table_name_lower → entity dict
+    seen_columns = set()  # (table_lower, col_lower) dedup
 
-    def _add_entity(name, entity_type, properties=None):
-        key = (name.lower(), entity_type)
-        if key not in seen_entities:
-            seen_entities.add(key)
-            ent = {"name": name, "entity_type": entity_type, "source": "constructor_structural"}
-            if properties:
-                ent["properties"] = properties
-            entities.append(ent)
+    # Field name patterns for flexible matching
+    TABLE_NAME_FIELDS = {"TableName", "table_name", "tablename", "Name", "ObjectName", "object_name"}
+    COLUMN_NAME_FIELDS = {"ColumnName", "column_name", "columnname", "Column"}
+    TYPE_FIELDS = {"Type", "DataType", "data_type", "ColumnType", "column_type", "ColumnFormat"}
 
-    def _add_relationship(src_name, src_type, tgt_name, tgt_type, rel_type, metadata=None):
-        rel = {
-            "source_name": src_name, "source_type": src_type,
-            "target_name": tgt_name, "target_type": tgt_type,
-            "relationship_type": rel_type,
-            "source": "constructor_structural",
-        }
-        if metadata:
-            rel["metadata"] = metadata
-        relationships.append(rel)
+    # Always create database entity
+    entities.append({
+        "name": database_name,
+        "entity_type": "database",
+        "source": "constructor_agent",
+        "properties": {"description": f"Database {database_name}"}
+    })
 
-    # Combine database_context + execution_trace text into one corpus
-    full_text = database_context or ""
-    if execution_trace and isinstance(execution_trace, list):
-        for trace_item in execution_trace:
-            if not isinstance(trace_item, dict):
+    for step in (execution_trace or []):
+        action = step.get("action", {})
+        tool_name = action.get("tool_name", "")
+        tool_args = action.get("arguments", {})
+        result = step.get("result", {})
+
+        # Skip system/report tools
+        if tool_name.startswith("TDA_"):
+            continue
+
+        result_items = result.get("results", []) if isinstance(result, dict) else []
+        if not isinstance(result_items, list):
+            continue
+
+        # Determine context: which table are these column results for?
+        context_table = (
+            tool_args.get("object_name") or tool_args.get("table_name")
+            or tool_args.get("ObjectName") or tool_args.get("TableName") or ""
+        )
+
+        for item in result_items:
+            if not isinstance(item, dict):
                 continue
-            result = trace_item.get("result", {})
-            if not isinstance(result, dict):
-                continue
-            for item in result.get("results", []):
-                if not isinstance(item, dict):
+
+            tbl_name = _find_field(item, TABLE_NAME_FIELDS)
+            col_name = _find_field(item, COLUMN_NAME_FIELDS)
+            has_type = bool(_find_field(item, TYPE_FIELDS))
+
+            # --- Table listing result (no type field, no table context) ---
+            if tbl_name and not has_type and not context_table:
+                tbl_lower = tbl_name.lower()
+                if tbl_lower not in tables_found:
+                    tbl_entity = {
+                        "name": tbl_name,
+                        "entity_type": "table",
+                        "source": "constructor_agent",
+                        "properties": {k: str(v) for k, v in item.items()
+                                       if k not in TABLE_NAME_FIELDS and v}
+                    }
+                    tables_found[tbl_lower] = tbl_entity
+                    entities.append(tbl_entity)
+                    relationships.append({
+                        "source_name": database_name, "source_type": "database",
+                        "target_name": tbl_name, "target_type": "table",
+                        "relationship_type": "contains", "source": "constructor_agent"
+                    })
+
+            # --- Column description result (has column name + table context) ---
+            elif col_name and context_table:
+                dedup_key = (context_table.lower(), col_name.lower())
+                if dedup_key in seen_columns:
                     continue
-                for field in ("tool_output", "content", "Request Text", "response"):
-                    val = item.get(field, "")
-                    if val and isinstance(val, str) and len(val.strip()) > 20:
-                        full_text += "\n\n" + val
+                seen_columns.add(dedup_key)
 
-    if not full_text.strip():
-        return {"entities": entities, "relationships": relationships}
+                col_props = {k: str(v) for k, v in item.items()
+                             if k not in COLUMN_NAME_FIELDS and v}
+                col_entity = {
+                    "name": col_name,
+                    "entity_type": "column",
+                    "source": "constructor_agent",
+                    "properties": col_props,
+                }
+                entities.append(col_entity)
+                relationships.append({
+                    "source_name": context_table, "source_type": "table",
+                    "target_name": col_name, "target_type": "column",
+                    "relationship_type": "contains", "source": "constructor_agent"
+                })
 
-    # --- Database entity ---
-    if database_name:
-        _add_entity(database_name, "database")
-
-    # --- Parse CREATE TABLE statements ---
-    # Pattern: CREATE TABLE [schema.]table_name ( ... )
-    create_table_re = _re.compile(
-        r'CREATE\s+(?:MULTISET\s+|SET\s+)?TABLE\s+'
-        r'(?:[\w"]+\.)?["\']?([\w]+)["\']?\s*[\(,]',
-        _re.IGNORECASE
-    )
-    for match in create_table_re.finditer(full_text):
-        table_name = match.group(1)
-        _add_entity(table_name, "table")
-        if database_name:
-            _add_relationship(database_name, "database", table_name, "table", "contains")
-
-    # --- Parse table listings (common MCP output format) ---
-    # Pattern: "TableName" or "Table Name: description" in tabular outputs
-    # Also: lines like "  tablename  |  comment  " (pipe-separated)
-    table_listing_re = _re.compile(
-        r'^\s*(?:\d+[\.\)]\s+)?["\']?([\w]+)["\']?\s*[\|:]\s*(.+)$',
-        _re.MULTILINE
-    )
-    for match in table_listing_re.finditer(full_text):
-        candidate = match.group(1)
-        desc = match.group(2).strip()
-        # Heuristic: skip if it looks like a column def or SQL keyword
-        if candidate.upper() in ("SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE",
-                                  "CREATE", "DROP", "ALTER", "INDEX", "VIEW", "TABLE",
-                                  "NULL", "NOT", "PRIMARY", "FOREIGN", "KEY", "DEFAULT",
-                                  "INTEGER", "VARCHAR", "CHAR", "DATE", "DECIMAL", "FLOAT",
-                                  "TIMESTAMP", "BIGINT", "SMALLINT", "BYTEINT", "NUMBER"):
-            continue
-        _add_entity(candidate, "table", {"description": desc[:500]})
-        if database_name:
-            _add_relationship(database_name, "database", candidate, "table", "contains")
-
-    # --- Parse column definitions inside CREATE TABLE blocks ---
-    # Find all CREATE TABLE ... ( ... ) blocks
-    create_block_re = _re.compile(
-        r'CREATE\s+(?:MULTISET\s+|SET\s+)?TABLE\s+'
-        r'(?:[\w"]+\.)?["\']?([\w]+)["\']?\s*\((.*?)\)(?:\s*(?:PRIMARY|UNIQUE|NO\s+FALLBACK|;))',
-        _re.IGNORECASE | _re.DOTALL
-    )
-    for block_match in create_block_re.finditer(full_text):
-        table_name = block_match.group(1)
-        body = block_match.group(2)
-
-        # Parse individual column lines
-        col_re = _re.compile(
-            r'^\s*["\']?([\w]+)["\']?\s+([\w]+(?:\s*\([^)]*\))?)',
-            _re.MULTILINE
-        )
-        for col_match in col_re.finditer(body):
-            col_name = col_match.group(1)
-            col_type = col_match.group(2).strip()
-            # Skip constraint keywords
-            if col_name.upper() in ("PRIMARY", "FOREIGN", "UNIQUE", "INDEX", "CONSTRAINT",
-                                     "CHECK", "KEY", "REFERENCES"):
-                continue
-            _add_entity(col_name, "column", {"data_type": col_type, "table": table_name})
-            _add_relationship(table_name, "table", col_name, "column", "contains")
-
-    # --- Parse FOREIGN KEY constraints ---
-    # Pattern: FOREIGN KEY (col) REFERENCES [schema.]table(col)
-    fk_re = _re.compile(
-        r'FOREIGN\s+KEY\s*\(\s*["\']?([\w]+)["\']?\s*\)\s*REFERENCES\s+'
-        r'(?:[\w"]+\.)?["\']?([\w]+)["\']?\s*\(\s*["\']?([\w]+)["\']?\s*\)',
-        _re.IGNORECASE
-    )
-    for fk_match in fk_re.finditer(full_text):
-        fk_col = fk_match.group(1)
-        ref_table = fk_match.group(2)
-        ref_col = fk_match.group(3)
-
-        # Find which table this FK belongs to by searching backwards for CREATE TABLE
-        fk_pos = fk_match.start()
-        owning_table = None
-        for ct_match in create_table_re.finditer(full_text):
-            if ct_match.start() < fk_pos:
-                owning_table = ct_match.group(1)
-            else:
-                break
-
-        fk_name = f"{owning_table or '?'}.{fk_col}_fk_{ref_table}.{ref_col}"
-        _add_entity(fk_name, "foreign_key", {
-            "source_table": owning_table, "source_column": fk_col,
-            "target_table": ref_table, "target_column": ref_col,
-        })
-        _add_relationship(fk_name, "foreign_key", f"{ref_table}", "table", "foreign_key",
-                         metadata={"source_column": fk_col, "target_column": ref_col})
-
-    # --- Parse column description tables (common MCP output) ---
-    # Pattern: "column_name  data_type  nullable  comment"
-    col_desc_re = _re.compile(
-        r'^\s*["\']?([\w]+)["\']?\s+'               # column name
-        r'((?:INTEGER|VARCHAR|CHAR|DATE|DECIMAL|FLOAT|TIMESTAMP|BIGINT|SMALLINT|'
-        r'BYTEINT|NUMBER|CLOB|BLOB|BYTE|VARBYTE|TIME|INTERVAL|PERIOD|JSON|XML|'
-        r'BOOLEAN|DOUBLE|REAL|NUMERIC|INT|TEXT|SERIAL|UUID|ARRAY)'
-        r'(?:\s*\([^)]*\))?)\s',                    # data type
-        _re.IGNORECASE | _re.MULTILINE
-    )
-    # Track which table context we're in (look for table headers above)
-    current_table = None
-    for line in full_text.split('\n'):
-        # Detect table context headers like "Table: tablename" or "== tablename =="
-        table_header_match = _re.match(
-            r'^\s*(?:Table|Object)[:\s]+["\']?([\w]+)["\']?',
-            line, _re.IGNORECASE
-        )
-        if table_header_match:
-            current_table = table_header_match.group(1)
-            continue
-
-        col_match = col_desc_re.match(line)
-        if col_match and current_table:
-            col_name = col_match.group(1)
-            col_type = col_match.group(2).strip()
-            if col_name.upper() not in ("PRIMARY", "FOREIGN", "UNIQUE", "INDEX",
-                                         "CONSTRAINT", "CHECK", "KEY", "REFERENCES",
-                                         "TABLE", "CREATE", "ALTER", "DROP"):
-                _add_entity(col_name, "column", {"data_type": col_type, "table": current_table})
-                _add_relationship(current_table, "table", col_name, "column", "contains")
+                # Ensure parent table entity exists
+                ctx_lower = context_table.lower()
+                if ctx_lower not in tables_found:
+                    tbl_entity = {
+                        "name": context_table, "entity_type": "table",
+                        "source": "constructor_agent", "properties": {}
+                    }
+                    tables_found[ctx_lower] = tbl_entity
+                    entities.append(tbl_entity)
+                    relationships.append({
+                        "source_name": database_name, "source_type": "database",
+                        "target_name": context_table, "target_type": "table",
+                        "relationship_type": "contains", "source": "constructor_agent"
+                    })
 
     return {"entities": entities, "relationships": relationships}
 
 
-def _build_kg_semantic_prompt(prompt_config: dict, database_context: str, database_name: str) -> str:
+async def _run_kg_agent_turn(user_uuid: str, session_id: str, query: str, profile_id: str) -> dict:
+    """
+    Execute one agent turn in a KG system session.
+    Returns the final_result_payload with execution_trace, final_answer_text, etc.
+    """
+    from trusted_data_agent.agent import execution_service
+
+    final_payload = {}
+
+    async def _kg_event_handler(event_data, event_type):
+        nonlocal final_payload
+        if event_type == "final_answer":
+            final_payload = event_data
+
+    result = await execution_service.run_agent_execution(
+        user_uuid=user_uuid,
+        session_id=session_id,
+        user_input=query,
+        event_handler=_kg_event_handler,
+        source="kg_constructor",
+        profile_override_id=profile_id,
+        force_profile_type="tool_enabled",  # Always use Planner/Executor for structured execution traces
+    )
+
+    return result or final_payload
+
+
+async def _extract_semantic_entities(store, context_text: str, database_name: str,
+                                     user_uuid: str, llm_instance) -> dict:
+    """
+    Phase 2 (refactored): Use LLM to extract semantic entities from context text.
+    Returns: {"entities_added": N, "relationships_added": N}
+    """
+    result = {"entities_added": 0, "relationships_added": 0}
+
+    # Build structural entity reference list so the LLM knows exact names
+    structural_tables = store.list_entities(entity_type="table")
+    structural_columns = store.list_entities(entity_type="column")
+
+    structural_reference = ""
+    if structural_tables or structural_columns:
+        structural_reference = "\n## Existing Structural Entities (use these EXACT names in relationships)\n\n"
+        if structural_tables:
+            structural_reference += "### Tables:\n"
+            for t in structural_tables:
+                structural_reference += f"- {t['name']} (entity_type: table)\n"
+        if structural_columns:
+            structural_reference += "\n### Columns:\n"
+            for c in structural_columns:
+                structural_reference += f"- {c['name']} (entity_type: column)\n"
+        app_logger.info(f"[KG Constructor] Structural reference: {len(structural_tables)} tables, "
+                        f"{len(structural_columns)} columns")
+
+    # Build semantic extraction prompt from manifest
+    try:
+        template_manager = APP_STATE.get("template_manager")
+        prompt_config = {}
+        if template_manager:
+            plugin_info = template_manager.get_plugin_info("kg_database_context_v1")
+            prompt_config = plugin_info.get("prompt_templates", {}).get("kg_extraction", {})
+
+        if not prompt_config:
+            raise ValueError("No prompt template in manifest")
+
+        semantic_prompt = _build_kg_semantic_prompt(prompt_config, context_text, database_name,
+                                                    structural_reference)
+
+    except Exception as e:
+        app_logger.warning(f"[KG Constructor] Falling back to inline semantic prompt: {e}")
+        semantic_prompt = f"""You are a database schema analyst. Analyze the following database schema and extract semantic entities and relationships.
+
+Database: {database_name}
+
+Schema Context:
+{context_text[:8000]}
+{structural_reference}
+
+Extract:
+1. Business concepts that tables represent (entity_type: "business_concept")
+2. Metrics derivable from numeric columns (entity_type: "metric") — include formula in properties
+3. Taxonomy hierarchies from categorical columns (entity_type: "taxonomy")
+
+For relationships, use ONLY these types: measures, derives_from, is_a, has_property, relates_to
+
+CRITICAL: For each business_concept you create, you MUST also create at least one
+"relates_to" relationship linking it to the table(s) it represents, using the exact
+table names listed above. Similarly, metrics should have "measures" relationships
+to the columns they derive from.
+
+Return ONLY a JSON object (no other text):
+{{
+  "entities": [
+    {{"name": "...", "entity_type": "business_concept|metric|taxonomy", "properties": {{"description": "..."}}}}
+  ],
+  "relationships": [
+    {{"source_name": "...", "source_type": "...", "target_name": "...", "target_type": "...", "relationship_type": "..."}}
+  ]
+}}"""
+
+    # Call LLM
+    from trusted_data_agent.llm import handler as llm_handler
+
+    response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
+        llm_instance=llm_instance,
+        prompt=semantic_prompt,
+        user_uuid=user_uuid,
+        session_id=None,
+        dependencies={"STATE": APP_STATE, "CONFIG": APP_CONFIG},
+        reason="Knowledge Graph Constructor — semantic enrichment",
+        disabled_history=True,
+        source="kg_constructor_semantic",
+    )
+
+    app_logger.info(f"[KG Constructor] Semantic LLM response: {input_tokens} in, {output_tokens} out")
+
+    # Parse LLM JSON response
+    try:
+        json_text = response_text.strip()
+        if json_text.startswith("```json"):
+            json_text = json_text[7:]
+        elif json_text.startswith("```"):
+            json_text = json_text[3:]
+        if json_text.endswith("```"):
+            json_text = json_text[:-3]
+        json_text = json_text.strip()
+
+        llm_output = json.loads(json_text)
+        if not isinstance(llm_output, dict):
+            raise ValueError("LLM response is not a JSON object")
+
+        semantic_entities = llm_output.get("entities", [])
+        semantic_relationships = llm_output.get("relationships", [])
+
+        # Validate and tag with source
+        from components.builtin.knowledge_graph.graph_store import ENTITY_TYPES, RELATIONSHIP_TYPES
+
+        valid_entities = []
+        for ent in semantic_entities:
+            if not isinstance(ent, dict):
+                continue
+            if ent.get("entity_type") not in ENTITY_TYPES:
+                app_logger.warning(f"[KG Constructor] Skipping entity with invalid type: {ent.get('entity_type')}")
+                continue
+            ent["source"] = "constructor_semantic"
+            valid_entities.append(ent)
+
+        valid_relationships = []
+        for rel in semantic_relationships:
+            if not isinstance(rel, dict):
+                continue
+            if rel.get("relationship_type") not in RELATIONSHIP_TYPES:
+                app_logger.warning(f"[KG Constructor] Skipping relationship with invalid type: {rel.get('relationship_type')}")
+                continue
+            rel["source"] = "constructor_semantic"
+            valid_relationships.append(rel)
+
+        app_logger.info(f"[KG Constructor] Semantic extraction: {len(valid_entities)} entities, "
+                        f"{len(valid_relationships)} relationships")
+
+        result = store.import_bulk(valid_entities, valid_relationships)
+
+    except (json.JSONDecodeError, ValueError) as e:
+        app_logger.error(f"[KG Constructor] Semantic JSON parse failed: {e}")
+        app_logger.error(f"[KG Constructor] LLM response: {response_text[:500]}")
+
+    return result
+
+
+def _run_phase3_gap_fill(store) -> int:
+    """
+    Phase 3: Deterministic inference of missing database→table 'contains' relationships.
+    Returns the number of relationships added.
+    """
+    phase3_added = 0
+    try:
+        db_entities = store.list_entities(entity_type="database")
+        table_entities = store.list_entities(entity_type="table")
+
+        if len(db_entities) == 1 and table_entities:
+            db_ent = db_entities[0]
+            existing_rels = store.get_relationships(entity_id=db_ent["id"], direction="outgoing")
+            tables_with_rel = {
+                r["target_name"]
+                for r in existing_rels
+                if r["relationship_type"] == "contains"
+            }
+            for tbl in table_entities:
+                if tbl["name"] not in tables_with_rel:
+                    store.add_relationship(
+                        source_entity_id=db_ent["id"],
+                        target_entity_id=tbl["id"],
+                        relationship_type="contains",
+                        source="constructor_structural",
+                    )
+                    phase3_added += 1
+            if phase3_added:
+                app_logger.info(f"[KG Constructor] Phase 3: Inferred {phase3_added} database→table contains relationships")
+    except Exception as e:
+        app_logger.warning(f"[KG Constructor] Phase 3 structural inference failed: {e}")
+    return phase3_added
+
+
+def _normalize_kg_name(name: str) -> str:
+    """Normalize entity name for fuzzy matching (lowercase, no underscores, strip plural 's')."""
+    n = name.lower().replace("_", " ").replace("-", " ").strip()
+    if n.endswith("s") and len(n) > 3:
+        n = n[:-1]
+    return n
+
+
+def _kg_names_match(name_a: str, name_b: str) -> bool:
+    """Check if two entity names refer to the same concept via normalized substring matching."""
+    na, nb = _normalize_kg_name(name_a), _normalize_kg_name(name_b)
+    return na == nb or na in nb or nb in na
+
+
+def _run_phase4_cross_layer_linking(store) -> int:
+    """
+    Phase 4: Deterministic cross-layer linking between semantic and structural entities.
+
+    Creates 'relates_to' relationships between business_concepts and tables whose names
+    match, and between metrics and tables referenced in their properties.
+    Returns the number of relationships added.
+    """
+    phase4_added = 0
+    try:
+        table_entities = store.list_entities(entity_type="table")
+        if not table_entities:
+            return 0
+
+        # --- business_concept → table linking ---
+        concept_entities = store.list_entities(entity_type="business_concept")
+        for concept in concept_entities:
+            existing_rels = store.get_relationships(entity_id=concept["id"], direction="both")
+            linked_table_ids = {
+                r["target_entity_id"] if r["source_entity_id"] == concept["id"] else r["source_entity_id"]
+                for r in existing_rels
+                if r.get("target_type") == "table" or r.get("source_type") == "table"
+            }
+
+            for tbl in table_entities:
+                if tbl["id"] in linked_table_ids:
+                    continue
+                if _kg_names_match(concept["name"], tbl["name"]):
+                    store.add_relationship(
+                        source_entity_id=concept["id"],
+                        target_entity_id=tbl["id"],
+                        relationship_type="relates_to",
+                        source="constructor_cross_layer",
+                    )
+                    phase4_added += 1
+                    app_logger.debug(f"[KG Constructor] Phase 4: {concept['name']} → {tbl['name']} (relates_to)")
+
+        # --- metric → table linking via properties ---
+        metric_entities = store.list_entities(entity_type="metric")
+        for metric in metric_entities:
+            existing_rels = store.get_relationships(entity_id=metric["id"], direction="both")
+            linked_table_ids = {
+                r["target_entity_id"] if r["source_entity_id"] == metric["id"] else r["source_entity_id"]
+                for r in existing_rels
+                if r.get("target_type") == "table" or r.get("source_type") == "table"
+            }
+
+            props = metric.get("properties") or {}
+            related_tables = props.get("related_tables", [])
+            formula = props.get("formula", "")
+
+            for tbl in table_entities:
+                if tbl["id"] in linked_table_ids:
+                    continue
+                # Check related_tables list or formula text for table name reference
+                tbl_lower = tbl["name"].lower()
+                matched = (
+                    any(tbl_lower == rt.lower() for rt in related_tables)
+                    or tbl_lower in formula.lower()
+                    or _kg_names_match(metric["name"], tbl["name"])
+                )
+                if matched:
+                    store.add_relationship(
+                        source_entity_id=metric["id"],
+                        target_entity_id=tbl["id"],
+                        relationship_type="relates_to",
+                        source="constructor_cross_layer",
+                    )
+                    phase4_added += 1
+                    app_logger.debug(f"[KG Constructor] Phase 4: {metric['name']} → {tbl['name']} (relates_to)")
+
+        if phase4_added:
+            app_logger.info(f"[KG Constructor] Phase 4: Inferred {phase4_added} cross-layer relationships")
+    except Exception as e:
+        app_logger.warning(f"[KG Constructor] Phase 4 cross-layer linking failed: {e}")
+    return phase4_added
+
+
+def _build_kg_semantic_prompt(prompt_config: dict, database_context: str,
+                              database_name: str, structural_reference: str = "") -> str:
     """
     Build the LLM prompt for Phase 2 semantic extraction from the manifest template.
     """
@@ -12753,6 +12989,15 @@ def _build_kg_semantic_prompt(prompt_config: dict, database_context: str, databa
     guidelines = prompt_config.get("critical_guidelines", [])
     guidelines_text = "\n".join([f"- {g}" for g in guidelines])
 
+    cross_layer_instruction = ""
+    if structural_reference:
+        cross_layer_instruction = (
+            "\nCRITICAL: For each business_concept you create, you MUST also create at least one "
+            "\"relates_to\" relationship linking it to the table(s) it represents, using the exact "
+            "table names from the structural entities list above. Similarly, metrics should have "
+            "\"measures\" relationships to the columns they derive from.\n"
+        )
+
     prompt = f"""{prompt_config.get('system_role', '')}
 
 {prompt_config.get('task_description', '')}
@@ -12761,10 +13006,11 @@ Database Name: {database_name}
 
 Database Schema Context:
 {database_context}
+{structural_reference}
 
 Requirements:
 {requirements_text}
-
+{cross_layer_instruction}
 Output Format:
 {output_format}
 
@@ -12778,27 +13024,32 @@ CRITICAL GUIDELINES:
 @require_auth
 async def kg_generate(current_user):
     """
-    Generate knowledge graph entities/relationships from database context.
+    Generate knowledge graph via agent-driven system session.
 
-    Phase 1: Deterministic structural parsing (always runs) — extracts databases,
-             tables, columns, foreign keys, and containment relationships.
-    Phase 2: LLM semantic enrichment (optional) — infers business concepts,
-             metrics, and taxonomies from schema context.
+    Creates a temporary system session (visible in session gallery) and submits
+    optimized queries that drive the agent to call MCP tools for database
+    structure discovery and optional business-context enrichment.
+
+    Turn 1: Agent discovers tables/columns via MCP tools → structural entities
+    Turn 2 (optional): Agent analyzes business concepts → semantic entities
+    Phase 3: Deterministic gap-fill for missing containment relationships
+    Phase 4: Deterministic cross-layer linking (business_concept → table)
 
     Request body:
     {
-        "profile_id": "profile-xxx",
-        "database_context": "... MCP schema output ...",
-        "execution_trace": [...],
-        "database_name": "my_db",
-        "include_semantic": true
+        "profile_id": "profile-xxx",     // Required: Profile with MCP server
+        "database_name": "my_db",        // Required: Target database
+        "include_semantic": true          // Optional: Run Turn 2 business analysis
     }
 
     Returns:
     {
         "status": "success",
+        "session_id": "...",
         "structural": {"entities_added": N, "relationships_added": N},
         "semantic": {"entities_added": N, "relationships_added": N},
+        "phase3_relationships": N,
+        "phase4_relationships": N,
         "total": {"entities_added": N, "relationships_added": N}
     }
     """
@@ -12809,198 +13060,135 @@ async def kg_generate(current_user):
 
         data = await request.get_json() or {}
         profile_id = data.get("profile_id", "").strip()
-        database_context = data.get("database_context", "").strip()
-        execution_trace = data.get("execution_trace", [])
         database_name = data.get("database_name", "").strip()
         include_semantic = data.get("include_semantic", True)
 
         if not profile_id:
             return jsonify({"status": "error", "message": "profile_id is required"}), 400
-        if not database_context:
-            return jsonify({"status": "error", "message": "database_context is required (run Generate Context first)"}), 400
         if not database_name:
             return jsonify({"status": "error", "message": "database_name is required"}), 400
 
         store = _get_graph_store(user_uuid, profile_id)
 
-        # ── Phase 1: Structural parsing (deterministic, no LLM) ──
-        app_logger.info(f"[KG Constructor] Phase 1: Structural parsing for '{database_name}' "
-                        f"(context: {len(database_context)} chars)")
+        # ── Setup: Activate profile context for MCP + LLM access ──
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        profile = config_manager.get_profile(profile_id, user_uuid)
+        if not profile:
+            return jsonify({"status": "error", "message": "Profile not found"}), 404
 
-        structural = _parse_structural_entities(database_context, execution_trace, database_name)
-        structural_entities = structural["entities"]
-        structural_relationships = structural["relationships"]
+        profile_type = profile.get("profile_type", "")
+        has_tool_calling = (profile_type == "tool_enabled" or
+                           (profile_type == "llm_only" and profile.get("useMcpTools", False)))
+        if not has_tool_calling:
+            return jsonify({
+                "status": "error",
+                "message": "KG Constructor requires a profile with MCP tool-calling capability (Optimize or Conversation with Tools)."
+            }), 400
 
-        app_logger.info(f"[KG Constructor] Phase 1 parsed: {len(structural_entities)} entities, "
-                        f"{len(structural_relationships)} relationships")
+        from trusted_data_agent.core.configuration_service import switch_profile_context
+        await switch_profile_context(profile_id, user_uuid, validate_llm=False)
 
-        # Import structural entities
-        structural_result = store.import_bulk(structural_entities, structural_relationships)
+        if not APP_STATE.get("mcp_client"):
+            return jsonify({"status": "error", "message": "MCP server not available for this profile"}), 503
 
-        # ── Phase 2: Semantic enrichment (LLM, optional) ──
+        # ── Create system session ──
+        from trusted_data_agent.core import session_manager
+
+        llm_instance = APP_STATE.get("llm")
+        provider = APP_STATE.get("current_provider_by_user", {}).get(user_uuid, "")
+        session_id = await session_manager.create_session(
+            user_uuid=user_uuid,
+            provider=provider,
+            llm_instance=llm_instance,
+            charting_intensity="none",
+            profile_tag=profile.get("tag"),
+            profile_id=profile_id,
+            is_temporary=True,
+            temporary_purpose=f"KG: {database_name}",
+        )
+        app_logger.info(f"[KG Constructor] System session created: {session_id}")
+
+        # ── Turn 1: Technical structure discovery ──
+        turn1_query = (
+            f"List every table in database '{database_name}' and describe each table's "
+            f"columns including column name, data type, nullability, and any constraints "
+            f"or keys. Present a complete structural inventory."
+        )
+        app_logger.info(f"[KG Constructor] Turn 1: Technical discovery for '{database_name}'")
+
+        turn1_result = await _run_kg_agent_turn(user_uuid, session_id, turn1_query, profile_id)
+
+        # Parse execution trace for structural entities (database, table, column, contains)
+        execution_trace = turn1_result.get("execution_trace", [])
+        structural = _parse_trace_for_structural_entities(execution_trace, database_name)
+
+        app_logger.info(
+            f"[KG Constructor] Turn 1 parsed: {len(structural['entities'])} entities, "
+            f"{len(structural['relationships'])} relationships"
+        )
+
+        structural_result = store.import_bulk(structural["entities"], structural["relationships"])
+        app_logger.info(f"[KG Constructor] Turn 1 imported: {structural_result}")
+
+        # ── Turn 2: Business enrichment (optional) ──
         semantic_result = {"entities_added": 0, "relationships_added": 0}
 
         if include_semantic:
-            app_logger.info("[KG Constructor] Phase 2: LLM semantic enrichment")
-
-            # Validate user has LLM configured
-            is_valid, error_response = _validate_user_profile(user_uuid)
-            if not is_valid:
-                app_logger.warning(f"[KG Constructor] Phase 2 skipped — profile not valid: {error_response}")
-                return jsonify({
-                    "status": "partial",
-                    "message": "Structural parsing succeeded but LLM not configured for semantic enrichment",
-                    "structural": structural_result,
-                    "semantic": semantic_result,
-                    "total": structural_result,
-                })
-
-            # Switch to user's default profile context for LLM access
-            from trusted_data_agent.core.config_manager import get_config_manager
-            config_manager = get_config_manager()
-            default_profile_id = config_manager.get_default_profile_id(user_uuid)
-
-            from trusted_data_agent.core.configuration_service import switch_profile_context
-            profile_context = await switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
-
-            llm_instance = APP_STATE.get("llm")
-            if not llm_instance or (isinstance(llm_instance, dict) and llm_instance.get("placeholder")):
-                app_logger.warning("[KG Constructor] Phase 2 skipped — LLM not available")
-                return jsonify({
-                    "status": "partial",
-                    "message": "Structural parsing succeeded but LLM not available for semantic enrichment",
-                    "structural": structural_result,
-                    "semantic": semantic_result,
-                    "total": structural_result,
-                })
-
-            # Build semantic extraction prompt from manifest
-            try:
-                template_manager = APP_STATE.get("template_manager")
-                prompt_config = {}
-                if template_manager:
-                    plugin_info = template_manager.get_plugin_info("kg_database_context_v1")
-                    prompt_config = plugin_info.get("prompt_templates", {}).get("kg_extraction", {})
-
-                if not prompt_config:
-                    raise ValueError("No prompt template in manifest")
-
-                semantic_prompt = _build_kg_semantic_prompt(prompt_config, database_context, database_name)
-
-            except Exception as e:
-                app_logger.warning(f"[KG Constructor] Falling back to inline prompt: {e}")
-                semantic_prompt = f"""You are a database schema analyst. Analyze the following database schema and extract semantic entities and relationships.
-
-Database: {database_name}
-
-Schema Context:
-{database_context}
-
-Extract:
-1. Business concepts that tables represent (entity_type: "business_concept")
-2. Metrics derivable from numeric columns (entity_type: "metric") — include formula in properties
-3. Taxonomy hierarchies from categorical columns (entity_type: "taxonomy")
-
-For relationships, use ONLY these types: measures, derives_from, is_a, has_property, relates_to
-Reference existing table/column names exactly as they appear in the schema.
-
-Return ONLY a JSON object (no other text):
-{{
-  "entities": [
-    {{"name": "...", "entity_type": "business_concept|metric|taxonomy", "properties": {{"description": "..."}}}}
-  ],
-  "relationships": [
-    {{"source_name": "...", "source_type": "...", "target_name": "...", "target_type": "...", "relationship_type": "..."}}
-  ]
-}}"""
-
-            # Call LLM
-            from trusted_data_agent.llm import handler as llm_handler
-
-            response_text, input_tokens, output_tokens, provider, model = await llm_handler.call_llm_api(
-                llm_instance=llm_instance,
-                prompt=semantic_prompt,
-                user_uuid=user_uuid,
-                session_id=None,
-                dependencies={"STATE": APP_STATE, "CONFIG": APP_CONFIG},
-                reason="Knowledge Graph Constructor — semantic enrichment",
-                disabled_history=True,
-                source="kg_constructor_semantic",
+            turn2_query = (
+                f"Based on the database structure discovered above, analyze '{database_name}' "
+                f"from a business perspective:\n"
+                f"1. What real-world business concept does each table represent?\n"
+                f"2. What key metrics or KPIs can be derived from numeric columns?\n"
+                f"3. What categorical taxonomies or classification hierarchies exist?\n"
+                f"Provide a structured analysis."
             )
+            app_logger.info("[KG Constructor] Turn 2: Business enrichment")
 
-            app_logger.info(f"[KG Constructor] Phase 2 LLM response: {input_tokens} in, {output_tokens} out")
+            turn2_result = await _run_kg_agent_turn(user_uuid, session_id, turn2_query, profile_id)
 
-            # Parse LLM JSON response
-            try:
-                json_text = response_text.strip()
-                if json_text.startswith("```json"):
-                    json_text = json_text[7:]
-                elif json_text.startswith("```"):
-                    json_text = json_text[3:]
-                if json_text.endswith("```"):
-                    json_text = json_text[:-3]
-                json_text = json_text.strip()
+            # Use Turn 2's final answer as context for semantic entity extraction
+            turn2_text = turn2_result.get("final_answer_text", "")
+            if turn2_text and llm_instance:
+                try:
+                    semantic_result = await _extract_semantic_entities(
+                        store, turn2_text, database_name, user_uuid, llm_instance
+                    )
+                    app_logger.info(f"[KG Constructor] Turn 2 imported: {semantic_result}")
+                except Exception as e:
+                    app_logger.warning(f"[KG Constructor] Semantic extraction failed: {e}")
+            else:
+                app_logger.warning("[KG Constructor] Turn 2 skipped — no final answer or LLM unavailable")
 
-                llm_output = json.loads(json_text)
-                if not isinstance(llm_output, dict):
-                    raise ValueError("LLM response is not a JSON object")
+        # ── Phase 3: Gap-fill missing containment relationships ──
+        phase3_added = _run_phase3_gap_fill(store)
 
-                semantic_entities = llm_output.get("entities", [])
-                semantic_relationships = llm_output.get("relationships", [])
-
-                # Validate and tag with source
-                from components.builtin.knowledge_graph.graph_store import ENTITY_TYPES, RELATIONSHIP_TYPES
-
-                valid_entities = []
-                for ent in semantic_entities:
-                    if not isinstance(ent, dict):
-                        continue
-                    if ent.get("entity_type") not in ENTITY_TYPES:
-                        app_logger.warning(f"[KG Constructor] Skipping entity with invalid type: {ent.get('entity_type')}")
-                        continue
-                    ent["source"] = "constructor_semantic"
-                    valid_entities.append(ent)
-
-                valid_relationships = []
-                for rel in semantic_relationships:
-                    if not isinstance(rel, dict):
-                        continue
-                    if rel.get("relationship_type") not in RELATIONSHIP_TYPES:
-                        app_logger.warning(f"[KG Constructor] Skipping relationship with invalid type: {rel.get('relationship_type')}")
-                        continue
-                    rel["source"] = "constructor_semantic"
-                    valid_relationships.append(rel)
-
-                app_logger.info(f"[KG Constructor] Phase 2 parsed: {len(valid_entities)} entities, "
-                                f"{len(valid_relationships)} relationships")
-
-                # Import semantic entities
-                semantic_result = store.import_bulk(valid_entities, valid_relationships)
-
-            except (json.JSONDecodeError, ValueError) as e:
-                app_logger.error(f"[KG Constructor] Phase 2 JSON parse failed: {e}")
-                app_logger.error(f"[KG Constructor] LLM response: {response_text[:500]}")
-                return jsonify({
-                    "status": "partial",
-                    "message": f"Structural parsing succeeded but semantic enrichment failed: {e}",
-                    "structural": structural_result,
-                    "semantic": semantic_result,
-                    "total": structural_result,
-                })
+        # ── Phase 4: Cross-layer semantic-structural linking ──
+        phase4_added = _run_phase4_cross_layer_linking(store)
 
         # ── Combined results ──
         total_result = {
             "entities_added": structural_result.get("entities_added", 0) + semantic_result.get("entities_added", 0),
-            "relationships_added": structural_result.get("relationships_added", 0) + semantic_result.get("relationships_added", 0),
+            "relationships_added": (
+                structural_result.get("relationships_added", 0)
+                + semantic_result.get("relationships_added", 0)
+                + phase3_added
+                + phase4_added
+            ),
         }
 
-        app_logger.info(f"[KG Constructor] Complete: {total_result['entities_added']} entities, "
-                        f"{total_result['relationships_added']} relationships")
+        app_logger.info(
+            f"[KG Constructor] Complete: {total_result['entities_added']} entities, "
+            f"{total_result['relationships_added']} relationships (session: {session_id})"
+        )
 
         return jsonify({
             "status": "success",
+            "session_id": session_id,
             "structural": structural_result,
             "semantic": semantic_result,
+            "phase3_relationships": phase3_added,
+            "phase4_relationships": phase4_added,
             "total": total_result,
         })
 

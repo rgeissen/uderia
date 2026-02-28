@@ -478,6 +478,9 @@ class GenieCoordinator:
         # Collect events during execution for plan reload
         self.collected_events = []
 
+        # KG enrichment event (populated during execute if active KG exists)
+        self.kg_enrichment_event = None
+
         # Track LLM call count for step naming
         self.llm_call_count = 0
         self.total_input_tokens = 0
@@ -738,6 +741,28 @@ After gathering information from profiles, provide a synthesized answer that:
             ]
         })
 
+        # --- KG enrichment for coordinator context ---
+        try:
+            from trusted_data_agent.components.manager import get_component_context_enrichment
+            kg_text, kg_details = await get_component_context_enrichment(
+                query=query,
+                profile_id=self.genie_profile.get("id"),
+                user_uuid=self.user_uuid,
+            )
+            if kg_text and kg_details:
+                self.system_prompt += f"\n\n{kg_text}"
+                self.kg_enrichment_event = {
+                    "enrichments": kg_details,
+                    "total_entities": sum(d.get("entity_count", 0) for d in kg_details),
+                    "total_relationships": sum(d.get("relationship_count", 0) for d in kg_details),
+                    "session_id": self.parent_session_id,
+                }
+                self._emit_event("kg_enrichment", self.kg_enrichment_event)
+                logger.info(f"KG enrichment for genie: {self.kg_enrichment_event['total_entities']} entities, "
+                            f"{self.kg_enrichment_event['total_relationships']} relationships")
+        except Exception as e:
+            logger.warning(f"KG enrichment for genie coordinator failed: {e}")
+
         try:
             # Build input messages with system prompt and conversation history
             messages = [SystemMessage(content=self.system_prompt)]
@@ -974,6 +999,7 @@ After gathering information from profiles, provide a synthesized answer that:
                 "slave_sessions": turn_slave_sessions,
                 "genie_events": self.collected_events,  # For plan reload
                 "component_payloads": self.component_payloads,  # Component tool render specs
+                "kg_enrichment_event": self.kg_enrichment_event,  # KG enrichment for persistence
                 "success": True,
                 "input_tokens": self.total_input_tokens,
                 "output_tokens": self.total_output_tokens

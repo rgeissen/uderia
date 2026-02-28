@@ -717,14 +717,12 @@ export async function importKnowledgeGraph(profileId, entities, relationships) {
     return await res.json();
 }
 
-export async function generateKnowledgeGraph(profileId, databaseContext, executionTrace, databaseName, includeSemantic = true) {
+export async function generateKnowledgeGraph(profileId, databaseName, includeSemantic = true) {
     const res = await fetch('/api/v1/knowledge-graph/generate', {
         method: 'POST',
         headers: _getHeaders(true),
         body: JSON.stringify({
             profile_id: profileId,
-            database_context: databaseContext,
-            execution_trace: executionTrace || [],
             database_name: databaseName,
             include_semantic: includeSemantic
         })

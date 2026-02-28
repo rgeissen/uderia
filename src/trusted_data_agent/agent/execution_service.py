@@ -335,7 +335,8 @@ async def run_agent_execution(
     attachments: list = None,  # Document upload attachments [{file_id, filename, ...}]
     extension_specs: list = None,  # Post-processing extensions [{"name": "json", "param": null}]
     skill_specs: list = None,  # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
-    canvas_context: dict = None  # Canvas bidirectional context {title, language, content, modified}
+    canvas_context: dict = None,  # Canvas bidirectional context {title, language, content, modified}
+    force_profile_type: str = None  # Override profile type detection (e.g. "tool_enabled" for KG constructor)
 ):
 # --- MODIFICATION END ---
     """
@@ -590,7 +591,8 @@ async def run_agent_execution(
             is_session_primer=is_session_primer, # Pass the session primer flag
             attachments=attachments,  # Pass document upload attachments
             skill_result=skill_result,  # Pass pre-processing skill content
-            canvas_context=canvas_context  # Pass canvas bidirectional context
+            canvas_context=canvas_context,  # Pass canvas bidirectional context
+            force_profile_type=force_profile_type  # Override profile type (KG constructor)
         )
         # --- MODIFICATION END ---
 
@@ -1003,6 +1005,7 @@ async def _run_genie_execution(
                 'tools_used': result.get('tools_used', []),
                 'slave_sessions': result.get('slave_sessions', {}),
                 'genie_events': combined_genie_events,  # Include session name events
+                'kg_enrichment_event': result.get('kg_enrichment_event'),  # KG enrichment for persistence
                 'success': success,
                 'final_response': coordinator_response[:500] if coordinator_response else '',
                 'status': 'success' if success else 'failed',
@@ -1060,6 +1063,7 @@ async def _run_genie_execution(
             "genie_coordination": True,
             "slave_sessions_used": result.get('slave_sessions', {}),
             "genie_events": result.get('genie_events', []),  # Full event list for GenieContext
+            "kg_enrichment_event": result.get('kg_enrichment_event'),  # KG enrichment for persistence
         }
         await event_handler(final_payload, "final_answer")
 

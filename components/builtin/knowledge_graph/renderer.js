@@ -13,6 +13,20 @@
  *   Expected: { nodes, links, title, center_entity, depth, entity_type_colors }
  */
 
+// ─── Default Colors (matches handler.py ENTITY_TYPE_COLORS) ───────────
+// Hardcoded fallback ensures correct colors even if the backend dict
+// is lost or truncated during JSON → HTML attribute → JSON round-trip.
+const DEFAULT_ENTITY_COLORS = {
+    database: '#3b82f6',         // blue
+    table: '#22c55e',            // green
+    column: '#a3e635',           // lime
+    foreign_key: '#f59e0b',      // amber
+    business_concept: '#8b5cf6', // violet
+    taxonomy: '#ec4899',         // pink
+    metric: '#06b6d4',           // cyan
+    domain: '#f97316',           // orange
+};
+
 // ─── State ─────────────────────────────────────────────────────────────
 let _stylesInjected = false;
 let _isKGFullscreen = false;
@@ -45,7 +59,7 @@ function renderKGInlineCompact(container, spec) {
     container.innerHTML = '';
     const nodes = spec.nodes || [];
     const links = spec.links || [];
-    const colors = spec.entity_type_colors || {};
+    const colors = { ...DEFAULT_ENTITY_COLORS, ...(spec.entity_type_colors || {}) };
     const title = spec.title || 'Knowledge Graph';
 
     const wrapper = document.createElement('div');
@@ -98,7 +112,7 @@ function renderKGInlineCompact(container, spec) {
 function _renderMiniGraph(container, spec) {
     const nodes = JSON.parse(JSON.stringify(spec.nodes || []));
     const links = JSON.parse(JSON.stringify(spec.links || []));
-    const colors = spec.entity_type_colors || {};
+    const colors = { ...DEFAULT_ENTITY_COLORS, ...(spec.entity_type_colors || {}) };
 
     if (nodes.length === 0) {
         container.innerHTML = '<p style="color:var(--text-muted, #6b7280);text-align:center;padding:2rem;font-size:13px">Empty graph</p>';
@@ -310,7 +324,7 @@ function renderKGFull(containerId, spec) {
 
     const nodes = JSON.parse(JSON.stringify(spec.nodes));
     const links = JSON.parse(JSON.stringify(spec.links || []));
-    const colors = spec.entity_type_colors || {};
+    const colors = { ...DEFAULT_ENTITY_COLORS, ...(spec.entity_type_colors || {}) };
     const title = spec.title || 'Knowledge Graph';
 
     if (nodes.length === 0) {
@@ -319,7 +333,7 @@ function renderKGFull(containerId, spec) {
     }
 
     // ─── Toolbar ───────────────────────────────────────────────────
-    const toolbar = _buildToolbar(container, nodes, links, colors, spec);
+    const toolbar = _buildToolbar(nodes, links, colors);
     container.appendChild(toolbar);
 
     // ─── Graph Container ───────────────────────────────────────────
@@ -338,9 +352,14 @@ function renderKGFull(containerId, spec) {
 }
 
 
-function _buildToolbar(parentContainer, nodes, links, colors, spec) {
+function _buildToolbar(nodes, links, colors) {
     const toolbar = document.createElement('div');
     toolbar.className = 'kg-toolbar';
+
+    // Direct callbacks — registered by _renderFullGraph (no CustomEvent needed)
+    toolbar._onFilter = null;
+    toolbar._onZoomFit = null;
+    toolbar._onExportPNG = null;
 
     // ── Search ──
     const searchWrap = document.createElement('div');
@@ -392,8 +411,8 @@ function _buildToolbar(parentContainer, nodes, links, colors, spec) {
                     hiddenTypes.add(type);
                     pill.style.opacity = '0.3';
                 }
-                // Dispatch filter event for the graph
-                parentContainer.dispatchEvent(new CustomEvent('kg-filter', { detail: { hiddenTypes } }));
+                // Direct callback — no DOM event propagation dependency
+                if (toolbar._onFilter) toolbar._onFilter(hiddenTypes);
             });
             filterWrap.appendChild(pill);
         });
@@ -403,14 +422,14 @@ function _buildToolbar(parentContainer, nodes, links, colors, spec) {
     // ── Zoom fit button ──
     const fitBtn = _makeToolbarButton('\u229e', 'Zoom to fit');
     fitBtn.addEventListener('click', () => {
-        parentContainer.dispatchEvent(new CustomEvent('kg-zoom-fit'));
+        if (toolbar._onZoomFit) toolbar._onZoomFit();
     });
     toolbar.appendChild(fitBtn);
 
     // ── Export PNG button ──
     const exportBtn = _makeToolbarButton('\u2913', 'Export as PNG');
     exportBtn.addEventListener('click', () => {
-        parentContainer.dispatchEvent(new CustomEvent('kg-export-png'));
+        if (toolbar._onExportPNG) toolbar._onExportPNG();
     });
     toolbar.appendChild(exportBtn);
 
@@ -692,7 +711,7 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
     // ─── Legend (in-graph overlay) ────────────────────────────────────
     _renderLegend(container, colors, nodes);
 
-    // ─── Toolbar Event Wiring ────────────────────────────────────────
+    // ─── Toolbar Event Wiring (direct callbacks — no DOM events) ────
     // Search
     if (toolbar && toolbar._searchInput) {
         toolbar._searchInput.oninput = () => {
@@ -702,30 +721,30 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         };
     }
 
-    // Filter
-    const parentContainer = container.parentElement || container;
-    parentContainer.addEventListener('kg-filter', (e) => {
-        const hidden = e.detail.hiddenTypes;
-        nodeGroups.style('display', d => hidden.has(d.type) ? 'none' : null);
-        g.selectAll('.kg-link').style('display', l => {
-            const sType = (typeof l.source === 'object' ? l.source : nodes[l.source])?.type;
-            const tType = (typeof l.target === 'object' ? l.target : nodes[l.target])?.type;
-            return (hidden.has(sType) || hidden.has(tType)) ? 'none' : null;
-        });
-    });
+    // Filter — direct callback from toolbar pills
+    if (toolbar) {
+        toolbar._onFilter = (hiddenTypes) => {
+            nodeGroups.style('display', d => hiddenTypes.has(d.type) ? 'none' : null);
+            g.selectAll('.kg-link').style('display', l => {
+                const sType = (typeof l.source === 'object' ? l.source : nodes[l.source])?.type;
+                const tType = (typeof l.target === 'object' ? l.target : nodes[l.target])?.type;
+                return (hiddenTypes.has(sType) || hiddenTypes.has(tType)) ? 'none' : null;
+            });
+        };
 
-    // Zoom fit
-    parentContainer.addEventListener('kg-zoom-fit', () => {
-        svg.transition().duration(500).call(
-            zoom.transform,
-            d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8).translate(-width / 2, -height / 2)
-        );
-    });
+        // Zoom fit
+        toolbar._onZoomFit = () => {
+            svg.transition().duration(500).call(
+                zoom.transform,
+                d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8).translate(-width / 2, -height / 2)
+            );
+        };
 
-    // Export PNG
-    parentContainer.addEventListener('kg-export-png', () => {
-        _exportPNG(svg.node(), width, height);
-    });
+        // Export PNG
+        toolbar._onExportPNG = () => {
+            _exportPNG(svg.node(), width, height);
+        };
+    }
 
     return { svg: svg.node(), simulation };
 }

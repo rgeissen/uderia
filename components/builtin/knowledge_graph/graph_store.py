@@ -436,7 +436,15 @@ class GraphStore:
                     )
                     rels_added += 1
                 else:
-                    logger.warning(f"Bulk import: could not resolve entities for relationship {rel}")
+                    missing = []
+                    if not source_ent:
+                        missing.append(f"source '{rel['source_name']}' (type: {rel.get('source_type', 'any')})")
+                    if not target_ent:
+                        missing.append(f"target '{rel['target_name']}' (type: {rel.get('target_type', 'any')})")
+                    logger.warning(
+                        f"Bulk import: could not resolve {', '.join(missing)} for relationship "
+                        f"{rel.get('source_name')} --[{rel.get('relationship_type')}]--> {rel.get('target_name')}"
+                    )
             except Exception as e:
                 logger.warning(f"Bulk import: failed to add relationship: {e}")
 

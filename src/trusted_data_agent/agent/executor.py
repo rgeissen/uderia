@@ -382,7 +382,7 @@ class PlanExecutor:
         return None
 
     # --- MODIFICATION START: Add plan_to_execute and is_replay ---
-    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None, canvas_context: dict = None):
+    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None, canvas_context: dict = None, force_profile_type: str = None):
         self.session_id = session_id
         self.user_uuid = user_uuid
         self.event_handler = event_handler
@@ -406,6 +406,7 @@ class PlanExecutor:
         self.effective_mcp_server_id = None  # Track the ACTUAL MCP server ID used during this turn (for RAG storage)
         self.profile_llm_instance = None  # Profile-specific LLM client (created when profile uses different provider than default)
         self.thinking_budget = None  # Gemini 2.x thinking budget from LLM config (None = not set, 0 = disabled, -1 = dynamic)
+        self.force_profile_type = force_profile_type  # Override _detect_profile_type() (e.g. "tool_enabled" for KG constructor)
 
         # Snapshot model and provider for this turn from active profile (default or override)
         # Don't use global config as it may not match the profile being used
@@ -646,6 +647,38 @@ class PlanExecutor:
         # Knowledge Graph enrichment event for Live Status replay
         self.kg_enrichment_event = None
 
+    async def _get_kg_enrichment(self):
+        """
+        Fetch KG context enrichment from active components.
+
+        Calls get_component_context_enrichment() and stores the event data
+        in self.kg_enrichment_event for SSE emission + persistence.
+
+        Returns:
+            Enrichment text to inject into LLM context, or empty string.
+        """
+        try:
+            from trusted_data_agent.components.manager import get_component_context_enrichment
+            kg_text, kg_details = await get_component_context_enrichment(
+                query=self.original_user_input,
+                profile_id=self.active_profile_id,
+                user_uuid=self.user_uuid,
+            )
+            if kg_text and kg_details:
+                self.kg_enrichment_event = {
+                    "enrichments": kg_details,
+                    "total_entities": sum(d.get("entity_count", 0) for d in kg_details),
+                    "total_relationships": sum(d.get("relationship_count", 0) for d in kg_details),
+                    "session_id": self.session_id,
+                }
+                app_logger.info(
+                    f"KG enrichment: {self.kg_enrichment_event['total_entities']} entities, "
+                    f"{self.kg_enrichment_event['total_relationships']} relationships"
+                )
+                return kg_text
+        except Exception as e:
+            app_logger.warning(f"KG enrichment failed: {e}")
+        return ""
 
     def _check_cancellation(self):
         """
@@ -1343,6 +1376,8 @@ class PlanExecutor:
 
     def _detect_profile_type(self) -> str:
         """Detect whether current profile is llm_only, rag_focused, or tool_enabled."""
+        if self.force_profile_type:
+            return self.force_profile_type
         try:
             from trusted_data_agent.core.config_manager import get_config_manager
             config_manager = get_config_manager()
@@ -1703,6 +1738,19 @@ class PlanExecutor:
                     # Continue without knowledge (graceful degradation)
             # --- END KNOWLEDGE RETRIEVAL ---
 
+            # --- KG enrichment (all profile types) ---
+            kg_enrichment_text = await self._get_kg_enrichment()
+            if kg_enrichment_text:
+                if knowledge_context_str:
+                    knowledge_context_str += "\n\n" + kg_enrichment_text
+                else:
+                    knowledge_context_str = kg_enrichment_text
+                yield self._format_sse_with_depth({
+                    "step": "Knowledge Graph Enrichment",
+                    "type": "kg_enrichment",
+                    "details": self.kg_enrichment_event
+                })
+
             # Create and execute agent with real-time SSE event handler
             # Pass self.event_handler for immediate SSE streaming during execution
             agent = ConversationAgentExecutor(
@@ -1714,7 +1762,7 @@ class PlanExecutor:
                 async_event_handler=self.event_handler,  # Real-time SSE via asyncio.create_task()
                 max_iterations=5,
                 conversation_history=conversation_history,
-                knowledge_context=knowledge_context_str if knowledge_enabled else None,
+                knowledge_context=knowledge_context_str or None,  # From knowledge retrieval and/or KG enrichment
                 document_context=self.document_context,
                 multimodal_content=self.multimodal_content,
                 turn_number=self.current_turn_number,
@@ -1942,6 +1990,8 @@ class PlanExecutor:
                 "knowledge_retrieval_event": knowledge_retrieval_event_data,
                 # UI-only: Full document chunks for plan reload display (not sent to LLM)
                 "knowledge_chunks_ui": knowledge_chunks if knowledge_enabled else [],
+                # KG enrichment event for session reload
+                "kg_enrichment_event": self.kg_enrichment_event,
                 # Pre-processing skills applied to this turn
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
@@ -2736,6 +2786,19 @@ The following domain knowledge may be relevant to this conversation:
                 if sp_block:
                     system_prompt = f"{system_prompt}\n\n{sp_block}"
 
+            # --- KG enrichment (all profile types) ---
+            kg_enrichment_text = await self._get_kg_enrichment()
+            if kg_enrichment_text:
+                if knowledge_context_str:
+                    knowledge_context_str += "\n\n" + kg_enrichment_text
+                else:
+                    knowledge_context_str = kg_enrichment_text
+                yield self._format_sse_with_depth({
+                    "step": "Knowledge Graph Enrichment",
+                    "type": "kg_enrichment",
+                    "details": self.kg_enrichment_event
+                })
+
             # Load document context from uploaded files
             doc_context = None
             if self.attachments:
@@ -3088,6 +3151,7 @@ The following domain knowledge may be relevant to this conversation:
                     "retrieved": len(knowledge_accessed) > 0,
                     "document_count": len(knowledge_accessed)
                 } if knowledge_enabled else None,
+                "kg_enrichment_event": self.kg_enrichment_event,
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 
@@ -3654,6 +3718,16 @@ The following domain knowledge may be relevant to this conversation:
                 if sp_block:
                     system_prompt = f"{system_prompt}\n\n{sp_block}"
 
+            # --- KG enrichment (all profile types) ---
+            kg_enrichment_text = await self._get_kg_enrichment()
+            if kg_enrichment_text:
+                knowledge_context = (knowledge_context or "") + "\n\n" + kg_enrichment_text
+                yield self._format_sse_with_depth({
+                    "step": "Knowledge Graph Enrichment",
+                    "type": "kg_enrichment",
+                    "details": self.kg_enrichment_event
+                })
+
             # Load document context from uploaded files
             rag_doc_context = None
             if self.attachments:
@@ -4038,6 +4112,7 @@ The following domain knowledge may be relevant to this conversation:
                 },
                 # UI-only: Full document chunks for plan reload display (not sent to LLM)
                 "knowledge_chunks_ui": knowledge_chunks,
+                "kg_enrichment_event": self.kg_enrichment_event,
                 "system_events": system_events,
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
