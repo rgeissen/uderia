@@ -158,7 +158,18 @@ class KnowledgeGraphHandler(BaseComponentHandler):
             return "", None
 
         entity_ids = [e["id"] for e in entities]
-        subgraph = store.extract_subgraph(entity_ids, depth=2, max_nodes=30)
+
+        # Ensure ALL table entities are BFS seeds — tables are the structural
+        # backbone for SQL construction; missing even one bridge table breaks
+        # JOIN paths (e.g., SaleDetails connecting Products to Sales).
+        all_tables = store.list_entities(entity_type="table")
+        seed_id_set = set(entity_ids)
+        for tbl in all_tables:
+            if tbl["id"] not in seed_id_set:
+                entity_ids.append(tbl["id"])
+                seed_id_set.add(tbl["id"])
+
+        subgraph = store.extract_subgraph(entity_ids, depth=2, max_nodes=50)
 
         if not subgraph.get("entities"):
             logger.debug("KG enrichment: subgraph extraction returned no entities")
@@ -223,6 +234,9 @@ class KnowledgeGraphHandler(BaseComponentHandler):
         # Pattern: database --[contains]--> table --[contains]--> column
         entity_db_map: Dict[str, str] = {}
         db_entities = {e["name"] for e in subgraph["entities"] if e["entity_type"] == "database"}
+        table_entities = {e["name"] for e in subgraph["entities"] if e["entity_type"] == "table"}
+        column_entity_map = {e["name"]: e for e in subgraph["entities"] if e["entity_type"] == "column"}
+
         for rel in subgraph.get("relationships", []):
             if rel["relationship_type"] == "contains" and rel["source_name"] in db_entities:
                 entity_db_map[rel["target_name"]] = rel["source_name"]
@@ -232,10 +246,53 @@ class KnowledgeGraphHandler(BaseComponentHandler):
             if rel["relationship_type"] == "contains" and rel["source_name"] in table_db:
                 entity_db_map[rel["target_name"]] = table_db[rel["source_name"]]
 
-        # Group entities by type
+        # Build table→columns mapping from contains relationships
+        # table_columns: {table_name: [(col_name, col_type), ...]}
+        table_columns: Dict[str, List[tuple]] = {}
+        table_col_contains = set()  # Track (table, column) pairs to filter from relationships
+        for rel in subgraph.get("relationships", []):
+            if (rel["relationship_type"] == "contains"
+                    and rel["source_name"] in table_entities
+                    and rel["target_name"] in column_entity_map):
+                tbl = rel["source_name"]
+                col_name = rel["target_name"]
+                col_entity = column_entity_map[col_name]
+                col_type = (col_entity.get("properties", {}).get("CType", "")
+                            or col_entity.get("properties", {}).get("data_type", ""))
+                if tbl not in table_columns:
+                    table_columns[tbl] = []
+                table_columns[tbl].append((col_name, col_type))
+                table_col_contains.add((rel["source_name"], rel["target_name"]))
+
+        # Emit TABLE SCHEMAS section if we have table-column data
+        if table_columns:
+            lines.append("\nTABLE SCHEMAS (use these to validate SQL column references):")
+            for tbl in sorted(table_columns.keys()):
+                db_name = entity_db_map.get(tbl, "")
+                cols = table_columns[tbl]
+                col_strs = [f"{c}({t})" if t else c for c, t in cols]
+                db_prefix = f"{db_name}." if db_name else ""
+                lines.append(f"  {db_prefix}{tbl}: {', '.join(col_strs)}")
+
+            # Build joinable columns: columns appearing in 2+ tables
+            col_tables: Dict[str, List[str]] = {}
+            for tbl, cols in table_columns.items():
+                for col_name, _ in cols:
+                    if col_name not in col_tables:
+                        col_tables[col_name] = []
+                    col_tables[col_name].append(tbl)
+            joinable = {c: tbls for c, tbls in col_tables.items() if len(tbls) > 1}
+            if joinable:
+                lines.append("\nJOINABLE COLUMNS (shared across tables — use for JOIN conditions):")
+                for col, tbls in sorted(joinable.items()):
+                    lines.append(f"  {col}: {', '.join(sorted(tbls))}")
+
+        # Group entities by type — skip columns (already in TABLE SCHEMAS)
         by_type: Dict[str, List] = {}
         for entity in subgraph["entities"]:
             etype = entity["entity_type"]
+            if etype == "column" and table_columns:
+                continue  # Already represented in TABLE SCHEMAS
             if etype not in by_type:
                 by_type[etype] = []
             by_type[etype].append(entity)
@@ -246,7 +303,7 @@ class KnowledgeGraphHandler(BaseComponentHandler):
                 props = e.get("properties", {})
                 desc = props.get("description", "")
                 biz = props.get("business_meaning", "")
-                dtype = props.get("data_type", "")
+                dtype = props.get("data_type", "") or props.get("CType", "")
                 db_name = entity_db_map.get(e["name"], "")
 
                 line = f"  - {e['name']}"
@@ -264,14 +321,21 @@ class KnowledgeGraphHandler(BaseComponentHandler):
                 lines.append(line)
 
         if subgraph["relationships"]:
-            lines.append("\nKNOWN RELATIONSHIPS:")
-            for rel in subgraph["relationships"]:
-                meta_desc = rel.get("metadata", {}).get("description", "")
-                card = f" [{rel['cardinality']}]" if rel.get("cardinality") else ""
-                desc_part = f" — {meta_desc}" if meta_desc else ""
-                lines.append(
-                    f"  - {rel['source_name']} --[{rel['relationship_type']}{card}]--> {rel['target_name']}{desc_part}"
-                )
+            # Filter out table→column contains (already in TABLE SCHEMAS)
+            non_schema_rels = [
+                rel for rel in subgraph["relationships"]
+                if not (rel["relationship_type"] == "contains"
+                        and (rel["source_name"], rel["target_name"]) in table_col_contains)
+            ]
+            if non_schema_rels:
+                lines.append("\nKNOWN RELATIONSHIPS:")
+                for rel in non_schema_rels:
+                    meta_desc = rel.get("metadata", {}).get("description", "")
+                    card = f" [{rel['cardinality']}]" if rel.get("cardinality") else ""
+                    desc_part = f" — {meta_desc}" if meta_desc else ""
+                    lines.append(
+                        f"  - {rel['source_name']} --[{rel['relationship_type']}{card}]--> {rel['target_name']}{desc_part}"
+                    )
 
         lines.append("--- END KNOWLEDGE GRAPH CONTEXT ---")
         return "\n".join(lines)

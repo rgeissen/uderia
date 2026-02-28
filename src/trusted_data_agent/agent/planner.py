@@ -2608,8 +2608,18 @@ Ranking:"""
 
         # --- COMPONENT CONTEXT ENRICHMENT (knowledge graph guardrail) ---
         kg_enrichment_text = await self.executor._get_kg_enrichment()
+        kg_schema_directive_str = ""  # Empty by default — no tokens wasted when KG absent
         if kg_enrichment_text:
             knowledge_context_str += "\n\n" + kg_enrichment_text
+            kg_schema_directive_str = (
+                "CRITICAL RULE (Schema-Aware SQL Construction): A KNOWLEDGE GRAPH CONTEXT section is present below. "
+                "You MUST validate ALL SQL queries in your plan against it:\n"
+                "- Only reference column names that the TABLE SCHEMAS section shows belong to the target table. "
+                "A column listed under one table does NOT exist in another table unless explicitly listed there.\n"
+                "- If a column appears in multiple tables (see JOINABLE COLUMNS), construct JOINs through the correct "
+                "intermediate table — do NOT assume two tables can be directly joined unless they both share a column name.\n"
+                "- NEVER assume a column exists in a table unless the TABLE SCHEMAS section explicitly lists it under that table."
+            )
             app_logger.info("Component context enrichment injected into planner knowledge context")
 
             yield self.executor._format_sse_with_depth({
@@ -2793,6 +2803,7 @@ CRITICAL REQUIREMENTS:
             reporting_tool_name=reporting_tool_name_injection,
             rag_few_shot_examples=rag_few_shot_examples_str,  # Pass the populated examples
             knowledge_context=knowledge_context_str,  # Empty string when knowledge disabled
+            kg_schema_directive=kg_schema_directive_str,  # Empty unless KG context present
             available_tools=tools_context,  # Pass tools context
             available_prompts=prompts_context,  # Pass prompts context
             component_tools=component_tools_str  # Pass component tools context

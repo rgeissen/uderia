@@ -1845,10 +1845,8 @@ export async function handleChatSubmit(e, source = 'text') {
         // is_replay is implicitly false here
     });
 
-    // Clear skill and extension badges after sending
-    if (window.clearSkillBadges) {
-        window.clearSkillBadges();
-    }
+    // Keep skill badges active (sticky) — user must click × to remove
+    // Clear extension badges after sending
     if (window.clearExtensionBadges) {
         window.clearExtensionBadges();
     }
