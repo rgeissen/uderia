@@ -2827,7 +2827,7 @@ CRITICAL REQUIREMENTS:
         response_text, input_tokens, output_tokens = await self.executor._call_llm_and_update_tokens(
             prompt=planning_prompt,
             reason=f"Generating a strategic meta-plan for the goal: '{self.executor.workflow_goal_prompt[:100]}'",
-            disabled_history=force_disable_history,
+            disabled_history=True,
             active_prompt_name_for_filter=self.executor.active_prompt_name,
             source=self.executor.source,
             current_provider=strategic_provider,  # NEW: Strategic model override
