@@ -14,8 +14,9 @@ Architecture:
 import json
 import logging
 import sqlite3
+from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
     import networkx as nx
@@ -37,6 +38,13 @@ RELATIONSHIP_TYPES = {
     "contains", "foreign_key", "is_a", "has_property",
     "measures", "derives_from", "depends_on", "relates_to",
 }
+
+# Entity type classification for adaptive subgraph extraction
+_EXPANDABLE_STRUCTURAL_TYPES = frozenset({"table", "foreign_key"})
+_SEMANTIC_TYPES = frozenset({"business_concept", "taxonomy", "metric", "domain"})
+
+# Max rounds of iterative joinable-table discovery (handles N-way transitive joins)
+_MAX_JOIN_DISCOVERY_ROUNDS = 3
 
 
 class GraphStore:
@@ -554,6 +562,249 @@ class GraphStore:
                 if neighbor not in visited and len(visited) < max_nodes:
                     visited.add(neighbor)
                     queue.append((neighbor, d + 1))
+
+        return self._subgraph_to_dict(G, visited)
+
+    # -------------------------------------------------------------------
+    # Adaptive subgraph extraction (entity-type-aware, scalable)
+    # -------------------------------------------------------------------
+
+    def extract_subgraph_adaptive(
+        self,
+        seed_entity_ids: List[int],
+        query_entity_ids: Optional[List[int]] = None,
+        max_nodes: int = 500,
+    ) -> Dict[str, List]:
+        """
+        Entity-type-aware subgraph extraction for schemas with 1000s of entities.
+
+        Instead of uniform BFS with a fixed depth that misses multi-hop join
+        chains and silently truncates large graphs, this uses a three-phase
+        approach that separates structural discovery from detail expansion.
+
+        Phase 1 — Structural Discovery (unbounded):
+            1a. FK-Chain Traversal: BFS through table/foreign_key nodes with
+                NO depth limit.  Handles 3, 4, 5, N-way JOIN chains.
+            1b. Joinable Table Discovery: Iteratively finds tables that share
+                column names with already-discovered tables (up to 3 rounds
+                for transitive join paths).
+            1c. Database Context: Adds parent database entities for discovered
+                tables (context only, not expanded).
+
+        Phase 2 — Column Expansion (budget-aware):
+            Adds column children for each discovered table.  Query-matched
+            tables are prioritised; remaining budget allocated to other
+            tables sorted by structural distance from the seeds.
+
+        Phase 3 — Semantic Enrichment (capped at 50):
+            Adds business_concept, metric, taxonomy, domain entities that
+            have direct relationships to discovered structural entities.
+
+        Args:
+            seed_entity_ids: Starting entities (from query matching / search).
+            query_entity_ids: Subset of seeds that directly matched the user
+                query — these get priority for column expansion.
+                If *None*, all seeds are treated as query-matched.
+            max_nodes: Upper bound on total returned entities.
+
+        Returns:
+            {"entities": [...], "relationships": [...]}
+        """
+        G = self._get_graph()
+        if G is None:
+            return {"entities": [], "relationships": []}
+        if not seed_entity_ids:
+            return {"entities": [], "relationships": []}
+
+        if query_entity_ids is None:
+            query_entity_ids = list(seed_entity_ids)
+        query_id_set = set(query_entity_ids)
+
+        # ── Phase 1a: FK-Chain Traversal ───────────────────────────────
+        # Unbounded BFS through expandable structural nodes (table,
+        # foreign_key).  Skips database (hub), column (detail), and
+        # semantic nodes.
+
+        discovered_tables: Set[int] = set()
+        discovered_fk_nodes: Set[int] = set()
+        distance_from_seed: Dict[int, int] = {}
+        bfs_queue: deque = deque()
+
+        for sid in seed_entity_ids:
+            if sid not in G:
+                continue
+            etype = G.nodes[sid].get("entity_type", "")
+
+            if etype in _EXPANDABLE_STRUCTURAL_TYPES:
+                target = discovered_tables if etype == "table" else discovered_fk_nodes
+                target.add(sid)
+                distance_from_seed[sid] = 0
+                bfs_queue.append((sid, 0))
+            else:
+                # Non-expandable seed (column, business_concept, …).
+                # Promote to neighbouring structural nodes.
+                for nbr in set(G.predecessors(sid)) | set(G.successors(sid)):
+                    ntype = G.nodes[nbr].get("entity_type", "")
+                    if ntype in _EXPANDABLE_STRUCTURAL_TYPES:
+                        target = discovered_tables if ntype == "table" else discovered_fk_nodes
+                        if nbr not in target:
+                            target.add(nbr)
+                            distance_from_seed[nbr] = 0
+                            bfs_queue.append((nbr, 0))
+
+        visited_expandable = discovered_tables | discovered_fk_nodes
+
+        while bfs_queue:
+            node_id, d = bfs_queue.popleft()
+            for nbr in set(G.successors(node_id)) | set(G.predecessors(node_id)):
+                if nbr in visited_expandable:
+                    continue
+                ntype = G.nodes[nbr].get("entity_type", "")
+                if ntype not in _EXPANDABLE_STRUCTURAL_TYPES:
+                    continue
+                target = discovered_tables if ntype == "table" else discovered_fk_nodes
+                target.add(nbr)
+                visited_expandable.add(nbr)
+                distance_from_seed[nbr] = d + 1
+                bfs_queue.append((nbr, d + 1))
+
+        fk_depth = max(distance_from_seed.values()) if distance_from_seed else 0
+        logger.info(
+            f"KG adaptive Phase 1a: {len(discovered_tables)} tables, "
+            f"{len(discovered_fk_nodes)} FK nodes, max FK-chain depth={fk_depth} "
+            f"(from {len(seed_entity_ids)} seeds)"
+        )
+
+        # ── Phase 1b: Joinable Table Discovery ────────────────────────
+        # Iteratively find tables sharing column names with already-
+        # discovered tables.  Handles transitive joins (A→B→C→D) even
+        # when no FK edges exist in the graph.
+
+        # Build full table-ID index once
+        all_table_ids: Dict[int, str] = {}
+        for nid, ndata in G.nodes(data=True):
+            if ndata.get("entity_type") == "table":
+                all_table_ids[nid] = ndata.get("name", "")
+
+        def _column_names_for_tables(table_ids: Set[int]) -> Set[str]:
+            """Collect column names owned by a set of table nodes."""
+            names: Set[str] = set()
+            for tid in table_ids:
+                for succ in G.successors(tid):
+                    if G.nodes[succ].get("entity_type") == "column":
+                        cname = G.nodes[succ].get("name", "").lower()
+                        if cname:
+                            names.add(cname)
+            return names
+
+        for round_num in range(_MAX_JOIN_DISCOVERY_ROUNDS):
+            seed_col_names = _column_names_for_tables(discovered_tables)
+            if not seed_col_names:
+                break
+
+            new_tables: Set[int] = set()
+            for tid in all_table_ids:
+                if tid in discovered_tables:
+                    continue
+                # Check if this table has any column name matching the seed set
+                for succ in G.successors(tid):
+                    if G.nodes[succ].get("entity_type") == "column":
+                        cname = G.nodes[succ].get("name", "").lower()
+                        if cname and cname in seed_col_names:
+                            new_tables.add(tid)
+                            break
+
+            if not new_tables:
+                break
+
+            for tid in new_tables:
+                discovered_tables.add(tid)
+                # Distance: one "logical hop" further than the deepest FK node
+                distance_from_seed.setdefault(tid, fk_depth + round_num + 1)
+
+            logger.info(
+                f"KG adaptive Phase 1b round {round_num + 1}: "
+                f"+{len(new_tables)} joinable tables"
+            )
+
+        # ── Phase 1c: Database Context ─────────────────────────────────
+        discovered_databases: Set[int] = set()
+        for tid in discovered_tables:
+            for pred in G.predecessors(tid):
+                if G.nodes[pred].get("entity_type") == "database":
+                    discovered_databases.add(pred)
+
+        # ── Assemble structural visited set ────────────────────────────
+        visited: Set[int] = set()
+        visited |= discovered_tables
+        visited |= discovered_fk_nodes
+        visited |= discovered_databases
+
+        # Include original non-structural seed entities themselves
+        for sid in seed_entity_ids:
+            if sid in G:
+                visited.add(sid)
+
+        # ── Phase 2: Column Expansion (budget-aware) ───────────────────
+        column_budget = max(0, max_nodes - len(visited))
+
+        sorted_tables = sorted(
+            discovered_tables,
+            key=lambda tid: (
+                0 if tid in query_id_set else 1,
+                distance_from_seed.get(tid, 999),
+            ),
+        )
+
+        columns_added = 0
+        tables_with_columns = 0
+        for tid in sorted_tables:
+            if column_budget <= 0:
+                break
+            table_cols = [
+                succ for succ in G.successors(tid)
+                if succ not in visited
+                and G.nodes[succ].get("entity_type") == "column"
+            ]
+            if table_cols:
+                to_add = table_cols[:column_budget]
+                visited.update(to_add)
+                column_budget -= len(to_add)
+                columns_added += len(to_add)
+                tables_with_columns += 1
+
+        logger.info(
+            f"KG adaptive Phase 2: {columns_added} columns "
+            f"for {tables_with_columns}/{len(discovered_tables)} tables, "
+            f"{column_budget} budget remaining"
+        )
+
+        # ── Phase 3: Semantic Enrichment ───────────────────────────────
+        semantic_budget = min(max(0, max_nodes - len(visited)), 50)
+        semantic_added = 0
+
+        if semantic_budget > 0:
+            structural_visited = discovered_tables | discovered_fk_nodes | discovered_databases
+            for nid in structural_visited:
+                if semantic_budget <= 0:
+                    break
+                for nbr in set(G.successors(nid)) | set(G.predecessors(nid)):
+                    if nbr in visited:
+                        continue
+                    if G.nodes[nbr].get("entity_type") in _SEMANTIC_TYPES:
+                        visited.add(nbr)
+                        semantic_budget -= 1
+                        semantic_added += 1
+                        if semantic_budget <= 0:
+                            break
+
+        logger.info(
+            f"KG adaptive extraction complete: "
+            f"{len(visited)} total nodes "
+            f"({len(discovered_tables)} tables, "
+            f"{columns_added} columns, "
+            f"{semantic_added} semantic)"
+        )
 
         return self._subgraph_to_dict(G, visited)
 

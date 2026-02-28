@@ -12278,22 +12278,23 @@ async def kg_delete_relationship(relationship_id):
 @rest_api_bp.route("/v1/knowledge-graph/subgraph", methods=["GET"])
 @require_auth
 async def kg_subgraph():
-    """Extract a subgraph around an entity."""
+    """Extract a subgraph around an entity using adaptive extraction."""
     user_uuid = _get_user_uuid_from_request()
     store = _get_graph_store(user_uuid)
 
     entity_name = request.args.get("entity_name")
-    depth = int(request.args.get("depth", 2))
-    max_nodes = int(request.args.get("max_nodes", 50))
+    max_nodes = int(request.args.get("max_nodes", 500))
 
     try:
         if entity_name:
-            entity = await store.get_entity_by_name(entity_name)
+            entity = store.get_entity_by_name(entity_name)
             if not entity:
                 return jsonify({"status": "error", "message": f"Entity '{entity_name}' not found"}), 404
-            subgraph = await store.extract_subgraph([entity["id"]], depth=depth, max_nodes=max_nodes)
+            subgraph = store.extract_subgraph_adaptive(
+                seed_entity_ids=[entity["id"]], max_nodes=max_nodes,
+            )
         else:
-            subgraph = await store.get_full_graph(max_nodes=max_nodes)
+            subgraph = store.get_full_graph(max_nodes=max_nodes)
         return jsonify({"status": "success", **subgraph})
     except Exception as e:
         app_logger.error(f"Knowledge graph subgraph failed: {e}", exc_info=True)
@@ -12974,6 +12975,214 @@ def _run_phase3_gap_fill(store) -> int:
     return phase3_added
 
 
+def _run_phase3_5_fk_inference(store) -> int:
+    """
+    Phase 3.5: Deterministic foreign-key relationship inference between tables.
+
+    Creates ``table --[foreign_key]--> table`` edges using three detection
+    signals that work even when FK constraints are not explicitly defined
+    in the source database:
+
+    Signal A — Column properties:
+        Scans column entity properties for FK indicators (``ForeignKey``,
+        ``References``, ``Key`` fields captured during structural ingestion).
+
+    Signal B — Naming conventions:
+        Matches ``<table>_id`` or ``<table_singular>_id`` column patterns
+        against known table names (e.g. ``customer_id`` → ``customers``).
+
+    Signal C — Shared column names:
+        If the same column name appears in 2+ tables, creates an FK edge
+        between each pair.  When PK information is available the direction
+        is from the non-PK table to the PK table; otherwise the edge is
+        created in both directions.
+
+    All inferred edges are tagged with ``source="constructor_fk_inferred"``
+    and carry ``metadata.inferred_via`` / ``metadata.join_column`` for
+    traceability.
+
+    Returns:
+        Number of FK relationships added.
+    """
+    phase3_5_added = 0
+    try:
+        table_entities = store.list_entities(entity_type="table")
+        if not table_entities:
+            return 0
+
+        column_entities = store.list_entities(entity_type="column")
+        if not column_entities:
+            return 0
+
+        # Build lookup structures
+        table_by_name: dict = {}            # normalised_name → entity
+        table_by_id: dict = {}              # id → entity
+        for tbl in table_entities:
+            table_by_name[tbl["name"].lower()] = tbl
+            table_by_id[tbl["id"]] = tbl
+
+        # Build column → owning-table mapping from relationships
+        col_to_tables: dict = {}            # col_name_lower → [(table_entity, col_entity), ...]
+        table_columns: dict = {}            # table_id → [col_entity, ...]
+        for tbl in table_entities:
+            rels = store.get_relationships(entity_id=tbl["id"], direction="outgoing")
+            for rel in rels:
+                if rel["relationship_type"] == "contains" and rel.get("target_type") == "column":
+                    col_name = rel["target_name"].lower()
+                    # Find the column entity
+                    col_ent = None
+                    for c in column_entities:
+                        if c["name"].lower() == col_name:
+                            col_ent = c
+                            break
+                    if col_ent:
+                        col_to_tables.setdefault(col_name, []).append((tbl, col_ent))
+                        table_columns.setdefault(tbl["id"], []).append(col_ent)
+
+        # Track already-created FK edges to avoid duplicates
+        created_fk_pairs: set = set()  # (source_table_id, target_table_id)
+
+        def _add_fk_edge(source_tbl, target_tbl, join_col: str, inferred_via: str,
+                         cardinality: str = "N:1") -> bool:
+            """Create FK edge if not already present. Returns True if added."""
+            nonlocal phase3_5_added
+            pair = (source_tbl["id"], target_tbl["id"])
+            if pair in created_fk_pairs or source_tbl["id"] == target_tbl["id"]:
+                return False
+            created_fk_pairs.add(pair)
+            store.add_relationship(
+                source_entity_id=source_tbl["id"],
+                target_entity_id=target_tbl["id"],
+                relationship_type="foreign_key",
+                cardinality=cardinality,
+                metadata={"inferred_via": inferred_via, "join_column": join_col},
+                source="constructor_fk_inferred",
+            )
+            phase3_5_added += 1
+            return True
+
+        # ── Signal A: Column property FK indicators ────────────────────
+        FK_PROPERTY_KEYS = {"ForeignKey", "foreignkey", "foreign_key",
+                            "IsForeignKey", "isforeignkey", "FK", "fk",
+                            "References", "references", "Reference", "reference",
+                            "ReferencedTable", "referenced_table"}
+        FK_TRUE_VALUES = {"y", "yes", "true", "1"}
+
+        for col in column_entities:
+            props = col.get("properties", {})
+            for prop_key in FK_PROPERTY_KEYS:
+                prop_val = str(props.get(prop_key, "")).strip()
+                if not prop_val:
+                    continue
+
+                # Check if it's a boolean indicator (ForeignKey=Y)
+                if prop_val.lower() in FK_TRUE_VALUES:
+                    # FK column — try to resolve target table from column name
+                    col_name = col["name"].lower()
+                    # Find owning table
+                    owning_tables = col_to_tables.get(col_name, [])
+                    for owner_tbl, _ in owning_tables:
+                        # Try naming convention to find target
+                        target_name = col_name.replace("_id", "").replace("id", "")
+                        for norm_tbl_name, tbl_ent in table_by_name.items():
+                            if _kg_names_match(target_name, norm_tbl_name):
+                                _add_fk_edge(owner_tbl, tbl_ent, col["name"],
+                                             "column_property")
+                                break
+                    continue
+
+                # Check if it references a table name directly (References=Customers)
+                ref_table_name = prop_val.split(".")[0].strip()
+                ref_tbl = table_by_name.get(ref_table_name.lower())
+                if ref_tbl:
+                    owning_tables = col_to_tables.get(col["name"].lower(), [])
+                    for owner_tbl, _ in owning_tables:
+                        if owner_tbl["id"] != ref_tbl["id"]:
+                            _add_fk_edge(owner_tbl, ref_tbl, col["name"],
+                                         "column_property")
+
+        # ── Signal B: Naming conventions (_id pattern) ─────────────────
+        for col in column_entities:
+            col_name = col["name"].lower()
+            if not col_name.endswith("_id") and not col_name.endswith("id"):
+                continue
+
+            # Extract the table name hint from the column name
+            if col_name.endswith("_id"):
+                hint = col_name[:-3]  # customer_id → customer
+            elif col_name != "id" and col_name.endswith("id"):
+                hint = col_name[:-2]  # customerid → customer
+            else:
+                continue
+
+            if not hint or len(hint) < 2:
+                continue
+
+            # Find the target table by fuzzy matching the hint
+            target_tbl = None
+            for tbl_name_lower, tbl_ent in table_by_name.items():
+                if _kg_names_match(hint, tbl_name_lower):
+                    target_tbl = tbl_ent
+                    break
+
+            if target_tbl is None:
+                continue
+
+            # Find owning tables for this column
+            owning_tables = col_to_tables.get(col_name, [])
+            for owner_tbl, _ in owning_tables:
+                _add_fk_edge(owner_tbl, target_tbl, col["name"],
+                             "naming_convention")
+
+        # ── Signal C: Shared column names ──────────────────────────────
+        for col_name, table_col_pairs in col_to_tables.items():
+            if len(table_col_pairs) < 2:
+                continue
+            # Skip very generic column names that are unlikely to be FK
+            if col_name in {"id", "name", "type", "status", "description",
+                            "created_at", "updated_at", "created", "updated",
+                            "date", "value", "count", "amount", "active"}:
+                continue
+
+            # Determine PK tables (columns with PK indicators in properties)
+            pk_tables = []
+            non_pk_tables = []
+            for tbl, col_ent in table_col_pairs:
+                props = col_ent.get("properties", {})
+                is_pk = any(
+                    str(props.get(k, "")).lower() in FK_TRUE_VALUES
+                    for k in ("PrimaryKey", "primarykey", "primary_key",
+                              "IsPrimaryKey", "isprimarykey", "PK", "pk", "Key")
+                )
+                if is_pk:
+                    pk_tables.append(tbl)
+                else:
+                    non_pk_tables.append(tbl)
+
+            if pk_tables:
+                # Directed: non-PK tables → PK table (N:1)
+                for pk_tbl in pk_tables:
+                    for non_pk_tbl in non_pk_tables:
+                        _add_fk_edge(non_pk_tbl, pk_tbl, col_name,
+                                     "shared_column", cardinality="N:1")
+            else:
+                # No PK info — create edges between all pairs (N:M, conservative)
+                tables = [t for t, _ in table_col_pairs]
+                for i in range(len(tables)):
+                    for j in range(i + 1, len(tables)):
+                        _add_fk_edge(tables[i], tables[j], col_name,
+                                     "shared_column", cardinality="N:M")
+
+        if phase3_5_added:
+            app_logger.info(
+                f"[KG Constructor] Phase 3.5: Inferred {phase3_5_added} "
+                f"foreign_key relationships between tables"
+            )
+    except Exception as e:
+        app_logger.warning(f"[KG Constructor] Phase 3.5 FK inference failed: {e}")
+    return phase3_5_added
+
+
 def _normalize_kg_name(name: str) -> str:
     """Normalize entity name for fuzzy matching (lowercase, no underscores, strip plural 's')."""
     n = name.lower().replace("_", " ").replace("-", " ").strip()
@@ -13252,6 +13461,9 @@ async def kg_generate(current_user):
         # ── Phase 3: Gap-fill missing containment relationships ──
         phase3_added = _run_phase3_gap_fill(store)
 
+        # ── Phase 3.5: FK edge inference (naming conventions + shared columns) ──
+        phase3_5_added = _run_phase3_5_fk_inference(store)
+
         # ── Phase 4: Cross-layer semantic-structural linking ──
         phase4_added = _run_phase4_cross_layer_linking(store)
 
@@ -13262,6 +13474,7 @@ async def kg_generate(current_user):
                 structural_result.get("relationships_added", 0)
                 + semantic_result.get("relationships_added", 0)
                 + phase3_added
+                + phase3_5_added
                 + phase4_added
             ),
         }
@@ -13277,6 +13490,7 @@ async def kg_generate(current_user):
             "structural": structural_result,
             "semantic": semantic_result,
             "phase3_relationships": phase3_added,
+            "phase3_5_fk_relationships": phase3_5_added,
             "phase4_relationships": phase4_added,
             "total": total_result,
         })

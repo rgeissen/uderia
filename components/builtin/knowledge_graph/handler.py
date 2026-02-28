@@ -159,17 +159,15 @@ class KnowledgeGraphHandler(BaseComponentHandler):
 
         entity_ids = [e["id"] for e in entities]
 
-        # Ensure ALL table entities are BFS seeds — tables are the structural
-        # backbone for SQL construction; missing even one bridge table breaks
-        # JOIN paths (e.g., SaleDetails connecting Products to Sales).
-        all_tables = store.list_entities(entity_type="table")
-        seed_id_set = set(entity_ids)
-        for tbl in all_tables:
-            if tbl["id"] not in seed_id_set:
-                entity_ids.append(tbl["id"])
-                seed_id_set.add(tbl["id"])
-
-        subgraph = store.extract_subgraph(entity_ids, depth=2, max_nodes=50)
+        # Adaptive extraction: entity-type-aware, unbounded FK chains,
+        # iterative joinable-table discovery, budget-aware column expansion.
+        # Replaces the old all-tables-as-seeds + fixed depth=2 + max_nodes=50
+        # approach which missed multi-hop JOIN chains and truncated at ~5 tables.
+        subgraph = store.extract_subgraph_adaptive(
+            seed_entity_ids=entity_ids,
+            query_entity_ids=entity_ids,
+            max_nodes=500,
+        )
 
         if not subgraph.get("entities"):
             logger.debug("KG enrichment: subgraph extraction returned no entities")
@@ -384,13 +382,15 @@ class KnowledgeGraphHandler(BaseComponentHandler):
         if entity_name:
             entity = store.get_entity_by_name(entity_name)
             if entity:
-                subgraph = store.extract_subgraph([entity["id"]], depth=depth, max_nodes=50)
+                subgraph = store.extract_subgraph_adaptive(
+                    seed_entity_ids=[entity["id"]], max_nodes=100,
+                )
             else:
                 # Try search
                 results = store.search_entities(entity_name, limit=3)
                 if results:
-                    subgraph = store.extract_subgraph(
-                        [e["id"] for e in results], depth=depth, max_nodes=50
+                    subgraph = store.extract_subgraph_adaptive(
+                        seed_entity_ids=[e["id"] for e in results], max_nodes=100,
                     )
                 else:
                     subgraph = {"entities": [], "relationships": []}
@@ -559,7 +559,10 @@ class KnowledgeGraphHandler(BaseComponentHandler):
         if query_text:
             entities = self._search_entities_for_query(store, query_text)
             if entities:
-                subgraph = store.extract_subgraph([e["id"] for e in entities], depth=2, max_nodes=30)
+                subgraph = store.extract_subgraph_adaptive(
+                    seed_entity_ids=[e["id"] for e in entities],
+                    max_nodes=200,
+                )
                 context_text = self._format_subgraph_for_prompt(subgraph)
             else:
                 context_text = "(No relevant entities found)"
