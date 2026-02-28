@@ -138,6 +138,9 @@ function createKnowledgeGraphCard(kg, kgState) {
             <div class="text-xs" style="color: var(--text-muted, #6b7280);">Last updated: ${formatTimeAgo(kg.last_updated)}</div>
             <div class="flex items-center gap-2 pt-2" style="border-top: 1px solid var(--border-primary, rgba(75,85,99,0.6));">
                 ${activateBtn}
+                <button class="kg-inspect-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors"
+                        style="background: rgba(147,51,234,0.15); color: #a78bfa; border: 1px solid rgba(147,51,234,0.3);"
+                        data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}" title="Inspect knowledge graph">Inspect</button>
                 <button class="kg-export-btn px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-md hover:bg-blue-500 transition-colors"
                         data-profile-id="${kg.profile_id}" title="Export as JSON">Export</button>
                 <button class="kg-delete-btn px-3 py-1 bg-red-600/80 text-white text-xs font-semibold rounded-md hover:bg-red-500 transition-colors"
@@ -346,6 +349,12 @@ export function handleKnowledgeGraphPanelClick(e) {
         return;
     }
 
+    const inspectBtn = e.target.closest('.kg-inspect-btn');
+    if (inspectBtn) {
+        openKnowledgeGraphInspection(inspectBtn.dataset.profileId, inspectBtn.dataset.profileName);
+        return;
+    }
+
     const exportBtn = e.target.closest('.kg-export-btn');
     if (exportBtn) {
         const profileId = exportBtn.dataset.profileId;
@@ -467,6 +476,12 @@ function createIntelligenceKGCard(kg) {
             <p class="text-xs text-gray-500 mb-3">Last updated: ${formatTimeAgo(kg.last_updated)}</p>
 
             <div class="flex gap-2 flex-wrap">
+                <button class="kg-intel-inspect-btn card-btn card-btn--primary" data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    Inspect
+                </button>
                 <button class="kg-intel-export-btn card-btn card-btn--cyan" data-profile-id="${kg.profile_id}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
@@ -540,6 +555,12 @@ export async function loadKnowledgeGraphsIntelligenceTab() {
 
 function attachIntelligenceKGHandlers(container) {
     container.addEventListener('click', async (e) => {
+        const inspectBtn = e.target.closest('.kg-intel-inspect-btn');
+        if (inspectBtn) {
+            openKnowledgeGraphInspection(inspectBtn.dataset.profileId, inspectBtn.dataset.profileName);
+            return;
+        }
+
         const exportBtn = e.target.closest('.kg-intel-export-btn');
         if (exportBtn) {
             handleExport(exportBtn.dataset.profileId);
@@ -761,6 +782,109 @@ function _openAssignmentPanel(ownerProfileId, ownerName, parentContainer) {
             saveBtn.textContent = 'Save Assignments';
         }
     });
+}
+
+// ── Knowledge Graph Inspection (full D3 graph view) ──────────────────────────
+
+let _kgInspectFullscreen = false;
+
+export async function openKnowledgeGraphInspection(profileId, profileName) {
+    const { handleViewSwitch } = await import('../ui.js?v=1.5');
+    const { renderKnowledgeGraph } = await import('/api/v1/components/knowledge_graph/renderer');
+
+    // Switch to inspect view
+    handleViewSwitch('kg-inspect-view');
+
+    // Update title
+    const titleEl = document.getElementById('kg-inspect-title');
+    if (titleEl) titleEl.textContent = `Inspect: ${profileName}`;
+
+    // Show loading spinner
+    const contentArea = document.getElementById('kg-inspect-content');
+    contentArea.innerHTML = `
+        <div class="flex items-center justify-center flex-1">
+            <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-500 border-t-purple-500"></div>
+            <span class="ml-3 text-sm text-gray-400">Loading knowledge graph...</span>
+        </div>
+    `;
+
+    // Wire handlers immediately (back button should always work)
+    _wireKGInspectHandlers();
+
+    try {
+        const response = await API.fetchKnowledgeGraphSpec(profileId);
+        const spec = response.spec;
+
+        if (!spec || !spec.nodes || spec.nodes.length === 0) {
+            contentArea.innerHTML = `
+                <div class="flex flex-col items-center justify-center flex-1 text-center">
+                    <svg class="w-16 h-16 text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>
+                    </svg>
+                    <p class="text-gray-400 text-sm">This knowledge graph is empty.</p>
+                    <p class="text-gray-500 text-xs mt-1">Entities and relationships will appear here once the graph is populated.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Clear and create render target with kg-split- prefix (triggers renderKGFull in renderer)
+        contentArea.innerHTML = '';
+        const renderTarget = document.createElement('div');
+        renderTarget.id = `kg-split-inspect-${Date.now()}`;
+        renderTarget.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
+        contentArea.appendChild(renderTarget);
+
+        // Render full interactive D3 graph (toolbar + force graph + legend)
+        renderKnowledgeGraph(renderTarget.id, spec);
+    } catch (err) {
+        console.error('[KG Inspect] Failed to load graph:', err);
+        contentArea.innerHTML = `
+            <div class="flex flex-col items-center justify-center flex-1 text-center">
+                <p class="text-red-400 text-sm">Failed to load knowledge graph: ${err.message}</p>
+                <button onclick="document.getElementById('kg-inspect-back')?.click()"
+                        class="card-btn card-btn--neutral mt-4">Go Back</button>
+            </div>
+        `;
+    }
+}
+
+function _wireKGInspectHandlers() {
+    const backBtn = document.getElementById('kg-inspect-back');
+    if (backBtn) {
+        backBtn.onclick = async () => {
+            // Exit fullscreen if active
+            if (_kgInspectFullscreen) {
+                _kgInspectFullscreen = false;
+                const mainArea = document.getElementById('main-content-area');
+                if (mainArea) mainArea.classList.remove('kg-fullscreen');
+                document.documentElement.style.removeProperty('--kg-fullscreen-top');
+            }
+            const { handleViewSwitch } = await import('../ui.js?v=1.5');
+            handleViewSwitch('rag-maintenance-view');
+        };
+    }
+
+    const fsBtn = document.getElementById('kg-inspect-fullscreen');
+    if (fsBtn) {
+        fsBtn.onclick = () => {
+            _kgInspectFullscreen = !_kgInspectFullscreen;
+            const mainArea = document.getElementById('main-content-area');
+            if (_kgInspectFullscreen) {
+                mainArea.classList.add('kg-fullscreen');
+                // Offset for any top nav bar
+                const nav = document.querySelector('nav, .top-nav');
+                if (nav) {
+                    document.documentElement.style.setProperty('--kg-fullscreen-top', nav.offsetHeight + 'px');
+                }
+            } else {
+                mainArea.classList.remove('kg-fullscreen');
+                document.documentElement.style.removeProperty('--kg-fullscreen-top');
+            }
+            // Update icon to reflect state
+            fsBtn.title = _kgInspectFullscreen ? 'Exit fullscreen' : 'Toggle fullscreen';
+        };
+    }
 }
 
 // ── Import handler ───────────────────────────────────────────────────────────

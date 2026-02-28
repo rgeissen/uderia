@@ -1600,7 +1600,7 @@ async def _invoke_util_calculate_date_range(STATE: dict, command: dict, user_uui
     }
 
 # --- MODIFICATION START: Add user_uuid ---
-async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, session_id: str = None, call_id: str | None = None, workflow_state: dict = None) -> tuple[any, int, int]:
+async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, session_id: str = None, call_id: str | None = None, workflow_state: dict = None, profile_id: str = None) -> tuple[any, int, int]:
 # --- MODIFICATION END ---
     mcp_client = STATE.get('mcp_client')
     tool_name = command.get("tool_name")
@@ -1676,7 +1676,7 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
                 app_logger.info(f"Routing '{tool_name}' through component handler: {handler.component_id}")
                 args = command.get("arguments", {})
                 # Build context for component handlers (session info + LLM callable)
-                comp_context: dict = {"session_id": session_id, "user_uuid": user_uuid}
+                comp_context: dict = {"session_id": session_id, "user_uuid": user_uuid, "profile_id": profile_id}
                 _llm = STATE.get('llm')
                 if _llm:
                     async def _comp_llm_callable(prompt, system_prompt="You are a data analyst.", max_tokens=200):

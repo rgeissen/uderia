@@ -191,7 +191,8 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": command})
         # --- MODIFICATION START: Pass user_uuid ---
         single_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], command, user_uuid=user_uuid, session_id=executor.session_id
+            executor.dependencies['STATE'], command, user_uuid=user_uuid, session_id=executor.session_id,
+            profile_id=executor.active_profile_id
         )
         # --- MODIFICATION END ---
         _result_type = "tool_error" if (isinstance(single_result, dict) and single_result.get("status") == "error") else "tool_result"
@@ -264,7 +265,8 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
 
         date_command = {"tool_name": "TDA_CurrentDate"}
         date_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], date_command, user_uuid=user_uuid, session_id=executor.session_id
+            executor.dependencies['STATE'], date_command, user_uuid=user_uuid, session_id=executor.session_id,
+            profile_id=executor.active_profile_id
         )
         if not (date_result and date_result.get("status") == "success" and date_result.get("results")):
             raise RuntimeError("Date Range Orchestrator failed to fetch current date.")
@@ -354,7 +356,8 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": range_command})
 
         range_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], range_command, user_uuid=user_uuid, session_id=executor.session_id
+            executor.dependencies['STATE'], range_command, user_uuid=user_uuid, session_id=executor.session_id,
+            profile_id=executor.active_profile_id
         )
 
         _result_type = "tool_error" if (isinstance(range_result, dict) and range_result.get("status") == "error") else "tool_result"
@@ -413,7 +416,8 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": day_command})
         # --- MODIFICATION START: Pass user_uuid ---
         day_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], day_command, user_uuid=user_uuid, session_id=executor.session_id
+            executor.dependencies['STATE'], day_command, user_uuid=user_uuid, session_id=executor.session_id,
+            profile_id=executor.active_profile_id
         )
         _result_type = "tool_error" if (isinstance(day_result, dict) and day_result.get("status") == "error") else "tool_result"
         yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": day_result})
@@ -482,7 +486,8 @@ async def execute_column_iteration(executor, command: dict):
     yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": cols_command})
     # --- MODIFICATION START: Pass user_uuid ---
     cols_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-        executor.dependencies['STATE'], cols_command, user_uuid=user_uuid, session_id=executor.session_id
+        executor.dependencies['STATE'], cols_command, user_uuid=user_uuid, session_id=executor.session_id,
+        profile_id=executor.active_profile_id
     )
     # --- MODIFICATION END ---
     _result_type = "tool_error" if (isinstance(cols_result, dict) and cols_result.get("status") == "error") else "tool_result"
@@ -536,7 +541,8 @@ async def execute_column_iteration(executor, command: dict):
         yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": iter_command})
         # --- MODIFICATION START: Pass user_uuid ---
         col_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], iter_command, user_uuid=user_uuid, session_id=executor.session_id
+            executor.dependencies['STATE'], iter_command, user_uuid=user_uuid, session_id=executor.session_id,
+            profile_id=executor.active_profile_id
         )
         # --- MODIFICATION END ---
         _col_result_type = "tool_error" if (isinstance(col_result, dict) and col_result.get("status") == "error") else "tool_result"
@@ -599,7 +605,8 @@ async def execute_hallucinated_loop(executor, phase: dict):
         yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": command})
         # --- MODIFICATION START: Pass user_uuid ---
         result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], command, user_uuid=executor.user_uuid, session_id=executor.session_id
+            executor.dependencies['STATE'], command, user_uuid=executor.user_uuid, session_id=executor.session_id,
+            profile_id=executor.active_profile_id
         )
         # --- MODIFICATION END ---
         _result_type = "tool_error" if (isinstance(result, dict) and result.get("status") == "error") else "tool_result"

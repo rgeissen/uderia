@@ -32,6 +32,12 @@ let _stylesInjected = false;
 let _isKGFullscreen = false;
 let _activeSpec = null;  // Current spec displayed in split panel
 
+// ─── Live Animation State ──────────────────────────────────────────────
+let _graphState = null;          // D3 refs: { nodeGroups, linkGroup, linkLines, links, nodes, simulation, svg, g, zoom, defs, colors, width, height }
+let _activeAnimations = new Map(); // nodeId -> { timeoutId }
+let _userZoomOverride = false;   // Set when user manually pans/zooms; cleared on next event
+let _autozoomDebounce = null;    // Timeout ID for debounced auto-zoom
+
 // ─── Entry Point ────────────────────────────────────────────────────────
 
 export function renderKnowledgeGraph(containerId, payload) {
@@ -256,6 +262,8 @@ export function closeKGSplitPanel() {
     }
 
     _activeSpec = null;
+    _clearAllAnimations();
+    _graphState = null;
 
     // Reset inline buttons
     document.querySelectorAll('.kg-inline-open-btn--active').forEach(btn => {
@@ -469,6 +477,15 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
         merge.append('feMergeNode').attr('in', 'SourceGraphic');
     });
 
+    // Activity glow filter (warm amber — shared for live execution animations)
+    const actGlow = defs.append('filter').attr('id', 'kg-activity-glow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%');
+    actGlow.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', 8).attr('result', 'blur');
+    actGlow.append('feFlood').attr('flood-color', '#F15F22').attr('flood-opacity', 0.5).attr('result', 'color');
+    actGlow.append('feComposite').attr('in', 'color').attr('in2', 'blur').attr('operator', 'in').attr('result', 'glow');
+    const actMerge = actGlow.append('feMerge');
+    actMerge.append('feMergeNode').attr('in', 'glow');
+    actMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
     // Pulse animation for center entity
     defs.append('style').text(`
         @keyframes kg-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.15; } }
@@ -501,7 +518,11 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
 
     const zoom = d3.zoom()
         .scaleExtent([0.1, 4])
-        .on('zoom', (event) => g.attr('transform', event.transform));
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+            // Detect user-initiated zoom/pan (sourceEvent is truthy for mouse/touch)
+            if (event.sourceEvent) _userZoomOverride = true;
+        });
     svg.call(zoom);
 
     // ─── Force Simulation ────────────────────────────────────────────
@@ -745,6 +766,9 @@ function _renderFullGraph(container, nodes, links, colors, width, height, toolba
             _exportPNG(svg.node(), width, height);
         };
     }
+
+    // Expose D3 state for live animation bridge
+    _graphState = { nodeGroups, linkGroup, linkLines, links, nodes, simulation, svg, g, zoom, defs, colors, width, height };
 
     return { svg: svg.node(), simulation };
 }

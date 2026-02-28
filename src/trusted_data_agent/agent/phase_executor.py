@@ -498,10 +498,11 @@ class PhaseExecutor:
                     cols_command = {"tool_name": "base_columnDescription", "arguments": args_for_col_tool}
                     # --- MODIFICATION START: Pass user_uuid ---
                     cols_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-                        self.executor.dependencies['STATE'], 
-                        cols_command, 
-                        user_uuid=self.executor.user_uuid, 
-                        session_id=self.executor.session_id
+                        self.executor.dependencies['STATE'],
+                        cols_command,
+                        user_uuid=self.executor.user_uuid,
+                        session_id=self.executor.session_id,
+                        profile_id=self.executor.active_profile_id
                     )
                     # --- MODIFICATION END ---
 
@@ -2110,7 +2111,8 @@ class PhaseExecutor:
                 user_uuid=self.executor.user_uuid,
                 session_id=self.executor.session_id,
                 call_id=call_id_for_tool,
-                workflow_state=full_context_for_tool
+                workflow_state=full_context_for_tool,
+                profile_id=self.executor.active_profile_id
             )
             # --- MODIFICATION END ---
 

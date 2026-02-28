@@ -692,6 +692,18 @@ export async function exportKnowledgeGraph(profileId) {
     URL.revokeObjectURL(url);
 }
 
+export async function fetchKnowledgeGraphSpec(profileId, maxNodes = 500) {
+    const res = await fetch(
+        `/api/v1/knowledge-graph/graph-spec?profile_id=${encodeURIComponent(profileId)}&max_nodes=${maxNodes}`,
+        { headers: _getHeaders(false) }
+    );
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to fetch knowledge graph spec');
+    }
+    return await res.json();
+}
+
 export async function deleteKnowledgeGraph(profileId) {
     const res = await fetch(`/api/v1/knowledge-graph/clear?profile_id=${encodeURIComponent(profileId)}`, {
         method: 'DELETE',

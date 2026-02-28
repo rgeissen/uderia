@@ -12557,6 +12557,95 @@ async def kg_export(current_user):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/knowledge-graph/graph-spec", methods=["GET"])
+@require_auth
+async def kg_graph_spec(current_user):
+    """Return a D3 force-graph spec (nodes + links) for frontend rendering."""
+    user_uuid = _get_user_uuid_from_request()
+    profile_id = request.args.get("profile_id")
+
+    if not profile_id:
+        return jsonify({"status": "error", "message": "profile_id query parameter is required"}), 400
+
+    max_nodes = int(request.args.get("max_nodes", 500))
+
+    try:
+        store = _get_graph_store(user_uuid, profile_id)
+        subgraph = store.get_full_graph(max_nodes=max_nodes)
+
+        if not subgraph["entities"]:
+            return jsonify({
+                "status": "success",
+                "spec": {"nodes": [], "links": [], "title": "Knowledge Graph (empty)", "entity_type_colors": {}},
+                "profile_name": profile_id,
+                "profile_tag": "",
+            })
+
+        importance = store.get_entity_importance()
+
+        # Build D3 spec (same transform as handler.py _handle_visualize)
+        nodes = []
+        links = []
+        node_id_map = {}
+
+        for i, entity in enumerate(subgraph["entities"]):
+            node_id_map[entity["id"]] = i
+            nodes.append({
+                "id": i,
+                "entity_id": entity["id"],
+                "name": entity["name"],
+                "type": entity["entity_type"],
+                "properties": entity.get("properties", {}),
+                "importance": round(importance.get(entity["id"], 0), 3),
+            })
+
+        for rel in subgraph["relationships"]:
+            source_idx = node_id_map.get(rel["source_id"])
+            target_idx = node_id_map.get(rel["target_id"])
+            if source_idx is not None and target_idx is not None:
+                links.append({
+                    "source": source_idx,
+                    "target": target_idx,
+                    "type": rel["relationship_type"],
+                    "cardinality": rel.get("cardinality"),
+                })
+
+        # Resolve profile name/tag
+        profile_name = profile_id
+        profile_tag = ""
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            profiles = config_manager.get_profiles(user_uuid)
+            profile = next((p for p in profiles if p.get("id") == profile_id), None)
+            if profile:
+                profile_name = profile.get("name", profile_id)
+                profile_tag = profile.get("tag", "")
+        except Exception:
+            pass
+
+        from components.builtin.knowledge_graph.handler import ENTITY_TYPE_COLORS
+
+        title = f"Knowledge Graph: {profile_name}"
+        if profile_tag:
+            title += f" (@{profile_tag})"
+
+        return jsonify({
+            "status": "success",
+            "spec": {
+                "nodes": nodes,
+                "links": links,
+                "title": title,
+                "entity_type_colors": ENTITY_TYPE_COLORS,
+            },
+            "profile_name": profile_name,
+            "profile_tag": profile_tag,
+        })
+    except Exception as e:
+        app_logger.error(f"Knowledge graph graph-spec failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ─── Knowledge Graph Constructor ─────────────────────────────────────────────
 
 

@@ -2741,6 +2741,31 @@
                 </div>
             </div>
 
+            <!-- View: Knowledge Graph Inspection (full D3 graph) -->
+            <div id="kg-inspect-view" class="app-view w-full h-full flex flex-col">
+                <!-- Header: Back + Title + Fullscreen -->
+                <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                    <div class="flex items-center gap-4">
+                        <button id="kg-inspect-back" type="button" class="card-btn card-btn--neutral">
+                            <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                            </svg>
+                            Back
+                        </button>
+                        <h1 id="kg-inspect-title" class="text-2xl font-bold text-white">Inspect Knowledge Graph</h1>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="kg-inspect-fullscreen" class="card-btn card-btn--neutral" title="Toggle fullscreen">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <!-- Graph render area (fills remaining space) -->
+                <div id="kg-inspect-content" class="flex-1 min-h-0 flex flex-col"></div>
+            </div>
+
             <!-- --- MODIFICATION START: Add Credentials View --- -->
             <!-- MODIFICATION: No longer the default active view -->
             <div id="credentials-view" class="app-view w-full h-full flex flex-col p-6">
