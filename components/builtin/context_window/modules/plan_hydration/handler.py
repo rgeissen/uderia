@@ -57,7 +57,7 @@ class PlanHydrationModule(ContextModule):
             )
 
         session_data = ctx.session_data
-        workflow_history = session_data.get("workflow_history", [])
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
         if not workflow_history:
             return Contribution(

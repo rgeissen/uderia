@@ -65,25 +65,30 @@ class SystemPromptModule(ContextModule):
                 ProfilePromptResolver,
             )
 
-            resolver = ProfilePromptResolver()
-            resolved = await resolver.resolve_system_prompt(
+            resolver = ProfilePromptResolver(
                 profile_id=active_profile_id,
-                user_uuid=user_uuid,
                 provider=current_provider,
             )
+            resolved = resolver.get_master_system_prompt()
             if resolved:
-                system_prompt = resolved
+                # get_master_system_prompt() can return str or dict
+                import json
+                system_prompt = (
+                    json.dumps(resolved) if isinstance(resolved, dict) else str(resolved)
+                )
         except Exception as e:
             logger.warning(f"SystemPromptModule: resolver failed: {e}")
 
         # Fallback to provider default if resolver returned nothing
         if not system_prompt:
             try:
-                from trusted_data_agent.llm.handler import PROVIDER_SYSTEM_PROMPTS
-                system_prompt = PROVIDER_SYSTEM_PROMPTS.get(
+                from trusted_data_agent.agent.prompts import PROVIDER_SYSTEM_PROMPTS
+                prompt_obj = PROVIDER_SYSTEM_PROMPTS.get(
                     current_provider,
-                    PROVIDER_SYSTEM_PROMPTS.get("default", "You are a helpful assistant."),
+                    PROVIDER_SYSTEM_PROMPTS.get("Google", "You are a helpful assistant."),
                 )
+                # LazyPrompt objects need str() conversion
+                system_prompt = str(prompt_obj)
             except ImportError:
                 system_prompt = "You are a helpful assistant."
 

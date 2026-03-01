@@ -2789,25 +2789,68 @@ CRITICAL REQUIREMENTS:
                         f"Previous query: '{previous_query[:100]}...'"
                     )
 
-        planning_prompt = chart_context_injection + WORKFLOW_META_PLANNING_PROMPT.format(
-            workflow_goal=self.executor.workflow_goal_prompt,
-            explicit_parameters_section=explicit_parameters_section,
-            original_user_input=self.executor.original_user_input,
-            turn_action_history=previous_turn_summary_str,
-            execution_depth=self.executor.execution_depth,
-            active_prompt_context_section=active_prompt_context_section,
-            mcp_system_name=mcp_system_name,
-            replan_instructions=replan_context or "",
-            constraints_section=constraints_section,
-            sql_consolidation_rule=sql_consolidation_rule_str,
-            reporting_tool_name=reporting_tool_name_injection,
-            rag_few_shot_examples=rag_few_shot_examples_str,  # Pass the populated examples
-            knowledge_context=knowledge_context_str,  # Empty string when knowledge disabled
-            kg_schema_directive=kg_schema_directive_str,  # Empty unless KG context present
-            available_tools=tools_context,  # Pass tools context
-            available_prompts=prompts_context,  # Pass prompts context
-            component_tools=component_tools_str  # Pass component tools context
-        )
+        # === ContextBuilder integration (Phase 3a) ===
+        # Use the builder for budget-aware module content (tools, history,
+        # components) where available.  Knowledge/RAG stay manually gathered
+        # because their retrieval emits SSE events the builder can't replicate.
+        _builder = getattr(self.executor, 'context_builder', None)
+        if _builder and _builder.has_assembled_context:
+            try:
+                prompt_ctx = await _builder.build("strategic", {
+                    "workflow_goal": self.executor.workflow_goal_prompt,
+                    "explicit_parameters_section": explicit_parameters_section,
+                    "original_user_input": self.executor.original_user_input,
+                    "execution_depth": self.executor.execution_depth,
+                    "active_prompt_context_section": active_prompt_context_section,
+                    "replan_instructions": replan_context or "",
+                    "constraints_section": constraints_section,
+                    "source": self.executor.source,
+                })
+                _tv = prompt_ctx.template_vars
+                # Override SSE-event-dependent vars with manually gathered values
+                _tv["knowledge_context"] = knowledge_context_str
+                _tv["rag_few_shot_examples"] = rag_few_shot_examples_str
+                _tv["kg_schema_directive"] = kg_schema_directive_str
+                app_logger.info(
+                    f"Strategic planning using ContextBuilder "
+                    f"(tokens: {prompt_ctx.tokens_used:,}, source: {prompt_ctx.source})"
+                )
+                # Emit per-call snapshot for observability
+                if prompt_ctx.snapshot:
+                    yield self.executor._format_sse_with_depth({
+                        "step": "Context Assembly (Strategic)",
+                        "type": "context_window_snapshot",
+                        "payload": prompt_ctx.snapshot.to_sse_event(),
+                    })
+            except Exception as _cb_err:
+                app_logger.warning(f"ContextBuilder strategic build failed, using legacy: {_cb_err}")
+                _tv = None
+        else:
+            _tv = None
+
+        if _tv is None:
+            # Legacy fallback: manual gathering (pre-ContextBuilder path)
+            _tv = {
+                "workflow_goal": self.executor.workflow_goal_prompt,
+                "explicit_parameters_section": explicit_parameters_section,
+                "original_user_input": self.executor.original_user_input,
+                "turn_action_history": previous_turn_summary_str,
+                "execution_depth": self.executor.execution_depth,
+                "active_prompt_context_section": active_prompt_context_section,
+                "mcp_system_name": mcp_system_name,
+                "replan_instructions": replan_context or "",
+                "constraints_section": constraints_section,
+                "sql_consolidation_rule": sql_consolidation_rule_str,
+                "reporting_tool_name": reporting_tool_name_injection,
+                "rag_few_shot_examples": rag_few_shot_examples_str,
+                "knowledge_context": knowledge_context_str,
+                "kg_schema_directive": kg_schema_directive_str,
+                "available_tools": tools_context,
+                "available_prompts": prompts_context,
+                "component_tools": component_tools_str,
+            }
+
+        planning_prompt = chart_context_injection + WORKFLOW_META_PLANNING_PROMPT.format(**_tv)
 
         # --- Inject skill content into planning prompt (pre-processing) ---
         if self.executor.skill_result and self.executor.skill_result.has_content:

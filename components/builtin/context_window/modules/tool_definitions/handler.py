@@ -133,7 +133,9 @@ class ToolDefinitionsModule(ContextModule):
             if not tools:
                 continue
             lines.append(f"**{category}**:")
-            for tool_name, tool_info in tools.items():
+            # tools is a list of tool dicts: [{"name": ..., "description": ..., "inputSchema": ...}, ...]
+            for tool_info in tools:
+                tool_name = tool_info.get("name", "unknown")
                 desc = tool_info.get("description", "")
                 lines.append(f"- `{tool_name}` (tool): {desc}")
 
@@ -158,7 +160,8 @@ class ToolDefinitionsModule(ContextModule):
         for category, tools in structured_tools.items():
             if not tools:
                 continue
-            tool_names = ", ".join(f"`{name}`" for name in tools.keys())
+            # tools is a list of tool dicts
+            tool_names = ", ".join(f"`{t.get('name', '?')}`" for t in tools)
             lines.append(f"- **{category}**: {tool_names}")
 
         return "\n".join(lines)

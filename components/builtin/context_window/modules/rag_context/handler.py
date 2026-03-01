@@ -67,9 +67,16 @@ class RAGContextModule(ContextModule):
         max_examples = min(5, max(1, char_budget // 2000))  # ~2000 chars per case
 
         try:
-            from trusted_data_agent.agent.rag_retriever import RAGRetriever
+            from trusted_data_agent.core.config import APP_STATE
 
-            retriever = RAGRetriever()
+            retriever = APP_STATE.get("rag_retriever_instance")
+            if not retriever:
+                return Contribution(
+                    content="",
+                    tokens_used=0,
+                    metadata={"cases_retrieved": 0, "reason": "no_retriever_instance"},
+                    condensable=False,
+                )
 
             # Get accessible collection IDs from profile config
             rag_config = profile_config.get("ragConfig", {})
@@ -87,7 +94,8 @@ class RAGContextModule(ContextModule):
                     condensable=False,
                 )
 
-            cases = await retriever.retrieve_examples(
+            # retrieve_examples is synchronous
+            cases = retriever.retrieve_examples(
                 query=query,
                 k=max_examples,
                 min_score=0.7,

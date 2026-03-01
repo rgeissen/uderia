@@ -1437,6 +1437,16 @@ class PhaseExecutor:
             self.executor._distillation_events.extend(getattr(self, '_pending_distill_events', []))
             self._pending_distill_events = []
 
+            # Emit tactical per-call context window snapshot (mirrors strategic snapshot in planner.py)
+            _tac_snap = getattr(self, '_pending_tactical_snapshot', None)
+            if _tac_snap:
+                yield self.executor._format_sse_with_depth({
+                    "step": "Context Assembly (Tactical)",
+                    "type": "context_window_snapshot",
+                    "payload": _tac_snap,
+                })
+                self._pending_tactical_snapshot = None
+
             # --- Emit tactical LLM call with token data (live SSE + execution trace) ---
             tactical_log_event = {
                 "step": "Calling LLM for Tactical Action",
@@ -2457,18 +2467,53 @@ class PhaseExecutor:
         # Store distillation events for caller to emit via SSE
         self._pending_distill_events = distill_events
 
-        tactical_system_prompt = WORKFLOW_TACTICAL_PROMPT.format(
-            workflow_goal=self.executor.workflow_goal_prompt,
-            current_phase_goal=current_phase_goal,
-            strategic_arguments_section=strategic_arguments_section,
-            permitted_tools_with_details=permitted_tools_with_details,
-            permitted_prompts_with_details=permitted_prompts_with_details,
-            last_attempt_info=self.executor.last_failed_action_info,
-            turn_action_history=json.dumps(distilled_turn_history, indent=2),
-            all_collected_data=json.dumps(distilled_workflow_state, indent=2),
-            loop_context_section=loop_context_section,
-            context_enrichment_section=context_enrichment_section
-        )
+        # === ContextBuilder integration (Phase 3a) ===
+        _builder = getattr(self.executor, 'context_builder', None)
+        if _builder and _builder.has_assembled_context:
+            try:
+                prompt_ctx = await _builder.build("tactical", {
+                    "workflow_goal": self.executor.workflow_goal_prompt,
+                    "current_phase_goal": current_phase_goal,
+                    "strategic_arguments_section": strategic_arguments_section,
+                    "last_attempt_info": self.executor.last_failed_action_info,
+                    "loop_context_section": loop_context_section,
+                    "context_enrichment_section": context_enrichment_section,
+                    "permitted_prompts_with_details": permitted_prompts_with_details,
+                    "phase_tools": relevant_tools,
+                })
+                _tv = prompt_ctx.template_vars
+                # Override distilled data with manually distilled values
+                # (distillation events must be captured for SSE observability)
+                _tv["all_collected_data"] = json.dumps(distilled_workflow_state, indent=2)
+                _tv["turn_action_history"] = json.dumps(distilled_turn_history, indent=2)
+                # Log per-call snapshot and store for parent generator to emit as SSE
+                if prompt_ctx.snapshot:
+                    app_logger.info(
+                        f"Tactical planning using ContextBuilder "
+                        f"(tokens: {prompt_ctx.tokens_used:,}, source: {prompt_ctx.source})"
+                    )
+                    self._pending_tactical_snapshot = prompt_ctx.snapshot.to_sse_event()
+            except Exception as _cb_err:
+                app_logger.warning(f"ContextBuilder tactical build failed, using legacy: {_cb_err}")
+                _tv = None
+        else:
+            _tv = None
+
+        if _tv is None:
+            _tv = {
+                "workflow_goal": self.executor.workflow_goal_prompt,
+                "current_phase_goal": current_phase_goal,
+                "strategic_arguments_section": strategic_arguments_section,
+                "permitted_tools_with_details": permitted_tools_with_details,
+                "permitted_prompts_with_details": permitted_prompts_with_details,
+                "last_attempt_info": self.executor.last_failed_action_info,
+                "turn_action_history": json.dumps(distilled_turn_history, indent=2),
+                "all_collected_data": json.dumps(distilled_workflow_state, indent=2),
+                "loop_context_section": loop_context_section,
+                "context_enrichment_section": context_enrichment_section,
+            }
+
+        tactical_system_prompt = WORKFLOW_TACTICAL_PROMPT.format(**_tv)
 
         # Use tactical model for per-phase execution (dual-model feature)
         tactical_provider = self.executor.tactical_provider

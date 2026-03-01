@@ -58,7 +58,7 @@ class WorkflowHistoryModule(ContextModule):
             )
 
         session_data = ctx.session_data
-        workflow_history = session_data.get("workflow_history", [])
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
         if not workflow_history:
             return Contribution(
@@ -106,7 +106,7 @@ class WorkflowHistoryModule(ContextModule):
     ) -> Contribution:
         """Condense by keeping fewer turns."""
         session_data = ctx.session_data
-        workflow_history = session_data.get("workflow_history", [])
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
 
         valid_turns = [
             turn for turn in workflow_history
@@ -150,7 +150,7 @@ class WorkflowHistoryModule(ContextModule):
             if session_id:
                 session_data = await sm.load_session(session_id, user_uuid)
                 if session_data:
-                    turn_count = len(session_data.get("workflow_history", []))
+                    turn_count = len(session_data.get("last_turn_data", {}).get("workflow_history", []))
                     session_data["workflow_history"] = []
                     await sm.save_session(session_id, user_uuid, session_data)
                     return {

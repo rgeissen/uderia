@@ -646,6 +646,7 @@ class PlanExecutor:
         self.context_window_snapshot_event = None  # Store context window snapshot for historical replay
         self._context_distiller = None  # Lazily initialised from context window type config
         self._distillation_events = []  # Accumulates distillation events across all phases for snapshot
+        self.context_builder = None  # ContextBuilder — lazily initialised from context window assembly
 
         # Knowledge Graph enrichment event for Live Status replay
         self.kg_enrichment_event = None
@@ -1499,6 +1500,18 @@ class PlanExecutor:
                     f"({assembled.snapshot.utilization_pct:.1f}% utilization)"
                 )
 
+            # Initialise the ContextBuilder with the assembled output so that
+            # planner.py and phase_executor.py can consume module content
+            # through a single, budget-aware entry point.
+            try:
+                from components.builtin.context_window.context_builder import ContextBuilder
+                if self.context_builder is None:
+                    self.context_builder = ContextBuilder(self)
+                self.context_builder.set_assembled_context(assembled, ctx, cwt)
+                app_logger.debug("ContextBuilder initialised with assembled context")
+            except Exception as cb_err:
+                app_logger.debug(f"Could not initialise ContextBuilder: {cb_err}")
+
             return assembled
 
         except Exception as e:
@@ -2123,6 +2136,7 @@ class PlanExecutor:
                 "knowledge_chunks_ui": knowledge_chunks if knowledge_enabled else [],
                 # KG enrichment event for session reload
                 "kg_enrichment_event": self.kg_enrichment_event,
+                "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                 # Pre-processing skills applied to this turn
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
@@ -2719,6 +2733,21 @@ Response:"""
             profile_tag = profile_config.get("tag", "CHAT")
             profile_name = profile_config.get("name", "Conversation")
 
+            # --- CONTEXT WINDOW MANAGER (Feature-Flagged) ---
+            if APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
+                assembled_context = await self._run_context_window_assembly("llm_only", profile_config)
+                if assembled_context and assembled_context.snapshot:
+                    snapshot_event = {
+                        "step": "Context Window Assembly",
+                        "type": "context_window_snapshot",
+                        "details": assembled_context.snapshot.to_summary_text(),
+                        "payload": assembled_context.snapshot.to_sse_event(),
+                    }
+                    self._log_system_event(snapshot_event)
+                    self.context_window_snapshot_event = assembled_context.snapshot.to_sse_event()
+                    yield self._format_sse_with_depth(snapshot_event)
+            # --- CONTEXT WINDOW MANAGER END ---
+
             # Get conversation context stats
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
             history_length = len(session_data.get("session_history", [])) if session_data else 0
@@ -3299,6 +3328,7 @@ The following domain knowledge may be relevant to this conversation:
                     "document_count": len(knowledge_accessed)
                 } if knowledge_enabled else None,
                 "kg_enrichment_event": self.kg_enrichment_event,
+                "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 
@@ -3391,6 +3421,22 @@ The following domain knowledge may be relevant to this conversation:
                 # Silent failure - don't break execution
                 app_logger.warning(f"Failed to emit execution_start event: {e}")
             # --- PHASE 2 END ---
+
+            # --- CONTEXT WINDOW MANAGER (Feature-Flagged) ---
+            if APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
+                _rag_profile_config = self._get_profile_config()
+                assembled_context = await self._run_context_window_assembly("rag_focused", _rag_profile_config)
+                if assembled_context and assembled_context.snapshot:
+                    snapshot_event = {
+                        "step": "Context Window Assembly",
+                        "type": "context_window_snapshot",
+                        "details": assembled_context.snapshot.to_summary_text(),
+                        "payload": assembled_context.snapshot.to_sse_event(),
+                    }
+                    self._log_system_event(snapshot_event)
+                    self.context_window_snapshot_event = assembled_context.snapshot.to_sse_event()
+                    yield self._format_sse_with_depth(snapshot_event)
+            # --- CONTEXT WINDOW MANAGER END ---
 
             # --- MANDATORY Knowledge Retrieval ---
             retrieval_start_time = time.time()
@@ -3680,6 +3726,7 @@ The following domain knowledge may be relevant to this conversation:
                     },
                     "knowledge_events": knowledge_events,
                     "system_events": system_events,
+                    "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                     "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
                 }
 
@@ -4261,6 +4308,7 @@ The following domain knowledge may be relevant to this conversation:
                 "knowledge_chunks_ui": knowledge_chunks,
                 "kg_enrichment_event": self.kg_enrichment_event,
                 "system_events": system_events,
+                "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
 

@@ -91,11 +91,19 @@ class KnowledgeContextModule(ContextModule):
             )
 
         try:
-            from trusted_data_agent.agent.rag_retriever import RAGRetriever
+            from trusted_data_agent.core.config import APP_STATE
 
-            retriever = RAGRetriever()
+            retriever = APP_STATE.get("rag_retriever_instance")
+            if not retriever:
+                return Contribution(
+                    content="",
+                    tokens_used=0,
+                    metadata={"docs_retrieved": 0, "reason": "no_retriever_instance"},
+                    condensable=False,
+                )
 
-            docs = await retriever.retrieve_examples(
+            # retrieve_examples is synchronous
+            docs = retriever.retrieve_examples(
                 query=query,
                 k=max_docs,
                 min_score=min_score,
