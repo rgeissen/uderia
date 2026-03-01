@@ -43,6 +43,11 @@ export function resetContextPanelState() {
     lastSnapshot = null;
     lastCwt = null;
     lastProfile = null;
+    // Clear rendered DOM so stale slider/snapshot don't persist across sessions
+    const container = document.getElementById('context-panel-content');
+    if (container) {
+        container.innerHTML = '';
+    }
 }
 
 /**
@@ -116,7 +121,27 @@ export async function loadContextPanel() {
         const cwt = cwtData.context_window_type || cwtData;
         lastCwt = cwt;
         lastProfile = activeProfile;
-        renderContextPanelContent(container, cwt, activeProfile);
+
+        // Hydrate session-level context limit override from server
+        const sessionId = state.currentSessionId;
+        if (sessionId) {
+            try {
+                const sessRes = await fetch(`/session/${sessionId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (sessRes.ok) {
+                    const sessData = await sessRes.json();
+                    const storedOverride = sessData.session_context_limit_override;
+                    if (storedOverride != null) {
+                        state.sessionContextLimitOverrides[sessionId] = storedOverride;
+                    } else {
+                        delete state.sessionContextLimitOverrides[sessionId];
+                    }
+                }
+            } catch (e) { /* non-critical */ }
+        }
+
+        await renderContextPanelContent(container, cwt, activeProfile);
 
     } catch (err) {
         console.error('Failed to load context panel:', err);
@@ -129,7 +154,7 @@ export async function loadContextPanel() {
  * When lastSnapshot is available, overlays dynamic runtime metrics on each
  * module card (allocated vs target, used tokens, contributing status).
  */
-function renderContextPanelContent(container, cwt, profile) {
+async function renderContextPanelContent(container, cwt, profile) {
     const modules = cwt.modules || {};
     const activeModules = Object.entries(modules)
         .filter(([, m]) => m.active)
@@ -310,6 +335,11 @@ function renderContextPanelContent(container, cwt, profile) {
         const reallocations = snapshot.reallocation_events || [];
 
         const parts = [`${(totalUsed / 1000).toFixed(1)}K / ${(totalBudget / 1000).toFixed(1)}K tokens (${totalPct}%)`];
+        if (snapshot.budget?.session_context_limit_override != null) {
+            parts.push(`Session limit: ${formatTokensK(snapshot.budget.session_context_limit_override)}`);
+        } else if (snapshot.budget?.context_limit_override != null) {
+            parts.push(`Profile limit: ${formatTokensK(snapshot.budget.context_limit_override)}`);
+        }
         if (adjList) parts.push(`Adjustments: ${adjList}`);
         if (condensations.length > 0) {
             parts.push(`${condensations.length} condensation${condensations.length > 1 ? 's' : ''}`);
@@ -332,6 +362,31 @@ function renderContextPanelContent(container, cwt, profile) {
             </div>`;
     }
 
+    // --- Session context limit slider data ---
+    const token = localStorage.getItem('tda_auth_token');
+    let modelMaxTokens = 128000;
+    let modelName = '';
+    try {
+        const clRes = await fetch(`/api/v1/llm/configurations/${profile.llmConfigurationId}/context-limit`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (clRes.ok) {
+            const clData = await clRes.json();
+            modelMaxTokens = clData.max_context_tokens || 128000;
+            modelName = clData.model || '';
+        }
+    } catch (e) { /* fallback */ }
+
+    const profileOverride = profile.contextLimitOverride;
+    const sessionOverride = state.sessionContextLimitOverrides?.[state.currentSessionId];
+    const effectiveMax = profileOverride ? Math.min(profileOverride, modelMaxTokens) : modelMaxTokens;
+    const isUsingDefault = sessionOverride == null;
+    const effectiveLimit = isUsingDefault ? effectiveMax : sessionOverride;
+    const defaultLabel = profileOverride ? 'Profile default' : 'Model default';
+    const statusText = isUsingDefault
+        ? `${defaultLabel}: ${formatTokensK(effectiveMax)}` + (modelName ? ` (${escapeHtml(modelName)})` : '')
+        : `Session limited to ${formatTokensK(effectiveLimit)} of ${formatTokensK(effectiveMax)}` + (modelName ? ` (${escapeHtml(modelName)})` : '');
+
     container.innerHTML = `
         <div class="space-y-3">
             <div class="flex items-center justify-between">
@@ -343,6 +398,31 @@ function renderContextPanelContent(container, cwt, profile) {
                     <span class="text-xs text-gray-500">Profile: ${escapeHtml(profile.name)}</span>
                     <div class="text-xs text-gray-500">${activeModules.length} active / ${outputReserve}% reserve</div>
                 </div>
+            </div>
+
+            <div class="bg-white/5 border border-white/10 rounded-lg p-3">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Session Context Limit</span>
+                    <label class="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer hover:text-white transition-colors">
+                        <input type="checkbox" id="cp-context-limit-default" class="w-3 h-3" ${isUsingDefault ? 'checked' : ''}>
+                        <span>${defaultLabel}</span>
+                    </label>
+                </div>
+                <div id="cp-context-limit-controls" class="flex items-center gap-3" ${isUsingDefault ? 'style="display:none"' : ''}>
+                    <input type="range" id="cp-context-limit-slider"
+                           min="4096" max="${effectiveMax}" step="1024" value="${effectiveLimit}"
+                           class="flex-1 h-1.5 bg-gray-700/50 rounded-lg appearance-none cursor-pointer"
+                           style="accent-color: #F15F22;">
+                    <div class="flex items-center gap-0.5">
+                        <input type="number" id="cp-context-limit-input"
+                               min="4" max="${Math.round(effectiveMax / 1024)}" step="1"
+                               value="${Math.round(effectiveLimit / 1024)}"
+                               class="w-14 px-1.5 py-1 bg-gray-800/60 border border-gray-700/50 rounded
+                                      text-gray-200 text-[11px] text-center focus:ring-1 focus:ring-[#F15F22]/50 outline-none">
+                        <span class="text-[10px] text-gray-500 font-mono">K</span>
+                    </div>
+                </div>
+                <div id="cp-context-limit-status" class="text-[10px] text-gray-500 mt-1">${statusText}</div>
             </div>
 
             <div>
@@ -371,6 +451,78 @@ function renderContextPanelContent(container, cwt, profile) {
             ${inactiveCards}
             ${summaryLine}
         </div>`;
+
+    // --- Session context limit slider event wiring ---
+    const cpDefaultCb = container.querySelector('#cp-context-limit-default');
+    const cpControls = container.querySelector('#cp-context-limit-controls');
+    const cpSlider = container.querySelector('#cp-context-limit-slider');
+    const cpInput = container.querySelector('#cp-context-limit-input');
+    const cpStatus = container.querySelector('#cp-context-limit-status');
+
+    if (cpDefaultCb && cpSlider && cpInput) {
+        function updateCpStatus() {
+            const val = parseInt(cpSlider.value);
+            cpStatus.textContent = `Session limited to ${formatTokensK(val)} of ${formatTokensK(effectiveMax)}`
+                + (modelName ? ` (${modelName})` : '');
+        }
+
+        cpDefaultCb.addEventListener('change', () => {
+            if (cpDefaultCb.checked) {
+                cpControls.style.display = 'none';
+                cpSlider.value = effectiveMax;
+                cpInput.value = Math.round(effectiveMax / 1024);
+                cpStatus.textContent = `${defaultLabel}: ${formatTokensK(effectiveMax)}`
+                    + (modelName ? ` (${modelName})` : '');
+                saveSessionContextLimit(null);
+            } else {
+                cpControls.style.display = 'flex';
+                updateCpStatus();
+            }
+        });
+
+        cpSlider.addEventListener('input', () => {
+            cpInput.value = Math.round(parseInt(cpSlider.value) / 1024);
+            updateCpStatus();
+        });
+
+        cpSlider.addEventListener('change', () => {
+            saveSessionContextLimit(parseInt(cpSlider.value));
+        });
+
+        cpInput.addEventListener('change', () => {
+            const kVal = parseInt(cpInput.value) || 4;
+            const tokens = Math.max(4096, Math.min(effectiveMax, kVal * 1024));
+            cpSlider.value = tokens;
+            cpInput.value = Math.round(tokens / 1024);
+            updateCpStatus();
+            saveSessionContextLimit(tokens);
+        });
+    }
+}
+
+/**
+ * Persist or clear a session-level context limit override.
+ * POSTs to the session endpoint and updates the frontend cache.
+ * @param {number|null} overrideValue - Token limit or null to clear
+ */
+async function saveSessionContextLimit(overrideValue) {
+    const sessionId = state.currentSessionId;
+    if (!sessionId) return;
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        await fetch(`/api/v1/sessions/${sessionId}/context-limit`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context_limit: overrideValue })
+        });
+        if (overrideValue == null) {
+            delete state.sessionContextLimitOverrides[sessionId];
+        } else {
+            state.sessionContextLimitOverrides[sessionId] = overrideValue;
+        }
+    } catch (err) {
+        console.error('Failed to save session context limit:', err);
+    }
 }
 
 /**
@@ -449,6 +601,17 @@ export function renderContextWindowSnapshot(snapshot) {
                 <span class="text-xs font-semibold text-gray-300">Context Window (${escapeHtml(typeName)})</span>
                 <span class="text-xs text-gray-400 tabular-nums">${(used / 1000).toFixed(1)}K / ${(budget / 1000).toFixed(1)}K tokens (${pct}%)</span>
             </div>
+            ${(() => {
+                const profileOvr = snapshot.budget?.context_limit_override;
+                const sessionOvr = snapshot.budget?.session_context_limit_override;
+                if (sessionOvr != null) {
+                    return `<div class="text-[10px] text-yellow-400/70 mb-1.5">&#9888; Session override: ${formatTokensK(sessionOvr)} limit${profileOvr != null ? ` (profile: ${formatTokensK(profileOvr)})` : ` (model: ${formatTokensK(snapshot.budget.model_limit)})`}</div>`;
+                }
+                if (profileOvr != null) {
+                    return `<div class="text-[10px] text-yellow-400/70 mb-1.5">&#9888; Profile override: ${formatTokensK(profileOvr)} limit (model: ${formatTokensK(snapshot.budget.model_limit)})</div>`;
+                }
+                return '';
+            })()}
             <div class="flex gap-0.5 w-full h-2 rounded overflow-hidden bg-white/5 mb-1.5">
                 ${barSegments}
             </div>
@@ -468,22 +631,20 @@ export function renderContextWindowSnapshot(snapshot) {
  */
 function _refreshSnapshotInPanel() {
     if (!lastSnapshot) return;
-    const panel = document.getElementById('context-panel');
-    if (!panel || panel.style.display === 'none') return;
-
     const container = document.getElementById('context-panel-content');
     if (!container) return;
-
-    if (lastCwt && lastProfile) {
-        renderContextPanelContent(container, lastCwt, lastProfile);
-    } else {
-        loadContextPanel();
-    }
+    // Always re-fetch profile + CW type to avoid stale cache (e.g., after @TAG override)
+    loadContextPanel();
 }
 
 /**
  * Format a module ID to a human-readable name.
  */
+function formatTokensK(tokens) {
+    if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+    return `${Math.round(tokens / 1000)}K`;
+}
+
 function formatModuleName(moduleId) {
     const names = {
         system_prompt: 'Sys Prompt',

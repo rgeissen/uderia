@@ -101,6 +101,13 @@ class ContextWindowSnapshot:
     utilization_pct: float
     """Overall budget utilization: total_used / available_budget * 100."""
 
+    # --- Context limit overrides ---
+    context_limit_override: Optional[int] = None
+    """Profile-level context limit override (None = using model default)."""
+
+    session_context_limit_override: Optional[int] = None
+    """Session-level context limit override (None = no session override)."""
+
     # --- Per-module breakdown ---
     contributions: List[ContributionMetric] = field(default_factory=list)
     """Metrics for each module that participated in assembly."""
@@ -148,6 +155,8 @@ class ContextWindowSnapshot:
             },
             "budget": {
                 "model_limit": self.model_context_limit,
+                "context_limit_override": self.context_limit_override,
+                "session_context_limit_override": self.session_context_limit_override,
                 "output_reserve": self.output_reserve,
                 "available": self.available_budget,
                 "used": self.total_used,

@@ -816,6 +816,18 @@ async def _run_genie_execution(
                     except Exception:
                         pass
 
+                    # Apply profile-level context limit override
+                    context_limit_override = genie_profile.get("contextLimitOverride")
+                    if context_limit_override and isinstance(context_limit_override, int):
+                        if context_limit_override < model_context_limit:
+                            model_context_limit = context_limit_override
+
+                    # Apply session-level context limit override (takes precedence)
+                    session_context_limit = enriched_session.get('session_context_limit_override')
+                    if session_context_limit and isinstance(session_context_limit, int):
+                        if session_context_limit < model_context_limit:
+                            model_context_limit = session_context_limit
+
                     ctx = AssemblyContext(
                         profile_type="genie",
                         profile_id=profile_id or "",

@@ -1458,6 +1458,16 @@ class PlanExecutor:
             except Exception as e:
                 app_logger.debug(f"Could not resolve model context limit from litellm: {e}")
 
+            # Apply profile-level context limit override
+            context_limit_override = profile_config.get("contextLimitOverride")
+            if context_limit_override and isinstance(context_limit_override, int):
+                if context_limit_override < model_context_limit:
+                    app_logger.info(
+                        f"Profile context limit override: {context_limit_override:,} tokens "
+                        f"(model default: {model_context_limit:,})"
+                    )
+                    model_context_limit = context_limit_override
+
             # Build assembly context
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
 
@@ -1477,6 +1487,16 @@ class PlanExecutor:
             # self.original_user_input, not in session_manager data.
             enriched_session = dict(session_data) if session_data else {}
             enriched_session['current_query'] = self.original_user_input or ''
+
+            # Apply session-level context limit override (takes precedence over profile)
+            session_context_limit = enriched_session.get('session_context_limit_override')
+            if session_context_limit and isinstance(session_context_limit, int):
+                if session_context_limit < model_context_limit:
+                    app_logger.info(
+                        f"Session context limit override: {session_context_limit:,} tokens "
+                        f"(effective default: {model_context_limit:,})"
+                    )
+                    model_context_limit = session_context_limit
 
             ctx = AssemblyContext(
                 profile_type=profile_type,

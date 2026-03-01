@@ -1207,6 +1207,17 @@ async def update_session_name(user_uuid: str, session_id: str, new_name: str):
             asyncio.create_task(queue.put(notification))
 
 
+async def set_session_context_limit(user_uuid: str, session_id: str, context_limit: int | None):
+    """Set or clear a session-level context limit override."""
+    async with _session_transaction(user_uuid, session_id) as session_data:
+        if not session_data:
+            return
+        if context_limit is None:
+            session_data.pop('session_context_limit_override', None)
+        else:
+            session_data['session_context_limit_override'] = int(context_limit)
+
+
 async def update_token_count(user_uuid: str, session_id: str, input_tokens: int, output_tokens: int):
     """Updates the token counts for a given session."""
     async with _session_transaction(user_uuid, session_id) as session_data:

@@ -5407,6 +5407,51 @@ async def activate_llm_configuration(config_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/llm/configurations/<config_id>/context-limit", methods=["GET"])
+async def get_llm_context_limit(config_id: str):
+    """Get the model's maximum context window size for the given LLM configuration."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        configurations = config_manager.get_llm_configurations(user_uuid)
+        config = next((c for c in configurations if c.get("id") == config_id), None)
+        if not config:
+            return jsonify({"status": "error", "message": "LLM configuration not found"}), 404
+
+        provider = config.get("provider", "")
+        model = config.get("model", "")
+
+        max_tokens = 128_000
+        source = "default"
+        try:
+            import litellm
+            model_key = f"{provider}/{model}" if provider else model
+            model_info = litellm.model_cost.get(model_key) or litellm.model_cost.get(model or "")
+            if model_info:
+                max_tokens = model_info.get("max_input_tokens") or model_info.get("max_tokens") or 128_000
+                source = "litellm"
+        except Exception:
+            pass
+
+        return jsonify({
+            "status": "success",
+            "config_id": config_id,
+            "provider": provider,
+            "model": model,
+            "max_context_tokens": max_tokens,
+            "source": source
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting context limit: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ============================================================================
 # CONTEXT WINDOW TYPE ENDPOINTS
 # ============================================================================
@@ -5649,6 +5694,31 @@ async def get_active_context_window(profile_id: str):
         }), 200
     except Exception as e:
         app_logger.error(f"Error getting active context window: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/sessions/<session_id>/context-limit", methods=["POST"])
+async def set_session_context_limit_endpoint(session_id: str):
+    """Set or clear a session-level context limit override."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        data = await request.get_json()
+        context_limit = data.get("context_limit")
+
+        if context_limit is not None:
+            if not isinstance(context_limit, (int, float)) or context_limit < 4096:
+                return jsonify({"status": "error", "message": "context_limit must be null or >= 4096"}), 400
+            context_limit = int(context_limit)
+
+        from trusted_data_agent.core.session_manager import set_session_context_limit
+        await set_session_context_limit(user_uuid, session_id, context_limit)
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        app_logger.error(f"Error setting session context limit: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -6187,7 +6257,18 @@ async def create_profile():
                 "message": f"Invalid classification_mode: '{classification_mode}'. Must be 'light' or 'full'."
             }), 400
         data["classification_mode"] = classification_mode
-        
+
+        # Validate contextLimitOverride if provided
+        if "contextLimitOverride" in data:
+            override = data["contextLimitOverride"]
+            if override is not None:
+                if not isinstance(override, (int, float)) or override < 4096:
+                    return jsonify({
+                        "status": "error",
+                        "message": "contextLimitOverride must be null or an integer >= 4096"
+                    }), 400
+                data["contextLimitOverride"] = int(override)
+
         # Initialize empty classification results (will be populated on first classification)
         if "classification_results" not in data:
             data["classification_results"] = {
@@ -6722,6 +6803,17 @@ async def update_profile(profile_id: str):
         
         if not current_profile:
             return jsonify({"status": "error", "message": f"Profile '{profile_id}' not found"}), 404
+
+        # Validate contextLimitOverride if provided
+        if "contextLimitOverride" in data:
+            override = data["contextLimitOverride"]
+            if override is not None:
+                if not isinstance(override, (int, float)) or override < 4096:
+                    return jsonify({
+                        "status": "error",
+                        "message": "contextLimitOverride must be null or an integer >= 4096"
+                    }), 400
+                data["contextLimitOverride"] = int(override)
 
         # Agent pack constraint: block modification of structural fields on pack-managed profiles
         from trusted_data_agent.core.agent_pack_db import AgentPackDB

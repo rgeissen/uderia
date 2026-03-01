@@ -13,7 +13,7 @@ import { updateActiveSessionTitle } from '../ui.js';
 import { renderAttachmentChips, initializeUploadCapabilities } from './chatDocumentUpload.js';
 import { genieState, cleanupCoordination } from './genieHandler.js?v=3.4';
 import { conversationAgentState, cleanupExecution } from './conversationAgentHandler.js?v=1.0';
-import { resetContextPanelState } from './contextPanelHandler.js';
+import { resetContextPanelState, loadContextPanel } from './contextPanelHandler.js';
 
 // 🔥 DEBUG: Module load detection (v3.3 - Feb 13, 2026)
 console.log('%c🔥 SESSION MANAGEMENT LOADED - VERSION 3.3 (NEW CODE)', 'background: #ff00ff; color: #fff; font-size: 16px; font-weight: bold; padding: 5px;');
@@ -973,6 +973,11 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         cleanupCoordination();
         cleanupExecution();
         resetContextPanelState();
+        // Re-render Context tab if it's currently visible (avoid stale slider)
+        const contextPanel = document.getElementById('context-panel');
+        if (contextPanel && contextPanel.style.display !== 'none') {
+            loadContextPanel();
+        }
 
         // Check if this session has an active REST event buffer (e.g., Genie child during execution)
         const restBuffer = state.restEventBuffer[sessionId];

@@ -1623,7 +1623,8 @@ async def get_session_history(current_user, session_id):
             "profile_type": profile_type,  # Profile type for resource panel updates
             "workflow_history": workflow_history,  # For genie card rendering
             "dual_model_info": dual_model_info,  # Dual-model configuration
-            "dual_model_usage": session_data.get("dual_model_usage")  # Dual-model usage breakdown
+            "dual_model_usage": session_data.get("dual_model_usage"),  # Dual-model usage breakdown
+            "session_context_limit_override": session_data.get("session_context_limit_override"),  # Session-level context limit
         }
         return jsonify(response_data)
     app_logger.warning(f"Session {session_id} not found for user {user_uuid}.")

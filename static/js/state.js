@@ -87,6 +87,8 @@ export const state = {
     sessionUiCache: {},              // sessionId -> { chatHTML, statusHTML, tokenData } saved on switch-away
     restEventBuffer: {},             // session_id -> { taskId, events: [], isComplete: false } for REST task replay
     activeRestSessions: new Set(),   // Session IDs with active REST execution (e.g., Genie child sessions)
+    // --- Session-level context limit overrides ---
+    sessionContextLimitOverrides: {}, // sessionId -> token limit (temporary, session-scoped)
     // --- Canvas split mode ---
     canvasSplitMode: false,          // Whether canvas split mode toggle is ON (renders in side panel)
 };

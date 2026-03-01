@@ -686,6 +686,8 @@ class ContextWindowHandler(SystemHandler):
             context_window_type_id=type_id,
             context_window_type_name=type_name,
             model_context_limit=ctx.model_context_limit,
+            context_limit_override=ctx.profile_config.get("contextLimitOverride") if ctx.profile_config else None,
+            session_context_limit_override=ctx.session_data.get("session_context_limit_override") if ctx.session_data else None,
             output_reserve=output_reserve,
             available_budget=available_budget,
             total_used=total_used,

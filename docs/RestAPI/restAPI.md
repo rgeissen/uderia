@@ -9369,6 +9369,69 @@ curl -X PUT "http://localhost:5050/api/v1/profiles/$PROFILE_ID" \
 
 ---
 
+#### 3.24.11. Set Session Context Limit Override
+
+**Endpoint:** `POST /v1/sessions/{session_id}/context-limit`
+
+**Purpose:** Set or clear a session-level context limit override. This temporary override applies only to the current session and takes precedence over both the profile-level override and the model default.
+
+**Priority chain:** session override > profile override > model default (lowest wins)
+
+**Request Body:**
+```json
+{ "context_limit": 65536 }
+```
+
+Set to `null` to clear the override and revert to default:
+```json
+{ "context_limit": null }
+```
+
+**Validation:** `context_limit` must be `null` or an integer >= 4096.
+
+**Response (200 OK):**
+```json
+{ "status": "success" }
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | `context_limit` is not null and < 4096, or not a number |
+| `401` | Missing or invalid JWT token |
+
+---
+
+#### 3.24.12. Get LLM Configuration Context Limit
+
+**Endpoint:** `GET /v1/llm/configurations/{config_id}/context-limit`
+
+**Purpose:** Look up the maximum context window size for a specific LLM configuration. Resolves the model's context limit from litellm's `model_cost` registry.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "config_id": "llm-config-123",
+  "provider": "Google",
+  "model": "gemini-2.0-flash",
+  "max_context_tokens": 1048576,
+  "source": "litellm"
+}
+```
+
+**Fallback:** If the model is not found in litellm's registry, returns 128,000 with `"source": "fallback"`.
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid JWT token |
+| `404` | LLM configuration not found |
+
+---
+
 ## 4. Data Models
 
 ### 4.1. The Task Object

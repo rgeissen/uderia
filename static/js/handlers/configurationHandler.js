@@ -5864,6 +5864,108 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         }
     }
 
+    // --- Context Limit Slider initialization ---
+    const useDefaultCheckbox = modal.querySelector('#context-limit-use-default');
+    const sliderControls = modal.querySelector('#context-limit-controls');
+    const clSlider = modal.querySelector('#context-limit-slider');
+    const clNumberInput = modal.querySelector('#context-limit-input');
+    const clDisplay = modal.querySelector('#context-limit-display');
+    const sliderContainer = modal.querySelector('#context-limit-slider-container');
+
+    function formatTokensK(tokens) {
+        if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+        return `${Math.round(tokens / 1000)}K`;
+    }
+
+    function updateCLDisplayText() {
+        const modelMax = parseInt(sliderContainer?.dataset.modelMax || '128000');
+        const current = parseInt(clSlider.value);
+        clDisplay.textContent = `Context limited to ${formatTokensK(current)} tokens (model supports ${formatTokensK(modelMax)})`;
+    }
+
+    async function fetchModelContextLimit(llmConfigId) {
+        if (!llmConfigId) return 128000;
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const res = await fetch(`/api/v1/llm/configurations/${llmConfigId}/context-limit`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return data.max_context_tokens || 128000;
+            }
+        } catch (err) {
+            console.warn('Failed to fetch model context limit:', err);
+        }
+        return 128000;
+    }
+
+    async function updateSliderMax(llmConfigId) {
+        const maxTokens = await fetchModelContextLimit(llmConfigId);
+        if (sliderContainer) sliderContainer.dataset.modelMax = maxTokens;
+        clSlider.max = maxTokens;
+        clNumberInput.max = Math.round(maxTokens / 1024);
+
+        if (useDefaultCheckbox.checked) {
+            clSlider.value = maxTokens;
+            clNumberInput.value = Math.round(maxTokens / 1024);
+            clDisplay.textContent = `Using model default context limit (${formatTokensK(maxTokens)})`;
+        } else {
+            if (parseInt(clSlider.value) > maxTokens) {
+                clSlider.value = maxTokens;
+                clNumberInput.value = Math.round(maxTokens / 1024);
+            }
+            updateCLDisplayText();
+        }
+    }
+
+    if (useDefaultCheckbox && clSlider && clNumberInput) {
+        // Checkbox toggle
+        useDefaultCheckbox.addEventListener('change', () => {
+            if (useDefaultCheckbox.checked) {
+                sliderControls.style.display = 'none';
+                const modelMax = parseInt(sliderContainer?.dataset.modelMax || '128000');
+                clSlider.value = modelMax;
+                clNumberInput.value = Math.round(modelMax / 1024);
+                clDisplay.textContent = `Using model default context limit (${formatTokensK(modelMax)})`;
+            } else {
+                sliderControls.style.display = 'flex';
+                updateCLDisplayText();
+            }
+        });
+
+        // Slider <-> number input sync
+        clSlider.addEventListener('input', () => {
+            clNumberInput.value = Math.round(parseInt(clSlider.value) / 1024);
+            updateCLDisplayText();
+        });
+
+        clNumberInput.addEventListener('change', () => {
+            const kVal = parseInt(clNumberInput.value) || 4;
+            const tokens = Math.max(4096, Math.min(parseInt(clSlider.max), kVal * 1024));
+            clSlider.value = tokens;
+            clNumberInput.value = Math.round(tokens / 1024);
+            updateCLDisplayText();
+        });
+
+        // Initialize with current LLM config
+        updateSliderMax(llmSelect.value);
+
+        // Restore saved value from profile
+        if (profile && profile.contextLimitOverride != null) {
+            useDefaultCheckbox.checked = false;
+            sliderControls.style.display = 'flex';
+            clSlider.value = profile.contextLimitOverride;
+            clNumberInput.value = Math.round(profile.contextLimitOverride / 1024);
+            // Display text will be set once updateSliderMax resolves
+        }
+
+        // Update slider when LLM configuration changes
+        llmSelect.addEventListener('change', async () => {
+            await updateSliderMax(llmSelect.value);
+        });
+    }
+
     // Populate strategic and tactical model dropdowns (for dual-model feature)
     const strategicSelect = modal.querySelector('#profile-modal-strategic-model');
     const tacticalSelect = modal.querySelector('#profile-modal-tactical-model');
@@ -6854,7 +6956,11 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             useMcpTools: useMcpTools,
             useKnowledgeCollections: useKnowledgeCollections,
             // Session primer - auto-execute question when starting a new session
-            session_primer: sessionPrimerValue
+            session_primer: sessionPrimerValue,
+            // Context limit override
+            contextLimitOverride: (modal.querySelector('#context-limit-use-default')?.checked !== false)
+                ? null
+                : (parseInt(modal.querySelector('#context-limit-slider')?.value) || null)
         };
 
         // Extract dual-model configuration (tool_enabled only)

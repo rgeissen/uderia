@@ -1262,6 +1262,18 @@ Pass 4: CONDENSE IF OVER BUDGET
 
 The orchestrator resolves the actual model context window size from `litellm.model_cost` metadata (e.g., Claude = 200K, Gemini = 1M, GPT-4o = 128K). Falls back to 128K if metadata unavailable.
 
+**Context Limit Override Chain:**
+
+The effective context limit is resolved through a priority chain (lowest wins):
+
+1. **Model default** -- from `litellm.model_cost` metadata (e.g., Gemini 2.0 Flash = 1M)
+2. **Profile override** -- `contextLimitOverride` in profile config (persistent, affects all sessions using the profile)
+3. **Session override** -- `session_context_limit_override` in session JSON (temporary, applies to current session only)
+
+Both overrides can only **reduce** the limit below the model default, never increase it. The session override takes precedence over the profile override.
+
+Applied in `executor.py:_run_context_window_assembly()` and `execution_service.py` (Genie coordinator) before `AssemblyContext` construction.
+
 ### 13.3 Observability
 
 #### ContextWindowSnapshot (SSE Event)
@@ -1278,6 +1290,8 @@ class ContextWindowSnapshot:
     available_budget: int
     total_used: int
     utilization_pct: float
+    context_limit_override: Optional[int]            # Profile-level override
+    session_context_limit_override: Optional[int]    # Session-level override
     contributions: List[ContributionMetric]      # Per-module metrics
     condensations: List[CondensationEvent]        # Condensation events
     dynamic_adjustments_fired: List[str]          # Rules that fired
@@ -1292,6 +1306,7 @@ Shows the bound context window type's module composition:
 - Per-module budget cards with color coding
 - Active/inactive module indicators
 - Last query snapshot metrics (when available)
+- **Session Context Limit slider** -- temporary override (session-scoped) between header and allocation bars
 
 Updates dynamically when the active profile changes (via "Set as Default" or @TAG override).
 

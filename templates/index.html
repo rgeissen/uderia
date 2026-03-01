@@ -8007,6 +8007,37 @@
                                            text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
                         </div>
                     </div>
+
+                    <!-- Context Limit Override Slider -->
+                    <div id="context-limit-slider-container" class="mt-4 pt-4 border-t border-gray-700/20">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-xs font-semibold text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                                Context Limit
+                                <span class="text-gray-500 cursor-help" title="Cap the effective context window for this profile. Default uses the model's full context.">&#9432;</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-white transition-colors">
+                                <input type="checkbox" id="context-limit-use-default" class="w-3.5 h-3.5" checked>
+                                <span>Use model default</span>
+                            </label>
+                        </div>
+                        <div id="context-limit-controls" class="flex items-center gap-4" style="display: none;">
+                            <input type="range" id="context-limit-slider"
+                                   min="4096" max="128000" step="1024" value="128000"
+                                   class="flex-1 h-2 bg-gray-700/50 rounded-lg appearance-none cursor-pointer"
+                                   style="accent-color: #F15F22;">
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="context-limit-input"
+                                       min="4" max="128" step="1" value="128"
+                                       class="w-16 px-2 py-1.5 bg-gray-800/60 border border-gray-700/50 rounded-lg
+                                              text-gray-200 text-sm text-center focus:ring-2 focus:ring-[#F15F22]/50
+                                              focus:border-[#F15F22]/50 outline-none">
+                                <span class="text-xs text-gray-400 font-mono">K</span>
+                            </div>
+                        </div>
+                        <div id="context-limit-display" class="text-xs text-gray-500 mt-1">
+                            Using model default context limit
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Dual-Model Configuration (tool_enabled only) -->
