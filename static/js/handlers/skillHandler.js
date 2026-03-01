@@ -1674,6 +1674,11 @@ function openSkillEditor(existingSkill = null) {
             _notify('success', `Skill !${skillId} saved`);
             await loadSkills();
             if (window.loadActivatedSkills) window.loadActivatedSkills();
+
+            // Auto-close modal after creating a new skill (brief delay to show "Saved!" feedback)
+            if (isNew) {
+                setTimeout(() => closeEditor(), 600);
+            }
         } catch (err) {
             _notify('error', err.message);
             if (statusEl) { statusEl.textContent = 'Save failed'; statusEl.style.color = '#ef4444'; }
