@@ -2879,7 +2879,11 @@
             "by_pct": 50
           }
         }
-      ]
+      ],
+      "distillation": {
+        "max_rows": 500,
+        "max_chars": 10000
+      }
     },
     {
       "id": "cwt-knowledge-heavy",
@@ -2959,7 +2963,11 @@
         "conversation_history",
         "knowledge_context"
       ],
-      "dynamic_adjustments": []
+      "dynamic_adjustments": [],
+      "distillation": {
+        "max_rows": 500,
+        "max_chars": 10000
+      }
     },
     {
       "id": "cwt-conversation-first",
@@ -3047,7 +3055,11 @@
             "strategy": "sliding_window"
           }
         }
-      ]
+      ],
+      "distillation": {
+        "max_rows": 500,
+        "max_chars": 10000
+      }
     },
     {
       "id": "cwt-token-efficient",
@@ -3142,7 +3154,11 @@
             "strategy": "sliding_window"
           }
         }
-      ]
+      ],
+      "distillation": {
+        "max_rows": 300,
+        "max_chars": 8000
+      }
     }
   ]
 }

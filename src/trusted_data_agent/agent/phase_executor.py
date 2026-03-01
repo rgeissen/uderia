@@ -1374,6 +1374,7 @@ class PhaseExecutor:
                     event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
                     self.executor._log_system_event(event_data)
                     yield self.executor._format_sse_with_depth(event_data)
+                self.executor._distillation_events.extend(distill_events)
                 fast_path_action["arguments"] = modified_args
                 app_logger.info(f"Prepared focused data payload for TDA_LLMTask loop item: {json.dumps(modified_args['data'])}")
 
@@ -1433,6 +1434,7 @@ class PhaseExecutor:
                 event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
                 self.executor._log_system_event(event_data)
                 yield self.executor._format_sse_with_depth(event_data)
+            self.executor._distillation_events.extend(getattr(self, '_pending_distill_events', []))
             self._pending_distill_events = []
 
             # --- Emit tactical LLM call with token data (live SSE + execution trace) ---
@@ -2659,6 +2661,7 @@ class PhaseExecutor:
             event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
             self.executor._log_system_event(event_data)
             yield self.executor._format_sse_with_depth(event_data)
+        self.executor._distillation_events.extend(distill_events)
 
         # Use profile-aware prompt resolution
         recovery_prompt_content = self.executor.prompt_resolver.get_error_recovery_base_prompt()

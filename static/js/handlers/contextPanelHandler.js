@@ -206,6 +206,12 @@ function renderSnapshotSummary(snapshot) {
         </span>`;
     }).join(' ');
 
+    // Distillation events
+    const distillations = snapshot.distillation_events || [];
+    const distillationLine = distillations.length > 0
+        ? `<div class="text-[10px] text-cyan-400/70 mt-1">Distilled: ${distillations.length} result set${distillations.length > 1 ? 's' : ''} (${distillations.map(d => `${(d.row_count || 0).toLocaleString()} rows`).join(', ')})</div>`
+        : '';
+
     return `
         <div class="mt-3 pt-3 border-t border-white/10">
             <div class="flex items-center justify-between mb-2">
@@ -213,6 +219,7 @@ function renderSnapshotSummary(snapshot) {
                 <span class="text-xs text-gray-400 tabular-nums">${(used / 1000).toFixed(1)}K / ${(budget / 1000).toFixed(1)}K tokens (${pct}%)</span>
             </div>
             <div class="flex flex-wrap gap-2">${contribs}</div>
+            ${distillationLine}
         </div>`;
 }
 
@@ -253,6 +260,16 @@ export function renderContextWindowSnapshot(snapshot) {
         ).join(', ')
         : '';
 
+    // Distillation events (intra-turn tactical planning)
+    const distillations = snapshot.distillation_events || [];
+    const distillationHtml = distillations.length > 0
+        ? `<div class="text-[10px] text-cyan-400/70 mt-1.5">
+               Distilled: ${distillations.map(d =>
+                   `${(d.row_count || 0).toLocaleString()} rows → metadata`
+               ).join(', ')}
+           </div>`
+        : '';
+
     // Build labels row
     const labels = contribs.map(c => {
         const color = getModuleColor(c.module_id);
@@ -274,6 +291,7 @@ export function renderContextWindowSnapshot(snapshot) {
                 ${labels}
             </div>
             ${condensedText ? `<div class="text-[10px] text-yellow-400/70 mt-1.5">Condensed: ${escapeHtml(condensedText)}</div>` : ''}
+            ${distillationHtml}
         </div>`;
 }
 

@@ -644,6 +644,8 @@ class PlanExecutor:
         self.knowledge_retrieval_event = None  # Store the knowledge retrieval event for replay
         # --- PHASE 2 END ---
         self.context_window_snapshot_event = None  # Store context window snapshot for historical replay
+        self._context_distiller = None  # Lazily initialised from context window type config
+        self._distillation_events = []  # Accumulates distillation events across all phases for snapshot
 
         # Knowledge Graph enrichment event for Live Status replay
         self.kg_enrichment_event = None
@@ -1026,12 +1028,24 @@ class PlanExecutor:
 
     def _distill_data_for_llm_context(self, data: any, _events: list = None) -> any:
         """
-        Recursively distills large data structures into metadata summaries to protect the LLM context window.
+        Recursively distills large data structures into metadata summaries
+        to protect the LLM context window.
+
+        Delegates to the unified ExecutionContextDistiller from the
+        context_window component when available (configurable thresholds
+        from the active context-window-type).  Falls back to APP_CONFIG
+        thresholds when the distiller has not been initialised.
 
         Args:
             data: The data structure to distill
-            _events: Optional list to accumulate distillation event dicts (caller reads after call)
+            _events: Optional list to accumulate distillation event dicts
+                     (caller reads after call)
         """
+        if self._context_distiller is not None:
+            return self._context_distiller.distill(data, events=_events)
+
+        # Fallback: inline distillation with global APP_CONFIG thresholds
+        # (only reached if _run_context_window_assembly hasn't run yet)
         if isinstance(data, dict):
             if 'results' in data and isinstance(data['results'], list):
                 results_list = data['results']
@@ -1065,6 +1079,15 @@ class PlanExecutor:
             return [self._distill_data_for_llm_context(item, _events=_events) for item in data]
 
         return data
+
+    def _snapshot_with_distillation_events(self):
+        """Return context window snapshot enriched with intra-turn distillation events."""
+        snapshot = getattr(self, 'context_window_snapshot_event', None)
+        distill_evts = getattr(self, '_distillation_events', [])
+        if snapshot and distill_evts:
+            snapshot = dict(snapshot)  # shallow copy to avoid mutating original
+            snapshot["distillation_events"] = distill_evts
+        return snapshot
 
     def _find_value_by_key(self, data_structure: any, target_key: str) -> any:
         """Recursively searches a nested data structure for the first value of a given key."""
@@ -1409,6 +1432,15 @@ class PlanExecutor:
             if not cwt:
                 app_logger.debug("No context window type configured — skipping assembly")
                 return None
+
+            # Initialise the execution-context distiller from context window
+            # type config so that intra-turn distillation uses the same
+            # thresholds configured alongside the module budget allocations.
+            try:
+                from components.builtin.context_window.distiller import ExecutionContextDistiller
+                self._context_distiller = ExecutionContextDistiller.from_context_window_type(cwt)
+            except Exception as e:
+                app_logger.debug(f"Could not create context distiller from cwt: {e}")
 
             # Resolve model context limit from litellm model metadata
             model_context_limit = 128_000  # Safe default
@@ -5333,7 +5365,7 @@ The following domain knowledge may be relevant to this conversation:
                     "knowledge_retrieval_event": self.knowledge_retrieval_event,  # Full event for replay on reload
                     "kg_enrichment_event": self.kg_enrichment_event,  # KG context injection event for replay
                     # --- PHASE 2 END ---
-                    "context_window_snapshot_event": self.context_window_snapshot_event,  # Context window budget snapshot for replay
+                    "context_window_snapshot_event": self._snapshot_with_distillation_events(),  # Context window budget snapshot for replay
                     # Status fields for consistency with partial turn data
                     "status": "success",
                     "is_partial": False,
@@ -5452,7 +5484,7 @@ The following domain knowledge may be relevant to this conversation:
                 "case_id": getattr(self, 'rag_source_case_id', None),
                 "knowledge_accessed": getattr(self, 'knowledge_accessed', []),
                 "knowledge_retrieval_event": getattr(self, 'knowledge_retrieval_event', None),
-                "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
+                "context_window_snapshot_event": self._snapshot_with_distillation_events(),
                 "tool_enabled_events": getattr(self, 'tool_enabled_events', []),  # Partial lifecycle events for tool_enabled profiles
                 # Status fields for partial data
                 "status": status,  # "cancelled" or "error"
