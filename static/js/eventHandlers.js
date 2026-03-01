@@ -2119,6 +2119,21 @@ function _renderExtensionEventsForReload(turnData, container) {
 }
 
 /**
+ * Render context window snapshot during historical turn reload.
+ * Appends the snapshot visualization to the Live Status panel if available.
+ */
+function _renderContextWindowSnapshotForReload(turnData) {
+    const snapshotEvent = turnData?.context_window_snapshot_event;
+    if (!snapshotEvent) return;
+    const snapshotHtml = renderContextWindowSnapshot(snapshotEvent);
+    UI.updateStatusWindow({
+        step: 'Context Window Assembly',
+        details: snapshotHtml,
+        type: 'context_window_snapshot'
+    }, false, 'context_window');
+}
+
+/**
  * Handles clicks on the "Reload Plan" button or user avatar. Fetches and displays the full turn details.
  * @param {HTMLElement} element - The element that was clicked (button or avatar div).
  */
@@ -2357,6 +2372,7 @@ export async function handleReloadPlanClick(element) {
 
             // Render extension events if present
             _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+            _renderContextWindowSnapshotForReload(turnData);
 
             // Hide replay buttons for genie profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -2525,6 +2541,7 @@ export async function handleReloadPlanClick(element) {
 
             // Render extension events if present
             _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+            _renderContextWindowSnapshotForReload(turnData);
 
             // Hide replay buttons for conversation_with_tools (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -2685,6 +2702,7 @@ export async function handleReloadPlanClick(element) {
 
             // Render extension events if present
             _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+            _renderContextWindowSnapshotForReload(turnData);
 
             // Hide replay buttons for non-tool profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -2784,6 +2802,7 @@ export async function handleReloadPlanClick(element) {
 
         // Render extension events if present
         _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+        _renderContextWindowSnapshotForReload(turnData);
 
         // Show replay buttons
         if (DOM.headerReplayPlannedButton) {

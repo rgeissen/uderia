@@ -643,6 +643,7 @@ class PlanExecutor:
         self.knowledge_accessed = []  # List of {collection_id, collection_name, document_count} during planning
         self.knowledge_retrieval_event = None  # Store the knowledge retrieval event for replay
         # --- PHASE 2 END ---
+        self.context_window_snapshot_event = None  # Store context window snapshot for historical replay
 
         # Knowledge Graph enrichment event for Live Status replay
         self.kg_enrichment_event = None
@@ -2550,6 +2551,7 @@ Response:"""
                     "payload": assembled_context.snapshot.to_sse_event(),
                 }
                 self._log_system_event(snapshot_event)
+                self.context_window_snapshot_event = assembled_context.snapshot.to_sse_event()
                 yield self._format_sse_with_depth(snapshot_event)
         # --- CONTEXT WINDOW MANAGER END ---
 
@@ -5331,6 +5333,7 @@ The following domain knowledge may be relevant to this conversation:
                     "knowledge_retrieval_event": self.knowledge_retrieval_event,  # Full event for replay on reload
                     "kg_enrichment_event": self.kg_enrichment_event,  # KG context injection event for replay
                     # --- PHASE 2 END ---
+                    "context_window_snapshot_event": self.context_window_snapshot_event,  # Context window budget snapshot for replay
                     # Status fields for consistency with partial turn data
                     "status": "success",
                     "is_partial": False,
@@ -5449,6 +5452,7 @@ The following domain knowledge may be relevant to this conversation:
                 "case_id": getattr(self, 'rag_source_case_id', None),
                 "knowledge_accessed": getattr(self, 'knowledge_accessed', []),
                 "knowledge_retrieval_event": getattr(self, 'knowledge_retrieval_event', None),
+                "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                 "tool_enabled_events": getattr(self, 'tool_enabled_events', []),  # Partial lifecycle events for tool_enabled profiles
                 # Status fields for partial data
                 "status": status,  # "cancelled" or "error"
