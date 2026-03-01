@@ -1306,7 +1306,15 @@ Shows the bound context window type's module composition:
 - Per-module budget cards with color coding
 - Active/inactive module indicators
 - Last query snapshot metrics (when available)
-- **Session Context Limit slider** -- temporary override (session-scoped) between header and allocation bars
+
+**Context Limit Sliders** (between header and allocation bars):
+
+| Slider | Scope | Persistence | REST Endpoint |
+|--------|-------|-------------|---------------|
+| **Profile Context Limit** | All sessions using this profile | Permanent (saved to profile config) | `PUT /v1/profiles/{id}` with `contextLimitOverride` |
+| **Session Context Limit** | Current session only | Temporary (session JSON) | `POST /v1/sessions/{id}/context-limit` |
+
+Both sliders range from the model minimum (4K) to the model maximum. They can only reduce, never increase, the effective context window. The priority chain is: session override > profile override > model default (lowest wins).
 
 Updates dynamically when the active profile changes (via "Set as Default" or @TAG override).
 
@@ -1345,6 +1353,8 @@ See [REST API Documentation — Section 3.24](../RestAPI/restAPI.md) for complet
 | `/v1/context-window/modules` | GET | List installed modules |
 | `/v1/context-window/modules/{id}/purge` | POST | Purge module data |
 | `/v1/context-window/active/{profile_id}` | GET | Get resolved type for profile |
+| `/v1/sessions/{id}/context-limit` | POST | Set session context limit override |
+| `/v1/llm/configurations/{id}/context-limit` | GET | Get model context limit |
 
 ### 13.6 File Structure
 

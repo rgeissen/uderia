@@ -472,12 +472,18 @@ Rendered in the Live Status panel as a color-coded stacked bar chart.
 
 For `tool_enabled` profiles, the `ContextBuilder` bridges module output to planner/executor prompt templates. It maps module content to template variables (`{tools_context}`, `{prompts_context}`, etc.) and provides format adapters for different LLM call types (strategic, tactical, synthesis, utility).
 
-**REST API (8 endpoints):**
+**Context Limit Overrides (Resource Panel sliders):**
+
+Profile and session context limit overrides allow users to reduce the effective context window. Priority chain: session override > profile override > model default (lowest wins). Profile override persists across sessions; session override is temporary.
+
+**REST API (10 endpoints):**
 - `GET/POST /v1/context-window-types` — List / create types
 - `GET/PUT/DELETE /v1/context-window-types/{id}` — Read / update / delete type
 - `GET /v1/context-window/modules` — List installed modules
 - `POST /v1/context-window/modules/{id}/purge` — Purge module cache
 - `GET /v1/context-window/active/{profile_id}` — Get resolved type for profile
+- `POST /v1/sessions/{id}/context-limit` — Set session context limit override
+- `GET /v1/llm/configurations/{id}/context-limit` — Get model context limit
 
 **Three-History System:**
 Each session maintains three synchronized histories:
@@ -522,7 +528,7 @@ Each session maintains three synchronized histories:
 | `src/trusted_data_agent/agent/executor.py` | Integration: `_run_context_window_assembly()` |
 | `src/trusted_data_agent/agent/execution_service.py` | Genie integration |
 | `static/js/handlers/contextWindowHandler.js` | Admin UI for CW types |
-| `static/js/handlers/contextPanelHandler.js` | Live Status snapshot rendering |
+| `static/js/handlers/contextPanelHandler.js` | Resource Panel: CW type display, context limit sliders, live snapshot rendering |
 
 #### 6.1. Date Range Orchestrator
 

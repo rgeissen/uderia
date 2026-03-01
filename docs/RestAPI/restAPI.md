@@ -2577,6 +2577,8 @@ Create a new profile configuration.
 - `classificationPromptId` (string) - Custom classification prompt
 - `ragCollectionIds` (array) - RAG collection IDs
 - `useMcpTools` (boolean) - Enable MCP tools (for llm_only profiles with conversation)
+- `contextLimitOverride` (integer or null) - Profile-level context window cap in tokens. Must be >= 4096 or null. Persistently reduces the model's context limit for all sessions using this profile. Set to `null` to remove override.
+- `contextWindowTypeId` (string) - Context window type ID to bind to this profile
 - `genieConfig` (object) - Genie-specific configuration (for genie profiles)
 
 **Genie Profile Configuration:**
@@ -2626,7 +2628,17 @@ Update an existing profile configuration.
 **Path Parameters:**
 - `profile_id` (string, required) - Profile identifier
 
-**Request Body:** Same structure as Create Profile (all fields optional except those being updated)
+**Request Body:** Same structure as Create Profile (all fields optional except those being updated).
+
+**Example — Set Profile Context Limit Override:**
+```bash
+curl -X PUT "http://localhost:5050/api/v1/profiles/$PROFILE_ID" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"contextLimitOverride": 65536}'
+```
+
+This persistently caps the context window to 64K tokens for all sessions using this profile. Set `"contextLimitOverride": null` to remove the override and revert to the model default.
 
 **Success Response:**
 ```json

@@ -3110,6 +3110,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **01-Mar-2026:** Context Window Management - Budget-aware five-pass orchestrator with 9 pluggable modules, 4 predefined context window types (Balanced, Knowledge-Heavy, Conversation-First, Token-Efficient), profile and session context limit sliders, dynamic adjustment rules, surplus reallocation, priority-based condensation, tiktoken BPE estimation, per-turn snapshot observability, and admin UI with live budget visualization and condensation order editor
 *   **26-Feb-2026:** Canvas Component - Interactive code editor powered by CodeMirror 6 with SQL syntax highlighting, live database connectors, in-place query execution, and result rendering directly in the chat canvas
 *   **24-Feb-2026:** Generative UI Components - Plugin-based component architecture with manifest-driven discovery, hot-reload, profile-level intensity control, admin governance, and CDN dependency management for extensible frontend rendering
 *   **24-Feb-2026:** Data Visualization (Chart Component) - Interactive charting via G2Plot with 16 chart types (bar, line, pie, scatter, heatmap, gauge, radar, treemap, and more), 5-stage mapping resolution pipeline with cardinality-aware column selection, deterministic fast-path execution, and LLM-assisted fallback for ambiguous data
