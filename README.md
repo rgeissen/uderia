@@ -221,12 +221,17 @@ Build trust through complete visibility into every decision, action, and data po
   - REST API access for integration with compliance tools (SOC2, audit reports)
   - From audit trail to compliance report in one click
 
-* **Advanced Context Controls**: Surgical precision over agent memory:
-  - Turn-level activation/deactivation with visual feedback
-  - Context purge for complete memory reset
-  - Query replay for exploring alternative approaches
-  - Full Context vs. Turn Summaries modes
-  - Context indicator with real-time status
+* **Intelligent Context Window Management**: Budget-aware orchestration of every token sent to the LLM:
+  - Modular architecture with 9 pluggable context modules (system prompt, tools, history, RAG, knowledge, documents, and more)
+  - Five-pass assembly pipeline: resolve → dynamic adjustments → allocate & assemble → surplus reallocation → condense
+  - Per-module budget allocation with min/max constraints and priority-based condensation
+  - Dynamic adjustment rules that adapt context composition at runtime (first turn, long conversations, high-confidence RAG)
+  - Real-time observability via context window snapshot events with per-module utilization metrics
+  - 4 predefined context window types (Balanced, Knowledge-Heavy, Conversation-First, Token-Efficient) plus custom types
+  - Admin UI with live budget visualization, condensation order editor, and dynamic rule builder
+  - Per-session utilization analytics dashboard with trend charts and module breakdown
+  - tiktoken-based BPE token estimation for accurate budget planning
+  - [Full architecture documentation →](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)
 
 * **System Customization**: Take control of agent behavior:
   - System Prompt Editor for per-model instruction customization
@@ -1279,7 +1284,7 @@ The engine provides comprehensive observability and built-in safeguards against 
 
 * **Tactical Loop Iteration Limit**: Maximum 15 cycles per query to prevent infinite loops
 * **Maximum Tool Invocations**: Cap on tool calls per tactical iteration to contain runaway execution
-* **Context Window Management**: Automatic context pruning when approaching model limits
+* **Context Window Management**: Budget-aware five-pass assembly with automatic condensation when approaching model limits ([architecture details](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md))
 * **Timeout Enforcement**: Configurable query timeout with graceful degradation
 * **Error Accumulation Threshold**: Abort after N consecutive tool failures to prevent thrashing
 
@@ -1305,7 +1310,7 @@ The Optimizer is built with enterprise-grade reliability in mind.
 
 * **Definitive Error Handling**: The agent recognizes unrecoverable errors (e.g., database permission denied) and halts execution immediately, providing a clear explanation to the user instead of wasting resources on futile retry attempts.
 
-For context window management and token optimization strategies, see:
+For comprehensive details on the budget-aware context window orchestrator — including the five-pass assembly pipeline, 9 pluggable modules, dynamic adjustment rules, surplus reallocation, condensation strategies, and per-turn observability snapshots — see:
 [**Context Window Architecture (docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)**](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)
 
 [⬆️ Back to Table of Contents](#table-of-contents)
@@ -2681,17 +2686,64 @@ To test the raw intelligence of a model without the agent's tool-using logic, yo
 
 ### Advanced Context Management
 
-The Uderia Platform provides several advanced features for managing the context that is sent to the Large Language Model (LLM). Understanding and using these features can help you refine the agent's behavior, save costs by reducing token count, and get more accurate results.
+The Uderia Platform provides a sophisticated, budget-aware **Context Window Orchestrator** that automatically manages every token sent to the LLM — plus manual controls for fine-grained user intervention. Together, these features help you optimize costs, maximize accuracy, and maintain full control over agent behavior.
 
-### Understanding Context Elements
+#### Context Window Orchestrator
 
-The agent's "memory" is composed of three distinct context elements:
+The orchestrator runs a **five-pass assembly pipeline** on every LLM call, ensuring optimal token utilization without manual intervention:
 
-1.  **LLM Conversation History (`chat_object`):** This is the raw, turn-by-turn dialogue between you and the agent. It provides the immediate conversational context, allowing the agent to understand follow-up questions and references to previous messages.
+| Pass | Name | What It Does |
+|------|------|-------------|
+| 1 | **Resolve** | Determines which of the 9 context modules are active based on your profile type and context window type |
+| 2 | **Dynamic Adjustments** | Applies runtime rules — e.g., allocate full budget to tools on the first turn, transfer budget away from documents when none are attached |
+| 3 | **Allocate & Assemble** | Distributes token budgets per module (with min/max constraints) and calls each module to contribute content |
+| 3b | **Surplus Reallocation** | Redistributes unused budget from low-utilization modules to high-demand ones |
+| 4 | **Condense** | If still over budget, compresses lowest-priority modules first (e.g., summarize conversation history, reduce tool definitions to names-only) |
 
-2.  **Chat History (`session_history`):** This history is used exclusively for rendering the conversation in the user interface. It is **not** sent to the LLM for context.
+**9 Pluggable Context Modules:**
 
-3.  **Turn Summaries (`workflow_history`):** This is a structured summary of the agent's actions. For each turn, it includes the plan that was generated, the tools that were executed, and a summary of the results. This history is sent to the agent's **planner** to help it make better decisions and learn from past actions.
+| Module | Purpose |
+|--------|---------|
+| System Prompt | LLM behavioral instructions |
+| Tool Definitions | MCP tool schemas (auto-condensed after first turn) |
+| Conversation History | Budget-aware sliding window of chat history |
+| RAG Context | Retrieved champion cases for the planner |
+| Knowledge Context | Knowledge repository documents |
+| Plan Hydration | Previous turn results injection (skip redundant tool calls) |
+| Document Context | User-uploaded document text |
+| Component Instructions | Chart/canvas rendering instructions |
+| Workflow History | Cross-turn execution traces |
+
+**Context Window Types** — Choose a preset or create your own via **Setup → Configuration → Context Window**:
+
+| Type | Strategy |
+|------|----------|
+| **Balanced** (default) | Even distribution across all active modules |
+| **Knowledge-Heavy** | Prioritizes knowledge retrieval for document-intensive workflows |
+| **Conversation-First** | Maximizes conversation history for multi-turn dialogues |
+| **Token-Efficient** | Minimal viable context for cost-sensitive workloads |
+
+The admin UI provides a **live budget visualization bar**, **condensation order editor** (drag to reorder compression priorities), and a **dynamic adjustment rule builder** for creating custom runtime rules.
+
+**Utilization Analytics** — Navigate to **Setup → Configuration → Context Window → Utilization Analytics**, select a session, and see:
+- Summary metrics (average/peak utilization, condensation events, turns analyzed)
+- Per-turn stacked bar chart showing module-level token consumption
+- Module utilization table with condensation frequency
+- Dynamic adjustment firing log
+
+Every LLM call emits a **context window snapshot** visible in the Live Status panel as a color-coded stacked bar chart, providing real-time observability into exactly how your token budget is being spent.
+
+For full technical details, see the [**Context Window Architecture documentation**](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md).
+
+#### Understanding Context Elements
+
+The agent's "memory" is composed of three synchronized histories managed by the orchestrator:
+
+1.  **LLM Conversation History (`chat_object`):** The raw, turn-by-turn dialogue between you and the agent. The **conversation_history** module manages this within its allocated token budget, applying a sliding window when the conversation exceeds its allocation.
+
+2.  **Chat History (`session_history`):** Used exclusively for rendering the conversation in the user interface. It is **not** sent to the LLM for context.
+
+3.  **Turn Summaries (`workflow_history`):** A structured summary of the agent's actions. For each turn, it includes the plan, tools executed, results, and the context window snapshot. The **workflow_history** module manages this within its budget allocation.
 
 ### Context Management Features
 

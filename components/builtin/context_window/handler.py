@@ -7,10 +7,11 @@ Context Window Type, resolves which modules are active, allocates budget
 using the type's allocation strategy, and produces a ContextWindowSnapshot
 for observability.
 
-Four-Pass Assembly:
+Five-Pass Assembly:
   Pass 1: RESOLVE ACTIVE MODULES — skip deactivated and inapplicable modules
-  Pass 2: ALLOCATE AND ASSEMBLE — allocate budget and call each module
-  Pass 3: APPLY DYNAMIC ADJUSTMENTS — runtime condition-based reallocation
+  Pass 2: APPLY DYNAMIC ADJUSTMENTS — runtime condition-based reallocation
+  Pass 3: ALLOCATE AND ASSEMBLE — allocate budget and call each module
+  Pass 3b: REALLOCATE SURPLUS — redistribute unused budget to high-utilization modules
   Pass 4: CONDENSE IF OVER BUDGET — condense lowest-priority modules first
 """
 
@@ -176,14 +177,21 @@ class ContextWindowHandler(SystemHandler):
         # Redistribute budget from skipped modules
         self._redistribute_budget(active_modules)
 
-        # --- Pass 2: Allocate and assemble ---
+        # --- Pass 2: Apply dynamic adjustments ---
+        # Must run BEFORE allocation so adjusted target_pct values
+        # are used by _allocate_and_assemble() for budget calculation.
+        adjustments_fired = self._apply_dynamic_adjustments(
+            context_window_type, active_modules, ctx
+        )
+
+        # --- Pass 3: Allocate and assemble ---
         contributions = await self._allocate_and_assemble(
             active_modules, available_budget, ctx
         )
 
-        # --- Pass 3: Apply dynamic adjustments ---
-        adjustments_fired = self._apply_dynamic_adjustments(
-            context_window_type, active_modules, ctx
+        # --- Pass 3b: Reallocate surplus budget ---
+        contributions, reallocation_events = await self._reallocate_surplus(
+            active_modules, contributions, available_budget, ctx
         )
 
         # --- Pass 4: Condense if over budget ---
@@ -225,7 +233,7 @@ class ContextWindowHandler(SystemHandler):
         snapshot = self._build_snapshot(
             type_id, type_name, ctx, available_budget, output_reserve,
             contribution_metrics, condensations, adjustments_fired,
-            skipped_modules,
+            skipped_modules, reallocation_events,
         )
         self._last_snapshot = snapshot
 
@@ -327,7 +335,7 @@ class ContextWindowHandler(SystemHandler):
             m.target_pct = (m.target_pct / total_target) * 100
 
     # -------------------------------------------------------------------
-    # Pass 2: Allocate and assemble
+    # Pass 3: Allocate and assemble
     # -------------------------------------------------------------------
 
     async def _allocate_and_assemble(
@@ -383,7 +391,7 @@ class ContextWindowHandler(SystemHandler):
         return contributions
 
     # -------------------------------------------------------------------
-    # Pass 3: Dynamic adjustments
+    # Pass 2: Dynamic adjustments
     # -------------------------------------------------------------------
 
     def _apply_dynamic_adjustments(
@@ -470,6 +478,115 @@ class ContextWindowHandler(SystemHandler):
             if target_id in modules_by_id:
                 m = modules_by_id[target_id]
                 m.target_pct = m.max_pct
+
+    # -------------------------------------------------------------------
+    # Pass 3b: Surplus reallocation
+    # -------------------------------------------------------------------
+
+    async def _reallocate_surplus(
+        self,
+        active_modules: List[ActiveModule],
+        contributions: Dict[str, Contribution],
+        available_budget: int,
+        ctx: AssemblyContext,
+    ) -> Tuple[Dict[str, Contribution], List[Dict[str, Any]]]:
+        """
+        Redistribute unused budget from low-utilization modules to high-utilization ones.
+
+        After initial assembly, some modules may use far less than allocated
+        (e.g., document_context=0 when no files are uploaded). This pass
+        identifies surplus budget and re-runs contribute() on modules that
+        could benefit from more space.
+
+        Donor criteria:  utilization < 30% of allocation
+        Recipient criteria: utilization > 80% of allocation AND condensable
+        """
+        DONOR_THRESHOLD = 0.30      # Module used < 30% of its allocation
+        RECIPIENT_THRESHOLD = 0.80  # Module used > 80% of its allocation
+
+        modules_by_id = {m.module_id: m for m in active_modules}
+
+        # Identify donors and recipients
+        donors = []
+        recipients = []
+        for am in active_modules:
+            contrib = contributions.get(am.module_id)
+            if not contrib or am.allocated_tokens == 0:
+                continue
+
+            utilization = contrib.tokens_used / am.allocated_tokens
+
+            if utilization < DONOR_THRESHOLD and am.allocated_tokens > 0:
+                surplus = am.allocated_tokens - contrib.tokens_used
+                donors.append((am.module_id, surplus))
+            elif utilization > RECIPIENT_THRESHOLD and am.condensable:
+                recipients.append(am.module_id)
+
+        if not donors or not recipients:
+            return contributions, []
+
+        total_surplus = sum(s for _, s in donors)
+        if total_surplus < 100:  # Not worth reallocating tiny amounts
+            return contributions, []
+
+        # Distribute surplus proportionally to recipients by priority
+        recipient_modules = [modules_by_id[rid] for rid in recipients]
+        total_priority = sum(m.priority for m in recipient_modules)
+        if total_priority == 0:
+            return contributions, []
+
+        logger.info(
+            f"Budget reallocation: {total_surplus:,} surplus tokens from "
+            f"{len(donors)} donor(s) → {len(recipients)} recipient(s)"
+        )
+
+        reallocation_events = []
+
+        # Record donors
+        for donor_id, surplus in donors:
+            reallocation_events.append({
+                "module_id": donor_id,
+                "type": "donor",
+                "tokens": surplus,
+            })
+
+        for am in recipient_modules:
+            share = int(total_surplus * am.priority / total_priority)
+            new_allocation = am.allocated_tokens + share
+            # Respect max_pct cap
+            max_tokens = int(available_budget * am.max_pct / 100)
+            new_allocation = min(new_allocation, max_tokens)
+
+            if new_allocation <= am.allocated_tokens:
+                continue
+
+            # Re-run contribute() with increased budget
+            try:
+                new_contrib = await am.handler.contribute(new_allocation, ctx)
+
+                if new_contrib.tokens_used > contributions[am.module_id].tokens_used:
+                    old_used = contributions[am.module_id].tokens_used
+                    contributions[am.module_id] = new_contrib
+                    am.allocated_tokens = new_allocation
+                    am.contribution = new_contrib
+
+                    reallocation_events.append({
+                        "module_id": am.module_id,
+                        "type": "recipient",
+                        "tokens": new_contrib.tokens_used - old_used,
+                        "old_used": old_used,
+                        "new_used": new_contrib.tokens_used,
+                    })
+
+                    logger.info(
+                        f"  Reallocated to '{am.module_id}': "
+                        f"{old_used:,} → {new_contrib.tokens_used:,} tokens "
+                        f"(budget: {new_allocation:,})"
+                    )
+            except Exception as e:
+                logger.warning(f"  Reallocation failed for '{am.module_id}': {e}")
+
+        return contributions, reallocation_events
 
     # -------------------------------------------------------------------
     # Pass 4: Condensation
@@ -559,6 +676,7 @@ class ContextWindowHandler(SystemHandler):
         condensations: List[CondensationEvent],
         adjustments_fired: List[str],
         skipped_modules: List[str],
+        reallocation_events: List[Dict[str, Any]] | None = None,
     ) -> ContextWindowSnapshot:
         """Build a complete snapshot for observability."""
         total_used = sum(c.tokens_used for c in contributions)
@@ -574,6 +692,7 @@ class ContextWindowHandler(SystemHandler):
             utilization_pct=utilization_pct,
             contributions=contributions,
             condensations=condensations,
+            reallocation_events=reallocation_events or [],
             dynamic_adjustments_fired=adjustments_fired,
             profile_type=ctx.profile_type,
             skipped_modules=skipped_modules,

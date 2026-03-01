@@ -915,7 +915,7 @@ details.resource-selected > summary {
 
 /* Expand hover area to cover buttons when they appear */
 .session-actions:hover {
-    width: 8rem; /* Explicit width to cover all 3 buttons (leftmost at 5rem + button width ~2rem + margin) */
+    width: 10rem; /* Explicit width to cover all 4 buttons (leftmost at 7.5rem + button width ~2rem + margin) */
     height: 2.5rem; /* Ensure height covers buttons vertically */
 }
 
@@ -934,6 +934,7 @@ details.resource-selected > summary {
 .session-actions > *:nth-child(1) { right: calc(0rem); }
 .session-actions > *:nth-child(2) { right: calc(2.5rem); }
 .session-actions > *:nth-child(3) { right: calc(5rem); }
+.session-actions > *:nth-child(4) { right: calc(7.5rem); }
 
 /* --- MODIFICATION START: Styles for new activity indicator -- */
 .session-item .session-name-span.highlight {
@@ -982,6 +983,14 @@ details.resource-selected > summary {
     color: #fda4af;
     border-color: rgba(244, 63, 94, 0.4);
     box-shadow: 0 2px 8px rgba(244, 63, 94, 0.2);
+}
+
+/* Specific hover color for analytics - Indigo/Violet theme */
+.session-analytics-button:hover {
+    background: rgba(99, 102, 241, 0.2);
+    color: #c4b5fd;
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
 }
 
 /* Hide action buttons by default, show on hover with 0.75s grace period */

@@ -5652,6 +5652,154 @@ async def get_active_context_window(profile_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/sessions/<session_id>/context-analytics", methods=["GET"])
+async def get_session_context_analytics(session_id: str):
+    """
+    Get context window utilization analytics for a specific session.
+    Extracts per-turn snapshot data from workflow_history for visualization.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.session_manager import get_session
+
+        session_data = await get_session(user_uuid, session_id)
+        if not session_data:
+            return jsonify({"status": "error", "message": "Session not found"}), 404
+
+        workflow_history = session_data.get("last_turn_data", {}).get("workflow_history", [])
+
+        turns = []
+        total_condensations = 0
+        module_usage = {}       # module_id -> list of {allocated, used, condensed}
+        adjustment_freq = {}    # condition -> count
+        cw_type_info = None
+
+        for turn_entry in workflow_history:
+            if not isinstance(turn_entry, dict):
+                continue
+            snapshot = turn_entry.get("context_window_snapshot_event")
+            if not snapshot:
+                continue
+
+            budget = snapshot.get("budget", {})
+            contributions = snapshot.get("contributions", [])
+            condensations = snapshot.get("condensations", [])
+            adjustments = snapshot.get("dynamic_adjustments", [])
+            resolution = snapshot.get("resolution", {})
+
+            # Capture CW type from first snapshot
+            if cw_type_info is None:
+                cw_type_info = snapshot.get("context_window_type", {})
+
+            turn_modules = []
+            for c in contributions:
+                mid = c.get("module_id", "")
+                allocated = c.get("allocated", 0)
+                used = c.get("used", 0)
+                util_pct = c.get("utilization_pct", 0)
+                condensed = c.get("condensed", False)
+
+                turn_modules.append({
+                    "module_id": mid,
+                    "allocated": allocated,
+                    "used": used,
+                    "utilization_pct": round(util_pct, 1),
+                    "condensed": condensed,
+                })
+
+                if mid not in module_usage:
+                    module_usage[mid] = []
+                module_usage[mid].append({
+                    "allocated": allocated,
+                    "used": used,
+                    "condensed": condensed,
+                    "metadata": c.get("metadata", {}),
+                })
+
+            total_condensations += len(condensations)
+
+            for adj in adjustments:
+                adj_name = adj if isinstance(adj, str) else str(adj)
+                adjustment_freq[adj_name] = adjustment_freq.get(adj_name, 0) + 1
+
+            turn_number = turn_entry.get("turn_number", len(turns) + 1)
+            turns.append({
+                "turn_number": turn_number,
+                "profile_type": resolution.get("profile_type", ""),
+                "budget": {
+                    "model_limit": budget.get("model_limit", 0),
+                    "available": budget.get("available", 0),
+                    "used": budget.get("used", 0),
+                    "utilization_pct": round(budget.get("utilization_pct", 0), 1),
+                },
+                "modules": turn_modules,
+                "condensation_count": len(condensations),
+                "dynamic_adjustments": adjustments,
+            })
+
+        # Compute aggregates
+        utilization_values = [t["budget"]["utilization_pct"] for t in turns if t["budget"]["utilization_pct"] > 0]
+        avg_util = round(sum(utilization_values) / len(utilization_values), 1) if utilization_values else 0
+        max_util = round(max(utilization_values), 1) if utilization_values else 0
+
+        module_avg_util = {}
+        module_condensation_count = {}
+        module_metadata_stats = {}
+        for mid, entries in module_usage.items():
+            utils = [e["used"] / e["allocated"] * 100 if e["allocated"] > 0 else 0 for e in entries]
+            module_avg_util[mid] = round(sum(utils) / len(utils), 1) if utils else 0
+            module_condensation_count[mid] = sum(1 for e in entries if e["condensed"])
+
+            # Aggregate metadata across turns for this module
+            metadatas = [e.get("metadata", {}) for e in entries if e.get("metadata")]
+            if metadatas:
+                stats = {}
+                # Aggregate common metadata keys with type-appropriate logic
+                all_keys = set()
+                for md in metadatas:
+                    all_keys.update(md.keys())
+                for key in all_keys:
+                    values = [md[key] for md in metadatas if key in md]
+                    if not values:
+                        continue
+                    if all(isinstance(v, (int, float)) for v in values):
+                        # Numeric: compute avg
+                        stats[key] = {"avg": round(sum(values) / len(values), 1), "min": min(values), "max": max(values)}
+                    elif all(isinstance(v, str) for v in values):
+                        # String: compute frequency distribution
+                        freq = {}
+                        for v in values:
+                            freq[v] = freq.get(v, 0) + 1
+                        stats[key] = {"frequency": freq}
+                    elif all(isinstance(v, bool) for v in values):
+                        # Boolean: count true/false
+                        stats[key] = {"true": sum(1 for v in values if v), "false": sum(1 for v in values if not v)}
+                if stats:
+                    module_metadata_stats[mid] = stats
+
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "session_name": session_data.get("name", "Untitled"),
+            "turn_count": len(turns),
+            "context_window_type": cw_type_info or {},
+            "turns": turns,
+            "aggregates": {
+                "avg_utilization_pct": avg_util,
+                "max_utilization_pct": max_util,
+                "total_condensations": total_condensations,
+                "module_avg_utilization": module_avg_util,
+                "module_condensation_count": module_condensation_count,
+                "module_metadata": module_metadata_stats,
+                "adjustment_frequency": adjustment_freq,
+            },
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting context analytics: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ============================================================================
 # PROFILE CONFIGURATION ENDPOINTS
 # ============================================================================

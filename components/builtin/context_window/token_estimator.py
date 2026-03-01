@@ -1,9 +1,12 @@
 """
 Token estimation utilities for context window budget management.
 
-Provides fast, approximate token counting for budget allocation decisions.
-These are estimates — actual token counts come from provider responses.
-The goal is to be within ~10% of actual counts for budget planning.
+Uses tiktoken (Rust-based BPE tokenizer) when available for accurate
+token counts. Falls back to character-based heuristics if tiktoken
+is not installed. Both approaches are fast enough for budget allocation.
+
+Actual token counts come from provider responses — these estimates
+are for pre-allocation budget planning.
 """
 
 from __future__ import annotations
@@ -13,12 +16,39 @@ from typing import Optional
 
 logger = logging.getLogger("quart.app")
 
+# --- tiktoken lazy loading ---
+# Cached encoder instance (loaded once, reused across all calls).
+_tiktoken_encoder = None
+_tiktoken_available: Optional[bool] = None
+
+
+def _get_tiktoken_encoder():
+    """Lazy-load tiktoken encoder. Returns encoder or None."""
+    global _tiktoken_encoder, _tiktoken_available
+    if _tiktoken_available is False:
+        return None
+    if _tiktoken_encoder is not None:
+        return _tiktoken_encoder
+    try:
+        import tiktoken
+        # cl100k_base is the most widely applicable encoding
+        # (GPT-4, GPT-3.5, and a reasonable approximation for
+        # Anthropic/Google models in budget planning contexts).
+        _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
+        _tiktoken_available = True
+        logger.info("Token estimator: using tiktoken (cl100k_base) for accurate estimation")
+        return _tiktoken_encoder
+    except Exception:
+        _tiktoken_available = False
+        logger.info("Token estimator: tiktoken not available, using character heuristic")
+        return None
+
+
 # Average characters per token across common LLM providers.
-# Most providers average 3.5-4.5 chars/token for English text.
-# We use 4.0 as a balanced default.
+# Used as fallback when tiktoken is not available, and for
+# tokens_to_chars conversion (inverse direction).
 DEFAULT_CHARS_PER_TOKEN = 4.0
 
-# Provider-specific ratios (can be tuned based on observed accuracy).
 PROVIDER_CHARS_PER_TOKEN = {
     "Google": 4.0,
     "Anthropic": 3.8,
@@ -37,18 +67,25 @@ def estimate_tokens(
     """
     Estimate token count for a text string.
 
-    Uses a character-based heuristic that's fast enough for budget
-    planning. Actual token counts come from provider responses.
+    Uses tiktoken when available for accurate BPE tokenization.
+    Falls back to character-based heuristic otherwise.
 
     Args:
         text: The text to estimate tokens for.
-        provider: Optional provider name for provider-specific ratios.
+        provider: Optional provider name (used for heuristic fallback).
 
     Returns:
         Estimated token count (always >= 0).
     """
     if not text:
         return 0
+
+    encoder = _get_tiktoken_encoder()
+    if encoder is not None:
+        try:
+            return len(encoder.encode(text, disallowed_special=()))
+        except Exception:
+            pass  # Fall through to heuristic
 
     chars_per_token = PROVIDER_CHARS_PER_TOKEN.get(
         provider, DEFAULT_CHARS_PER_TOKEN
@@ -64,6 +101,7 @@ def tokens_to_chars(
     Convert a token budget to an approximate character budget.
 
     Useful for modules that need to truncate text to fit a token budget.
+    Always uses the heuristic (inverse tokenization is not meaningful).
 
     Args:
         tokens: Token budget.

@@ -1166,7 +1166,7 @@ class ContextModule(ABC):
 | `knowledge_context` | 70 | 10% | Yes (fewer docs) | Yes | tool_enabled, llm_only, rag_focused |
 | `plan_hydration` | 65 | 8% | Yes (summary) | Yes | tool_enabled |
 | `document_context` | 60 | 5% | Yes (truncation) | Yes | tool_enabled, llm_only, rag_focused |
-| `component_instructions` | 55 | 4% | Yes (intensity) | No | tool_enabled, llm_only |
+| `component_instructions` | 55 | 4% | Yes (intensity) | No | All |
 | `workflow_history` | 50 | 4% | Yes (fewer turns) | Yes | tool_enabled |
 
 **Module Lifecycle:**
@@ -1214,7 +1214,7 @@ A context window type is a **named composition** of active modules with per-modu
 
 Profiles bind to a context window type via `contextWindowTypeId` (same pattern as `llmConfigurationId` and `mcpServerId`).
 
-#### Layer 3: Orchestrator (Four-Pass Assembly)
+#### Layer 3: Orchestrator (Five-Pass Assembly)
 
 **File:** `components/builtin/context_window/handler.py`
 
@@ -1227,7 +1227,12 @@ Pass 1: RESOLVE ACTIVE MODULES
     if not module.applies_to(profile_type) → skip (not applicable)
   Redistribute budget from skipped modules proportionally
 
-Pass 2: ALLOCATE AND ASSEMBLE (priority order, highest first)
+Pass 2: APPLY DYNAMIC ADJUSTMENTS
+  Evaluate each dynamic_adjustment rule against runtime conditions
+  Adjust target_pct values (reduce, transfer, force_full, condense)
+  Must run BEFORE allocation so adjusted percentages drive budget calculation
+
+Pass 3: ALLOCATE AND ASSEMBLE (priority order, highest first)
   available_budget = model_limit - output_reserve
   For each active module:
     allocation = available_budget * adjusted_target_pct
@@ -1235,9 +1240,12 @@ Pass 2: ALLOCATE AND ASSEMBLE (priority order, highest first)
     result = module.contribute(allocation, context)
     snapshot.record(module_id, allocation, result.tokens_used)
 
-Pass 3: APPLY DYNAMIC ADJUSTMENTS
-  Evaluate each dynamic_adjustment rule against runtime conditions
-  Adjust allocations (reduce, transfer, force_full, condense)
+Pass 3b: REALLOCATE SURPLUS
+  Identify donors: modules with utilization < 30% of allocation
+  Identify recipients: modules with utilization > 80% AND condensable
+  Calculate surplus = allocated - used for each donor
+  Distribute surplus proportionally to recipients (by priority, capped at max_pct)
+  Re-run contribute() on recipients with increased budget
 
 Pass 4: CONDENSE IF OVER BUDGET
   If total_used > available_budget:
@@ -1247,6 +1255,8 @@ Pass 4: CONDENSE IF OVER BUDGET
         snapshot.record_condensation(module_id, before, after)
       if total_used <= available_budget: break
 ```
+
+**Design rationale**: Dynamic adjustments (Pass 2) must run before allocation (Pass 3) because adjustment rules modify `target_pct` values on `ActiveModule` objects. If adjustments ran after allocation, modules would already have called `contribute()` with their original percentages, making the adjustments inert. Reallocation (Pass 3b) runs after assembly to capture actual utilization and redistribute surplus from modules that used far less than allocated.
 
 **Model Context Limit Resolution:**
 
@@ -1271,6 +1281,7 @@ class ContextWindowSnapshot:
     contributions: List[ContributionMetric]      # Per-module metrics
     condensations: List[CondensationEvent]        # Condensation events
     dynamic_adjustments_fired: List[str]          # Rules that fired
+    reallocation_events: List[dict]               # Surplus reallocation records
     skipped_contributors: List[str]               # Modules that didn't apply
 ```
 
@@ -1288,11 +1299,22 @@ Updates dynamically when the active profile changes (via "Set as Default" or @TA
 
 `context_window_snapshot` events render as compact horizontal bars in the event stream showing actual token consumption per module, utilization percentage, and condensation events.
 
-### 13.4 Feature Flag
+### 13.4 Feature Flag & ContextBuilder Integration
 
-**Flag:** `APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER` (default: `False`)
+**Flag:** `APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER` (default: `True`)
 
-When `True`, the orchestrator runs alongside existing code paths and emits snapshot events for observability. Future Phase 6 will wire orchestrator output as the actual LLM context, replacing scattered assembly code.
+When enabled, the orchestrator drives **actual context assembly** for all 4 profile types. Module output replaces the previous hardcoded context logic:
+
+| Profile Type | Integration Point | What CW Modules Control |
+|---|---|---|
+| `tool_enabled` | `ContextBuilder` in `planner.py` | system_prompt, tool_definitions, conversation_history, rag_context, knowledge_context, plan_hydration, document_context, component_instructions, workflow_history |
+| `llm_only` | `executor.py` pre-LLM assembly | conversation_history (window size), document_context (char limit), component_instructions (pre-computed) |
+| `rag_focused` | `executor.py` RAG synthesis path | conversation_history (window size), document_context (char limit), component_instructions (pre-computed) |
+| `genie` | `execution_service.py` coordinator | conversation_history (window size), document_context (char limit) |
+
+The `ContextBuilder` class (in `planner.py`) is the bridge for `tool_enabled` profiles. It consumes `AssembledContext.contributions` and maps each module's output to the appropriate position in the planner/executor message list. For non-tool profiles, executor code extracts specific values (e.g., `cw_history_window`, `cw_document_max_chars`) from the assembled context and passes them to existing code paths.
+
+**Token estimation** uses tiktoken (`cl100k_base` encoding) when available for accurate BPE token counts. Falls back to a character-based heuristic (~4 chars/token) if tiktoken is not installed.
 
 ### 13.5 REST API
 
@@ -1318,7 +1340,7 @@ components/builtin/context_window/
 ├── module_registry.py                  # Module discovery, install/uninstall, hot-reload
 ├── base.py                             # ContextModule ABC, Contribution, AssemblyContext
 ├── snapshot.py                         # ContextWindowSnapshot dataclass + SSE formatting
-├── token_estimator.py                  # Token estimation utilities
+├── token_estimator.py                  # Token estimation (tiktoken BPE + heuristic fallback)
 ├── renderer.js                         # Resource Panel renderer
 │
 ├── modules/                            # Built-in context modules

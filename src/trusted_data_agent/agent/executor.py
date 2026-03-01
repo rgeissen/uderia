@@ -38,7 +38,7 @@ from trusted_data_agent.agent.session_name_generator import generate_session_nam
 app_logger = logging.getLogger("quart.app")
 
 
-def load_document_context(user_uuid: str, session_id: str, attachments: list) -> tuple[str | None, list[dict]]:
+def load_document_context(user_uuid: str, session_id: str, attachments: list, max_total_chars: int | None = None) -> tuple[str | None, list[dict]]:
     """
     Load extracted text from uploaded documents and format as context block.
 
@@ -49,6 +49,8 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
         user_uuid: The user's UUID
         session_id: The session ID
         attachments: List of attachment dicts with file_id, filename keys
+        max_total_chars: Optional budget-aware total character limit from context window module.
+                        Falls back to APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS if not provided.
 
     Returns:
         Tuple of (formatted document context string or None, list of truncation event dicts)
@@ -108,7 +110,8 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
         context_parts.append(f"--- Document: {filename} ---\n{extracted_text}\n--- End of {filename} ---")
         total_chars += len(extracted_text)
 
-        if total_chars > APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS:
+        effective_limit = max_total_chars if max_total_chars else APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS
+        if total_chars > effective_limit:
             context_parts.append("[Additional documents omitted - context limit reached]")
             truncation_events.append({
                 "subtype": "document_truncation",
@@ -116,7 +119,7 @@ def load_document_context(user_uuid: str, session_id: str, attachments: list) ->
                 "documents_loaded": len(context_parts),
                 "documents_total": len(attachments),
                 "total_chars": total_chars,
-                "limit_chars": APP_CONFIG.DOCUMENT_CONTEXT_MAX_CHARS,
+                "limit_chars": effective_limit,
                 "reason": "total_context_limit"
             })
             break
@@ -1619,6 +1622,9 @@ class PlanExecutor:
                 all_tools.extend(component_tools)
                 app_logger.info(f"Added {len(component_tools)} component tool(s): {', '.join(t.name for t in component_tools)}")
 
+            # Budget-aware history window from context window module (set in execute())
+            cw_history_window = getattr(self, '_cw_history_window', 10)
+
             # Get conversation history for context
             # NOTE: The current user query has already been added to chat_object by execution_service.py
             # before this code runs. We need to exclude it to avoid duplication since the agent
@@ -1630,8 +1636,9 @@ class PlanExecutor:
                 app_logger.debug(f"[ConvAgent] chat_object has {len(chat_object)} messages")
 
                 # Take last N messages for context, excluding the current query
+                # Budget-aware window from context window module (replaces hardcoded 10)
                 # We need to exclude ALL instances of the current query from the end of history
-                history_messages = chat_object[-11:]  # Get one extra to check
+                history_messages = chat_object[-(cw_history_window + 1):]  # Get one extra to check
 
                 # Debug: Log what we're comparing
                 if history_messages:
@@ -1663,8 +1670,9 @@ class PlanExecutor:
                     "Understood."
                 }
 
-                app_logger.info(f"[ConvAgent] Processing {len(history_messages[-10:])} messages for history")
-                for msg in history_messages[-10:]:
+                # Budget-aware window from context window module (replaces hardcoded 10)
+                app_logger.info(f"[ConvAgent] Processing {len(history_messages[-cw_history_window:])} messages for history (window={cw_history_window})")
+                for msg in history_messages[-cw_history_window:]:
                     msg_content = msg.get("content", "")
 
                     # Skip messages marked as invalid (purged or toggled off by user)
@@ -1714,6 +1722,11 @@ class PlanExecutor:
                     max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
                     min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
                     max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+                    # Budget-aware override from context window module (Phase 5b)
+                    cw_knowledge_budget = getattr(self, '_cw_knowledge_max_tokens', None)
+                    if cw_knowledge_budget:
+                        max_tokens = min(cw_knowledge_budget, max_tokens) if max_tokens else cw_knowledge_budget
+                        app_logger.info(f"[ConvAgent] Knowledge max_tokens from context window budget: {max_tokens:,}")
 
                     if knowledge_collections:
                         # Emit start event (fetch actual collection names from metadata)
@@ -1912,7 +1925,8 @@ class PlanExecutor:
                 turn_number=self.current_turn_number,
                 provider=self.current_provider,  # NEW: Pass provider for event tracking
                 model=self.current_model,        # NEW: Pass model for event tracking
-                canvas_context=self._format_canvas_context()  # Canvas bidirectional context
+                canvas_context=self._format_canvas_context(),  # Canvas bidirectional context
+                component_instructions=getattr(self, '_cw_component_instructions', None),
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
@@ -2240,19 +2254,25 @@ class PlanExecutor:
             User message string with documents + knowledge + history + current query
         """
         # Get session history (includes ALL previous turns regardless of profile)
-        try:
-            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
-            session_history = session_data.get('chat_object', []) if session_data else []
+        # Use budget-aware module output if available (Phase 5a: context window integration)
+        cw_history = getattr(self, '_cw_conversation_history', None)
+        if cw_history:
+            history_text = cw_history
+            app_logger.debug("Using budget-aware conversation history from context window module")
+        else:
+            try:
+                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                session_history = session_data.get('chat_object', []) if session_data else []
 
-            # Format last 10 messages for context, filtering out invalid messages
-            history_text = "\n".join([
-                f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
-                for msg in session_history[-10:]
-                if msg.get("isValid") is not False  # Skip messages marked as invalid
-            ])
-        except Exception as e:
-            app_logger.error(f"Failed to load session history: {e}")
-            history_text = "(No conversation history available)"
+                # Fallback: Format last 10 messages for context, filtering out invalid messages
+                history_text = "\n".join([
+                    f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
+                    for msg in session_history[-10:]
+                    if msg.get("isValid") is not False  # Skip messages marked as invalid
+                ])
+            except Exception as e:
+                app_logger.error(f"Failed to load session history: {e}")
+                history_text = "(No conversation history available)"
 
         # Build user message (WITHOUT system prompt)
         user_message_parts = []
@@ -2304,23 +2324,29 @@ User: {self.original_user_input}""")
             parts.append(knowledge_context)
 
         # Conversation history (for follow-ups) - only if history not disabled
+        # Use budget-aware module output if available (Phase 5a: context window integration)
         if not self.disabled_history:
-            try:
-                session_data = await session_manager.get_session(self.user_uuid, self.session_id)
-                session_history = session_data.get('chat_object', []) if session_data else []
+            cw_history = getattr(self, '_cw_conversation_history', None)
+            if cw_history:
+                parts.append(f"\n--- CONVERSATION HISTORY ---\n{cw_history}\n")
+                app_logger.debug("Using budget-aware conversation history from context window module")
+            else:
+                try:
+                    session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                    session_history = session_data.get('chat_object', []) if session_data else []
 
-                if session_history:
-                    # Format last 10 messages for context, filtering out invalid messages
-                    history_text = "\n".join([
-                        f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
-                        for msg in session_history[-10:]
-                        if msg.get("isValid") is not False  # Skip messages marked as invalid
-                    ])
-                    if history_text:
-                        parts.append(f"\n--- CONVERSATION HISTORY ---\n{history_text}\n")
-            except Exception as e:
-                app_logger.error(f"Error retrieving conversation history for RAG synthesis: {e}", exc_info=True)
-                # Continue without history (graceful degradation)
+                    if session_history:
+                        # Fallback: Format last 10 messages for context, filtering out invalid messages
+                        history_text = "\n".join([
+                            f"{'User' if msg.get('role') == 'user' else 'Assistant'}: {msg.get('content', '')}"
+                            for msg in session_history[-10:]
+                            if msg.get("isValid") is not False  # Skip messages marked as invalid
+                        ])
+                        if history_text:
+                            parts.append(f"\n--- CONVERSATION HISTORY ---\n{history_text}\n")
+                except Exception as e:
+                    app_logger.error(f"Error retrieving conversation history for RAG synthesis: {e}", exc_info=True)
+                    # Continue without history (graceful degradation)
 
         # Current query
         parts.append(f"\n--- CURRENT QUERY ---\n{self.original_user_input}\n")
@@ -2561,7 +2587,7 @@ Response:"""
             self.document_context = text_fallback
             if not self.document_context and not self.multimodal_content:
                 # Pure fallback: use text extraction for everything
-                self.document_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                self.document_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments, max_total_chars=getattr(self, '_cw_document_max_chars', None))
                 for evt in doc_trunc_events:
                     event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
                     self._log_system_event(event_data)
@@ -2599,6 +2625,46 @@ Response:"""
                 self._log_system_event(snapshot_event)
                 self.context_window_snapshot_event = assembled_context.snapshot.to_sse_event()
                 yield self._format_sse_with_depth(snapshot_event)
+            # Extract budget-aware contributions for downstream use
+            if assembled_context:
+                # Conversation history: text content + window size
+                cw_hist = assembled_context.contributions.get("conversation_history")
+                if cw_hist:
+                    if cw_hist.content:
+                        self._cw_conversation_history = cw_hist.content
+                    if cw_hist.metadata.get("turn_count", 0) > 0:
+                        self._cw_history_window = cw_hist.metadata["turn_count"]
+                        app_logger.info(
+                            f"Context window: conversation_history budget-aware window={self._cw_history_window} "
+                            f"({cw_hist.tokens_used:,} tokens, "
+                            f"mode={cw_hist.metadata.get('mode', 'unknown')})"
+                        )
+
+                # Knowledge + Document context: budget-aware limits from allocation
+                if assembled_context.snapshot:
+                    for cm in assembled_context.snapshot.contributions:
+                        if cm.module_id == "knowledge_context" and cm.tokens_allocated > 0:
+                            self._cw_knowledge_max_tokens = cm.tokens_allocated
+                            app_logger.info(
+                                f"Context window: knowledge_context budget={cm.tokens_allocated:,} tokens "
+                                f"(used={cm.tokens_used:,})"
+                            )
+                        elif cm.module_id == "document_context" and cm.tokens_allocated > 0:
+                            # Convert token budget to chars (1 token ≈ 4 chars)
+                            self._cw_document_max_chars = cm.tokens_allocated * 4
+                            app_logger.info(
+                                f"Context window: document_context budget={cm.tokens_allocated:,} tokens "
+                                f"(~{self._cw_document_max_chars:,} chars, used={cm.tokens_used:,})"
+                            )
+
+                # Component instructions: pre-computed content (Phase 5e consolidation)
+                cw_comp = assembled_context.contributions.get("component_instructions")
+                if cw_comp and cw_comp.content:
+                    self._cw_component_instructions = cw_comp.content
+                    app_logger.info(
+                        f"Context window: component_instructions pre-computed "
+                        f"({cw_comp.tokens_used:,} tokens, {len(cw_comp.content):,} chars)"
+                    )
         # --- CONTEXT WINDOW MANAGER END ---
 
         # --- PROFILE LLM INSTANCE: Create profile-specific LLM client when provider differs ---
@@ -2733,20 +2799,8 @@ Response:"""
             profile_tag = profile_config.get("tag", "CHAT")
             profile_name = profile_config.get("name", "Conversation")
 
-            # --- CONTEXT WINDOW MANAGER (Feature-Flagged) ---
-            if APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
-                assembled_context = await self._run_context_window_assembly("llm_only", profile_config)
-                if assembled_context and assembled_context.snapshot:
-                    snapshot_event = {
-                        "step": "Context Window Assembly",
-                        "type": "context_window_snapshot",
-                        "details": assembled_context.snapshot.to_summary_text(),
-                        "payload": assembled_context.snapshot.to_sse_event(),
-                    }
-                    self._log_system_event(snapshot_event)
-                    self.context_window_snapshot_event = assembled_context.snapshot.to_sse_event()
-                    yield self._format_sse_with_depth(snapshot_event)
-            # --- CONTEXT WINDOW MANAGER END ---
+            # NOTE: Context window assembly already ran in execute() general block.
+            # Budget-aware conversation history is available via self._cw_conversation_history.
 
             # Get conversation context stats
             session_data = await session_manager.get_session(self.user_uuid, self.session_id)
@@ -2795,6 +2849,11 @@ Response:"""
                     max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
                     min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
                     max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+                    # Budget-aware override from context window module (Phase 5b)
+                    cw_knowledge_budget = getattr(self, '_cw_knowledge_max_tokens', None)
+                    if cw_knowledge_budget:
+                        max_tokens = min(cw_knowledge_budget, max_tokens) if max_tokens else cw_knowledge_budget
+                        app_logger.info(f"[llm_only] Knowledge max_tokens from context window budget: {max_tokens:,}")
 
                     if knowledge_collections:
                         collection_ids = [c["id"] for c in knowledge_collections]
@@ -2949,11 +3008,13 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = "You are a helpful AI assistant. Provide natural, conversational responses."
                 app_logger.warning("CONVERSATION_EXECUTION prompt not found, using fallback")
 
-            # --- Inject component instructions ---
-            from trusted_data_agent.components.manager import get_component_instructions_for_prompt
-            comp_section = get_component_instructions_for_prompt(
-                self.active_profile_id, self.user_uuid, session_data
-            )
+            # --- Inject component instructions (use pre-computed from CW module if available) ---
+            comp_section = getattr(self, '_cw_component_instructions', None)
+            if comp_section is None:
+                from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+                comp_section = get_component_instructions_for_prompt(
+                    self.active_profile_id, self.user_uuid, session_data
+                )
             system_prompt = system_prompt.replace('{component_instructions_section}', comp_section)
 
             # --- Inject skill content (pre-processing) ---
@@ -2978,7 +3039,7 @@ The following domain knowledge may be relevant to this conversation:
             # Load document context from uploaded files
             doc_context = None
             if self.attachments:
-                doc_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                doc_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments, max_total_chars=getattr(self, '_cw_document_max_chars', None))
                 for evt in doc_trunc_events:
                     event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
                     self._log_system_event(event_data)
@@ -3422,21 +3483,8 @@ The following domain knowledge may be relevant to this conversation:
                 app_logger.warning(f"Failed to emit execution_start event: {e}")
             # --- PHASE 2 END ---
 
-            # --- CONTEXT WINDOW MANAGER (Feature-Flagged) ---
-            if APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
-                _rag_profile_config = self._get_profile_config()
-                assembled_context = await self._run_context_window_assembly("rag_focused", _rag_profile_config)
-                if assembled_context and assembled_context.snapshot:
-                    snapshot_event = {
-                        "step": "Context Window Assembly",
-                        "type": "context_window_snapshot",
-                        "details": assembled_context.snapshot.to_summary_text(),
-                        "payload": assembled_context.snapshot.to_sse_event(),
-                    }
-                    self._log_system_event(snapshot_event)
-                    self.context_window_snapshot_event = assembled_context.snapshot.to_sse_event()
-                    yield self._format_sse_with_depth(snapshot_event)
-            # --- CONTEXT WINDOW MANAGER END ---
+            # NOTE: Context window assembly already ran in execute() general block.
+            # Budget-aware conversation history is available via self._cw_conversation_history.
 
             # --- MANDATORY Knowledge Retrieval ---
             retrieval_start_time = time.time()
@@ -3463,6 +3511,11 @@ The following domain knowledge may be relevant to this conversation:
             max_docs = effective_config.get("maxDocs", APP_CONFIG.KNOWLEDGE_RAG_NUM_DOCS)
             min_relevance = effective_config.get("minRelevanceScore", APP_CONFIG.KNOWLEDGE_MIN_RELEVANCE_SCORE)
             max_tokens = effective_config.get("maxTokens", APP_CONFIG.KNOWLEDGE_MAX_TOKENS)
+            # Budget-aware override from context window module (Phase 5b)
+            cw_knowledge_budget = getattr(self, '_cw_knowledge_max_tokens', None)
+            if cw_knowledge_budget:
+                max_tokens = min(cw_knowledge_budget, max_tokens) if max_tokens else cw_knowledge_budget
+                app_logger.info(f"[rag_focused] Knowledge max_tokens from context window budget: {max_tokens:,}")
             max_chunks_per_doc = effective_config.get("maxChunksPerDocument", APP_CONFIG.KNOWLEDGE_MAX_CHUNKS_PER_DOC)
             freshness_weight = effective_config.get("freshnessWeight", APP_CONFIG.KNOWLEDGE_FRESHNESS_WEIGHT)
             freshness_decay_rate = effective_config.get("freshnessDecayRate", APP_CONFIG.KNOWLEDGE_FRESHNESS_DECAY_RATE)
@@ -3899,11 +3952,13 @@ The following domain knowledge may be relevant to this conversation:
                 system_prompt = synthesis_prompt_override.strip()
                 app_logger.info(f"[RAG] Using synthesis prompt override ({len(system_prompt)} chars)")
 
-            # --- Inject component instructions ---
-            from trusted_data_agent.components.manager import get_component_instructions_for_prompt
-            comp_section = get_component_instructions_for_prompt(
-                self.active_profile_id, self.user_uuid, session_data
-            )
+            # --- Inject component instructions (use pre-computed from CW module if available) ---
+            comp_section = getattr(self, '_cw_component_instructions', None)
+            if comp_section is None:
+                from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+                comp_section = get_component_instructions_for_prompt(
+                    self.active_profile_id, self.user_uuid, session_data
+                )
             system_prompt = system_prompt.replace('{component_instructions_section}', comp_section)
 
             # --- Inject skill content (pre-processing) ---
@@ -3925,7 +3980,7 @@ The following domain knowledge may be relevant to this conversation:
             # Load document context from uploaded files
             rag_doc_context = None
             if self.attachments:
-                rag_doc_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments)
+                rag_doc_context, doc_trunc_events = load_document_context(self.user_uuid, self.session_id, self.attachments, max_total_chars=getattr(self, '_cw_document_max_chars', None))
                 for evt in doc_trunc_events:
                     event_data = {"step": "Context Optimization", "type": "context_optimization", "details": evt}
                     self._log_system_event(event_data)
@@ -3998,6 +4053,7 @@ The following domain knowledge may be relevant to this conversation:
                     turn_number=self.current_turn_number,
                     provider=self.current_provider if hasattr(self, 'current_provider') else None,
                     model=self.current_model if hasattr(self, 'current_model') else None,
+                    component_instructions=getattr(self, '_cw_component_instructions', None),
                 )
 
                 agent_result = await rag_agent.execute(self.original_user_input)

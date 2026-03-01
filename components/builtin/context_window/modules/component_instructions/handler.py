@@ -34,7 +34,7 @@ class ComponentInstructionsModule(ContextModule):
         return "component_instructions"
 
     def applies_to(self, profile_type: str) -> bool:
-        return profile_type in ("tool_enabled", "llm_only")
+        return profile_type in ("tool_enabled", "llm_only", "rag_focused", "genie")
 
     async def contribute(
         self,

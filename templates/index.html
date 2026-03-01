@@ -1717,6 +1717,11 @@
                                 <h2 id="status-title" class="header-title text-sm font-bold tracking-wider uppercase" style="color: var(--text-primary);">Live Status</h2>
 
                                 <div id="status-action-buttons" class="flex items-center gap-x-1">
+                                    <button id="cw-analytics-button" title="Context Window Analytics" class="p-1.5 transition-colors rounded" style="color: var(--text-muted);" onmouseover="this.style.color='var(--text-primary)'; this.style.backgroundColor='var(--hover-bg)';" onmouseout="this.style.color='var(--text-muted)'; this.style.backgroundColor='transparent';">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                    </button>
                                     <button id="header-replay-planned-button" title="Replay Planned Query" class="replay-action-button p-1.5 transition-colors rounded hidden" style="color: var(--text-muted);" onmouseover="this.style.color='var(--text-primary)'; this.style.backgroundColor='var(--hover-bg)';" onmouseout="this.style.color='var(--text-muted)'; this.style.backgroundColor='transparent';">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -3215,6 +3220,25 @@
                                     </div>
                                     <div id="context-modules-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                         <!-- Module cards rendered by JS -->
+                                    </div>
+                                </div>
+
+                                <!-- Utilization Analytics section -->
+                                <div class="glass-panel rounded-xl p-6">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <div>
+                                            <h3 class="text-lg font-bold text-white">Utilization Analytics</h3>
+                                            <p class="text-sm text-gray-400 mt-1">Context window utilization trends per session.</p>
+                                        </div>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-300 mb-1">Session</label>
+                                        <select id="cw-analytics-session-select" class="w-full md:w-80 p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none text-white">
+                                            <option value="">Select a session...</option>
+                                        </select>
+                                    </div>
+                                    <div id="cw-analytics-content">
+                                        <p class="text-sm text-gray-500">Select a session to view utilization analytics.</p>
                                     </div>
                                 </div>
                             </div>

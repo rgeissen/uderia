@@ -788,7 +788,83 @@ async def _run_genie_execution(
 
         # Compute turn number for lifecycle events (same logic as executor.py:1945-1951)
         workflow_history = session_data.get('last_turn_data', {}).get('workflow_history', []) if session_data else []
-        coordinator.turn_number = len(workflow_history) + 1
+        turn_number = len(workflow_history) + 1
+        coordinator.turn_number = turn_number
+
+        # --- CONTEXT WINDOW MANAGER (Feature-Flagged, Observability) ---
+        cw_history_window = 10  # Default fallback
+        cw_document_max_chars = None  # Default: use APP_CONFIG limit
+        try:
+            from trusted_data_agent.core.config import APP_CONFIG as _CW_APP_CONFIG
+            if _CW_APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
+                from components.builtin.context_window.handler import ContextWindowHandler
+                from components.builtin.context_window.base import AssemblyContext
+
+                cwt = config_manager.get_default_context_window_type(user_uuid)
+                if cwt:
+                    enriched_session = dict(session_data) if session_data else {}
+                    enriched_session['current_query'] = user_input or ''
+
+                    # Resolve model context limit
+                    model_context_limit = 128_000
+                    try:
+                        import litellm
+                        model_key = f"{provider}/{model}"
+                        model_info = litellm.model_cost.get(model_key) or litellm.model_cost.get(model or "")
+                        if model_info:
+                            model_context_limit = model_info.get("max_input_tokens") or model_info.get("max_tokens") or 128_000
+                    except Exception:
+                        pass
+
+                    ctx = AssemblyContext(
+                        profile_type="genie",
+                        profile_id=profile_id or "",
+                        session_id=session_id,
+                        user_uuid=user_uuid,
+                        session_data=enriched_session,
+                        turn_number=turn_number,
+                        is_first_turn=turn_number == 1,
+                        model_context_limit=model_context_limit,
+                        dependencies={},
+                        profile_config=genie_profile,
+                    )
+
+                    handler = ContextWindowHandler()
+                    assembled = await handler.assemble(cwt, ctx)
+
+                    if assembled and assembled.snapshot:
+                        app_logger.info(
+                            f"Context Window Snapshot: "
+                            f"{assembled.snapshot.total_used:,}/{assembled.snapshot.available_budget:,} tokens "
+                            f"({assembled.snapshot.utilization_pct:.1f}% utilization)"
+                        )
+                        snapshot_payload = assembled.snapshot.to_sse_event()
+                        await event_handler({
+                            "step": "Context Window Assembly",
+                            "type": "context_window_snapshot",
+                            "details": assembled.snapshot.to_summary_text(),
+                            "payload": snapshot_payload,
+                        }, "notification")
+
+                        # Extract budget-aware values for downstream use
+                        cw_hist = assembled.contributions.get("conversation_history")
+                        if cw_hist and cw_hist.metadata.get("turn_count", 0) > 0:
+                            cw_history_window = cw_hist.metadata["turn_count"]
+                            app_logger.info(
+                                f"Context window: conversation_history budget-aware window={cw_history_window} "
+                                f"({cw_hist.tokens_used:,} tokens)"
+                            )
+                        for cm in assembled.snapshot.contributions:
+                            if cm.module_id == "document_context" and cm.tokens_allocated > 0:
+                                cw_document_max_chars = cm.tokens_allocated * 4
+                                app_logger.info(
+                                    f"Context window: document_context budget={cm.tokens_allocated:,} tokens "
+                                    f"(~{cw_document_max_chars:,} chars)"
+                                )
+                                break
+        except Exception as cw_err:
+            app_logger.debug(f"[Genie] Context window assembly skipped: {cw_err}")
+        # --- CONTEXT WINDOW MANAGER END ---
 
         conversation_history = []
 
@@ -800,9 +876,10 @@ async def _run_genie_execution(
             chat_object = session_data.get("chat_object", [])
             app_logger.debug(f"[Genie] chat_object has {len(chat_object)} messages")
 
-            # Take last 10 messages for context, excluding the current query
+            # Take last N messages for context, excluding the current query
             # (current query was already saved by caller before this runs)
-            history_messages = chat_object[-11:]  # Get one extra to check
+            # cw_history_window is budget-aware (from context window module) or defaults to 10
+            history_messages = chat_object[-(cw_history_window + 1):]  # Get one extra to check
 
             # Remove current query from history if present (it will be passed separately)
             user_input_stripped = user_input.strip() if user_input else ""
@@ -814,7 +891,7 @@ async def _run_genie_execution(
 
             # Build conversation history (filter priming messages and respect isValid flag)
             priming_messages = {"You are a helpful assistant.", "Understood."}
-            for msg in history_messages[-10:]:
+            for msg in history_messages[-cw_history_window:]:
                 msg_content = msg.get("content", "")
 
                 # Handle content that may be a list (Google Gemini multimodal format)
@@ -842,7 +919,7 @@ async def _run_genie_execution(
         genie_user_input = user_input
         if attachments:
             from trusted_data_agent.agent.executor import load_document_context
-            doc_context, _ = load_document_context(user_uuid, session_id, attachments)
+            doc_context, _ = load_document_context(user_uuid, session_id, attachments, max_total_chars=cw_document_max_chars)
             if doc_context:
                 genie_user_input = f"[User has uploaded documents]\n{doc_context}\n\n[User's question]\n{user_input}"
 

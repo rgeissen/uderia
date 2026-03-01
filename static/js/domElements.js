@@ -110,6 +110,8 @@ export const toggleHistoryCheckbox = document.getElementById('toggle-history-che
 // Active session title elements (conversation header)
 export const activeSessionTitle = document.getElementById('active-session-title');
 export const activeSessionTitleEditingHint = document.getElementById('active-session-title-editing-hint');
+// Context Window Analytics button (Live Status panel header)
+export const cwAnalyticsButton = document.getElementById('cw-analytics-button');
 
 // Header elements (within Conversation view)
 export const toolHeader = document.getElementById('tool-header');

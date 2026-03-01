@@ -29,8 +29,21 @@ function getModuleColor(moduleId) {
     return MODULE_COLORS[moduleId] || '#6b7280';
 }
 
-// Cached snapshot from last query
+// Cached state for re-renders when snapshots arrive
 let lastSnapshot = null;
+let lastCwt = null;
+let lastProfile = null;
+
+/**
+ * Clear all module-level caches on session switch.
+ * Prevents stale snapshot overlay from previous session bleeding into the new one.
+ * Called from sessionManagement.js alongside cleanupCoordination() / cleanupExecution().
+ */
+export function resetContextPanelState() {
+    lastSnapshot = null;
+    lastCwt = null;
+    lastProfile = null;
+}
 
 /**
  * Load the Context panel content from the active profile's context window type.
@@ -101,6 +114,8 @@ export async function loadContextPanel() {
 
         const cwtData = await cwtRes.json();
         const cwt = cwtData.context_window_type || cwtData;
+        lastCwt = cwt;
+        lastProfile = activeProfile;
         renderContextPanelContent(container, cwt, activeProfile);
 
     } catch (err) {
@@ -111,6 +126,8 @@ export async function loadContextPanel() {
 
 /**
  * Render the context window type composition in the resource panel.
+ * When lastSnapshot is available, overlays dynamic runtime metrics on each
+ * module card (allocated vs target, used tokens, contributing status).
  */
 function renderContextPanelContent(container, cwt, profile) {
     const modules = cwt.modules || {};
@@ -120,29 +137,154 @@ function renderContextPanelContent(container, cwt, profile) {
     const inactiveModules = Object.entries(modules).filter(([, m]) => !m.active);
 
     const outputReserve = cwt.output_reserve_pct || 12;
-    const totalTargetPct = activeModules.reduce((sum, [, m]) => sum + (m.target_pct || 0), 0);
 
-    // Build stacked bar
-    const barSegments = activeModules.map(([id, m]) => {
+    // --- Snapshot lookup maps ---
+    const snapshot = lastSnapshot;
+    const contribMap = {};
+    let budgetAvailable = 0;
+    const adjustmentModules = {};
+
+    if (snapshot) {
+        budgetAvailable = snapshot.budget?.available || 0;
+        for (const c of (snapshot.contributions || [])) {
+            contribMap[c.module_id] = c;
+        }
+        // Map fired adjustments to affected modules using CW type rules
+        for (const rule of (cwt.dynamic_adjustments || [])) {
+            const fired = (snapshot.dynamic_adjustments || []).includes(rule.condition);
+            if (!fired) continue;
+            const action = rule.action || {};
+            const affected = action.force_full || action.reduce || action.transfer || action.condense;
+            if (affected) {
+                if (!adjustmentModules[affected]) adjustmentModules[affected] = [];
+                adjustmentModules[affected].push(rule.condition);
+            }
+            if (action.to) {
+                if (!adjustmentModules[action.to]) adjustmentModules[action.to] = [];
+                adjustmentModules[action.to].push(rule.condition);
+            }
+        }
+    }
+
+    // --- Target allocation bar (static) ---
+    const targetBarSegments = activeModules.map(([id, m]) => {
         const pct = m.target_pct || 0;
         const color = getModuleColor(id);
         return `<div class="h-full rounded-sm transition-all" style="width:${pct}%;background:${color}"
                      title="${formatModuleName(id)}: ${pct}%"></div>`;
     }).join('');
 
-    // Build module cards
+    // --- Actual allocation bar (dynamic, from snapshot) ---
+    let actualBarHtml = '';
+    if (snapshot && budgetAvailable > 0) {
+        const actualSegments = activeModules.map(([id]) => {
+            const c = contribMap[id];
+            if (!c) return '';
+            const allocPct = (c.allocated / budgetAvailable) * 100;
+            const color = getModuleColor(id);
+            return `<div class="h-full rounded-sm" style="width:${allocPct.toFixed(1)}%;background:${color};opacity:0.7"
+                         title="${formatModuleName(id)}: ${(c.allocated / 1000).toFixed(1)}K allocated"></div>`;
+        }).join('');
+
+        actualBarHtml = `
+            <div class="flex gap-0.5 w-full h-2 rounded overflow-hidden bg-white/5">
+                ${actualSegments}
+            </div>`;
+    }
+
+    // --- Module cards with dynamic overlay ---
     const moduleCards = activeModules.map(([id, m]) => {
         const color = getModuleColor(id);
-        const pct = m.target_pct || 0;
+        const targetPct = m.target_pct || 0;
         const isRequired = (id === 'system_prompt' || id === 'conversation_history');
+        const c = contribMap[id];
+
+        // Dynamic overlay (only when snapshot exists)
+        let overlayHtml = '';
+        if (snapshot) {
+            if (c) {
+                const allocatedK = (c.allocated / 1000).toFixed(1);
+                const usedK = (c.used / 1000).toFixed(1);
+                const utilPct = c.allocated > 0 ? ((c.used / c.allocated) * 100).toFixed(0) : 0;
+                const allocPct = budgetAvailable > 0 ? ((c.allocated / budgetAvailable) * 100).toFixed(1) : 0;
+                const deltaPct = (parseFloat(allocPct) - targetPct).toFixed(1);
+                const deltaSign = deltaPct > 0 ? '+' : '';
+                const deltaColor = deltaPct > 0 ? 'text-emerald-400' : deltaPct < 0 ? 'text-amber-400' : 'text-gray-500';
+
+                // Contributing indicator
+                const isContributing = c.used > 0;
+                const statusDot = isContributing
+                    ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>'
+                    : '<span class="w-1.5 h-1.5 rounded-full bg-gray-600 inline-block"></span>';
+                const statusText = isContributing
+                    ? `<span class="text-emerald-400/80">${usedK}K</span>`
+                    : '<span class="text-gray-500">idle</span>';
+
+                // Usage bar color
+                const utilNum = parseFloat(utilPct);
+                const barColor = utilNum > 80 ? '#ef4444' : utilNum > 50 ? '#eab308' : '#10b981';
+                const usedBarWidth = c.allocated > 0 ? Math.min((c.used / c.allocated) * 100, 100).toFixed(1) : 0;
+
+                // Condensation indicator
+                const condensedBadge = c.condensed
+                    ? '<span class="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400">condensed</span>'
+                    : '';
+
+                // Adjustment tags
+                const adjTags = (adjustmentModules[id] || []).map(cond =>
+                    `<span class="text-[9px] px-1 py-0.5 rounded bg-purple-500/15 text-purple-300">${cond.replace(/_/g, ' ')}</span>`
+                ).join(' ');
+
+                // Reallocation badge
+                const reallocEvents = (snapshot.reallocation_events || []).filter(e => e.module_id === id);
+                let reallocBadge = '';
+                for (const re of reallocEvents) {
+                    if (re.type === 'recipient') {
+                        const gained = ((re.tokens || 0) / 1000).toFixed(1);
+                        reallocBadge += `<span class="text-[9px] px-1 py-0.5 rounded bg-cyan-500/15 text-cyan-300">+${gained}K surplus</span>`;
+                    } else if (re.type === 'donor') {
+                        const gave = ((re.tokens || 0) / 1000).toFixed(1);
+                        reallocBadge += `<span class="text-[9px] px-1 py-0.5 rounded bg-gray-500/15 text-gray-400">-${gave}K donated</span>`;
+                    }
+                }
+
+                overlayHtml = `
+                    <div class="mt-1.5 space-y-1">
+                        <div class="flex items-center gap-2 text-[10px]">
+                            <span class="text-gray-500 w-8">Alloc</span>
+                            <div class="flex-1 h-1.5 rounded bg-white/5 overflow-hidden">
+                                <div class="h-full rounded" style="width:${allocPct}%;background:${color};opacity:0.6"></div>
+                            </div>
+                            <span class="text-gray-400 tabular-nums">${allocatedK}K</span>
+                            <span class="${deltaColor} tabular-nums">${deltaSign}${deltaPct}%</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px]">
+                            <span class="text-gray-500 w-8">Used</span>
+                            <div class="flex-1 h-1.5 rounded bg-white/5 overflow-hidden">
+                                <div class="h-full rounded" style="width:${usedBarWidth}%;background:${barColor}"></div>
+                            </div>
+                            <span class="inline-flex items-center gap-1">${statusDot} ${statusText}</span>
+                            <span class="text-gray-500 tabular-nums">${utilPct}%</span>
+                        </div>
+                        ${(condensedBadge || adjTags || reallocBadge) ? `<div class="flex flex-wrap gap-1">${condensedBadge} ${adjTags} ${reallocBadge}</div>` : ''}
+                    </div>`;
+            } else {
+                // Module active in config but not in snapshot (skipped by profile type)
+                overlayHtml = `
+                    <div class="mt-1 text-[10px] text-gray-600 italic">Not applicable to current profile type</div>`;
+            }
+        }
 
         return `
-            <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-                <div class="w-3 h-3 rounded-sm flex-shrink-0" style="background:${color}"></div>
-                <span class="text-sm text-white flex-1 truncate">${formatModuleName(id)}</span>
-                ${isRequired ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">Required</span>' : ''}
-                <span class="text-xs text-gray-400 tabular-nums">${pct}%</span>
-                <span class="text-[10px] text-gray-500">P${m.priority || 50}</span>
+            <div class="px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-sm flex-shrink-0" style="background:${color}"></div>
+                    <span class="text-sm text-white flex-1 truncate">${formatModuleName(id)}</span>
+                    ${isRequired ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">Required</span>' : ''}
+                    <span class="text-xs text-gray-400 tabular-nums">${targetPct}%</span>
+                    <span class="text-[10px] text-gray-500">P${m.priority || 50}</span>
+                </div>
+                ${overlayHtml}
             </div>`;
     }).join('');
 
@@ -155,8 +297,40 @@ function renderContextPanelContent(container, cwt, profile) {
             `).join('')}
         </div>` : '';
 
-    // Last snapshot section
-    const snapshotSection = lastSnapshot ? renderSnapshotSummary(lastSnapshot) : '';
+    // --- Compact summary line (replaces old "Last Query" section) ---
+    let summaryLine = '';
+    if (snapshot) {
+        const totalUsed = snapshot.budget?.used || 0;
+        const totalBudget = snapshot.budget?.available || 1;
+        const totalPct = ((totalUsed / totalBudget) * 100).toFixed(1);
+        const adjList = (snapshot.dynamic_adjustments || []).map(a => a.replace(/_/g, ' ')).join(', ');
+        const condensations = snapshot.condensations || [];
+        const distillations = snapshot.distillation_events || [];
+
+        const reallocations = snapshot.reallocation_events || [];
+
+        const parts = [`${(totalUsed / 1000).toFixed(1)}K / ${(totalBudget / 1000).toFixed(1)}K tokens (${totalPct}%)`];
+        if (adjList) parts.push(`Adjustments: ${adjList}`);
+        if (condensations.length > 0) {
+            parts.push(`${condensations.length} condensation${condensations.length > 1 ? 's' : ''}`);
+        }
+        if (distillations.length > 0) {
+            parts.push(`${distillations.length} distillation${distillations.length > 1 ? 's' : ''}`);
+        }
+        if (reallocations.length > 0) {
+            const recipients = reallocations.filter(r => r.type === 'recipient').length;
+            if (recipients > 0) parts.push(`${recipients} reallocation${recipients > 1 ? 's' : ''}`);
+        }
+
+        summaryLine = `
+            <div class="mt-3 pt-3 border-t border-white/10">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-gray-300">Last Query</span>
+                    <span class="text-[10px] text-gray-500">Turn ${snapshot.turn_number || '?'}</span>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-1">${parts.join(' · ')}</p>
+            </div>`;
+    }
 
     container.innerHTML = `
         <div class="space-y-3">
@@ -171,55 +345,31 @@ function renderContextPanelContent(container, cwt, profile) {
                 </div>
             </div>
 
-            <div class="flex gap-0.5 w-full h-3 rounded overflow-hidden bg-white/5">
-                ${barSegments}
-                <div class="h-full rounded-sm" style="width:${outputReserve}%;background:rgba(255,255,255,0.1)"
-                     title="Output Reserve: ${outputReserve}%"></div>
-            </div>
-            <div class="flex justify-between text-[10px] text-gray-500">
-                <span>Input Budget: ${100 - outputReserve}%</span>
-                <span>Output Reserve: ${outputReserve}%</span>
+            <div>
+                <div class="flex items-center gap-2 mb-0.5">
+                    <span class="text-[10px] text-gray-500 w-10">Target</span>
+                    <div class="flex-1 flex gap-0.5 h-3 rounded overflow-hidden bg-white/5">
+                        ${targetBarSegments}
+                        <div class="h-full rounded-sm" style="width:${outputReserve}%;background:rgba(255,255,255,0.1)"
+                             title="Output Reserve: ${outputReserve}%"></div>
+                    </div>
+                </div>
+                ${actualBarHtml ? `
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-500 w-10">Actual</span>
+                    <div class="flex-1">${actualBarHtml}</div>
+                </div>` : ''}
+                <div class="flex justify-between text-[10px] text-gray-500 mt-1">
+                    <span>Input Budget: ${100 - outputReserve}%</span>
+                    <span>Output Reserve: ${outputReserve}%</span>
+                </div>
             </div>
 
             <div class="space-y-1.5">
                 ${moduleCards}
             </div>
             ${inactiveCards}
-            <div id="context-panel-snapshot">${snapshotSection}</div>
-        </div>`;
-}
-
-/**
- * Render a snapshot summary for the Context panel (after a query completes).
- */
-function renderSnapshotSummary(snapshot) {
-    const used = snapshot.total_used || 0;
-    const budget = snapshot.available_budget || 1;
-    const pct = ((used / budget) * 100).toFixed(1);
-
-    const contribs = (snapshot.contributions || []).map(c => {
-        const color = getModuleColor(c.module_id);
-        const usedK = (c.tokens_used / 1000).toFixed(1);
-        return `<span class="inline-flex items-center gap-1 text-[10px]">
-            <span class="w-2 h-2 rounded-sm" style="background:${color}"></span>
-            ${formatModuleName(c.module_id)}: ${usedK}K
-        </span>`;
-    }).join(' ');
-
-    // Distillation events
-    const distillations = snapshot.distillation_events || [];
-    const distillationLine = distillations.length > 0
-        ? `<div class="text-[10px] text-cyan-400/70 mt-1">Distilled: ${distillations.length} result set${distillations.length > 1 ? 's' : ''} (${distillations.map(d => `${(d.row_count || 0).toLocaleString()} rows`).join(', ')})</div>`
-        : '';
-
-    return `
-        <div class="mt-3 pt-3 border-t border-white/10">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-300">Last Query</span>
-                <span class="text-xs text-gray-400 tabular-nums">${(used / 1000).toFixed(1)}K / ${(budget / 1000).toFixed(1)}K tokens (${pct}%)</span>
-            </div>
-            <div class="flex flex-wrap gap-2">${contribs}</div>
-            ${distillationLine}
+            ${summaryLine}
         </div>`;
 }
 
@@ -236,18 +386,18 @@ export function renderContextWindowSnapshot(snapshot) {
     // Also update the Resource Panel's "Last Query" section if visible
     _refreshSnapshotInPanel();
 
-    const used = snapshot.total_used || 0;
-    const budget = snapshot.available_budget || 1;
+    const used = snapshot.budget?.used || 0;
+    const budget = snapshot.budget?.available || 1;
     const pct = ((used / budget) * 100).toFixed(1);
-    const typeName = snapshot.context_window_type_name || 'Unknown';
+    const typeName = snapshot.context_window_type?.name || 'Unknown';
 
     // Build compact bar segments
     const contribs = snapshot.contributions || [];
     const barSegments = contribs.map(c => {
         const color = getModuleColor(c.module_id);
-        const widthPct = budget > 0 ? ((c.tokens_used / budget) * 100).toFixed(1) : 0;
+        const widthPct = budget > 0 ? ((c.used / budget) * 100).toFixed(1) : 0;
         const label = formatModuleName(c.module_id);
-        const tokensK = (c.tokens_used / 1000).toFixed(1);
+        const tokensK = (c.used / 1000).toFixed(1);
         return `<div class="h-2 rounded-sm" style="width:${widthPct}%;background:${color};min-width:2px"
                      title="${label}: ${tokensK}K tokens"></div>`;
     }).join('');
@@ -256,7 +406,7 @@ export function renderContextWindowSnapshot(snapshot) {
     const condensations = snapshot.condensations || [];
     const condensedText = condensations.length > 0
         ? condensations.map(c =>
-            `${formatModuleName(c.module_id)} (${c.strategy}, saved ${((c.tokens_before - c.tokens_after) / 1000).toFixed(1)}K)`
+            `${formatModuleName(c.module_id)} (${c.strategy}, saved ${((c.before - c.after) / 1000).toFixed(1)}K)`
         ).join(', ')
         : '';
 
@@ -270,11 +420,26 @@ export function renderContextWindowSnapshot(snapshot) {
            </div>`
         : '';
 
+    // Reallocation events (Pass 3b surplus redistribution)
+    const reallocations = snapshot.reallocation_events || [];
+    const donorModules = reallocations.filter(r => r.type === 'donor');
+    const recipientModules = reallocations.filter(r => r.type === 'recipient');
+    let reallocationHtml = '';
+    if (recipientModules.length > 0) {
+        const totalSurplus = donorModules.reduce((sum, d) => sum + (d.tokens || 0), 0);
+        const recipientDesc = recipientModules.map(r =>
+            `${formatModuleName(r.module_id)} (+${((r.tokens || 0) / 1000).toFixed(1)}K)`
+        ).join(', ');
+        reallocationHtml = `<div class="text-[10px] text-cyan-300/70 mt-1.5">
+            Reallocated: ${(totalSurplus / 1000).toFixed(1)}K surplus → ${recipientDesc}
+        </div>`;
+    }
+
     // Build labels row
     const labels = contribs.map(c => {
         const color = getModuleColor(c.module_id);
         const shortName = c.label || formatModuleName(c.module_id);
-        const tokensK = (c.tokens_used / 1000).toFixed(1);
+        const tokensK = (c.used / 1000).toFixed(1);
         return `<span class="text-[10px] text-gray-400" style="color:${color}">${shortName}(${tokensK}K)</span>`;
     }).join(' ');
 
@@ -292,18 +457,28 @@ export function renderContextWindowSnapshot(snapshot) {
             </div>
             ${condensedText ? `<div class="text-[10px] text-yellow-400/70 mt-1.5">Condensed: ${escapeHtml(condensedText)}</div>` : ''}
             ${distillationHtml}
+            ${reallocationHtml}
         </div>`;
 }
 
 /**
- * Refresh the "Last Query" snapshot section in the Resource Panel context tab.
+ * Refresh the Resource Panel context tab with latest snapshot overlay.
  * Called after a new context_window_snapshot SSE event arrives.
+ * Only updates when the Context tab is visible to avoid wasted work.
  */
 function _refreshSnapshotInPanel() {
     if (!lastSnapshot) return;
-    const el = document.getElementById('context-panel-snapshot');
-    if (!el) return;
-    el.innerHTML = renderSnapshotSummary(lastSnapshot);
+    const panel = document.getElementById('context-panel');
+    if (!panel || panel.style.display === 'none') return;
+
+    const container = document.getElementById('context-panel-content');
+    if (!container) return;
+
+    if (lastCwt && lastProfile) {
+        renderContextPanelContent(container, lastCwt, lastProfile);
+    } else {
+        loadContextPanel();
+    }
 }
 
 /**

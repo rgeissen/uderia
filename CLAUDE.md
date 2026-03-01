@@ -418,6 +418,67 @@ Files: `src/trusted_data_agent/agent/executor.py`, `planner.py`, `phase_executor
 
 The platform maintains sophisticated context window management to optimize token usage, ensure data isolation, and enable multi-turn conversations.
 
+**Budget-Aware Context Window Orchestrator:**
+
+The context window is managed by a modular orchestrator that runs a **five-pass assembly** on every LLM call:
+
+| Pass | Name | Purpose |
+|------|------|---------|
+| 1 | Resolve | Determine active modules based on profile type and CW type config |
+| 2 | Dynamic Adjustments | Apply runtime condition-based rules (first_turn, no_documents, etc.) |
+| 3 | Allocate & Assemble | Allocate token budgets and call each module's `contribute()` |
+| 3b | Reallocate Surplus | Redistribute unused budget from low-utilization to high-utilization modules |
+| 4 | Condense | If over budget, condense lowest-priority modules first |
+
+**9 Builtin Modules:**
+
+| Module | Purpose | Applies To |
+|--------|---------|------------|
+| `system_prompt` | LLM system prompt | All |
+| `tool_definitions` | MCP tool schemas | tool_enabled |
+| `conversation_history` | Budget-aware chat history (replaces hardcoded [-10:]) | All |
+| `rag_context` | Retrieved champion cases for planner | tool_enabled |
+| `knowledge_context` | Knowledge repository documents | tool_enabled, llm_only, rag_focused |
+| `plan_hydration` | Previous turn results injection | tool_enabled |
+| `document_context` | Uploaded document text | tool_enabled, llm_only, rag_focused |
+| `component_instructions` | Component tool instructions (chart, canvas) | All |
+| `workflow_history` | Cross-turn execution traces | tool_enabled |
+
+**Context Window Types:**
+
+4 predefined types control per-module budget allocation, condensation order, and dynamic adjustment rules:
+- **Balanced** (`cwt-default-balanced`) — Default, even distribution across all modules
+- **Knowledge-Heavy** (`cwt-knowledge-heavy`) — Prioritizes knowledge retrieval
+- **Conversation-First** (`cwt-conversation-first`) — Maximizes conversation history
+- **Token-Efficient** (`cwt-token-efficient`) — Minimal viable context
+
+Profiles bind to a CW type via `contextWindowTypeId`. Admin UI: Setup → Configuration → Context Window tab.
+
+**Token Estimation:**
+
+Uses tiktoken (`cl100k_base` BPE tokenizer) for accurate token counting during budget allocation. Lazy-loaded with graceful fallback to `len(text)/4` heuristic if tiktoken is unavailable.
+
+**Observability:**
+
+Every LLM call emits a `context_window_snapshot` SSE event showing:
+- Per-module allocation, usage, and utilization percentage
+- Dynamic adjustments that fired
+- Condensation events (strategy, tokens saved)
+- Total budget utilization
+
+Rendered in the Live Status panel as a color-coded stacked bar chart.
+
+**ContextBuilder (tool_enabled bridge):**
+
+For `tool_enabled` profiles, the `ContextBuilder` bridges module output to planner/executor prompt templates. It maps module content to template variables (`{tools_context}`, `{prompts_context}`, etc.) and provides format adapters for different LLM call types (strategic, tactical, synthesis, utility).
+
+**REST API (8 endpoints):**
+- `GET/POST /v1/context-window-types` — List / create types
+- `GET/PUT/DELETE /v1/context-window-types/{id}` — Read / update / delete type
+- `GET /v1/context-window/modules` — List installed modules
+- `POST /v1/context-window/modules/{id}/purge` — Purge module cache
+- `GET /v1/context-window/active/{profile_id}` — Get resolved type for profile
+
 **Three-History System:**
 Each session maintains three synchronized histories:
 - **`chat_object`**: Plain text for LLM context (what gets sent to providers)
@@ -430,33 +491,38 @@ Each session maintains three synchronized histories:
 
 **Implemented Optimizations:**
 
-| Optimization | Mechanism | Savings |
-|--------------|-----------|---------|
-| Tool condensation | Names-only after first turn | 60-70% of tool context |
-| History condensation | Remove duplicates, clean capabilities | 10-20% of history |
-| Context distillation | Summarize large tool outputs (>500 rows) | 99%+ of large results |
-| Plan hydration | Inject previous results, skip re-fetch | 30-50% on multi-turn |
-
-**Profile-Specific Context:**
-
-| Profile Type | Context Strategy |
-|--------------|------------------|
-| `tool_enabled` | Full tools + RAG cases + workflow history |
-| `llm_only` | Empty tools, session history only |
-| `rag_focused` | No tools, mandatory knowledge retrieval |
-| `genie` | Child profile descriptions, limited parent history |
+| Optimization | Mechanism | Module |
+|--------------|-----------|--------|
+| Tool condensation | Names-only after first turn | `tool_definitions` |
+| History truncation | Budget-aware sliding window | `conversation_history` |
+| Context distillation | Summarize large tool outputs (>500 rows) | `distiller.py` |
+| Plan hydration | Inject previous results, skip re-fetch | `plan_hydration` |
+| Dynamic adjustments | Transfer budget based on runtime conditions | Orchestrator |
+| Surplus reallocation | Redistribute unused budget to active modules | Orchestrator |
 
 **Token Tracking:**
 - Actual tokens extracted from LLM provider responses (not pre-estimated)
 - Per-turn and per-session accumulation
 - Cost calculation with provider-specific pricing
 
-**Future: IFOC Methodology Context Isolation (P0 Enterprise)**
-Planned feature for isolated context windows per methodology phase (Ideate/Focus/Operate/Complete) to ensure data sovereignty. When transitioning between phases (especially backward transitions), earlier phases remain pristine without visibility into later phase artifacts.
-
 **Detailed Documentation:** [docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)
 
-Files: `src/trusted_data_agent/llm/handler.py`, `core/session_manager.py`, `agent/executor.py`
+**Key Files:**
+
+| File | Purpose |
+|------|---------|
+| `components/builtin/context_window/handler.py` | Orchestrator (five-pass assembly) |
+| `components/builtin/context_window/context_builder.py` | ContextBuilder bridge for tool_enabled |
+| `components/builtin/context_window/base.py` | ContextModule ABC, AssemblyContext, Contribution |
+| `components/builtin/context_window/module_registry.py` | Module discovery and loading |
+| `components/builtin/context_window/snapshot.py` | Observability metrics and SSE events |
+| `components/builtin/context_window/token_estimator.py` | tiktoken integration |
+| `components/builtin/context_window/distiller.py` | Configurable data distillation |
+| `components/builtin/context_window/modules/` | 9 builtin module handlers |
+| `src/trusted_data_agent/agent/executor.py` | Integration: `_run_context_window_assembly()` |
+| `src/trusted_data_agent/agent/execution_service.py` | Genie integration |
+| `static/js/handlers/contextWindowHandler.js` | Admin UI for CW types |
+| `static/js/handlers/contextPanelHandler.js` | Live Status snapshot rendering |
 
 #### 6.1. Date Range Orchestrator
 

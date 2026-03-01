@@ -109,6 +109,10 @@ class ContextWindowSnapshot:
     condensations: List[CondensationEvent] = field(default_factory=list)
     """Condensation operations that occurred during Pass 4."""
 
+    # --- Surplus reallocation events ---
+    reallocation_events: List[Dict[str, Any]] = field(default_factory=list)
+    """Surplus reallocation from Pass 3b (donor→recipient budget redistribution)."""
+
     # --- Intra-turn distillation events ---
     distillation_events: List[Dict[str, Any]] = field(default_factory=list)
     """Distillation events from tactical planning (large tool results → metadata)."""
@@ -173,6 +177,7 @@ class ContextWindowSnapshot:
                 }
                 for e in self.condensations
             ],
+            "reallocation_events": self.reallocation_events,
             "distillation_events": self.distillation_events,
             "dynamic_adjustments": self.dynamic_adjustments_fired,
             "resolution": {

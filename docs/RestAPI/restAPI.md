@@ -9320,6 +9320,55 @@ curl -X PUT "http://localhost:5050/api/v1/profiles/$PROFILE_ID" \
 
 ---
 
+#### 3.24.10. Session Context Analytics
+
+**Endpoint:** `GET /v1/sessions/{session_id}/context-analytics`
+
+**Purpose:** Get context window utilization analytics for a specific session. Extracts per-turn snapshot data from workflow history for visualization in the admin UI dashboard.
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "session_id": "c8416070-...",
+  "session_name": "My Session",
+  "turn_count": 5,
+  "context_window_type": { "id": "cwt-default-balanced", "name": "Balanced" },
+  "turns": [
+    {
+      "turn_number": 1,
+      "profile_type": "tool_enabled",
+      "budget": { "model_limit": 1048576, "available": 922746, "used": 3147, "utilization_pct": 0.3 },
+      "modules": [
+        { "module_id": "system_prompt", "allocated": 92274, "used": 760, "utilization_pct": 0.8, "condensed": false }
+      ],
+      "condensation_count": 0,
+      "dynamic_adjustments": ["first_turn", "no_documents_attached"]
+    }
+  ],
+  "aggregates": {
+    "avg_utilization_pct": 12.3,
+    "max_utilization_pct": 45.2,
+    "total_condensations": 3,
+    "module_avg_utilization": { "system_prompt": 0.8, "tool_definitions": 62.1 },
+    "module_condensation_count": { "conversation_history": 2 },
+    "adjustment_frequency": { "first_turn": 1, "no_documents_attached": 5 }
+  }
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `404` | Session not found |
+
+**Notes:**
+- Sessions without context window data (legacy sessions or profiles that don't produce snapshots) return `turn_count: 0` with empty `turns` array
+- The endpoint reads from workflow history stored in session files — no cross-session scanning
+
+---
+
 ## 4. Data Models
 
 ### 4.1. The Task Object

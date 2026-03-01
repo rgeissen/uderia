@@ -79,7 +79,8 @@ class ConversationAgentExecutor:
         turn_number: Optional[int] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
-        canvas_context: Optional[str] = None
+        canvas_context: Optional[str] = None,
+        component_instructions: Optional[str] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -104,6 +105,7 @@ class ConversationAgentExecutor:
             provider: Optional provider name for event tracking (dual-model feature)
             model: Optional model name for event tracking (dual-model feature)
             canvas_context: Optional formatted canvas context string for bidirectional context
+            component_instructions: Optional pre-computed component instructions from CW module
         """
         self.profile = profile
         self.profile_id = profile.get("id")
@@ -120,6 +122,7 @@ class ConversationAgentExecutor:
         self.document_context = document_context
         self.multimodal_content = multimodal_content
         self.canvas_context = canvas_context
+        self.component_instructions = component_instructions
         self.turn_number = turn_number
         self.provider = provider or "Unknown"
         self.model = model or "Unknown"
@@ -224,9 +227,11 @@ class ConversationAgentExecutor:
         ])
         prompt = prompt.replace("{tools_context}", f"AVAILABLE TOOLS:\n{tool_descriptions}")
 
-        # Inject component instructions
-        from trusted_data_agent.components.manager import get_component_instructions_for_prompt
-        comp_section = get_component_instructions_for_prompt(self.profile_id, self.user_uuid)
+        # Inject component instructions (use pre-computed from CW module if available)
+        comp_section = self.component_instructions
+        if comp_section is None:
+            from trusted_data_agent.components.manager import get_component_instructions_for_prompt
+            comp_section = get_component_instructions_for_prompt(self.profile_id, self.user_uuid)
         prompt = prompt.replace("{component_instructions_section}", comp_section)
 
         # Inject knowledge context if available

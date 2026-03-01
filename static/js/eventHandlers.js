@@ -27,6 +27,7 @@ import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowMan
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
+import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
 let _kgAnimBridge = null;
@@ -3729,6 +3730,15 @@ export function initializeEventListeners() {
         });
     }
 
+    // Context Window Analytics button in Live Status header
+    if (DOM.cwAnalyticsButton) {
+        DOM.cwAnalyticsButton.addEventListener('click', () => {
+            if (!state.currentSessionId) return;
+            const sessionName = DOM.activeSessionTitle?.textContent || 'Current Session';
+            openContextAnalyticsModal(state.currentSessionId, sessionName);
+        });
+    }
+
 
     DOM.mainContent.addEventListener('click', (e) => {
         const runButton = e.target.closest('.run-prompt-button');
@@ -3798,6 +3808,7 @@ export function initializeEventListeners() {
         const editButton = e.target.closest('.session-edit-button');
         const deleteButton = e.target.closest('.session-delete-button');
         const copyButton = e.target.closest('.session-copy-button');
+        const analyticsButton = e.target.closest('.session-analytics-button');
 
         if (deleteButton) {
             handleDeleteSessionClick(deleteButton);
@@ -3817,6 +3828,11 @@ export function initializeEventListeners() {
             }).catch(err => {
                 console.error('Failed to copy session ID: ', err);
             });
+        } else if (analyticsButton) {
+            e.stopPropagation();
+            const sessionId = sessionItem.dataset.sessionId;
+            const sessionName = sessionItem.querySelector('.session-name-span')?.textContent || 'Session';
+            openContextAnalyticsModal(sessionId, sessionName);
         } else if (!sessionItem.querySelector('.session-edit-input')) {
             handleLoadSession(sessionItem.dataset.sessionId);
         }
