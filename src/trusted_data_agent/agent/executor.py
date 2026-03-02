@@ -647,6 +647,7 @@ class PlanExecutor:
         self.knowledge_retrieval_event = None  # Store the knowledge retrieval event for replay
         # --- PHASE 2 END ---
         self.context_window_snapshot_event = None  # Store context window snapshot for historical replay
+        self.strategic_context_snapshot_event = None  # Per-call strategic snapshot from planner for reload
         self._context_distiller = None  # Lazily initialised from context window type config
         self._distillation_events = []  # Accumulates distillation events across all phases for snapshot
         self.context_builder = None  # ContextBuilder — lazily initialised from context window assembly
@@ -5490,6 +5491,7 @@ The following domain knowledge may be relevant to this conversation:
                     "kg_enrichment_event": self.kg_enrichment_event,  # KG context injection event for replay
                     # --- PHASE 2 END ---
                     "context_window_snapshot_event": self._snapshot_with_distillation_events(),  # Context window budget snapshot for replay
+                    "strategic_context_snapshot_event": self.strategic_context_snapshot_event,  # Per-call strategic snapshot for reload
                     # Status fields for consistency with partial turn data
                     "status": "success",
                     "is_partial": False,
@@ -5609,6 +5611,7 @@ The following domain knowledge may be relevant to this conversation:
                 "knowledge_accessed": getattr(self, 'knowledge_accessed', []),
                 "knowledge_retrieval_event": getattr(self, 'knowledge_retrieval_event', None),
                 "context_window_snapshot_event": self._snapshot_with_distillation_events(),
+                "strategic_context_snapshot_event": getattr(self, 'strategic_context_snapshot_event', None),
                 "tool_enabled_events": getattr(self, 'tool_enabled_events', []),  # Partial lifecycle events for tool_enabled profiles
                 # Status fields for partial data
                 "status": status,  # "cancelled" or "error"

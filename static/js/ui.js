@@ -107,6 +107,121 @@ function getEventCategory(eventType) {
     return EVENT_CATEGORY_MAP[eventType] || 'success';
 }
 
+// ============================================================================
+// EVENT FILTER CATEGORY SYSTEM
+// Maps (source, type) to one of 7 filter categories for the header filter chips.
+// This is separate from EVENT_CATEGORY_MAP which controls visual styling.
+// ============================================================================
+
+/**
+ * Determine the filter category for an event based on its source and type.
+ * @param {string} source - The event source (rest, genie, conversation_agent, etc.)
+ * @param {string} type - The event type (phase_start, tool_intent, etc.)
+ * @returns {string} The filter category name
+ */
+function getFilterCategory(source, type) {
+    // Source-level routing (highest priority)
+    if (source === 'context_window') return 'context';
+    if (source === 'genie') return 'coordination';
+    if (source === 'conversation_agent') return 'agent';
+    if (source === 'knowledge_retrieval') return 'knowledge';
+    if (source === 'session_name') return 'system';
+    if (source === 'skills') return 'system';
+    if (source === 'extension') return 'system';
+    if (source === 'lifecycle') return 'system';
+
+    // Type-level routing for rest/interactive sources
+    if (source === 'rest' || source === 'interactive') {
+        if (type === 'phase_start' || type === 'phase_end' ||
+            type === 'plan_generated' || type === 'plan_optimization') {
+            return 'planning';
+        }
+        if (type === 'tool_intent' || type === 'tool_result' ||
+            type === 'tool_error' || type === 'workaround') {
+            return 'tool-execution';
+        }
+        if (type === 'context_optimization' || type === 'context_window_snapshot') {
+            return 'context';
+        }
+        if (type?.startsWith('knowledge_') || type === 'rag_llm_step' ||
+            type === 'kg_enrichment' || type === 'llm_execution' ||
+            type === 'llm_execution_complete') {
+            return 'knowledge';
+        }
+        if (type?.startsWith('conversation_') || type === 'component_llm_resolution') {
+            return 'agent';
+        }
+    }
+
+    return 'system';
+}
+
+/**
+ * Check if a given filter category is currently enabled (visible).
+ * @param {string} category - The filter category name
+ * @returns {boolean} True if the category is enabled
+ */
+function isFilterCategoryEnabled(category) {
+    return state.eventFilterState[category] !== false;
+}
+
+/**
+ * Toggle visibility of events matching a filter category.
+ * Updates chip UI, persists to localStorage, and applies to DOM.
+ * @param {string} category - The filter category to toggle
+ */
+export function toggleEventFilter(category) {
+    const isNowEnabled = !state.eventFilterState[category];
+    state.eventFilterState[category] = isNowEnabled;
+
+    // Update chip UI
+    const chip = document.querySelector(`.event-filter-chip[data-filter="${category}"]`);
+    if (chip) {
+        chip.classList.toggle('active', isNowEnabled);
+    }
+
+    // Persist to localStorage
+    try {
+        localStorage.setItem('uderia_event_filter_state', JSON.stringify(state.eventFilterState));
+    } catch (e) { /* ignore storage errors */ }
+
+    applyEventFilterToDOM();
+}
+
+/**
+ * Apply the current filter state to all event steps in the status window.
+ * Adds/removes 'event-filtered-hidden' CSS class based on data-filter-category.
+ * Called after filter toggle AND after reload rendering completes.
+ */
+export function applyEventFilterToDOM() {
+    const container = DOM.statusWindowContent;
+    if (!container) return;
+
+    const allTagged = container.querySelectorAll('[data-filter-category]');
+    allTagged.forEach(el => {
+        const category = el.dataset.filterCategory;
+        if (category && state.eventFilterState[category] === false) {
+            el.classList.add('event-filtered-hidden');
+        } else {
+            el.classList.remove('event-filtered-hidden');
+        }
+    });
+}
+
+/**
+ * Sync filter chip UI with persisted state on page load.
+ * Ensures chips reflect previously disabled categories.
+ */
+export function syncFilterChipsWithState() {
+    const chips = document.querySelectorAll('.event-filter-chip');
+    chips.forEach(chip => {
+        const category = chip.dataset.filter;
+        if (category) {
+            chip.classList.toggle('active', state.eventFilterState[category] !== false);
+        }
+    });
+}
+
 /**
  * Get the color for a profile tag based on its profile type.
  * @param {string} profileTag - The profile tag (e.g., 'OPTIM', 'GENIE')
@@ -549,7 +664,7 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
  * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
  */
-export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, kgEnrichmentEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = []) {
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, kgEnrichmentEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = [], contextWindowSnapshotHtml = null, strategicSnapshotHtml = null) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
     state.isInFastPath = false; // Reset fast path flag
@@ -568,6 +683,16 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     const subStartEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_start' && e.metadata?.execution_depth > 0);
     const subCompleteEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_complete' && e.metadata?.execution_depth > 0);
 
+    // Render budget allocation context window snapshot at the top (before execution_start)
+    if (contextWindowSnapshotHtml) {
+        _renderStandardStep({
+            step: 'Context Window Assembly',
+            details: contextWindowSnapshotHtml,
+            type: 'context_window_snapshot',
+            _filterCategory: 'context'
+        }, DOM.statusWindowContent, true);
+    }
+
     // Render depth=0 execution_start at the top (parent executor bookend)
     for (const startEvent of depth0StartEvents) {
         const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
@@ -577,7 +702,18 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             step: stepTitle,
             details: startEvent.payload,
             type: 'execution_start',
-            metadata: startEvent.metadata
+            metadata: startEvent.metadata,
+            _filterCategory: 'system'
+        }, DOM.statusWindowContent, true);
+    }
+
+    // Render strategic per-call context snapshot (after execution_start, before planning events)
+    if (strategicSnapshotHtml) {
+        _renderStandardStep({
+            step: 'Context Assembly (Strategic)',
+            details: strategicSnapshotHtml,
+            type: 'context_window_snapshot',
+            _filterCategory: 'context'
         }, DOM.statusWindowContent, true);
     }
 
@@ -596,7 +732,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         _renderConversationAgentStep({
             step: stepTitle,
             details: knowledgeRetrievalEvent,
-            type: eventType
+            type: eventType,
+            _filterCategory: 'knowledge'
         }, DOM.statusWindowContent, false);
     }
     // --- PHASE 2 END ---
@@ -608,7 +745,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         _renderConversationAgentStep({
             step: `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`,
             details: kgEnrichmentEvent,
-            type: 'kg_enrichment'
+            type: 'kg_enrichment',
+            _filterCategory: 'knowledge'
         }, DOM.statusWindowContent, false);
     }
 
@@ -645,6 +783,10 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
 
             const phaseContainer = document.createElement('details');
             phaseContainer.className = 'status-phase-container';
+            phaseContainer.dataset.filterCategory = 'planning';
+            if (!isFilterCategoryEnabled('planning')) {
+                phaseContainer.classList.add('event-filtered-hidden');
+            }
             // Collapsed by default — user can expand to inspect details
             phaseContainer.open = false;
 
@@ -703,7 +845,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     step: stepTitle,
                     details: startEvent.payload,
                     type: 'execution_start',
-                    metadata: startEvent.metadata
+                    metadata: startEvent.metadata,
+                    _filterCategory: 'system'
                 }, _getPhaseTarget(), true);
             }
             _subStartRendered = true;
@@ -719,7 +862,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                     step: stepTitle,
                     details: completeEvent.payload,
                     type: 'execution_complete',
-                    metadata: completeEvent.metadata
+                    metadata: completeEvent.metadata,
+                    _filterCategory: 'system'
                 }, _getPhaseTarget(), true);
             }
             _subCompleteRendered = true;
@@ -730,12 +874,17 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
         let eventData = {};
 
         if (traceEntry.action && traceEntry.action.tool_name === 'TDA_SystemLog') {
-            // This is a system event (plan_generated, system_message, workaround, etc.)
+            // Skip context_window_snapshot — handled separately by _renderContextWindowSnapshotForReload()
+            // which uses the structured payload for rich visualization (trace only has plain text details)
             const metadata = traceEntry.action.metadata || {};
+            if (metadata.type === 'context_window_snapshot') return;
+
+            // This is a system event (plan_generated, system_message, workaround, etc.)
             eventData = {
                 step: traceEntry.action.arguments.message,
                 details: traceEntry.action.arguments.details,
                 type: metadata.type,
+                _filterCategory: getFilterCategory('rest', metadata.type),
                 metadata: {
                     execution_depth: metadata.execution_depth
                 }
@@ -749,6 +898,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                 step: `Tool Execution Intent`,
                 details: traceEntry.action,
                 type: 'tool_intent',
+                _filterCategory: 'tool-execution',
                 metadata: {
                     execution_depth: metadata.execution_depth
                 }
@@ -756,10 +906,12 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             _renderStandardStep(intentEventData, _getPhaseTarget(), true);
 
             // Render result
+            const resultType = traceEntry.result.status === 'error' ? 'tool_error' : 'tool_result';
             const resultEventData = {
                 step: `Tool Execution Result`,
                 details: traceEntry.result,
-                type: traceEntry.result.status === 'error' ? 'tool_error' : 'tool_result',
+                type: resultType,
+                _filterCategory: 'tool-execution',
                 metadata: {
                     execution_depth: metadata.execution_depth
                 }
@@ -785,7 +937,8 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                 step: stepTitle,
                 details: completeEvent.payload,
                 type: 'execution_complete',
-                metadata: completeEvent.metadata
+                metadata: completeEvent.metadata,
+                _filterCategory: 'system'
             }, _getPhaseTarget(), true);
         }
     }
@@ -806,6 +959,9 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             if (!eventData.type && event.type) {
                 eventData.type = event.type;
             }
+
+            // Skip context_window_snapshot — handled separately by _renderContextWindowSnapshotForReload()
+            if (eventData.type === 'context_window_snapshot') return;
 
             // --- SKIP REDUNDANT RAG SYNTHESIS PREVIEW EVENT ---
             // Skip the system_message that fires BEFORE LLM call (no data)
@@ -836,6 +992,11 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                 }
             }
             // --- END HARMONIZATION ---
+
+            // Tag with filter category for event filter chips
+            if (!eventData._filterCategory) {
+                eventData._filterCategory = getFilterCategory('rest', eventData.type);
+            }
 
             // Use standard renderer for system events
             _renderStandardStep(eventData, DOM.statusWindowContent, isFinal);
@@ -877,13 +1038,15 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
                 step: stepTitle,
                 details: completeEvent.payload,
                 type: 'execution_complete',
-                metadata: completeEvent.metadata
+                metadata: completeEvent.metadata,
+                _filterCategory: 'system'
             }, DOM.statusWindowContent, true);
         }
     } else if (durationMs > 0) {
         // Fallback for old sessions without tool_enabled_events
         const summaryCard = document.createElement('div');
         summaryCard.className = 'status-step p-3 rounded-md mb-2 completed lifecycle';
+        summaryCard.dataset.filterCategory = 'system';
 
         const durationSec = (durationMs / 1000).toFixed(1);
         const phaseCount = (originalPlan || []).length;
@@ -1842,6 +2005,15 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
 
     const stepEl = document.createElement('div');
     stepEl.className = 'status-step p-3 rounded-md mb-2 genie-status-step';
+
+    // Tag with filter category for event filter chips
+    if (eventData._filterCategory) {
+        stepEl.dataset.filterCategory = eventData._filterCategory;
+        if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+            stepEl.classList.add('event-filtered-hidden');
+        }
+    }
+
     if (isFinal) {
         stepEl.classList.add('completed');
     } else {
@@ -2272,6 +2444,7 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
  * Uses the same rendering logic as live execution for consistent UX.
  */
 export function renderGenieStepForReload(eventData, parentContainer, isFinal = false) {
+    if (!eventData._filterCategory) eventData._filterCategory = 'coordination';
     _renderGenieStep(eventData, parentContainer, isFinal);
 }
 
@@ -2449,6 +2622,14 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
 
     const stepEl = document.createElement('div');
     stepEl.className = 'status-step p-3 rounded-md mb-2 conversation-agent-status-step';
+
+    // Tag with filter category for event filter chips
+    if (eventData._filterCategory) {
+        stepEl.dataset.filterCategory = eventData._filterCategory;
+        if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+            stepEl.classList.add('event-filtered-hidden');
+        }
+    }
 
     // Add data attributes for tool matching during live execution
     // This allows completion events to find the correct executing step when multiple tools run in parallel
@@ -3224,7 +3405,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
  * Exported wrapper for rendering conversation agent events during session reload.
  * Uses the same rendering logic as live execution for consistent UX.
  */
-export function renderConversationAgentStepForReload(eventData, parentContainer, isFinal = false) {
+export function renderConversationAgentStepForReload(eventData, parentContainer, isFinal = false, filterCategory = null) {
+    if (filterCategory) eventData._filterCategory = filterCategory;
     _renderConversationAgentStep(eventData, parentContainer, isFinal);
 }
 
@@ -3357,6 +3539,10 @@ function _ensureExtensionDivider(parentContainer) {
     const divider = document.createElement('div');
     divider.className = 'px-4 py-2 mt-2 border-t';
     divider.style.borderColor = 'rgba(251, 191, 36, 0.3)';
+    divider.dataset.filterCategory = 'system';
+    if (!isFilterCategoryEnabled('system')) {
+        divider.classList.add('event-filtered-hidden');
+    }
     divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #fbbf24;">Extensions</span>`;
     parentContainer.appendChild(divider);
     _extensionDividerAdded = true;
@@ -3367,11 +3553,22 @@ function _renderExtensionStep(eventData, parentContainer) {
 
     _ensureExtensionDivider(parentContainer);
 
+    // Helper: tag extension step elements with filter category
+    const _tagFilterCategory = (el) => {
+        if (eventData._filterCategory) {
+            el.dataset.filterCategory = eventData._filterCategory;
+            if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+                el.classList.add('event-filtered-hidden');
+            }
+        }
+    };
+
     if (type === 'extension_running') {
         // Start event — amber play icon
         const payload = typeof details === 'string' ? {} : (details || {});
         const stepEl = document.createElement('div');
         stepEl.className = 'px-4 py-2 status-step';
+        _tagFilterCategory(stepEl);
         stepEl.innerHTML = `
             <div class="flex items-center gap-2">
                 <span class="text-xs" style="color: #fbbf24;">&#9654;</span>
@@ -3408,6 +3605,7 @@ function _renderExtensionStep(eventData, parentContainer) {
 
         const stepEl = document.createElement('div');
         stepEl.className = 'px-4 py-2 status-step';
+        _tagFilterCategory(stepEl);
         stepEl.innerHTML = `
             <div class="flex items-center gap-2">
                 <span class="${color} text-xs">${icon}</span>
@@ -3449,6 +3647,10 @@ function _ensureSkillDivider(parentContainer) {
     const divider = document.createElement('div');
     divider.className = 'px-4 py-2 mt-2 border-t';
     divider.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+    divider.dataset.filterCategory = 'system';
+    if (!isFilterCategoryEnabled('system')) {
+        divider.classList.add('event-filtered-hidden');
+    }
     divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #34d399;">Skills</span>`;
     parentContainer.appendChild(divider);
     _skillDividerAdded = true;
@@ -3472,6 +3674,13 @@ function _renderSkillStep(eventData, parentContainer) {
 
         const stepEl = document.createElement('div');
         stepEl.className = 'px-4 py-2 status-step';
+        // Tag with filter category for event filter chips
+        if (eventData._filterCategory) {
+            stepEl.dataset.filterCategory = eventData._filterCategory;
+            if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+                stepEl.classList.add('event-filtered-hidden');
+            }
+        }
         stepEl.innerHTML = `
             <div class="flex items-center gap-2">
                 <span class="text-xs" style="color: #34d399;">&#10038;</span>
@@ -3534,6 +3743,14 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
     const stepEl = document.createElement('div');
     stepEl.id = `status-step-${state.currentStatusId}`;
     stepEl.className = 'status-step p-3 rounded-md mb-2'; // Added mb-2 for spacing
+
+    // Tag with filter category for event filter chips
+    if (eventData._filterCategory) {
+        stepEl.dataset.filterCategory = eventData._filterCategory;
+        if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+            stepEl.classList.add('event-filtered-hidden');
+        }
+    }
 
     // Apply depth-based indentation for sub-executor events
     const depth = eventData.metadata?.execution_depth || eventData.details?.execution_depth || 0;
@@ -3792,6 +4009,9 @@ function _formatStatusTitle(profileType, isLive = true) {
 export function updateStatusWindow(eventData, isFinal = false, source = 'interactive', taskId = null) {
     const { step, details, type, metadata } = eventData;
 
+    // Compute and attach filter category for DOM tagging by renderers
+    eventData._filterCategory = getFilterCategory(source, type);
+
     const statusTitle = DOM.statusTitle || document.getElementById('status-title');
 
     if (source === 'rest' && taskId) {
@@ -4005,6 +4225,10 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
 
         const phaseContainer = document.createElement('details');
         phaseContainer.className = 'status-phase-container';
+        phaseContainer.dataset.filterCategory = 'planning';
+        if (!isFilterCategoryEnabled('planning')) {
+            phaseContainer.classList.add('event-filtered-hidden');
+        }
         // Collapsed by default — user can expand to inspect details
         phaseContainer.open = false;
 

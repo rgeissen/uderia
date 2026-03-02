@@ -799,36 +799,23 @@
                                 <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                             </button>
                         </header>
-                        <!-- Show Utility Sessions Toggle (only visible if utility sessions exist) -->
-                        <div id="sidebar-show-utility-sessions-container" class="hidden px-4 py-2 border-b border-white/10">
-                            <label class="flex items-center gap-2 cursor-pointer group">
-                                <label class="ind-toggle ind-toggle--sm">
-                                    <input type="checkbox" id="sidebar-show-utility-sessions-toggle" checked>
-                                    <span class="ind-track"></span>
-                                </label>
-                                <div class="flex items-center gap-1.5">
-                                    <svg class="w-3.5 h-3.5 text-purple-400 group-hover:text-purple-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    </svg>
-                                    <span class="text-xs text-gray-300 group-hover:text-white transition-colors">Show Utility</span>
-                                </div>
-                            </label>
-                        </div>
-                        <!-- Show Archived Sessions Toggle -->
-                        <div id="sidebar-show-archived-sessions-container" class="px-4 py-2 border-b border-white/10">
-                            <label class="flex items-center gap-2 cursor-pointer group">
-                                <label class="ind-toggle ind-toggle--sm">
-                                    <input type="checkbox" id="sidebar-show-archived-sessions-toggle">
-                                    <span class="ind-track"></span>
-                                </label>
-                                <div class="flex items-center gap-1.5">
-                                    <svg class="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                                    </svg>
-                                    <span class="text-xs text-gray-300 group-hover:text-white transition-colors">Show Archived</span>
-                                </div>
-                            </label>
+                        <!-- Session filter toggles (icon buttons, single row) -->
+                        <div class="flex items-center gap-1 px-3 py-1.5 border-b border-white/10">
+                            <button id="sidebar-show-utility-sessions-container" type="button" class="hidden session-filter-btn active" title="Show Utility Sessions">
+                                <input type="checkbox" id="sidebar-show-utility-sessions-toggle" checked class="hidden">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                <span>Utility</span>
+                            </button>
+                            <button id="sidebar-show-archived-sessions-container" type="button" class="session-filter-btn" title="Show Archived Sessions">
+                                <input type="checkbox" id="sidebar-show-archived-sessions-toggle" class="hidden">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                </svg>
+                                <span>Archived</span>
+                            </button>
                         </div>
                         <div id="session-list" class="flex-1 p-2 overflow-y-auto space-y-2">
                             <!-- Session items will be dynamically added here -->
@@ -1848,6 +1835,38 @@
                                     </div>
                                 </div>
                                 <div id="token-aws-message" class="text-center hidden" style="color: var(--text-muted);">Token usage not available for this model (Cohere/Mistral/AI21)</div>
+                            </div>
+                            <!-- Event Filter Chips -->
+                            <div id="event-filter-row" class="px-4 py-2 border-t flex flex-wrap gap-1.5 items-center" style="border-color: var(--border-primary);">
+                                <span class="text-[10px] uppercase tracking-wider font-semibold mr-1" style="color: var(--text-muted);">Filter</span>
+                                <button class="event-filter-chip active" data-filter="context" title="Context Window Assembly & context optimization">
+                                    <span class="event-filter-chip-dot" style="background: #06b6d4;"></span>
+                                    <span class="event-filter-chip-label">Context</span>
+                                </button>
+                                <button class="event-filter-chip active" data-filter="knowledge" title="Knowledge retrieval, reranking, RAG LLM steps">
+                                    <span class="event-filter-chip-dot" style="background: #3b82f6;"></span>
+                                    <span class="event-filter-chip-label">Knowledge</span>
+                                </button>
+                                <button class="event-filter-chip active" data-filter="planning" title="Phase events, plan generation, plan optimization">
+                                    <span class="event-filter-chip-dot" style="background: #a855f7;"></span>
+                                    <span class="event-filter-chip-label">Planning</span>
+                                </button>
+                                <button class="event-filter-chip active" data-filter="tool-execution" title="Tool calls, results, errors, system corrections">
+                                    <span class="event-filter-chip-dot" style="background: #f59e0b;"></span>
+                                    <span class="event-filter-chip-label">Tools</span>
+                                </button>
+                                <button class="event-filter-chip active" data-filter="agent" title="Conversation agent, LLM reasoning steps">
+                                    <span class="event-filter-chip-dot" style="background: #10b981;"></span>
+                                    <span class="event-filter-chip-label">Agent</span>
+                                </button>
+                                <button class="event-filter-chip active" data-filter="coordination" title="Genie routing, expert invocations, synthesis">
+                                    <span class="event-filter-chip-dot" style="background: #F15F22;"></span>
+                                    <span class="event-filter-chip-label">Coordination</span>
+                                </button>
+                                <button class="event-filter-chip active" data-filter="system" title="Lifecycle, session naming, skills, extensions">
+                                    <span class="event-filter-chip-dot" style="background: #94a3b8;"></span>
+                                    <span class="event-filter-chip-label">System</span>
+                                </button>
                             </div>
                         </header>
                         <div id="status-window-content" class="p-4 overflow-y-auto space-y-4 min-h-0" style="flex: 1 1 auto;">

@@ -5,6 +5,7 @@ import * as API from './api.js';
 import { handleLoadSession } from './handlers/sessionManagement.js?v=3.6';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
 import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
+import { renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
 
 function showRestQueryNotification(message) {
     const notificationContainer = document.createElement('div');
@@ -350,6 +351,18 @@ function _dispatchRestEvent(event, taskId) {
             details: payload,
             type: eventType
         }, isFinal, 'lifecycle');
+        return;
+    }
+
+    // --- Context Window Snapshot events (all profile types) ---
+    if (eventType === 'context_window_snapshot') {
+        const snapshotPayload = event.payload || {};
+        const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
+        UI.updateStatusWindow({
+            step: event.step || 'Context Window Assembly',
+            details: snapshotHtml,
+            type: 'context_window_snapshot'
+        }, true, 'context_window');
         return;
     }
 

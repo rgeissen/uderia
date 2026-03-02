@@ -91,6 +91,18 @@ export const state = {
     sessionContextLimitOverrides: {}, // sessionId -> token limit (temporary, session-scoped)
     // --- Canvas split mode ---
     canvasSplitMode: false,          // Whether canvas split mode toggle is ON (renders in side panel)
+    // --- Event Filter State (persisted to localStorage) ---
+    eventFilterState: (() => {
+        const defaults = {
+            'context': true, 'knowledge': true, 'planning': true,
+            'tool-execution': true, 'agent': true, 'coordination': true, 'system': true,
+        };
+        try {
+            const saved = localStorage.getItem('uderia_event_filter_state');
+            if (saved) return { ...defaults, ...JSON.parse(saved) };
+        } catch (e) { /* ignore parse errors */ }
+        return { ...defaults };
+    })(),
 };
 
 // Functions to modify state can be added here if needed, e.g.:

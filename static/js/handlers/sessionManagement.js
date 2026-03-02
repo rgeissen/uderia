@@ -13,7 +13,7 @@ import { updateActiveSessionTitle } from '../ui.js';
 import { renderAttachmentChips, initializeUploadCapabilities } from './chatDocumentUpload.js';
 import { genieState, cleanupCoordination } from './genieHandler.js?v=3.4';
 import { conversationAgentState, cleanupExecution } from './conversationAgentHandler.js?v=1.0';
-import { resetContextPanelState, loadContextPanel } from './contextPanelHandler.js';
+import { resetContextPanelState, loadContextPanel, renderContextWindowSnapshot } from './contextPanelHandler.js';
 
 // 🔥 DEBUG: Module load detection (v3.3 - Feb 13, 2026)
 console.log('%c🔥 SESSION MANAGEMENT LOADED - VERSION 3.3 (NEW CODE)', 'background: #ff00ff; color: #fff; font-size: 16px; font-weight: bold; padding: 5px;');
@@ -542,6 +542,18 @@ function _replayRestEventBuffer(sessionId) {
         if (eventType === 'session_name' || eventType === 'session_name_generation_start' ||
             eventType === 'session_name_generation_complete') {
             UI.updateStatusWindow(event, false, 'session_name');
+            continue;
+        }
+
+        // --- Context Window Snapshot events (all profile types) ---
+        if (eventType === 'context_window_snapshot') {
+            const snapshotPayload = event.payload || {};
+            const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
+            UI.updateStatusWindow({
+                step: event.step || 'Context Window Assembly',
+                details: snapshotHtml,
+                type: 'context_window_snapshot'
+            }, true, 'context_window');
             continue;
         }
 
@@ -1163,9 +1175,14 @@ export function initializeUtilitySessionsFilter() {
     const savedPref = localStorage.getItem('sidebarShowUtilitySessions');
     let showUtility = savedPref !== null ? savedPref === 'true' : true; // Default to showing
     toggle.checked = showUtility;
+    container.classList.toggle('active', showUtility);
 
     // Function to update session visibility
     const updateSessionVisibility = () => {
+        // Sync state from checkbox (external callers may set toggle.checked directly)
+        showUtility = toggle.checked;
+        container.classList.toggle('active', showUtility);
+
         const sessions = document.querySelectorAll('.session-item');
         let hasUtilitySessions = false;
 
@@ -1177,17 +1194,19 @@ export function initializeUtilitySessionsFilter() {
             }
         });
 
-        // Show/hide the toggle container based on whether utility sessions exist
+        // Show/hide the button based on whether utility sessions exist
+        // (but don't remove 'active' — 'hidden' takes precedence)
         container.classList.toggle('hidden', !hasUtilitySessions);
     };
 
     // Apply initial state
     updateSessionVisibility();
 
-    // Handle toggle changes
-    toggle.addEventListener('change', (e) => {
-        showUtility = e.target.checked;
-        localStorage.setItem('sidebarShowUtilitySessions', showUtility);
+    // Handle button click
+    container.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggle.checked = !toggle.checked;
+        localStorage.setItem('sidebarShowUtilitySessions', toggle.checked);
         updateSessionVisibility();
     });
 
@@ -1209,26 +1228,20 @@ export function initializeArchivedSessionsFilter() {
     const savedPref = localStorage.getItem('sidebarShowArchivedSessions');
     let showArchived = savedPref !== null ? savedPref === 'true' : false;
     toggle.checked = showArchived;
+    container.classList.toggle('active', showArchived);
 
     // Function to update session visibility
     const updateSessionVisibility = () => {
+        // Sync state from checkbox (external callers may set toggle.checked directly)
+        showArchived = toggle.checked;
+        container.classList.toggle('active', showArchived);
+
         const sessions = document.querySelectorAll('.session-item');
-
-        // Read current toggle state (not captured variable)
-        const currentShowArchived = toggle.checked;
-
         sessions.forEach(item => {
             const isArchived = item.dataset.archived === 'true';
             if (isArchived) {
-                // Hide archived sessions unless toggle is enabled
-                item.style.display = currentShowArchived ? '' : 'none';
-
-                // Add visual styling for archived sessions when shown
-                if (currentShowArchived) {
-                    item.classList.add('archived-session');
-                } else {
-                    item.classList.remove('archived-session');
-                }
+                item.style.display = showArchived ? '' : 'none';
+                item.classList.toggle('archived-session', showArchived);
             }
         });
     };
@@ -1236,10 +1249,11 @@ export function initializeArchivedSessionsFilter() {
     // Apply initial state
     updateSessionVisibility();
 
-    // Handle toggle changes
-    toggle.addEventListener('change', (e) => {
-        showArchived = e.target.checked;
-        localStorage.setItem('sidebarShowArchivedSessions', showArchived);
+    // Handle button click
+    container.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggle.checked = !toggle.checked;
+        localStorage.setItem('sidebarShowArchivedSessions', toggle.checked);
         updateSessionVisibility();
     });
 

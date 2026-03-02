@@ -2815,8 +2815,9 @@ CRITICAL REQUIREMENTS:
                     f"Strategic planning using ContextBuilder "
                     f"(tokens: {prompt_ctx.tokens_used:,}, source: {prompt_ctx.source})"
                 )
-                # Emit per-call snapshot for observability
+                # Emit per-call snapshot for observability + persist for reload
                 if prompt_ctx.snapshot:
+                    self.executor.strategic_context_snapshot_event = prompt_ctx.snapshot.to_sse_event()
                     yield self.executor._format_sse_with_depth({
                         "step": "Context Assembly (Strategic)",
                         "type": "context_window_snapshot",

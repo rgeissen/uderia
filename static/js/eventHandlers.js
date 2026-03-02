@@ -1964,6 +1964,7 @@ function _renderSkillEventsForReload(turnData, container) {
     // --- Emerald divider ---
     const divider = document.createElement('div');
     divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.dataset.filterCategory = 'system';
     divider.style.borderColor = 'rgba(52, 211, 153, 0.3)';
     divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #34d399;">Skills</span>`;
     container.appendChild(divider);
@@ -1978,6 +1979,7 @@ function _renderSkillEventsForReload(turnData, container) {
 
         const stepEl = document.createElement('div');
         stepEl.className = 'px-4 py-2 status-step';
+        stepEl.dataset.filterCategory = 'system';
         stepEl.innerHTML = `
             <div class="flex items-center gap-2">
                 <span class="text-xs" style="color: #34d399;">&#10038;</span>
@@ -2007,6 +2009,7 @@ function _renderExtensionEventsForReload(turnData, container) {
     // --- Divider ---
     const divider = document.createElement('div');
     divider.className = 'px-4 py-2 mt-2 border-t border-amber-500/30';
+    divider.dataset.filterCategory = 'system';
     divider.innerHTML = `<span class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Extensions</span>`;
     container.appendChild(divider);
 
@@ -2018,6 +2021,7 @@ function _renderExtensionEventsForReload(turnData, container) {
         if (eventType === 'extension_start') {
             const stepEl = document.createElement('div');
             stepEl.className = 'px-4 py-2 status-step';
+            stepEl.dataset.filterCategory = 'system';
             stepEl.innerHTML = `
                 <div class="flex items-center gap-2">
                     <span class="text-amber-400 text-xs">&#9654;</span>
@@ -2052,6 +2056,7 @@ function _renderExtensionEventsForReload(turnData, container) {
 
             const stepEl = document.createElement('div');
             stepEl.className = 'px-4 py-2 status-step';
+            stepEl.dataset.filterCategory = 'system';
             stepEl.innerHTML = `
                 <div class="flex items-center gap-2">
                     <span class="${color} text-xs">${icon}</span>
@@ -2415,7 +2420,7 @@ export async function handleReloadPlanClick(element) {
                     details: turnData.knowledge_retrieval_event,
                     type: eventType
                 };
-                UI.renderConversationAgentStepForReload(knowledgeEventData, DOM.statusWindowContent, false);
+                UI.renderConversationAgentStepForReload(knowledgeEventData, DOM.statusWindowContent, false, 'knowledge');
             }
 
             // Render KG enrichment event if present
@@ -2425,7 +2430,7 @@ export async function handleReloadPlanClick(element) {
                     details: turnData.kg_enrichment_event,
                     type: 'kg_enrichment'
                 };
-                UI.renderConversationAgentStepForReload(kgEventData, DOM.statusWindowContent, false);
+                UI.renderConversationAgentStepForReload(kgEventData, DOM.statusWindowContent, false, 'knowledge');
             }
 
             if (agentEvents.length > 0) {
@@ -2461,7 +2466,7 @@ export async function handleReloadPlanClick(element) {
                             type: event.type
                         };
                     }
-                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'agent');
                 });
 
                 // Render system events (session name generation, etc.) after agent events
@@ -2484,7 +2489,7 @@ export async function handleReloadPlanClick(element) {
                                 type: event.type
                             };
                         }
-                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'system');
                     });
                 }
 
@@ -2594,7 +2599,7 @@ export async function handleReloadPlanClick(element) {
                         details: event.payload,
                         type: event.type
                     };
-                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'knowledge');
                 });
 
                 // Render system events (session name generation, etc.) after knowledge events
@@ -2616,7 +2621,7 @@ export async function handleReloadPlanClick(element) {
                                 type: event.type
                             };
                         }
-                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'system');
                     });
                 }
 
@@ -2742,6 +2747,12 @@ export async function handleReloadPlanClick(element) {
             throw new Error("Received empty or invalid turn details from the server.");
         }
 
+        // Pre-render context window snapshots for correct positioning
+        const snapshotEvent = turnData?.context_window_snapshot_event;
+        const snapshotHtml = snapshotEvent ? renderContextWindowSnapshot(snapshotEvent) : null;
+        const strategicSnapshotEvent = turnData?.strategic_context_snapshot_event;
+        const strategicSnapshotHtml = strategicSnapshotEvent ? renderContextWindowSnapshot(strategicSnapshotEvent) : null;
+
         // Render historical trace with all available data
         // renderHistoricalTrace renders execution_start at top and execution_complete
         // at bottom when tool_enabled_events are provided
@@ -2758,7 +2769,9 @@ export async function handleReloadPlanClick(element) {
             },
             turnData.system_events || [],
             turnData.duration_ms || 0,
-            turnData.tool_enabled_events || []
+            turnData.tool_enabled_events || [],
+            snapshotHtml,
+            strategicSnapshotHtml
         );
 
         // Update task ID display
@@ -2813,7 +2826,6 @@ export async function handleReloadPlanClick(element) {
 
         // Render extension events if present
         _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
-        _renderContextWindowSnapshotForReload(turnData);
 
         // Show replay buttons
         if (DOM.headerReplayPlannedButton) {
@@ -2831,6 +2843,8 @@ export async function handleReloadPlanClick(element) {
         console.error(`Error loading details for turn ${turnId}:`, error);
         DOM.statusWindowContent.innerHTML = `<div class="p-4 status-step error"><h4 class="font-bold text-sm text-white mb-2">Error Loading Details</h4><p class="text-xs">${error.message}</p></div>`;
     } finally {
+        // Apply event filter state to newly rendered historical events
+        UI.applyEventFilterToDOM();
         // Reset flag after historical viewing completes
         state.isViewingHistoricalTurn = false;
     }
@@ -4193,6 +4207,20 @@ export function initializeEventListeners() {
             });
         }
     });
+
+    // --- Event Filter Chip Handlers ---
+    if (DOM.eventFilterRow) {
+        DOM.eventFilterRow.addEventListener('click', (e) => {
+            const chip = e.target.closest('.event-filter-chip');
+            if (!chip) return;
+            const category = chip.dataset.filter;
+            if (category) {
+                UI.toggleEventFilter(category);
+            }
+        });
+        // Sync chip UI with persisted state on load
+        UI.syncFilterChipsWithState();
+    }
 }
 // --- Repository Tab Switching ---
 // DEPRECATED: Tab switching now handled by initializeRepositoryTabs() in ragCollectionManagement.js
@@ -4208,5 +4236,6 @@ window.EventHandlers = {
     getToolEnabledTitle,
     getLlmOnlyTitle,
     getRagFocusedTitle,
-    getGenieTitle
+    getGenieTitle,
+    getLifecycleTitle
 };

@@ -99,6 +99,7 @@ export const headerReplayQueryButton = document.getElementById('header-replay-qu
 export const taskIdDisplay = document.getElementById('task-id-display');
 export const taskIdValue = document.getElementById('task-id-value');
 export const copyTaskIdButton = document.getElementById('copy-task-id-button');
+export const eventFilterRow = document.getElementById('event-filter-row');
 
 // Session history panel elements
 export const sessionHistoryPanel = document.getElementById('session-history-panel');

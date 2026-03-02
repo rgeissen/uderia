@@ -39,12 +39,14 @@ function showLoadMoreSessionsButton(remainingCount) {
 
     const btn = document.createElement('button');
     btn.id = 'load-more-sessions-btn';
-    btn.className = 'w-full py-2 px-3 mt-2 text-sm text-teradata-orange hover:text-white hover:bg-teradata-orange/20 rounded-lg transition-colors flex items-center justify-center gap-2 border border-dashed border-teradata-orange/40';
+    btn.className = 'load-more-sessions-btn';
+    const loadCount = Math.min(remainingCount, SESSION_PAGE_SIZE);
     btn.innerHTML = `
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="load-more-sessions-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
         </svg>
-        Load ${Math.min(remainingCount, SESSION_PAGE_SIZE)} more (${remainingCount} remaining)
+        <span>Load ${loadCount} more</span>
+        <span class="load-more-sessions-count">${remainingCount} remaining</span>
     `;
     btn.onclick = handleLoadMoreSessions;
 
@@ -176,12 +178,13 @@ async function handleLoadMoreSessions() {
     const btn = document.getElementById('load-more-sessions-btn');
     if (btn) {
         btn.disabled = true;
+        btn.classList.add('loading');
         btn.innerHTML = `
-            <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="load-more-sessions-icon animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            Loading...
+            <span>Loading...</span>
         `;
     }
 
