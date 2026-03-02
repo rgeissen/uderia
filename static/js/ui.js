@@ -3599,7 +3599,10 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
         let customRenderedHtml = null;
         let detailsString = '';
 
-        if (typeof details === 'object' && details !== null) {
+        if (type === 'context_window_snapshot' && typeof details === 'string') {
+            // Context window snapshot details are pre-rendered HTML from renderContextWindowSnapshot()
+            customRenderedHtml = details;
+        } else if (typeof details === 'object' && details !== null) {
             if (step?.startsWith("Calling LLM for")) {
                 customRenderedHtml = _renderPlanningDetails(details);
             } else if (type === "plan_generated") {

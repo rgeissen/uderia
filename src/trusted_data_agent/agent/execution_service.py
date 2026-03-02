@@ -794,6 +794,7 @@ async def _run_genie_execution(
         # --- CONTEXT WINDOW MANAGER (Feature-Flagged, Observability) ---
         cw_history_window = 10  # Default fallback
         cw_document_max_chars = None  # Default: use APP_CONFIG limit
+        genie_cw_snapshot_event = None  # Capture for turn_data persistence
         try:
             from trusted_data_agent.core.config import APP_CONFIG as _CW_APP_CONFIG
             if _CW_APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER:
@@ -851,6 +852,7 @@ async def _run_genie_execution(
                             f"({assembled.snapshot.utilization_pct:.1f}% utilization)"
                         )
                         snapshot_payload = assembled.snapshot.to_sse_event()
+                        genie_cw_snapshot_event = snapshot_payload
                         await event_handler({
                             "step": "Context Window Assembly",
                             "type": "context_window_snapshot",
@@ -1095,6 +1097,7 @@ async def _run_genie_execution(
                 'slave_sessions': result.get('slave_sessions', {}),
                 'genie_events': combined_genie_events,  # Include session name events
                 'kg_enrichment_event': result.get('kg_enrichment_event'),  # KG enrichment for persistence
+                'context_window_snapshot_event': genie_cw_snapshot_event,  # CW snapshot for reload
                 'success': success,
                 'final_response': coordinator_response[:500] if coordinator_response else '',
                 'status': 'success' if success else 'failed',

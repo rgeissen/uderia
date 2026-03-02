@@ -1187,7 +1187,7 @@ async function processStream(responseBody, originSessionId) {
                                 step: eventData.step || 'Context Window Assembly',
                                 details: snapshotHtml,
                                 type: 'context_window_snapshot'
-                            }, false, 'context_window');
+                            }, true, 'context_window');
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full CCR (Champion Case Retrieval) data
@@ -1525,6 +1525,16 @@ async function processStream(responseBody, originSessionId) {
                         // The actual rag_llm_step event will follow with correct token/model data
                         console.log('[RAG Synthesis] Skipping redundant system_message preview event - waiting for rag_llm_step with data');
                         // Don't call updateStatusWindow - skip this event entirely
+                    } else if (eventData.type === 'context_window_snapshot') {
+                        // Context Window Assembly from executor.py path (arrives as eventName='message')
+                        // Use same rich rendering as the notification handler
+                        const snapshotPayload = eventData.payload || {};
+                        const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
+                        UI.updateStatusWindow({
+                            step: eventData.step || 'Context Window Assembly',
+                            details: snapshotHtml,
+                            type: 'context_window_snapshot'
+                        }, true, 'context_window');
                     } else {
                         UI.updateStatusWindow(eventData);
 
@@ -2131,7 +2141,7 @@ function _renderContextWindowSnapshotForReload(turnData) {
         step: 'Context Window Assembly',
         details: snapshotHtml,
         type: 'context_window_snapshot'
-    }, false, 'context_window');
+    }, true, 'context_window');
 }
 
 /**
