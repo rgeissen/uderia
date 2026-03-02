@@ -2669,6 +2669,14 @@ async def invoke_prompt_stream():
     disabled_history = data.get("disabled_history", False)
     source = data.get("source", "prompt_library")
     profile_override_id = data.get("profile_override_id")  # Profile ID for temporary override
+    # Post-processing extensions [{"name": "json", "param": null}]
+    extension_specs = data.get("extensions")
+    # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
+    skill_specs = data.get("skills")
+    # Canvas bidirectional context {title, language, content, modified}
+    canvas_context = data.get("canvas_context")
+    # File attachments [{file_id, filename, ...}]
+    attachments = data.get("attachments")
 
     session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
     if not session_data:
@@ -2793,8 +2801,11 @@ async def invoke_prompt_stream():
                         # When they match, APP_STATE already has the correct MCP data from login.
                         # When they differ (e.g., session uses tool_enabled but default is llm_only),
                         # the override block in executor.py loads the correct MCP tools/prompts.
-                        profile_override_id=active_profile.get('id') if active_profile and active_profile.get('id') != config_manager.get_default_profile_id(user_uuid) else profile_override_id
-                        # plan_to_execute=None, is_replay=False
+                        profile_override_id=active_profile.get('id') if active_profile and active_profile.get('id') != config_manager.get_default_profile_id(user_uuid) else profile_override_id,
+                        attachments=attachments,
+                        extension_specs=extension_specs,
+                        skill_specs=skill_specs,
+                        canvas_context=canvas_context,
                     )
                 )
                 APP_STATE.setdefault("active_tasks", {})[active_tasks_key] = task

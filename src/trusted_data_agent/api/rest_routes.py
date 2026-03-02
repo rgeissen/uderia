@@ -150,23 +150,29 @@ def _sanitize_for_json(obj):
 async def execute_prompt(prompt_name: str):
     """
     Execute an MCP prompt with the LLM and return the response.
-    
+
     Requires:
     - User must be authenticated (JWT or Access Token)
     - User must have a configured profile (LLM + MCP server combination)
-    
+
     Request body:
     {
-        "arguments": {"database": "mydb", ...}  // Optional prompt arguments
+        "arguments": {"database": "mydb", ...},  // Optional prompt arguments
+        "extensions": [{"name": "json", "param": null}],  // Optional post-processing extensions
+        "skills": [{"name": "sql-expert", "param": "strict"}],  // Optional pre-processing skills
+        "profile_id": "profile-uuid",  // Optional profile override (uses default if omitted)
+        "canvas_context": {"title": "...", "language": "...", "content": "...", "modified": false},  // Optional
+        "attachments": [{"file_id": "...", "filename": "..."}]  // Optional file attachments
     }
-    
+
     Returns:
     {
         "status": "success",
         "prompt_text": "<rendered prompt>",
         "response": "<LLM response>",
         "input_tokens": 123,
-        "output_tokens": 456
+        "output_tokens": 456,
+        "extension_results": {...}  // Present only if extensions were executed
     }
     """
     try:
@@ -182,21 +188,35 @@ async def execute_prompt(prompt_name: str):
         is_valid, error_response = _validate_user_profile(user_uuid)
         if not is_valid:
             return jsonify(error_response), 400
-        
-        # Switch to user's default profile context
+
+        # Parse request body early — profile_id override must be known before profile switch
+        data = await request.get_json() or {}
+        user_arguments = data.get('arguments', {})
+        # Post-processing extensions [{"name": "json", "param": null}]
+        extension_specs = data.get("extensions")
+        # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
+        skill_specs = data.get("skills")
+        # Optional profile override (uses default if omitted)
+        profile_id_override = data.get("profile_id")
+        # Canvas bidirectional context {title, language, content, modified}
+        canvas_context = data.get("canvas_context")
+        # File attachments [{file_id, filename, ...}]
+        attachments = data.get("attachments")
+
+        # Switch to user's profile context (override or default)
         from trusted_data_agent.core.config_manager import get_config_manager
         config_manager = get_config_manager()
-        default_profile_id = config_manager.get_default_profile_id(user_uuid)
-        
+        profile_id_to_use = profile_id_override or config_manager.get_default_profile_id(user_uuid)
+
         from trusted_data_agent.core.configuration_service import switch_profile_context
-        profile_context = await switch_profile_context(default_profile_id, user_uuid, validate_llm=False)
-        
+        profile_context = await switch_profile_context(profile_id_to_use, user_uuid, validate_llm=False)
+
         if "error" in profile_context:
             return jsonify({
                 "status": "error",
                 "message": f"Failed to activate user profile: {profile_context.get('error')}"
             }), 503
-        
+
         mcp_client = APP_STATE.get("mcp_client")
         if not mcp_client:
             return jsonify({
@@ -218,10 +238,6 @@ async def execute_prompt(prompt_name: str):
                 "status": "error",
                 "message": "LLM not configured for profile"
             }), 503
-
-        # Get arguments from request body
-        data = await request.get_json() or {}
-        user_arguments = data.get('arguments', {})
 
         # Get prompt definition to know all expected arguments
         prompt_info = _get_prompt_info(prompt_name)
@@ -326,15 +342,12 @@ async def execute_prompt(prompt_name: str):
             event_handler=dummy_event_handler,  # Provide dummy handler instead of None
             source='prompt_library',  # Indicates this is a prompt execution
             active_prompt_name=prompt_name,
+            profile_override_id=profile_id_override,
+            attachments=attachments,
+            extension_specs=extension_specs,
+            skill_specs=skill_specs,
+            canvas_context=canvas_context,
         )
-        
-        # Extract response and tokens from result
-        response_html = result_payload.get('final_answer', '')
-        response_text = result_payload.get('final_answer_text', '')  # Clean text without HTML
-        input_tokens = result_payload.get('total_input_tokens', 0)
-        output_tokens = result_payload.get('total_output_tokens', 0)
-        actual_provider = APP_CONFIG.CURRENT_PROVIDER
-        actual_model = APP_CONFIG.CURRENT_MODEL
         
         # Archive the temporary session (don't delete - keep for transparency)
         try:
@@ -346,10 +359,24 @@ async def execute_prompt(prompt_name: str):
                 app_logger.error(f"Failed to archive temporary session {temp_session_id}: delete_session returned False")
         except Exception as e:
             app_logger.error(f"Exception while archiving temp session {temp_session_id}: {e}", exc_info=True)
-        
+
+        if not result_payload:
+            return jsonify({
+                "status": "error",
+                "message": f"Prompt '{prompt_name}' execution returned no result"
+            }), 500
+
+        # Extract response and tokens from result
+        response_html = result_payload.get('final_answer', '')
+        response_text = result_payload.get('final_answer_text', '')  # Clean text without HTML
+        input_tokens = result_payload.get('total_input_tokens', 0)
+        output_tokens = result_payload.get('total_output_tokens', 0)
+        actual_provider = APP_CONFIG.CURRENT_PROVIDER
+        actual_model = APP_CONFIG.CURRENT_MODEL
+
         app_logger.info(f"Prompt '{prompt_name}' executed successfully. Tokens: in={input_tokens}, out={output_tokens}")
-        
-        return jsonify({
+
+        response_data = {
             "status": "success",
             "prompt_text": prompt_text,
             "response": response_html,  # HTML formatted response for display
@@ -358,7 +385,12 @@ async def execute_prompt(prompt_name: str):
             "output_tokens": output_tokens,
             "provider": actual_provider,
             "model": actual_model
-        })
+        }
+        # Include extension results when extensions were executed
+        ext_results = result_payload.get('extension_results') if result_payload else None
+        if ext_results:
+            response_data["extension_results"] = ext_results
+        return jsonify(response_data)
         
     except Exception as e:
         app_logger.error(f"Error executing prompt '{prompt_name}': {e}", exc_info=True)
@@ -372,15 +404,21 @@ async def execute_prompt(prompt_name: str):
 async def execute_prompt_raw(prompt_name: str):
     """
     Execute an MCP prompt and return raw, structured execution data.
-    
+
     This endpoint is designed for programmatic consumption (e.g., auto-generating RAG cases)
     where clean, structured data is needed rather than HTML-formatted responses.
-    
+
     Request body:
     {
-        "arguments": {"database": "mydb", ...}  // Optional prompt arguments
+        "arguments": {"database": "mydb", ...},  // Optional prompt arguments
+        "mcp_server_id": "...",  // Optional MCP server override
+        "extensions": [{"name": "json", "param": null}],  // Optional post-processing extensions
+        "skills": [{"name": "sql-expert", "param": "strict"}],  // Optional pre-processing skills
+        "profile_id": "profile-uuid",  // Optional profile override (uses default if omitted)
+        "canvas_context": {"title": "...", "language": "...", "content": "...", "modified": false},  // Optional
+        "attachments": [{"file_id": "...", "filename": "..."}]  // Optional file attachments
     }
-    
+
     Returns:
     {
         "status": "success",
@@ -388,109 +426,138 @@ async def execute_prompt_raw(prompt_name: str):
         "execution_trace": [...],
         "collected_data": {...},
         "final_answer_text": "<clean LLM summary>",
-        "token_usage": {"input": 123, "output": 456, "total": 579}
+        "token_usage": {"input": 123, "output": 456, "total": 579},
+        "extension_results": {...}  // Present only if extensions were executed
     }
     """
     try:
-        # Get request data early to check for MCP server override
+        # Get request data early to check for overrides
         data = await request.get_json() or {}
         requested_mcp_server_id = data.get('mcp_server_id')
-        
-        # Try to get global MCP client (works if system is configured globally)
-        mcp_client = APP_STATE.get("mcp_client")
-        server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
-        llm_instance = APP_STATE.get('llm')
-        
-        # If MCP server specified in request, override with that
-        if requested_mcp_server_id:
-            from trusted_data_agent.core.config_manager import get_config_manager
-            config_manager = get_config_manager()
-            mcp_servers = config_manager.get_mcp_servers()
-            mcp_server = next((s for s in mcp_servers if s.get("id") == requested_mcp_server_id), None)
-            if mcp_server:
-                server_name = mcp_server.get("name")
-                current_app.logger.info(f"Using MCP server from request: {server_name}")
-                # Also need to get the MCP client for this user
-                user_uuid = _get_user_uuid_from_request()
-                current_app.logger.info(f"User UUID: {user_uuid}")
-                if user_uuid:
-                    from trusted_data_agent.core.config import get_user_mcp_client, get_user_llm_instance, set_user_mcp_client, set_user_llm_instance
-                    
-                    if not mcp_client:
-                        mcp_client = get_user_mcp_client(user_uuid)
-                    if not llm_instance:
-                        llm_instance = get_user_llm_instance(user_uuid)
-                    
-                    current_app.logger.info(f"User instances from cache - MCP: {mcp_client is not None}, LLM: {llm_instance is not None}")
-                    
-                    # If not available, try to create from user's default profile
-                    if not mcp_client or not llm_instance:
-                        try:
-                            default_profile_id = config_manager.get_default_profile_id(user_uuid)
-                            if default_profile_id:
-                                profile = config_manager.get_profile(default_profile_id, user_uuid)
-                                current_app.logger.info(f"Loading from default profile: {profile.get('profileName') if profile else 'Not found'}")
-                                
-                                if profile:
-                                    # Create LLM instance from profile
-                                    if not llm_instance:
-                                        llm_config_id = profile.get("llmConfigurationId")
-                                        if llm_config_id:
-                                            llm_configs = config_manager.get_llm_configurations(user_uuid)
-                                            llm_config = next((cfg for cfg in llm_configs if cfg.get("id") == llm_config_id), None)
-                                            if llm_config:
-                                                from trusted_data_agent.llm.client_factory import create_llm_client
-                                                provider = llm_config.get("provider")
-                                                model = llm_config.get("model")
-                                                credentials = llm_config.get("credentials", {})
-                                                llm_instance = await create_llm_client(provider, model, credentials)
-                                                set_user_llm_instance(llm_instance, user_uuid)
-                                                current_app.logger.info("Created LLM instance from profile")
-                                    
-                                    # Create MCP client from profile
-                                    if not mcp_client:
-                                        from trusted_data_agent.mcp import MCPClientManager
-                                        mcp_manager = MCPClientManager.get_instance()
-                                        mcp_client = await mcp_manager.get_client(user_uuid)
-                                        if mcp_client:
-                                            set_user_mcp_client(mcp_client, user_uuid)
-                                            current_app.logger.info("Created MCP client from profile")
-                        except Exception as e:
-                            current_app.logger.error(f"Error loading from profile: {e}", exc_info=True)
-            else:
-                current_app.logger.warning(f"MCP server with ID {requested_mcp_server_id} not found")
-        
-        # If no global config, try to get from authenticated user's profile
-        if not mcp_client or not server_name or not llm_instance:
+        # Post-processing extensions [{"name": "json", "param": null}]
+        extension_specs = data.get("extensions")
+        # Pre-processing skills [{"name": "sql-expert", "param": "strict"}]
+        skill_specs = data.get("skills")
+        # Optional profile override (uses default if omitted)
+        profile_id_override = data.get("profile_id")
+        # Canvas bidirectional context {title, language, content, modified}
+        canvas_context = data.get("canvas_context")
+        # File attachments [{file_id, filename, ...}]
+        attachments = data.get("attachments")
+
+        # If profile_id override is specified, use switch_profile_context to set up the full context
+        # Profile override takes precedence over mcp_server_id override
+        if profile_id_override:
             user_uuid = _get_user_uuid_from_request()
             if not user_uuid:
-                return jsonify({"status": "error", "message": "Authentication required and no global MCP/LLM configured"}), 401
-            
-            # Get user's default profile
-            from trusted_data_agent.core.config_manager import get_config_manager
-            config_manager = get_config_manager()
-            default_profile_id = config_manager.get_default_profile_id(user_uuid)
-            if not default_profile_id:
-                return jsonify({"status": "error", "message": "No default profile configured. Please set up a profile in Configuration panel."}), 400
-            
-            default_profile = config_manager.get_profile(default_profile_id, user_uuid)
-            if not default_profile:
-                return jsonify({"status": "error", "message": "Default profile not found"}), 400
-            
-            # Get MCP server ID from profile (use ID, not name)
-            mcp_server_id = default_profile.get("mcpServerId")
-            if not server_id:
-                server_id = mcp_server_id
+                return jsonify({"status": "error", "message": "Authentication required"}), 401
+            from trusted_data_agent.core.configuration_service import switch_profile_context
+            profile_context = await switch_profile_context(profile_id_override, user_uuid, validate_llm=False)
+            if "error" in profile_context:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Failed to activate override profile: {profile_context.get('error')}"
+                }), 503
+            mcp_client = APP_STATE.get("mcp_client")
+            server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+            llm_instance = APP_STATE.get('llm')
+            app_logger.info(f"Using profile override {profile_id_override} for execute-raw")
+        else:
+            # No profile override — use existing MCP server override or default profile logic
+            mcp_client = APP_STATE.get("mcp_client")
+            server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+            llm_instance = APP_STATE.get('llm')
 
-            # Get user's MCP client if not available globally
-            if not mcp_client:
-                from trusted_data_agent.core.config import get_user_mcp_client
-                mcp_client = get_user_mcp_client(user_uuid)
+            # If MCP server specified in request, override with that
+            if requested_mcp_server_id:
+                from trusted_data_agent.core.config_manager import get_config_manager
+                config_manager = get_config_manager()
+                mcp_servers = config_manager.get_mcp_servers()
+                mcp_server = next((s for s in mcp_servers if s.get("id") == requested_mcp_server_id), None)
+                if mcp_server:
+                    server_name = mcp_server.get("name")
+                    current_app.logger.info(f"Using MCP server from request: {server_name}")
+                    # Also need to get the MCP client for this user
+                    user_uuid = _get_user_uuid_from_request()
+                    current_app.logger.info(f"User UUID: {user_uuid}")
+                    if user_uuid:
+                        from trusted_data_agent.core.config import get_user_mcp_client, get_user_llm_instance, set_user_mcp_client, set_user_llm_instance
 
-            # Get user's LLM if not available globally
-            if not llm_instance:
-                from trusted_data_agent.core.config import get_user_llm_instance
-                llm_instance = get_user_llm_instance(user_uuid)
+                        if not mcp_client:
+                            mcp_client = get_user_mcp_client(user_uuid)
+                        if not llm_instance:
+                            llm_instance = get_user_llm_instance(user_uuid)
+
+                        current_app.logger.info(f"User instances from cache - MCP: {mcp_client is not None}, LLM: {llm_instance is not None}")
+
+                        # If not available, try to create from user's default profile
+                        if not mcp_client or not llm_instance:
+                            try:
+                                default_profile_id = config_manager.get_default_profile_id(user_uuid)
+                                if default_profile_id:
+                                    profile = config_manager.get_profile(default_profile_id, user_uuid)
+                                    current_app.logger.info(f"Loading from default profile: {profile.get('profileName') if profile else 'Not found'}")
+
+                                    if profile:
+                                        # Create LLM instance from profile
+                                        if not llm_instance:
+                                            llm_config_id = profile.get("llmConfigurationId")
+                                            if llm_config_id:
+                                                llm_configs = config_manager.get_llm_configurations(user_uuid)
+                                                llm_config = next((cfg for cfg in llm_configs if cfg.get("id") == llm_config_id), None)
+                                                if llm_config:
+                                                    from trusted_data_agent.llm.client_factory import create_llm_client
+                                                    provider = llm_config.get("provider")
+                                                    model = llm_config.get("model")
+                                                    credentials = llm_config.get("credentials", {})
+                                                    llm_instance = await create_llm_client(provider, model, credentials)
+                                                    set_user_llm_instance(llm_instance, user_uuid)
+                                                    current_app.logger.info("Created LLM instance from profile")
+
+                                        # Create MCP client from profile
+                                        if not mcp_client:
+                                            from trusted_data_agent.mcp import MCPClientManager
+                                            mcp_manager = MCPClientManager.get_instance()
+                                            mcp_client = await mcp_manager.get_client(user_uuid)
+                                            if mcp_client:
+                                                set_user_mcp_client(mcp_client, user_uuid)
+                                                current_app.logger.info("Created MCP client from profile")
+                            except Exception as e:
+                                current_app.logger.error(f"Error loading from profile: {e}", exc_info=True)
+                else:
+                    current_app.logger.warning(f"MCP server with ID {requested_mcp_server_id} not found")
+
+            # If no global config, try to get from authenticated user's profile
+            if not mcp_client or not llm_instance:
+                user_uuid = _get_user_uuid_from_request()
+                if not user_uuid:
+                    return jsonify({"status": "error", "message": "Authentication required and no global MCP/LLM configured"}), 401
+
+                # Get user's default profile
+                from trusted_data_agent.core.config_manager import get_config_manager
+                config_manager = get_config_manager()
+                default_profile_id = config_manager.get_default_profile_id(user_uuid)
+                if not default_profile_id:
+                    return jsonify({"status": "error", "message": "No default profile configured. Please set up a profile in Configuration panel."}), 400
+
+                default_profile = config_manager.get_profile(default_profile_id, user_uuid)
+                if not default_profile:
+                    return jsonify({"status": "error", "message": "Default profile not found"}), 400
+
+                # Get MCP server ID from profile (use ID, not name)
+                mcp_server_id = default_profile.get("mcpServerId")
+                if not server_id:
+                    server_id = mcp_server_id
+
+                # Get user's MCP client if not available globally
+                if not mcp_client:
+                    from trusted_data_agent.core.config import get_user_mcp_client
+                    mcp_client = get_user_mcp_client(user_uuid)
+
+                # Get user's LLM if not available globally
+                if not llm_instance:
+                    from trusted_data_agent.core.config import get_user_llm_instance
+                    llm_instance = get_user_llm_instance(user_uuid)
 
         # Final validation
         current_app.logger.info(f"Final validation - mcp_client: {mcp_client is not None}, server_id: {server_id}, llm_instance: {llm_instance is not None}")
@@ -594,7 +661,12 @@ async def execute_prompt_raw(prompt_name: str):
             session_id=temp_session_id,
             user_input=prompt_text,
             event_handler=dummy_event_handler,
-            source='prompt_library_raw'
+            source='prompt_library_raw',
+            profile_override_id=profile_id_override,
+            attachments=attachments,
+            extension_specs=extension_specs,
+            skill_specs=skill_specs,
+            canvas_context=canvas_context,
         )
         
         # Archive temp session (don't delete - keep for transparency)
@@ -607,7 +679,13 @@ async def execute_prompt_raw(prompt_name: str):
                 app_logger.error(f"Failed to archive temporary session {temp_session_id}: delete_session returned False")
         except Exception as e:
             app_logger.error(f"Exception while archiving temp session {temp_session_id}: {e}", exc_info=True)
-        
+
+        if not result_payload:
+            return jsonify({
+                "status": "error",
+                "message": f"Prompt '{prompt_name}' execution returned no result"
+            }), 500
+
         # Extract data from result
         execution_trace = result_payload.get('execution_trace', [])
         collected_data = result_payload.get('collected_data', {})
@@ -616,8 +694,8 @@ async def execute_prompt_raw(prompt_name: str):
         output_tokens = result_payload.get('turn_output_tokens', 0)
         
         app_logger.info(f"Prompt '{prompt_name}' (raw) done. Tokens: in={input_tokens}, out={output_tokens}")
-        
-        return jsonify({
+
+        response_data = {
             "status": "success",
             "prompt_text": prompt_text,
             "execution_trace": execution_trace,
@@ -630,7 +708,12 @@ async def execute_prompt_raw(prompt_name: str):
             },
             "provider": APP_CONFIG.CURRENT_PROVIDER,
             "model": APP_CONFIG.CURRENT_MODEL
-        })
+        }
+        # Include extension results when extensions were executed
+        ext_results = result_payload.get('extension_results') if result_payload else None
+        if ext_results:
+            response_data["extension_results"] = ext_results
+        return jsonify(response_data)
         
     except Exception as e:
         app_logger.error(f"Error executing prompt '{prompt_name}' (raw): {e}", exc_info=True)

@@ -32,6 +32,8 @@
    - [Skill Management](#321-skill-management)
    - [Admin Endpoints](#322-admin-endpoints)
    - [Component Architecture](#323-component-architecture)
+   - [Context Window Management](#324-context-window-management)
+   - [Prompt Execution](#325-prompt-execution)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -1577,13 +1579,23 @@ Submits a natural language query to a specific session. This initiates a backgro
 ```json
 {
   "prompt": "Your natural language query for the agent.",
-  "profile_id": "profile-optional-override"
+  "profile_id": "profile-optional-override",
+  "extensions": [{"name": "json", "param": null}],
+  "skills": [{"name": "concise", "param": null}],
+  "attachments": [{"file_id": "file-abc123", "filename": "data.csv"}],
+  "canvas_context": {"title": "My Canvas", "language": "python", "content": "...", "modified": false},
+  "is_session_primer": false
 }
 ```
 
 **Request Parameters:**
 - `prompt` (string, required): The natural language query to submit
 - `profile_id` (string, optional): Override the session's default profile with a specific profile ID. If omitted, uses the user's default profile. Use this to execute different queries with different LLM/MCP combinations within the same session.
+- `extensions` (array, optional): Post-processing extensions to apply to the LLM output. Each element is an object with `name` (string) and optional `param` (string or null). Extensions transform the raw LLM response into structured formats (e.g., JSON extraction, data formatting). See Section 3.20 for managing extensions.
+- `skills` (array, optional): Pre-processing skills to inject into the LLM context before execution. Each element is an object with `name` (string) and optional `param` (string or null). Skills are knowledge documents that modify LLM behavior (e.g., enforcing concise answers, SQL expertise). See Section 3.21 for managing skills.
+- `attachments` (array, optional): File attachments previously uploaded via `POST /api/v1/chat/upload`. Each element must include `file_id` and `filename`.
+- `canvas_context` (object, optional): Bidirectional canvas context with fields `title`, `language`, `content`, and `modified`.
+- `is_session_primer` (boolean, optional): When `true`, marks the message as a session initialization message. Defaults to `false`.
 
 **Success Response:**
 ```json
@@ -1593,12 +1605,27 @@ Submits a natural language query to a specific session. This initiates a backgro
 }
 ```
 
+When the task completes (poll via `GET /api/v1/tasks/{task_id}`), the result includes `extension_results` if extensions were specified:
+```json
+{
+  "status": "complete",
+  "result": {
+    "final_answer": "<html response>",
+    "final_answer_text": "clean text response",
+    "extension_results": {
+      "json": {"extracted": "data"}
+    }
+  },
+  "extension_results": {"json": {"extracted": "data"}}
+}
+```
+
 **Error Responses:**
 - `404 Not Found` - Session not found
 - `400 Bad Request` - Missing or invalid prompt, or profile_id does not exist
 - `401 Unauthorized` - Authentication required
 
-**Profile Override Examples:**
+**Examples:**
 
 Basic query with default profile:
 ```bash
@@ -1608,7 +1635,7 @@ curl -X POST http://localhost:5050/api/v1/sessions/{session_id}/query \
   -d '{"prompt": "What is the system version?"}'
 ```
 
-Query with specific profile override:
+Query with profile override:
 ```bash
 curl -X POST http://localhost:5050/api/v1/sessions/{session_id}/query \
   -H "Authorization: Bearer $TOKEN" \
@@ -1616,6 +1643,19 @@ curl -X POST http://localhost:5050/api/v1/sessions/{session_id}/query \
   -d '{
     "prompt": "Tell me about the current date",
     "profile_id": "profile-1764006444002-z0hdduce9"
+  }'
+```
+
+Query with skills, extensions, and profile override:
+```bash
+curl -X POST http://localhost:5050/api/v1/sessions/{session_id}/query \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "List all tables in the HR database",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "skills": [{"name": "concise", "param": null}],
+    "extensions": [{"name": "json", "param": null}, {"name": "extract", "param": null}]
   }'
 ```
 
@@ -9441,6 +9481,203 @@ Set to `null` to clear the override and revert to default:
 |------|-----------|
 | `401` | Missing or invalid JWT token |
 | `404` | LLM configuration not found |
+
+### 3.25. Prompt Execution
+
+Execute MCP prompts directly via REST, without requiring a pre-existing session. The platform creates a temporary session, executes the prompt through the full agent execution pipeline (including skills, tool use, and extensions), and returns the result. The temporary session is archived after execution.
+
+Both endpoints support **profile overrides** (execute with a specific LLM/MCP combination), **skills** (pre-processing context injection), and **extensions** (post-processing output transformation). These features coexist naturally — profile override determines the execution context, skills modify the LLM prompt, and extensions post-process the output.
+
+#### 3.25.1. Execute Prompt
+
+Executes an MCP prompt and returns the LLM response with HTML formatting. Best suited for UI consumption or when you need the formatted response.
+
+**Endpoint:** `POST /api/v1/prompts/{prompt_name}/execute`
+**Authentication:** Required (JWT or access token)
+
+**URL Parameters:**
+- `prompt_name` (string, required): The MCP prompt name (e.g., `base_tableBusinessDesc`)
+
+**Request Body:**
+```json
+{
+  "arguments": {"database_name": "mydb", "table_name": "employees"},
+  "profile_id": "profile-1764006444002-z0hdduce9",
+  "skills": [{"name": "concise", "param": null}],
+  "extensions": [{"name": "json", "param": null}],
+  "canvas_context": {"title": "My Canvas", "language": "sql", "content": "...", "modified": false},
+  "attachments": [{"file_id": "file-abc123", "filename": "schema.sql"}]
+}
+```
+
+**Request Parameters:**
+- `arguments` (object, optional): Key-value pairs matching the prompt's expected arguments. Required arguments that are missing will return a `400` error.
+- `profile_id` (string, optional): Override the default profile for this execution. Determines which LLM and MCP server combination to use. If omitted, uses the user's default profile.
+- `skills` (array, optional): Pre-processing skills to inject into the LLM context. Each element: `{"name": "<skill_name>", "param": "<optional_param>"}`. Skills are resolved and injected before LLM execution.
+- `extensions` (array, optional): Post-processing extensions to apply to the LLM output. Each element: `{"name": "<extension_name>", "param": "<optional_param>"}`. Extensions run after LLM execution to transform the output.
+- `canvas_context` (object, optional): Bidirectional canvas context with fields `title`, `language`, `content`, and `modified`.
+- `attachments` (array, optional): File attachments previously uploaded via `POST /api/v1/chat/upload`.
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "prompt_text": "Describe the business context of table employees in database mydb...",
+  "response": "<p>The employees table stores...</p>",
+  "response_text": "The employees table stores...",
+  "input_tokens": 1234,
+  "output_tokens": 567,
+  "provider": "Google",
+  "model": "gemini-2.0-flash",
+  "extension_results": {
+    "json": {"business_description": "The employees table stores HR data..."}
+  }
+}
+```
+
+The `extension_results` field is only present when extensions were specified and executed successfully. The `response` field contains HTML-formatted output; `response_text` contains clean text.
+
+**Error Responses:**
+
+| Code | Condition | Example |
+|------|-----------|---------|
+| `400` | Required argument missing | `{"status": "error", "message": "Required argument 'database_name' is missing"}` |
+| `401` | Authentication required | `{"status": "error", "message": "Authentication required"}` |
+| `404` | Prompt not found on MCP server | `{"status": "error", "message": "Prompt 'unknown_prompt' not found"}` |
+| `500` | Execution returned no result | `{"status": "error", "message": "Prompt 'base_tableBusinessDesc' execution returned no result"}` |
+| `503` | Profile activation failed | `{"status": "error", "message": "Failed to activate user profile: ..."}` |
+
+**Examples:**
+
+Basic prompt execution:
+```bash
+curl -X POST http://localhost:5050/api/v1/prompts/base_tableBusinessDesc/execute \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "arguments": {"database_name": "hr_db", "table_name": "employees"}
+  }'
+```
+
+Prompt execution with profile override, skill, and extension:
+```bash
+curl -X POST http://localhost:5050/api/v1/prompts/base_tableBusinessDesc/execute \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "arguments": {"database_name": "hr_db", "table_name": "employees"},
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "skills": [{"name": "concise", "param": null}],
+    "extensions": [{"name": "json", "param": null}, {"name": "extract", "param": null}]
+  }'
+```
+
+#### 3.25.2. Execute Prompt (Raw)
+
+Executes an MCP prompt and returns raw, structured execution data including the full execution trace. Designed for programmatic consumption (e.g., auto-generating RAG cases, n8n/Flowise integrations) where structured data is needed rather than HTML-formatted responses.
+
+**Endpoint:** `POST /api/v1/prompts/{prompt_name}/execute-raw`
+**Authentication:** Required (JWT or access token)
+
+**URL Parameters:**
+- `prompt_name` (string, required): The MCP prompt name
+
+**Request Body:**
+```json
+{
+  "arguments": {"database_name": "mydb", "table_name": "employees"},
+  "mcp_server_id": "server-abc123",
+  "profile_id": "profile-1764006444002-z0hdduce9",
+  "skills": [{"name": "concise", "param": null}],
+  "extensions": [{"name": "json", "param": null}],
+  "canvas_context": {"title": "My Canvas", "language": "sql", "content": "...", "modified": false},
+  "attachments": [{"file_id": "file-abc123", "filename": "schema.sql"}]
+}
+```
+
+**Request Parameters:**
+- `arguments` (object, optional): Key-value pairs matching the prompt's expected arguments.
+- `mcp_server_id` (string, optional): Override the MCP server to use. Ignored when `profile_id` is also specified (profile override takes precedence).
+- `profile_id` (string, optional): Override the default profile for this execution. Takes precedence over `mcp_server_id`. Determines the full execution context (LLM + MCP server).
+- `skills` (array, optional): Pre-processing skills. Same format as Section 3.25.1.
+- `extensions` (array, optional): Post-processing extensions. Same format as Section 3.25.1.
+- `canvas_context` (object, optional): Bidirectional canvas context.
+- `attachments` (array, optional): File attachments previously uploaded via `POST /api/v1/chat/upload`.
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "prompt_text": "Describe the business context of table employees...",
+  "execution_trace": [
+    {
+      "step": 1,
+      "type": "tool_call",
+      "tool_name": "td_get_table_columns",
+      "arguments": {"database": "hr_db", "table": "employees"},
+      "result": "Column1 INTEGER, Column2 VARCHAR(100)..."
+    }
+  ],
+  "collected_data": {
+    "tables": ["employees"],
+    "columns": ["id", "name", "department"]
+  },
+  "final_answer_text": "The employees table stores HR data...",
+  "token_usage": {
+    "input": 1234,
+    "output": 567,
+    "total": 1801
+  },
+  "provider": "Google",
+  "model": "gemini-2.0-flash",
+  "extension_results": {
+    "json": {"business_description": "..."},
+    "extract": {"key_entities": ["employees", "departments"]}
+  }
+}
+```
+
+The `execution_trace` array shows each step the agent took (tool calls, intermediate reasoning). The `extension_results` field is only present when extensions were specified.
+
+**Error Responses:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Required argument missing, or no default profile configured |
+| `401` | Authentication required |
+| `404` | Prompt not found on MCP server |
+| `500` | Execution returned no result or prompt text extraction failed |
+| `503` | Profile activation failed |
+
+**Examples:**
+
+Raw execution for programmatic consumption:
+```bash
+curl -X POST http://localhost:5050/api/v1/prompts/base_tableBusinessDesc/execute-raw \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "arguments": {"database_name": "hr_db", "table_name": "employees"}
+  }'
+```
+
+Raw execution with profile override and extensions:
+```bash
+curl -X POST http://localhost:5050/api/v1/prompts/base_tableBusinessDesc/execute-raw \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "arguments": {"database_name": "hr_db", "table_name": "employees"},
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "skills": [{"name": "concise", "param": null}],
+    "extensions": [{"name": "json", "param": null}, {"name": "extract", "param": null}]
+  }'
+```
+
+**Profile Override vs MCP Server Override:**
+- When `profile_id` is specified, it takes full precedence — the profile determines both the LLM and MCP server.
+- When only `mcp_server_id` is specified (without `profile_id`), it overrides just the MCP server while keeping the default profile's LLM.
+- When neither is specified, the user's default profile is used.
 
 ---
 
