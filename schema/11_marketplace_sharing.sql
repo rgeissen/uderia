@@ -2,14 +2,14 @@
 -- Schema: Marketplace Sharing Grants
 -- Version: 1.0
 -- Description: Targeted sharing of marketplace resources
---              (collections and agent packs) with specific users.
+--              with specific users.
 -- ============================================================
 
 -- Grants table for targeted sharing
 CREATE TABLE IF NOT EXISTS marketplace_sharing_grants (
     id              VARCHAR(36)  PRIMARY KEY,
-    resource_type   VARCHAR(20)  NOT NULL,          -- 'collection' or 'agent_pack'
-    resource_id     VARCHAR(100) NOT NULL,           -- collection ID or marketplace_agent_packs.id
+    resource_type   VARCHAR(20)  NOT NULL,          -- 'collection', 'agent_pack', 'skill', 'extension', or 'knowledge_graph'
+    resource_id     VARCHAR(100) NOT NULL,           -- marketplace resource ID
     grantor_user_id VARCHAR(36)  NOT NULL,
     grantee_user_id VARCHAR(36)  NOT NULL,
     created_at      DATETIME     NOT NULL,

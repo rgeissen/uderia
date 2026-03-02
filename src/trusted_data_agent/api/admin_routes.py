@@ -2698,3 +2698,71 @@ async def save_component_settings_endpoint():
     except Exception as e:
         logger.error(f"Error saving component settings: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Knowledge Graph Marketplace Governance Settings
+# ---------------------------------------------------------------------------
+
+@admin_api_bp.route('/v1/admin/kg-marketplace-settings', methods=['GET'])
+@require_admin
+async def get_kg_marketplace_settings_endpoint():
+    """
+    Get current knowledge graph marketplace governance settings.
+
+    Returns:
+    {
+        "status": "success",
+        "settings": { "kg_marketplace_enabled": true }
+    }
+    """
+    try:
+        from trusted_data_agent.kg.settings import get_kg_marketplace_settings
+
+        settings = get_kg_marketplace_settings()
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting KG marketplace settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/kg-marketplace-settings', methods=['POST'])
+@require_admin
+async def save_kg_marketplace_settings_endpoint():
+    """
+    Save knowledge graph marketplace governance settings (admin only).
+
+    Body (all fields optional):
+    {
+        "kg_marketplace_enabled": true | false
+    }
+    """
+    try:
+        from trusted_data_agent.kg.settings import save_kg_marketplace_settings, get_kg_marketplace_settings
+
+        data = await request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        if 'kg_marketplace_enabled' in data and not isinstance(data['kg_marketplace_enabled'], bool):
+            return jsonify({'status': 'error', 'message': 'kg_marketplace_enabled must be boolean'}), 400
+
+        admin_user = get_current_user_from_request()
+        admin_uuid = admin_user.id if admin_user else 'unknown'
+
+        save_kg_marketplace_settings(data, admin_uuid)
+
+        return jsonify({
+            'status': 'success',
+            'message': 'KG marketplace settings updated successfully',
+            'settings': get_kg_marketplace_settings(),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error saving KG marketplace settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

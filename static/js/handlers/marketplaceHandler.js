@@ -78,7 +78,15 @@ export function initializeMarketplace() {
             switchRepositoryType('skills');
         });
     }
-    
+
+    // Knowledge Graphs type tab
+    const kgTypeTab = document.getElementById('marketplace-repo-type-knowledge-graphs');
+    if (kgTypeTab) {
+        kgTypeTab.addEventListener('click', () => {
+            switchRepositoryType('knowledge-graphs');
+        });
+    }
+
     // Search and filter handlers
     const searchBtn = document.getElementById('marketplace-search-btn');
     const searchInput = document.getElementById('marketplace-search-input');
@@ -196,6 +204,7 @@ function switchRepositoryType(type) {
         'agent-packs': document.getElementById('marketplace-repo-type-agent-packs'),
         extensions: document.getElementById('marketplace-repo-type-extensions'),
         skills: document.getElementById('marketplace-repo-type-skills'),
+        'knowledge-graphs': document.getElementById('marketplace-repo-type-knowledge-graphs'),
     };
     const descs = {
         planner: document.getElementById('planner-description'),
@@ -203,6 +212,7 @@ function switchRepositoryType(type) {
         'agent-packs': document.getElementById('agent-packs-description'),
         extensions: document.getElementById('extensions-description'),
         skills: document.getElementById('skills-description'),
+        'knowledge-graphs': document.getElementById('knowledge-graphs-description'),
     };
 
     for (const [key, tab] of Object.entries(tabs)) {
@@ -231,6 +241,8 @@ function loadMarketplaceContent() {
         loadMarketplaceExtensions();
     } else if (currentRepositoryType === 'skills') {
         loadMarketplaceSkills();
+    } else if (currentRepositoryType === 'knowledge-graphs') {
+        loadMarketplaceKnowledgeGraphs();
     } else {
         loadMarketplaceCollections();
     }
@@ -3133,6 +3145,521 @@ async function handleRate() {
         }
     }
 }
+
+// ============================================================================
+// KNOWLEDGE GRAPH MARKETPLACE
+// ============================================================================
+
+/**
+ * Load marketplace knowledge graphs from API
+ */
+async function loadMarketplaceKnowledgeGraphs() {
+    const container = document.getElementById('marketplace-collections-list');
+    const loading = document.getElementById('marketplace-loading');
+    const empty = document.getElementById('marketplace-empty');
+    const pagination = document.getElementById('marketplace-pagination');
+
+    if (!container) return;
+
+    if (loading) loading.classList.remove('hidden');
+    if (empty) empty.classList.add('hidden');
+    container.innerHTML = '';
+    if (pagination) pagination.classList.add('hidden');
+
+    try {
+        const token = await window.authClient.getToken();
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        let kgs = [];
+
+        if (currentTab === 'my-collections') {
+            // My Assets — show user's own knowledge graphs
+            const response = await fetch('/api/v1/knowledge-graph/list', { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const data = await response.json();
+            kgs = data.knowledge_graphs || [];
+        } else {
+            // Browse Marketplace — show published knowledge graphs
+            const params = new URLSearchParams({
+                page: currentPage,
+                per_page: 12,
+                sort_by: currentSortBy === 'subscribers' ? 'recent' : currentSortBy,
+            });
+            if (currentSearch) params.append('search', currentSearch);
+
+            const response = await fetch(`/api/v1/marketplace/knowledge-graphs?${params}`, { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+            const data = await response.json();
+            kgs = data.knowledge_graphs || [];
+            totalPages = data.total_pages || 1;
+            updatePaginationUI(data);
+        }
+
+        if (loading) loading.classList.add('hidden');
+
+        if (kgs.length === 0) {
+            if (empty) {
+                empty.classList.remove('hidden');
+                const emptyTitle = empty.querySelector('h3');
+                const emptyDesc = empty.querySelector('p');
+                if (currentTab === 'my-collections') {
+                    if (emptyTitle) emptyTitle.textContent = 'No Knowledge Graphs';
+                    if (emptyDesc) emptyDesc.textContent = 'Build knowledge graphs from the Intelligence Performance page, or install from the Browse tab';
+                } else {
+                    if (emptyTitle) emptyTitle.textContent = 'No Knowledge Graphs Found';
+                    if (emptyDesc) emptyDesc.textContent = currentSearch
+                        ? 'Try adjusting your search'
+                        : 'No knowledge graphs have been published to the marketplace yet';
+                }
+            }
+            return;
+        }
+
+        kgs.forEach(kg => {
+            if (currentTab === 'my-collections') {
+                container.appendChild(createMyKnowledgeGraphCard(kg));
+            } else {
+                container.appendChild(createKnowledgeGraphMarketplaceCard(kg));
+            }
+        });
+
+    } catch (error) {
+        console.error('Failed to load knowledge graphs:', error);
+        if (loading) loading.classList.add('hidden');
+        showNotification('error', 'Failed to load knowledge graphs: ' + error.message);
+    }
+}
+
+/**
+ * Create a knowledge graph marketplace card (Browse tab)
+ */
+function createKnowledgeGraphMarketplaceCard(kg) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-orange-500/50 transition-colors';
+
+    const isPublisher = kg.is_publisher || false;
+    const rating = kg.average_rating || 0;
+    const entityTypes = kg.entity_types || {};
+    const tags = kg.tags || [];
+
+    // Entity type pills (top 4)
+    const typePills = Object.entries(entityTypes)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([type, count]) =>
+            `<span class="px-1.5 py-0.5 text-xs rounded bg-orange-500/10 text-orange-400">${escapeHtml(type)} (${count})</span>`)
+        .join('');
+
+    const moreCount = Object.keys(entityTypes).length - 4;
+    const morePill = moreCount > 0
+        ? `<span class="px-1.5 py-0.5 text-xs rounded bg-white/5 text-gray-500">+${moreCount} more</span>`
+        : '';
+
+    // Star rating
+    const starsHtml = Array.from({length: 5}, (_, i) =>
+        `<svg class="w-3.5 h-3.5 ${i < Math.round(rating) ? 'text-yellow-400' : 'text-gray-600'}" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>`
+    ).join('');
+
+    card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-lg font-semibold text-white truncate">${escapeHtml(kg.name)}</h2>
+                    ${kg.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(kg.version)}</span>` : ''}
+                    ${kg.domain ? `<span class="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 text-purple-400">${escapeHtml(kg.domain)}</span>` : ''}
+                </div>
+                ${kg.author ? `<p class="text-sm text-gray-400 mt-0.5">by ${escapeHtml(kg.author)}</p>` : ''}
+            </div>
+        </div>
+        ${kg.description ? `<p class="text-sm text-gray-300 line-clamp-2">${escapeHtml(kg.description)}</p>` : ''}
+        ${typePills ? `<div class="flex flex-wrap gap-1.5">${typePills}${morePill}</div>` : ''}
+        <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-300">
+            <span>${kg.entity_count || 0} entities</span>
+            <span>${kg.relationship_count || 0} relationships</span>
+            <div class="flex items-center gap-1">${starsHtml}
+                <span class="ml-1 text-gray-400">${rating.toFixed(1)} (${kg.rating_count || 0})</span>
+            </div>
+            <span>${kg.install_count || 0} installs</span>
+        </div>
+        <div class="flex items-center gap-2 pt-1 border-t border-white/5">
+            ${isPublisher ? `
+                <button class="kg-mkt-unpublish card-btn card-btn--danger flex-1">Unpublish</button>
+            ` : `
+                <button class="kg-mkt-install card-btn card-btn--primary flex-1">Install</button>
+                <button class="kg-mkt-rate card-btn card-btn--amber">Rate</button>
+            `}
+        </div>
+    `;
+
+    // Wire event handlers
+    const installBtn = card.querySelector('.kg-mkt-install');
+    if (installBtn) {
+        installBtn.addEventListener('click', () => openKgInstallModal(kg));
+    }
+
+    const unpublishBtn = card.querySelector('.kg-mkt-unpublish');
+    if (unpublishBtn) {
+        unpublishBtn.addEventListener('click', async () => {
+            if (!confirm(`Unpublish "${kg.name}" from the marketplace?`)) return;
+            try {
+                const token = await window.authClient.getToken();
+                const response = await fetch(`/api/v1/marketplace/knowledge-graphs/${kg.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                showNotification('success', 'Knowledge graph unpublished');
+                loadMarketplaceKnowledgeGraphs();
+            } catch (err) {
+                showNotification('error', 'Failed to unpublish: ' + err.message);
+            }
+        });
+    }
+
+    const rateBtn = card.querySelector('.kg-mkt-rate');
+    if (rateBtn) {
+        rateBtn.addEventListener('click', () => openKgRateModal(kg));
+    }
+
+    return card;
+}
+
+/**
+ * Create a knowledge graph card for "My Assets" tab
+ */
+function createMyKnowledgeGraphCard(kg) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-orange-500/50 transition-colors';
+
+    const entityTypes = kg.entity_types || {};
+    const typePills = Object.entries(entityTypes)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([type, count]) =>
+            `<span class="px-1.5 py-0.5 text-xs rounded bg-orange-500/10 text-orange-400">${escapeHtml(type)} (${count})</span>`)
+        .join('');
+
+    card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-lg font-semibold text-white truncate">${escapeHtml(kg.profile_name || kg.profile_tag || kg.profile_id)}</h2>
+                    ${kg.profile_tag ? `<span class="px-2 py-0.5 text-xs rounded-full bg-orange-500/20 text-orange-400">${escapeHtml(kg.profile_tag)}</span>` : ''}
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-300">
+            <span>${kg.total_entities || kg.entity_count || 0} entities</span>
+            <span>${kg.total_relationships || kg.relationship_count || 0} relationships</span>
+        </div>
+        ${typePills ? `<div class="flex flex-wrap gap-1.5">${typePills}</div>` : ''}
+        <div class="flex items-center gap-2 pt-1 border-t border-white/5">
+            <button class="kg-my-publish card-btn card-btn--success flex-1">Publish</button>
+            <button class="kg-my-export card-btn card-btn--info">Export</button>
+        </div>
+    `;
+
+    // Wire publish handler
+    const publishBtn = card.querySelector('.kg-my-publish');
+    if (publishBtn) {
+        publishBtn.addEventListener('click', () => openKgPublishModal(kg));
+    }
+
+    // Wire export handler
+    const exportBtn = card.querySelector('.kg-my-export');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+            try {
+                const token = await window.authClient.getToken();
+                window.location.href = `/api/v1/knowledge-graph/export?profile_id=${encodeURIComponent(kg.profile_id)}&token=${encodeURIComponent(token)}`;
+            } catch (err) {
+                showNotification('error', 'Export failed: ' + err.message);
+            }
+        });
+    }
+
+    return card;
+}
+
+/**
+ * Open KG install modal — user picks a target profile
+ */
+async function openKgInstallModal(kg) {
+    try {
+        const token = await window.authClient.getToken();
+        const headers = { 'Authorization': `Bearer ${token}` };
+
+        // Fetch user's profiles
+        const response = await fetch('/api/v1/profiles', { headers });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const profiles = data.profiles || [];
+
+        if (profiles.length === 0) {
+            showNotification('error', 'No profiles available. Create a profile first.');
+            return;
+        }
+
+        // Build modal
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] opacity-0 transition-opacity duration-200';
+
+        const profileOptions = profiles.map(p =>
+            `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.tag || p.id)}</option>`
+        ).join('');
+
+        const content = document.createElement('div');
+        content.className = 'glass-panel rounded-2xl p-6 w-full max-w-md mx-4 transform scale-95 opacity-0 transition-all duration-200';
+        content.innerHTML = `
+            <h3 class="text-lg font-semibold text-white mb-4">Install Knowledge Graph</h3>
+            <p class="text-sm text-gray-300 mb-4">Install <strong>${escapeHtml(kg.name)}</strong> into a profile. Entities and relationships will be merged into the target profile's knowledge graph.</p>
+            <label class="block text-sm text-gray-400 mb-2">Target Profile</label>
+            <select id="kg-install-profile-select" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4">
+                ${profileOptions}
+            </select>
+            <div class="flex gap-3">
+                <button id="kg-install-cancel" class="card-btn card-btn--neutral flex-1">Cancel</button>
+                <button id="kg-install-confirm" class="card-btn card-btn--primary flex-1">Install</button>
+            </div>
+        `;
+
+        overlay.appendChild(content);
+        document.body.appendChild(overlay);
+
+        requestAnimationFrame(() => {
+            overlay.classList.add('opacity-100');
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+        });
+
+        const closeModal = () => {
+            overlay.classList.remove('opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => overlay.remove(), 200);
+        };
+
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+        content.querySelector('#kg-install-cancel').addEventListener('click', closeModal);
+
+        content.querySelector('#kg-install-confirm').addEventListener('click', async () => {
+            const targetProfileId = content.querySelector('#kg-install-profile-select').value;
+            const confirmBtn = content.querySelector('#kg-install-confirm');
+            confirmBtn.textContent = 'Installing...';
+            confirmBtn.disabled = true;
+
+            try {
+                const resp = await fetch(`/api/v1/marketplace/knowledge-graphs/${kg.id}/install`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_profile_id: targetProfileId }),
+                });
+                if (!resp.ok) {
+                    const errData = await resp.json().catch(() => ({}));
+                    throw new Error(errData.error || `HTTP ${resp.status}`);
+                }
+                const result = await resp.json();
+                showNotification('success', `Installed: ${result.entities_added} entities, ${result.relationships_added} relationships`);
+                closeModal();
+                loadMarketplaceKnowledgeGraphs();
+            } catch (err) {
+                showNotification('error', 'Install failed: ' + err.message);
+                confirmBtn.textContent = 'Install';
+                confirmBtn.disabled = false;
+            }
+        });
+
+    } catch (err) {
+        showNotification('error', 'Failed to open install dialog: ' + err.message);
+    }
+}
+
+/**
+ * Open KG publish modal
+ */
+function openKgPublishModal(kg) {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] opacity-0 transition-opacity duration-200';
+
+    const content = document.createElement('div');
+    content.className = 'glass-panel rounded-2xl p-6 w-full max-w-md mx-4 transform scale-95 opacity-0 transition-all duration-200';
+    content.innerHTML = `
+        <h3 class="text-lg font-semibold text-white mb-4">Publish Knowledge Graph</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Name</label>
+                <input id="kg-pub-name" type="text" value="${escapeHtml(kg.profile_name || kg.profile_tag || '')}" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm" />
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Description</label>
+                <textarea id="kg-pub-desc" rows="2" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Domain</label>
+                    <input id="kg-pub-domain" type="text" placeholder="e.g. finance" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Version</label>
+                    <input id="kg-pub-version" type="text" value="1.0.0" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm" />
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Author</label>
+                <input id="kg-pub-author" type="text" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm" />
+            </div>
+        </div>
+        <div class="flex gap-3 mt-4">
+            <button id="kg-pub-cancel" class="card-btn card-btn--neutral flex-1">Cancel</button>
+            <button id="kg-pub-confirm" class="card-btn card-btn--success flex-1">Publish</button>
+        </div>
+    `;
+
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+        overlay.classList.add('opacity-100');
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+    });
+
+    const closeModal = () => {
+        overlay.classList.remove('opacity-100');
+        content.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => overlay.remove(), 200);
+    };
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    content.querySelector('#kg-pub-cancel').addEventListener('click', closeModal);
+
+    content.querySelector('#kg-pub-confirm').addEventListener('click', async () => {
+        const confirmBtn = content.querySelector('#kg-pub-confirm');
+        confirmBtn.textContent = 'Publishing...';
+        confirmBtn.disabled = true;
+
+        try {
+            const token = await window.authClient.getToken();
+            const body = {
+                name: content.querySelector('#kg-pub-name').value.trim() || kg.profile_name || 'Knowledge Graph',
+                description: content.querySelector('#kg-pub-desc').value.trim(),
+                domain: content.querySelector('#kg-pub-domain').value.trim(),
+                version: content.querySelector('#kg-pub-version').value.trim() || '1.0.0',
+                author: content.querySelector('#kg-pub-author').value.trim() || 'Unknown',
+                visibility: 'public',
+            };
+
+            const resp = await fetch(`/api/v1/knowledge-graph/${encodeURIComponent(kg.profile_id)}/publish`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${resp.status}`);
+            }
+            showNotification('success', 'Knowledge graph published to marketplace');
+            closeModal();
+            loadMarketplaceKnowledgeGraphs();
+        } catch (err) {
+            showNotification('error', 'Publish failed: ' + err.message);
+            confirmBtn.textContent = 'Publish';
+            confirmBtn.disabled = false;
+        }
+    });
+}
+
+/**
+ * Open KG rate modal
+ */
+function openKgRateModal(kg) {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] opacity-0 transition-opacity duration-200';
+
+    const content = document.createElement('div');
+    content.className = 'glass-panel rounded-2xl p-6 w-full max-w-sm mx-4 transform scale-95 opacity-0 transition-all duration-200';
+
+    let selectedRating = 0;
+    const starSvg = (filled) => `<svg class="w-8 h-8 cursor-pointer transition-colors ${filled ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-300'}" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+    </svg>`;
+
+    content.innerHTML = `
+        <h3 class="text-lg font-semibold text-white mb-2">Rate Knowledge Graph</h3>
+        <p class="text-sm text-gray-400 mb-4">${escapeHtml(kg.name)}</p>
+        <div id="kg-rate-stars" class="flex gap-1 justify-center mb-4">
+            ${Array.from({length: 5}, (_, i) => `<span data-star="${i + 1}">${starSvg(false)}</span>`).join('')}
+        </div>
+        <textarea id="kg-rate-comment" rows="2" placeholder="Optional comment..." class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4"></textarea>
+        <div class="flex gap-3">
+            <button id="kg-rate-cancel" class="card-btn card-btn--neutral flex-1">Cancel</button>
+            <button id="kg-rate-submit" class="card-btn card-btn--amber flex-1" disabled>Submit Rating</button>
+        </div>
+    `;
+
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+        overlay.classList.add('opacity-100');
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+    });
+
+    const closeModal = () => {
+        overlay.classList.remove('opacity-100');
+        content.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => overlay.remove(), 200);
+    };
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    content.querySelector('#kg-rate-cancel').addEventListener('click', closeModal);
+
+    // Star click handlers
+    const starsContainer = content.querySelector('#kg-rate-stars');
+    const submitBtn = content.querySelector('#kg-rate-submit');
+    starsContainer.querySelectorAll('[data-star]').forEach(span => {
+        span.addEventListener('click', () => {
+            selectedRating = parseInt(span.dataset.star);
+            submitBtn.disabled = false;
+            starsContainer.querySelectorAll('[data-star]').forEach(s => {
+                const val = parseInt(s.dataset.star);
+                s.innerHTML = starSvg(val <= selectedRating);
+            });
+        });
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        if (!selectedRating) return;
+        submitBtn.textContent = 'Submitting...';
+        submitBtn.disabled = true;
+
+        try {
+            const token = await window.authClient.getToken();
+            const comment = content.querySelector('#kg-rate-comment').value.trim();
+            const resp = await fetch(`/api/v1/marketplace/knowledge-graphs/${kg.id}/rate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rating: selectedRating, comment: comment || undefined }),
+            });
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${resp.status}`);
+            }
+            showNotification('success', 'Rating submitted');
+            closeModal();
+            loadMarketplaceKnowledgeGraphs();
+        } catch (err) {
+            showNotification('error', 'Failed to submit rating: ' + err.message);
+            submitBtn.textContent = 'Submit Rating';
+            submitBtn.disabled = false;
+        }
+    });
+}
+
 
 // Export refresh function for external use
 export function refreshMarketplace() {

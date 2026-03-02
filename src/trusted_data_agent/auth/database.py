@@ -63,6 +63,10 @@ def init_database():
     On first initialization, creates a default admin account.
     """
     try:
+        # Expose the resolved DB URL so GraphStore and other modules can find it
+        from trusted_data_agent.core.config import APP_CONFIG
+        APP_CONFIG.AUTH_DB_PATH = DATABASE_URL
+
         # Create tables with checkfirst to avoid recreating existing tables
         # For indexes that may already exist, we'll handle the error gracefully
         try:
@@ -125,6 +129,9 @@ def init_database():
 
         # Create knowledge graph tables (kg_entities + kg_relationships)
         _create_knowledge_graph_tables()
+
+        # Create marketplace knowledge graph tables
+        _create_marketplace_knowledge_graph_tables()
 
         # Create canvas connector credentials table
         _create_canvas_connector_tables()
@@ -1077,6 +1084,86 @@ def _create_knowledge_graph_tables():
 
     except Exception as e:
         logger.error(f"Error creating knowledge graph tables: {e}", exc_info=True)
+
+
+def _create_marketplace_knowledge_graph_tables():
+    """
+    Create marketplace_knowledge_graphs, knowledge_graph_ratings, and kg_marketplace_settings tables.
+    Safe to call multiple times (won't recreate if exists).
+    Mirrors _create_marketplace_skills_tables().
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "23_marketplace_knowledge_graphs.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 23_marketplace_knowledge_graphs.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS marketplace_knowledge_graphs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    source_profile_id TEXT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    version VARCHAR(50),
+                    author VARCHAR(255),
+                    domain VARCHAR(100),
+                    entity_count INTEGER DEFAULT 0,
+                    relationship_count INTEGER DEFAULT 0,
+                    entity_types_json TEXT,
+                    relationship_types_json TEXT,
+                    tags_json TEXT,
+                    publisher_user_id VARCHAR(36) NOT NULL,
+                    visibility VARCHAR(20) DEFAULT 'public',
+                    manifest_json TEXT,
+                    content_hash VARCHAR(64),
+                    download_count INTEGER DEFAULT 0,
+                    install_count INTEGER DEFAULT 0,
+                    published_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    FOREIGN KEY (publisher_user_id) REFERENCES users(id)
+                );
+                CREATE TABLE IF NOT EXISTS knowledge_graph_ratings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    kg_marketplace_id VARCHAR(36) NOT NULL,
+                    user_id VARCHAR(36) NOT NULL,
+                    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+                    comment TEXT,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    FOREIGN KEY (kg_marketplace_id) REFERENCES marketplace_knowledge_graphs(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS kg_marketplace_settings (
+                    id INTEGER PRIMARY KEY,
+                    setting_key TEXT NOT NULL UNIQUE,
+                    setting_value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT OR IGNORE INTO kg_marketplace_settings (setting_key, setting_value) VALUES
+                    ('kg_marketplace_enabled', 'true');
+                CREATE INDEX IF NOT EXISTS idx_marketplace_kg_publisher
+                    ON marketplace_knowledge_graphs(publisher_user_id);
+                CREATE INDEX IF NOT EXISTS idx_marketplace_kg_visibility
+                    ON marketplace_knowledge_graphs(visibility);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_ratings_unique
+                    ON knowledge_graph_ratings(kg_marketplace_id, user_id);
+            """)
+            logger.info("Created marketplace_knowledge_graphs tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating marketplace_knowledge_graphs tables: {e}", exc_info=True)
 
 
 def _create_canvas_connector_tables():

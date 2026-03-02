@@ -196,6 +196,9 @@ def create_app():
     app.register_blueprint(agent_pack_bp, url_prefix="/api")  # Agent pack management
     app.register_blueprint(skills_api_bp, url_prefix="/api")  # Skills management
 
+    from trusted_data_agent.api.kg_marketplace_routes import kg_marketplace_bp
+    app.register_blueprint(kg_marketplace_bp, url_prefix="/api")  # KG marketplace
+
     @app.route('/favicon.ico')
     async def favicon():
         """Serve favicon.ico from root path for browser compatibility"""

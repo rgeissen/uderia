@@ -26,6 +26,9 @@ class AppConfig:
     ENABLE_MCP_CLASSIFICATION = os.environ.get('TDA_ENABLE_MCP_CLASSIFICATION', 'true').lower() == 'true' # If True, uses LLM to classify MCP tools/prompts into categories. If False, uses single categories ('All Tools', 'All Prompts', 'All Resources') for faster configuration. This is a GLOBAL setting affecting all users.
 
 
+    # --- Database ---
+    AUTH_DB_PATH = None  # Absolute path to tda_auth.db; set by init_database() at startup
+
     # --- Connection & Model State ---
     SERVICES_CONFIGURED = False # Master flag indicating if the core services (LLM, MCP) have been successfully configured.
     ACTIVE_PROVIDER = None

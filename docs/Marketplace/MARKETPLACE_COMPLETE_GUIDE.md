@@ -4,16 +4,17 @@
 
 The Intelligence Marketplace is a comprehensive feature enabling users to share, discover, and leverage community-curated RAG (Retrieval-Augmented Generation) collections. This marketplace transforms isolated knowledge bases into a collaborative ecosystem where users benefit from proven execution patterns and domain expertise.
 
-The marketplace supports **three distinct product types:**
+The marketplace supports **four distinct product types:**
 - **Planner Repositories:** Execution patterns and strategies for proven task completion
 - **Knowledge Repositories:** Reference documents and domain knowledge for planning context
 - **Skills:** Pre-processing prompt injections for modifying LLM behavior (Claude Code compatible format)
+- **Knowledge Graphs:** Entity-relationship graphs for database topology, business concepts, and domain knowledge
 
 All types can be published, browsed, installed/subscribed, and rated through the marketplace interface with visual separation for clarity.
 
-**Implementation Date:** 2024 (Phase 1-4), February 2026 (Phase 5: Skills)
-**Total Implementation:** 5 Phases
-**Lines of Code:** ~4,200 lines (backend + frontend)
+**Implementation Date:** 2024 (Phase 1-4), February 2026 (Phase 5: Skills, Phase 6: Knowledge Graphs)
+**Total Implementation:** 6 Phases
+**Lines of Code:** ~5,000 lines (backend + frontend)
 **Status:** ✅ Complete
 
 ---
@@ -30,6 +31,7 @@ All types can be published, browsed, installed/subscribed, and rated through the
 8. [Performance & Scalability](#performance--scalability)
 9. [Future Roadmap](#future-roadmap)
 10. [Skills Marketplace (Phase 5)](#skills-marketplace-phase-5)
+11. [Knowledge Graph Marketplace (Phase 6)](#knowledge-graph-marketplace-phase-6)
 
 ---
 
@@ -977,6 +979,64 @@ Skills export as `.skill` files (ZIP containing `skill.json` + `<name>.md`). Imp
 
 ---
 
+## Knowledge Graph Marketplace (Phase 6)
+
+### Overview
+
+Phase 6 adds Knowledge Graphs as the fourth marketplace product type. Knowledge Graphs represent entity-relationship models (database schemas, business concepts, domain ontologies) that users build through the Intelligence Performance page. Published KGs can be browsed, installed into target profiles, forked, and rated.
+
+### Database Schema
+
+**File:** `schema/23_marketplace_knowledge_graphs.sql`
+
+Three tables:
+- `marketplace_knowledge_graphs` — Registry with KG-specific metadata: `source_profile_id`, `domain`, `entity_count`, `relationship_count`, `entity_types_json`, `relationship_types_json`, `tags_json`
+- `knowledge_graph_ratings` — Standard 1-5 star ratings with unique-per-user constraint
+- `kg_marketplace_settings` — Admin governance (`kg_marketplace_enabled`)
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/knowledge-graph/<profile_id>/publish` | POST | Publish KG to marketplace |
+| `/v1/marketplace/knowledge-graphs` | GET | Browse with search, sort, pagination, domain filter |
+| `/v1/marketplace/knowledge-graphs/<id>` | GET | Detail + user's own rating |
+| `/v1/marketplace/knowledge-graphs/<id>/install` | POST | Install into target profile via `GraphStore.import_bulk()` |
+| `/v1/marketplace/knowledge-graphs/<id>/fork` | POST | Fork (alias for install, increments download_count) |
+| `/v1/marketplace/knowledge-graphs/<id>/rate` | POST | Rate 1-5 stars with optional comment |
+| `/v1/marketplace/knowledge-graphs/<id>` | DELETE | Unpublish (publisher only) |
+| `/v1/admin/kg-marketplace-settings` | GET/POST | Admin governance settings |
+
+### Frontend Integration
+
+- **Tab:** "Knowledge Graphs" tab in marketplace type selector with graph/link icon
+- **Browse cards:** Orange accent, purple domain badge, entity type pills, stats (entities, relationships, rating, installs)
+- **My Assets cards:** Publish and Export buttons
+- **Modals:** Install (profile picker), Publish (name/description/domain/version/author), Rate (1-5 stars)
+
+### Key Design Decisions
+
+1. **Profile-scoped install:** Unlike Skills (global), KGs are installed into a specific target profile via `GraphStore.import_bulk()`. The install modal includes a profile picker.
+2. **Merge semantics:** Installing a KG merges entities by `(name, entity_type)` — existing entities are upserted, not replaced.
+3. **Source provenance:** Installed entities have `source = 'marketplace'` for tracking.
+4. **Export format compatibility:** Published KGs use the same format as `/v1/knowledge-graph/export`, with relationships containing both ID-based and name-based references.
+
+### Files
+
+| File | Type | Purpose |
+|------|------|---------|
+| `schema/23_marketplace_knowledge_graphs.sql` | New | DB schema |
+| `src/trusted_data_agent/kg/__init__.py` | New | Package marker |
+| `src/trusted_data_agent/kg/settings.py` | New | Governance settings helper |
+| `src/trusted_data_agent/api/kg_marketplace_routes.py` | New | All 7 marketplace API endpoints (~510 lines) |
+| `src/trusted_data_agent/auth/database.py` | Modified | Bootstrap function |
+| `src/trusted_data_agent/main.py` | Modified | Blueprint registration |
+| `src/trusted_data_agent/api/admin_routes.py` | Modified | Admin settings endpoints |
+| `templates/index.html` | Modified | Tab button + description |
+| `static/js/handlers/marketplaceHandler.js` | Modified | Load, cards, modals (~450 lines) |
+
+---
+
 ## Support & Resources
 
 **Documentation:**
@@ -992,7 +1052,8 @@ Skills export as `.skill` files (ZIP containing `skill.json` + `<name>.md`). Imp
 **Code:**
 - Backend (Collections): `src/trusted_data_agent/api/rest_routes.py` (~450 lines)
 - Backend (Skills): `src/trusted_data_agent/api/skills_routes.py` (~350 lines marketplace)
-- Frontend (Collections): `static/js/handlers/marketplaceHandler.js` (~765 lines)
+- Backend (Knowledge Graphs): `src/trusted_data_agent/api/kg_marketplace_routes.py` (~510 lines)
+- Frontend (Collections + KGs): `static/js/handlers/marketplaceHandler.js` (~3600 lines)
 - Frontend (Skills): `static/js/handlers/skillHandler.js` (marketplace modal + rating UI)
 
 **Contact:**
@@ -1002,6 +1063,6 @@ Skills export as `.skill` files (ZIP containing `skill.json` + `<name>.md`). Imp
 
 ---
 
-**Document Version:** 1.1
-**Last Updated:** February 2026
+**Document Version:** 1.2
+**Last Updated:** March 2026
 **Maintainer:** Development Team

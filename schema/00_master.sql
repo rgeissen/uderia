@@ -52,6 +52,7 @@ INSERT OR IGNORE INTO schema_version (version, description) VALUES
 -- 17. 17_marketplace_skills.sql    - Marketplace skills + ratings
 -- 18. 18_components.sql            - Installed components + profile config
 -- 19. 19_component_settings.sql    - Admin component governance settings
+-- 23. 23_marketplace_knowledge_graphs.sql - Marketplace knowledge graphs + ratings + settings
 
 -- ============================================================================
 -- Alternatively, use the Python validation script to build the database
