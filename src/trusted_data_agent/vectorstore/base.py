@@ -140,6 +140,27 @@ class VectorStoreBackend(ABC):
         """
         ...
 
+    # ── File-based ingestion (optional) ──────────────────────────────────────
+
+    async def add_document_files(
+        self,
+        collection_name: str,
+        file_paths: List[str],
+        chunking_config: Optional[dict] = None,
+    ) -> int:
+        """Ingest raw files (PDF, etc.) with server-side chunking and embedding.
+
+        Requires ``SERVER_SIDE_CHUNKING`` capability.  Backends that do not
+        support this raise ``NotImplementedError``.
+
+        ``chunking_config`` may include backend-specific parameters such as
+        ``chunk_size`` and ``optimized_chunking``.
+        """
+        raise NotImplementedError(
+            f"{self.backend_type} does not support server-side file ingestion. "
+            "Use add() with pre-chunked documents instead."
+        )
+
     # ── Document read operations ──────────────────────────────────────────────
 
     @abstractmethod

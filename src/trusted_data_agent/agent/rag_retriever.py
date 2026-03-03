@@ -159,6 +159,30 @@ class RAGRetriever:
         except Exception as e:
             logger.debug(f"Could not register collection {collection_id} with backend: {e}")
 
+    def _is_chromadb_backend(self, coll_meta: dict) -> bool:
+        """Return True if the collection uses the default ChromaDB backend."""
+        return coll_meta.get("backend_type", "chromadb") == "chromadb"
+
+    async def _register_non_chromadb_backend(
+        self, collection_id: int, coll_meta: dict
+    ) -> None:
+        """Resolve and cache a non-ChromaDB backend for a knowledge collection.
+
+        Called for Teradata (or future) backends where eager ChromaDB registration
+        is not applicable.  The resolved backend is stored in ``_knowledge_backends``
+        for later use by ``_get_knowledge_backend()``.
+        """
+        if collection_id in self._knowledge_backends:
+            return
+        try:
+            from trusted_data_agent.vectorstore import get_backend_for_collection
+            backend = await get_backend_for_collection(coll_meta)
+            self._knowledge_backends[collection_id] = backend
+            logger.info(f"Registered non-ChromaDB backend for collection {collection_id} "
+                        f"(type: {coll_meta.get('backend_type')})")
+        except Exception as e:
+            logger.error(f"Failed to register non-ChromaDB backend for collection {collection_id}: {e}")
+
     async def _get_knowledge_backend(self, collection_id: int) -> Any:
         """Return the VectorStoreBackend for a knowledge repository.
 
@@ -194,7 +218,6 @@ class RAGRetriever:
                     embedding_model = coll_meta.get("embedding_model", self.embedding_model_name)
                     config = CollectionConfig(name=coll_name, embedding_model=embedding_model)
                     await backend.get_or_create_collection(config)
-
         self._knowledge_backends[collection_id] = backend
         return backend
 
@@ -534,6 +557,13 @@ class RAGRetriever:
                 logger.debug(f"Skipping collection '{coll_id}': associated with server ID '{coll_mcp_server_id}', current server ID is '{current_mcp_server_id}'")
                 continue
 
+            # Non-ChromaDB knowledge repos: skip ChromaDB loading entirely.
+            # Their backend is resolved lazily by _get_knowledge_backend().
+            if repo_type == "knowledge" and not self._is_chromadb_backend(coll_meta):
+                logger.info(f"Registered non-ChromaDB knowledge collection '{coll_id}' "
+                            f"(backend: {coll_meta.get('backend_type')}) — loaded lazily on first access")
+                continue
+
             try:
                 # Get collection-specific embedding function
                 embedding_func = self._get_embedding_function(coll_embedding_model)
@@ -588,7 +618,15 @@ class RAGRetriever:
             logger.warning(f"No active RAG collections loaded for MCP server ID '{current_mcp_server_id}'!")
         elif self.collections:
             total_docs = sum(c.count() for c in self.collections.values())
-            logger.info(f"Loaded {len(self.collections)} collections ({total_docs:,} documents total)")
+            non_chromadb_count = len([
+                cid for cid in self._knowledge_backends
+                if cid not in self.collections
+            ])
+            if non_chromadb_count:
+                logger.info(f"Loaded {len(self.collections)} ChromaDB collections ({total_docs:,} documents) "
+                            f"+ {non_chromadb_count} non-ChromaDB knowledge repositories")
+            else:
+                logger.info(f"Loaded {len(self.collections)} collections ({total_docs:,} documents total)")
 
         # Refresh vector stores for all collections if configured
         if APP_CONFIG.RAG_REFRESH_ON_STARTUP:
@@ -630,23 +668,23 @@ class RAGRetriever:
             except Exception as e:
                 logger.error(f"Failed to auto-rebuild collection '{coll_id}': {e}", exc_info=True)
     
-    def fork_collection(self, source_collection_id: int, new_name: str, new_description: str = "", owner_user_id: Optional[str] = None, mcp_server_id: Optional[str] = None) -> Optional[int]:
+    async def fork_collection(self, source_collection_id: int, new_name: str, new_description: str = "", owner_user_id: Optional[str] = None, mcp_server_id: Optional[str] = None) -> Optional[int]:
         """
         Fork (copy) an existing collection to create an independent copy.
-        
+
         Args:
             source_collection_id: ID of the collection to fork
             new_name: Name for the new forked collection
             new_description: Description for the new collection
             owner_user_id: Owner of the new collection
             mcp_server_id: MCP server ID for the new collection (required)
-            
+
         Returns:
             New collection ID if successful, None otherwise
-            
+
         Note:
             This creates a complete copy including:
-            - All ChromaDB embeddings and metadata
+            - All vector embeddings and metadata (ChromaDB or non-ChromaDB backend)
             - All JSON case files
             - Independent collection that can be modified without affecting the source
         """
@@ -660,43 +698,84 @@ class RAGRetriever:
             logger.error(f"Cannot fork: Source collection {source_collection_id} does not exist")
             return None
         
-        # Create new collection
-        new_collection_id = self.add_collection(new_name, new_description, mcp_server_id, owner_user_id=owner_user_id)
+        # Create new collection — propagate source metadata so fork inherits backend type
+        new_collection_id = self.add_collection(
+            new_name, new_description, mcp_server_id,
+            owner_user_id=owner_user_id,
+            repository_type=source_meta.get("repository_type", "planner"),
+            backend_type=source_meta.get("backend_type", "chromadb"),
+            backend_config=source_meta.get("backend_config", "{}"),
+            chunking_strategy=source_meta.get("chunking_strategy", "none"),
+            chunk_size=source_meta.get("chunk_size", 1000),
+            chunk_overlap=source_meta.get("chunk_overlap", 200),
+            embedding_model=source_meta.get("embedding_model", "all-MiniLM-L6-v2"),
+        )
         if new_collection_id is None:
             logger.error("Failed to create new collection during fork")
             return None
         
         try:
-            # Copy ChromaDB data if source collection is loaded
-            if source_collection_id in self.collections:
-                source_collection = self.collections[source_collection_id]
-                
-                # Ensure target collection is loaded (may not be if MCP server differs)
-                if new_collection_id not in self.collections:
-                    new_meta = self.get_collection_metadata(new_collection_id)
-                    if new_meta:
-                        target_collection = self.client.get_or_create_collection(
-                            name=new_meta["collection_name"],
-                            embedding_function=self.embedding_function,
-                            metadata={"hnsw:space": "cosine"}
+            # Copy vector data — branch on backend type
+            if not self._is_chromadb_backend(source_meta):
+                # ── Non-ChromaDB: copy via abstraction layer ─────────────
+                source_backend = await self._get_knowledge_backend(source_collection_id)
+                source_coll_name = source_meta["collection_name"]
+
+                # Ensure target backend + collection exist
+                new_meta = self.get_collection_metadata(new_collection_id)
+                target_coll_name = new_meta["collection_name"]
+                from trusted_data_agent.vectorstore import get_backend_for_collection, CollectionConfig
+                target_backend = await get_backend_for_collection(new_meta)
+                config = CollectionConfig(
+                    name=target_coll_name,
+                    embedding_model=new_meta.get("embedding_model", "all-MiniLM-L6-v2"),
+                )
+                await target_backend.get_or_create_collection(config)
+                await self._register_non_chromadb_backend(new_collection_id, new_meta)
+
+                # Read all source documents (with embeddings for faithful copy)
+                result = await source_backend.get(
+                    source_coll_name,
+                    include_documents=True,
+                    include_metadata=True,
+                    include_embeddings=True,
+                )
+
+                if result.documents:
+                    await target_backend.add(target_coll_name, result.documents)
+                    logger.info(f"Copied {len(result.documents)} documents from collection "
+                                f"{source_collection_id} to {new_collection_id} via abstraction layer")
+            else:
+                # ── ChromaDB: existing direct path (unchanged) ───────────
+                if source_collection_id in self.collections:
+                    source_collection = self.collections[source_collection_id]
+
+                    # Ensure target collection is loaded (may not be if MCP server differs)
+                    if new_collection_id not in self.collections:
+                        new_meta = self.get_collection_metadata(new_collection_id)
+                        if new_meta:
+                            target_collection = self.client.get_or_create_collection(
+                                name=new_meta["collection_name"],
+                                embedding_function=self.embedding_function,
+                                metadata={"hnsw:space": "cosine"}
+                            )
+                            self.collections[new_collection_id] = target_collection
+                            logger.info(f"Loaded forked collection {new_collection_id} into retriever for copying")
+                    else:
+                        target_collection = self.collections[new_collection_id]
+
+                    # Get all documents from source
+                    results = source_collection.get(include=["documents", "metadatas", "embeddings"])
+
+                    if results["ids"]:
+                        # Copy to target collection
+                        target_collection.add(
+                            ids=results["ids"],
+                            documents=results["documents"],
+                            metadatas=results["metadatas"],
+                            embeddings=results["embeddings"]
                         )
-                        self.collections[new_collection_id] = target_collection
-                        logger.info(f"Loaded forked collection {new_collection_id} into retriever for copying")
-                else:
-                    target_collection = self.collections[new_collection_id]
-                
-                # Get all documents from source
-                results = source_collection.get(include=["documents", "metadatas", "embeddings"])
-                
-                if results["ids"]:
-                    # Copy to target collection
-                    target_collection.add(
-                        ids=results["ids"],
-                        documents=results["documents"],
-                        metadatas=results["metadatas"],
-                        embeddings=results["embeddings"]
-                    )
-                    logger.info(f"Copied {len(results['ids'])} documents from collection {source_collection_id} to {new_collection_id}")
+                        logger.info(f"Copied {len(results['ids'])} documents from collection {source_collection_id} to {new_collection_id}")
             
             # Copy JSON files (cases for planner, documents for knowledge)
             source_dir = self._get_collection_dir(source_collection_id)
@@ -790,8 +869,8 @@ class RAGRetriever:
             logger.error(f"Failed to fork collection {source_collection_id}: {e}", exc_info=True)
             # Clean up failed fork
             try:
-                self.delete_collection(new_collection_id)
-            except:
+                await self.remove_collection(new_collection_id)
+            except Exception:
                 pass
             return None
     
@@ -875,16 +954,37 @@ class RAGRetriever:
         
         if should_load:
             try:
-                embedding_func = self._get_embedding_function(embedding_model)
-                collection = self.client.get_or_create_collection(
-                    name=collection_name,
-                    embedding_function=embedding_func,
-                    metadata={"hnsw:space": "cosine", "repository_type": repository_type}
-                )
-                self.collections[collection_id] = collection
-                if repository_type == "knowledge":
-                    self._register_knowledge_collection_with_backend(collection_id, collection_name, collection)
-                logger.info(f"Added and loaded new {repository_type} collection '{collection_id}' (ChromaDB: '{collection_name}', MCP Server ID: '{mcp_server_id or 'N/A'}')")
+                if self._is_chromadb_backend({"backend_type": backend_type}):
+                    # ChromaDB path: create collection and store in self.collections
+                    embedding_func = self._get_embedding_function(embedding_model)
+                    collection = self.client.get_or_create_collection(
+                        name=collection_name,
+                        embedding_function=embedding_func,
+                        metadata={"hnsw:space": "cosine", "repository_type": repository_type}
+                    )
+                    self.collections[collection_id] = collection
+                    if repository_type == "knowledge":
+                        self._register_knowledge_collection_with_backend(collection_id, collection_name, collection)
+                    logger.info(f"Added and loaded new {repository_type} collection '{collection_id}' (ChromaDB: '{collection_name}', MCP Server ID: '{mcp_server_id or 'N/A'}')")
+                else:
+                    # Non-ChromaDB backend (e.g. Teradata): defer to factory via async
+                    # registration. The backend will be resolved lazily by
+                    # _get_knowledge_backend() on first access, or eagerly if we can
+                    # schedule the async task.
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        coll_meta_for_factory = {
+                            "collection_name": collection_name,
+                            "backend_type": backend_type,
+                            "backend_config": backend_config,
+                            "embedding_model": embedding_model,
+                        }
+                        loop.create_task(self._register_non_chromadb_backend(
+                            collection_id, coll_meta_for_factory))
+                    except RuntimeError:
+                        pass  # No running loop — backend will be resolved lazily
+                    logger.info(f"Added new {repository_type} collection '{collection_id}' (backend: {backend_type}, MCP Server ID: '{mcp_server_id or 'N/A'}')")
             except Exception as e:
                 logger.error(f"Failed to create collection '{collection_id}': {e}", exc_info=True)
                 # Remove from APP_STATE if creation failed
@@ -896,7 +996,7 @@ class RAGRetriever:
         
         return collection_id
     
-    def remove_collection(self, collection_id: int, user_id: Optional[str] = None):
+    async def remove_collection(self, collection_id: int, user_id: Optional[str] = None):
         """
         Removes a RAG collection (except default).
 
@@ -926,12 +1026,20 @@ class RAGRetriever:
         if not coll_meta:
             logger.warning(f"Collection '{collection_id}' not found")
             return False
-        
-        try:
-            # Delete from ChromaDB
-            self.client.delete_collection(name=coll_meta["collection_name"])
 
-            # Remove from runtime
+        try:
+            if self._is_chromadb_backend(coll_meta):
+                # ChromaDB path: delete from ChromaDB directly
+                self.client.delete_collection(name=coll_meta["collection_name"])
+            else:
+                # Non-ChromaDB backend: delete via abstraction layer
+                backend = self._knowledge_backends.get(collection_id)
+                if not backend:
+                    backend = await self._get_knowledge_backend(collection_id)
+                if backend:
+                    await backend.delete_collection(coll_meta["collection_name"])
+
+            # Remove from runtime (common path)
             if collection_id in self.collections:
                 del self.collections[collection_id]
 
@@ -944,26 +1052,26 @@ class RAGRetriever:
                         backend.evict_collection(coll_meta["collection_name"])
                 except Exception:
                     pass
-            
+
             # Delete from database
             from trusted_data_agent.core.collection_db import get_collection_db
             collection_db = get_collection_db()
             collection_db.delete_collection(collection_id)
-            
+
             # Reload APP_STATE
             APP_STATE["rag_collections"] = config_manager.get_rag_collections()
-            
+
             logger.info(f"Removed collection '{collection_id}'")
             return True
         except Exception as e:
             logger.error(f"Failed to remove collection '{collection_id}': {e}", exc_info=True)
             return False
 
-    def reset_collection(self, collection_id: int, user_id: Optional[str] = None) -> dict:
+    async def reset_collection(self, collection_id: int, user_id: Optional[str] = None) -> dict:
         """
         Removes all content from a collection while preserving its structure.
         For planner collections: deletes ChromaDB documents + disk case files.
-        For knowledge collections: deletes ChromaDB documents only (no disk files).
+        For knowledge collections: deletes documents via the appropriate backend.
 
         Returns:
             dict with 'success', 'items_deleted', 'message'
@@ -979,8 +1087,19 @@ class RAGRetriever:
         items_deleted = 0
 
         try:
-            # 1. Clear ChromaDB documents
-            if collection_id in self.collections:
+            # 1. Clear documents via the appropriate backend
+            if not self._is_chromadb_backend(coll_meta):
+                # Non-ChromaDB backend: delete all docs via abstraction layer
+                backend = await self._get_knowledge_backend(collection_id)
+                if backend:
+                    coll_name = coll_meta["collection_name"]
+                    result = await backend.get(coll_name, include_documents=False)
+                    if result and result.documents:
+                        ids = [doc.id for doc in result.documents]
+                        items_deleted = await backend.delete(coll_name, ids)
+                        logger.info(f"Deleted {items_deleted} documents from {coll_meta.get('backend_type')} for collection '{collection_id}'")
+            elif collection_id in self.collections:
+                # ChromaDB path: delete via raw collection object
                 collection = self.collections[collection_id]
                 all_results = collection.get()
                 if all_results and all_results["ids"]:
@@ -1004,7 +1123,7 @@ class RAGRetriever:
             logger.error(f"Failed to reset collection '{collection_id}': {e}", exc_info=True)
             return {"success": False, "items_deleted": 0, "message": f"Failed to reset collection: {str(e)}"}
 
-    def toggle_collection(self, collection_id: int, enabled: bool):
+    async def toggle_collection(self, collection_id: int, enabled: bool):
         """
         Enables or disables a RAG collection.
         Collections are only loaded into memory if they match the current MCP server.
@@ -1018,7 +1137,7 @@ class RAGRetriever:
         if not coll_meta:
             logger.warning(f"Collection '{collection_id}' not found")
             return False
-        
+
         # Validate: Cannot enable a PLANNER collection without an MCP server assignment
         # Knowledge repositories don't require MCP servers
         coll_mcp_server = coll_meta.get("mcp_server_id")
@@ -1026,44 +1145,53 @@ class RAGRetriever:
         if enabled and repo_type == "planner" and not coll_mcp_server:
             logger.warning(f"Cannot enable planner collection '{collection_id}': no MCP server assigned")
             return False
-        
+
         # Update in database
         config_manager.update_rag_collection(collection_id, {"enabled": enabled})
-        
+
         # Reload collections into APP_STATE
         APP_STATE["rag_collections"] = config_manager.get_rag_collections()
         collections_list = APP_STATE["rag_collections"]
         coll_meta = next((c for c in collections_list if c["id"] == collection_id), None)
-        
+
         # Check if collection matches current MCP server ID
         current_mcp_server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
-        
+
         mcp_server_matches = (coll_mcp_server == current_mcp_server_id)
-        
+
+        is_chromadb = self._is_chromadb_backend(coll_meta) if coll_meta else True
+
         if enabled and collection_id not in self.collections:
-            if not mcp_server_matches:
+            if not mcp_server_matches and repo_type != "knowledge":
                 logger.info(f"Collection '{collection_id}' enabled but not loaded: associated with server ID '{coll_mcp_server}', current server ID is '{current_mcp_server_id}'")
                 return True  # Config updated, but not loaded
-            
+
             # Load the collection
             try:
-                collection = self.client.get_or_create_collection(
-                    name=coll_meta["collection_name"],
-                    embedding_function=self.embedding_function,
-                    metadata={"hnsw:space": "cosine"}
-                )
-                self.collections[collection_id] = collection
-                if repo_type == "knowledge":
-                    self._register_knowledge_collection_with_backend(
-                        collection_id, coll_meta["collection_name"], collection
+                if is_chromadb:
+                    # ChromaDB path: create/get collection object
+                    collection = self.client.get_or_create_collection(
+                        name=coll_meta["collection_name"],
+                        embedding_function=self.embedding_function,
+                        metadata={"hnsw:space": "cosine"}
                     )
+                    self.collections[collection_id] = collection
+                    if repo_type == "knowledge":
+                        self._register_knowledge_collection_with_backend(
+                            collection_id, coll_meta["collection_name"], collection
+                        )
+                else:
+                    # Non-ChromaDB backend: register via factory (lazy init)
+                    if repo_type == "knowledge":
+                        await self._register_non_chromadb_backend(collection_id, coll_meta)
                 logger.info(f"Enabled and loaded collection '{collection_id}'")
             except Exception as e:
                 logger.error(f"Failed to enable collection '{collection_id}': {e}", exc_info=True)
                 return False
-        elif not enabled and collection_id in self.collections:
+        elif not enabled:
             # Unload the collection
-            del self.collections[collection_id]
+            if collection_id in self.collections:
+                del self.collections[collection_id]
             if collection_id in self._knowledge_backends:
                 backend = self._knowledge_backends.pop(collection_id)
                 try:
@@ -1073,7 +1201,7 @@ class RAGRetriever:
                 except Exception:
                     pass
             logger.info(f"Disabled collection '{collection_id}'")
-        
+
         return True
 
     def reload_collections_for_mcp_server(self):
@@ -1434,7 +1562,7 @@ class RAGRetriever:
             return case_data["conversational_response"].get("summary", "Conversational response.")
         return "Strategy details unavailable."
 
-    def retrieve_examples(self, query: str, k: int = 1, min_score: float = 0.7, allowed_collection_ids: set = None,
+    async def retrieve_examples(self, query: str, k: int = 1, min_score: float = 0.7, allowed_collection_ids: set = None,
                          rag_context: Optional['RAGAccessContext'] = None, repository_type: str = "planner",
                          max_chunks_per_doc: int = 0, freshness_weight: float = 0.0,
                          freshness_decay_rate: float = 0.005) -> List[Dict[str, Any]]:
@@ -1621,7 +1749,65 @@ class RAGRetriever:
                     # --- MODIFICATION END ---
             except Exception as e:
                 logger.error(f"Error querying collection '{collection_id}': {e}", exc_info=True)
-        
+
+        # ── Non-ChromaDB knowledge repos: query via abstraction layer ──────────
+        # These repos are NOT in self.collections (skipped in _load_collections),
+        # so the loop above misses them. Query them through backend.query().
+        if repository_type == "knowledge":
+            from trusted_data_agent.core.collection_db import get_collection_db
+            try:
+                db_colls = get_collection_db().get_all_collections()
+            except Exception:
+                db_colls = []
+            for db_coll in db_colls:
+                if not db_coll.get("enabled"):
+                    continue
+                if db_coll.get("repository_type") != "knowledge":
+                    continue
+                if self._is_chromadb_backend(db_coll):
+                    continue  # Already handled by ChromaDB loop above
+                coll_id = db_coll["id"]
+                if effective_allowed is not None and coll_id not in effective_allowed:
+                    continue
+                if coll_id in self.collections:
+                    continue  # Safety: already queried above
+                try:
+                    backend = await self._get_knowledge_backend(coll_id)
+                    if not backend:
+                        continue
+                    coll_meta = self.get_collection_metadata(coll_id)
+                    coll_name = coll_meta["collection_name"] if coll_meta else db_coll["collection_name"]
+
+                    query_result = await backend.query(
+                        coll_name, query_text=query, n_results=k * 10
+                    )
+
+                    for doc, distance in query_result:
+                        similarity_score = 1 - distance
+                        if similarity_score < min_score:
+                            continue
+                        candidate = {
+                            "case_id": doc.id,
+                            "collection_id": coll_id,
+                            "user_query": query,
+                            "content": doc.content,
+                            "full_case_data": {"content": doc.content, "metadata": doc.metadata},
+                            "similarity_score": similarity_score,
+                            "document_id": doc.metadata.get("document_id", doc.id),
+                            "chunk_index": doc.metadata.get("chunk_index", 0),
+                            "metadata": doc.metadata,
+                            "strategy_type": "knowledge",
+                            "is_most_efficient": True,
+                            "had_plan_improvements": False,
+                            "had_tactical_improvements": False,
+                        }
+                        if coll_meta:
+                            candidate["collection_name"] = coll_meta.get("name")
+                            candidate["repository_type"] = "knowledge"
+                        all_candidate_cases.append(candidate)
+                except Exception as e:
+                    logger.error(f"Error querying non-ChromaDB knowledge collection '{coll_id}': {e}", exc_info=True)
+
         if not all_candidate_cases:
             logger.info("No candidate cases found across all collections")
             return []

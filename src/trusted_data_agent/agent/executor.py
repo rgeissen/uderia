@@ -1786,7 +1786,7 @@ class PlanExecutor:
                         from trusted_data_agent.agent.rag_access_context import RAGAccessContext
                         rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
 
-                        all_results = self.rag_retriever.retrieve_examples(
+                        all_results = await self.rag_retriever.retrieve_examples(
                             query=self.original_user_input,
                             k=max_docs * len(knowledge_collections),
                             min_score=min_relevance,
@@ -2887,7 +2887,7 @@ Response:"""
                         )
 
                         # Retrieve knowledge documents
-                        all_results = self.rag_retriever.retrieve_examples(
+                        all_results = await self.rag_retriever.retrieve_examples(
                             query=self.original_user_input,
                             k=max_docs * len(knowledge_collections),
                             min_score=min_relevance,
@@ -3585,7 +3585,7 @@ The following domain knowledge may be relevant to this conversation:
             from trusted_data_agent.agent.rag_access_context import RAGAccessContext
             rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
 
-            all_results = self.rag_retriever.retrieve_examples(
+            all_results = await self.rag_retriever.retrieve_examples(
                 query=self.original_user_input,
                 k=max_docs * len(knowledge_collections),
                 min_score=min_relevance,
@@ -4041,6 +4041,7 @@ The following domain knowledge may be relevant to this conversation:
             rag_component_tools = _get_rag_comp_tools(self.active_profile_id, self.user_uuid, session_id=self.session_id)
 
             rag_component_payloads = []  # Component payloads extracted from agent result (if any)
+            used_agent_synthesis = False  # Track if ConversationAgentExecutor handled synthesis
 
             if rag_component_tools:
                 # --- RAG + Component Tools: Agent-based synthesis ---
@@ -4075,6 +4076,7 @@ The following domain knowledge may be relevant to this conversation:
                     provider=self.current_provider if hasattr(self, 'current_provider') else None,
                     model=self.current_model if hasattr(self, 'current_model') else None,
                     component_instructions=getattr(self, '_cw_component_instructions', None),
+                    profile_type="rag_focused",
                 )
 
                 agent_result = await rag_agent.execute(self.original_user_input)
@@ -4099,6 +4101,7 @@ The following domain knowledge may be relevant to this conversation:
 
                 # Extract component payloads for HTML generation (chart, code, etc.)
                 rag_component_payloads = agent_result.get("component_payloads", [])
+                used_agent_synthesis = True
             else:
                 # --- Standard RAG: Direct LLM synthesis (no tools) ---
                 response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
@@ -4145,53 +4148,53 @@ The following domain knowledge may be relevant to this conversation:
                         "cost_usd": call_cost
                     }, "token_update")
 
-            # Emit RAG LLM step event for plan reload (similar to conversation_llm_step)
-            rag_llm_step_payload = {
-                "step_name": "Knowledge Synthesis",
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "duration_ms": llm_duration_ms,
-                "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown",
-                "session_id": self.session_id,
-                "cost_usd": call_cost  # NEW: Track cost for RAG synthesis
-            }
-            knowledge_events.append({"type": "rag_llm_step", "payload": rag_llm_step_payload})
-            yield self._format_sse_with_depth({
-                "type": "rag_llm_step",
-                "payload": rag_llm_step_payload
-            }, event="notification")
-
-            # Emit tool execution result event for LLM synthesis
-            # This shows the synthesis as a proper tool step with token tracking
-            synthesis_result_data = {
-                "status": "success",
-                "metadata": {
-                    "tool_name": "LLM_Synthesis",
-                    "call_id": call_id,
+            # Emit RAG LLM step and synthesis result events only for direct LLM path.
+            # When ConversationAgentExecutor handled synthesis, it already emitted
+            # conversation_llm_step and conversation_llm_complete events — skip to avoid duplicates.
+            if not used_agent_synthesis:
+                rag_llm_step_payload = {
+                    "step_name": "Knowledge Synthesis",
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
-                    "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown"
-                },
-                "results": [{
-                    "response": response_text[:500] + "..." if len(response_text) > 500 else response_text,
-                    "full_length": len(response_text)
-                }]
-            }
-            yield self._format_sse_with_depth({
-                "step": "LLM Synthesis Results",
-                "details": synthesis_result_data,
-                "tool_name": "LLM_Synthesis"
-            }, "tool_result")
+                    "duration_ms": llm_duration_ms,
+                    "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown",
+                    "session_id": self.session_id,
+                    "cost_usd": call_cost
+                }
+                knowledge_events.append({"type": "rag_llm_step", "payload": rag_llm_step_payload})
+                yield self._format_sse_with_depth({
+                    "type": "rag_llm_step",
+                    "payload": rag_llm_step_payload
+                }, event="notification")
 
-            # Store tool execution result for event reload
-            knowledge_events.append({
-                "type": "tool_result",
-                "payload": {
+                synthesis_result_data = {
+                    "status": "success",
+                    "metadata": {
+                        "tool_name": "LLM_Synthesis",
+                        "call_id": call_id,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "model": f"{self.current_provider}/{self.current_model}" if hasattr(self, 'current_provider') and hasattr(self, 'current_model') else "Unknown"
+                    },
+                    "results": [{
+                        "response": response_text[:500] + "..." if len(response_text) > 500 else response_text,
+                        "full_length": len(response_text)
+                    }]
+                }
+                yield self._format_sse_with_depth({
                     "step": "LLM Synthesis Results",
                     "details": synthesis_result_data,
                     "tool_name": "LLM_Synthesis"
-                }
-            })
+                }, "tool_result")
+
+                knowledge_events.append({
+                    "type": "tool_result",
+                    "payload": {
+                        "step": "LLM Synthesis Results",
+                        "details": synthesis_result_data,
+                        "tool_name": "LLM_Synthesis"
+                    }
+                })
 
             # Calculate total knowledge search time (retrieval + synthesis)
             total_knowledge_search_time_ms = int((time.time() - retrieval_start_time) * 1000)

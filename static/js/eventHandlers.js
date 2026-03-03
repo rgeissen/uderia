@@ -652,7 +652,8 @@ function getLlmOnlyTitle(eventType, payload) {
     switch (eventType) {
         case 'conversation_agent_start': {
             const toolCount = payload.available_tools?.length || 0;
-            return `conversation_with_tools Started (${toolCount} tools available)`;
+            const agentName = getBrandedAgentName(payload.profile_type || 'conversation_with_tools');
+            return `${agentName} Started (${toolCount} tools available)`;
         }
         case 'conversation_llm_step': {
             // Harmonized naming across profile types
@@ -674,9 +675,10 @@ function getLlmOnlyTitle(eventType, payload) {
         case 'conversation_agent_complete': {
             const toolCount = payload.tools_used?.length || 0;
             const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s` : '';
+            const completeAgentName = getBrandedAgentName(payload.profile_type || 'conversation_with_tools');
             return payload.success
-                ? `conversation_with_tools Complete (${toolCount} tools executed${duration})`
-                : 'conversation_with_tools Failed';
+                ? `${completeAgentName} Complete (${toolCount} tools executed${duration})`
+                : `${completeAgentName} Failed`;
         }
         case 'llm_execution':
             return 'Calling LLM: Execution';

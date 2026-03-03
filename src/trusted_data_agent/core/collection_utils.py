@@ -259,6 +259,10 @@ async def import_collection_from_zip(
                     actual_count = retriever.collections[collection_id].count()
                     app_logger.info(f"Verified: collection {collection_id} has {actual_count} documents")
                     document_count = actual_count
+                elif use_backend and backend:
+                    actual_count = await backend.count(new_collection_name)
+                    app_logger.info(f"Verified (via backend): collection {collection_id} has {actual_count} documents")
+                    document_count = actual_count
             except Exception as e:
                 app_logger.warning(f"Failed to verify import: {e}", exc_info=True)
 

@@ -51,13 +51,17 @@ export function initializeKnowledgeRepositoryHandlers() {
         console.warn('[Knowledge] Form element not found during init (will attach later): add-knowledge-repository-form');
     }
     
-    // Backend type change — reveal Teradata fields, swap embedding options
+    // Backend type change — reveal Teradata fields, swap embedding & chunking options
     const backendTypeSelect = document.getElementById('knowledge-repo-backend-type');
     if (backendTypeSelect) {
         backendTypeSelect.addEventListener('change', (e) => {
+            const isTeradata = e.target.value === 'teradata';
             document.getElementById('knowledge-repo-teradata-config')
-                ?.classList.toggle('hidden', e.target.value !== 'teradata');
+                ?.classList.toggle('hidden', !isTeradata);
             _updateEmbeddingOptionsForBackend(e.target.value);
+            _updateChunkingOptionsForBackend(e.target.value);
+            // Auto-fill cached Teradata credentials
+            if (isTeradata) _restoreCachedTeradataCredentials();
         });
     }
 
@@ -147,14 +151,83 @@ function _knowledgeBackendBadge(backendType) {
 }
 
 /** Collects Teradata connection form fields into a plain object. Returns {} for ChromaDB. */
+const _TD_CACHE_KEY = 'tda_teradata_vs_credentials';
+
+/** Persist the current Teradata form values to localStorage. */
+function _cacheTeradataCredentials() {
+    const config = {
+        host:      document.getElementById('knowledge-repo-teradata-host')?.value.trim() || '',
+        base_url:  document.getElementById('knowledge-repo-teradata-base-url')?.value.trim() || '',
+        username:  document.getElementById('knowledge-repo-teradata-username')?.value.trim() || '',
+        password:  document.getElementById('knowledge-repo-teradata-password')?.value || '',
+        database:  document.getElementById('knowledge-repo-teradata-database')?.value.trim() || '',
+        pat_token: document.getElementById('knowledge-repo-teradata-pat-token')?.value || '',
+        pem_file:  document.getElementById('knowledge-repo-teradata-pem-file')?.value.trim() || '',
+    };
+    // Only cache if at least host is filled in
+    if (config.host) {
+        localStorage.setItem(_TD_CACHE_KEY, JSON.stringify(config));
+    }
+}
+
+/** Restore cached Teradata credentials into the form fields. */
+function _restoreCachedTeradataCredentials() {
+    const raw = localStorage.getItem(_TD_CACHE_KEY);
+    if (!raw) return;
+    try {
+        const config = JSON.parse(raw);
+        const fields = {
+            'knowledge-repo-teradata-host':     config.host,
+            'knowledge-repo-teradata-base-url': config.base_url,
+            'knowledge-repo-teradata-username': config.username,
+            'knowledge-repo-teradata-password': config.password,
+            'knowledge-repo-teradata-database': config.database,
+            'knowledge-repo-teradata-pat-token': config.pat_token,
+            'knowledge-repo-teradata-pem-file': config.pem_file,
+        };
+        for (const [id, value] of Object.entries(fields)) {
+            const el = document.getElementById(id);
+            if (el && value) el.value = value;
+        }
+    } catch { /* ignore corrupt cache */ }
+}
+
 function _buildBackendConfig(backendType) {
     if (backendType !== 'teradata') return {};
     return {
-        host:     document.getElementById('knowledge-repo-teradata-host')?.value.trim() || '',
-        username: document.getElementById('knowledge-repo-teradata-username')?.value.trim() || '',
-        password: document.getElementById('knowledge-repo-teradata-password')?.value || '',
-        database: document.getElementById('knowledge-repo-teradata-database')?.value.trim() || '',
+        host:      document.getElementById('knowledge-repo-teradata-host')?.value.trim() || '',
+        base_url:  document.getElementById('knowledge-repo-teradata-base-url')?.value.trim() || '',
+        username:  document.getElementById('knowledge-repo-teradata-username')?.value.trim() || '',
+        password:  document.getElementById('knowledge-repo-teradata-password')?.value || '',
+        database:  document.getElementById('knowledge-repo-teradata-database')?.value.trim() || '',
+        pat_token: document.getElementById('knowledge-repo-teradata-pat-token')?.value || '',
+        pem_file:  document.getElementById('knowledge-repo-teradata-pem-file')?.value.trim() || '',
     };
+}
+
+/** Show/hide the server-side chunking option and auto-select it for Teradata. */
+function _updateChunkingOptionsForBackend(backendType) {
+    const chunkingSelect = document.getElementById('knowledge-repo-chunking');
+    if (!chunkingSelect) return;
+
+    const serverSideOpt = chunkingSelect.querySelector('option[value="server_side"]');
+    if (!serverSideOpt) return;
+
+    const isTeradata = backendType === 'teradata';
+    serverSideOpt.style.display = isTeradata ? '' : 'none';
+
+    if (isTeradata) {
+        chunkingSelect.value = 'server_side';
+    } else if (chunkingSelect.value === 'server_side') {
+        chunkingSelect.value = 'semantic';
+    }
+
+    // Hide chunk params + preview when server_side is active
+    const chunkParams = document.getElementById('knowledge-repo-chunk-params');
+    if (chunkParams) chunkParams.classList.toggle('hidden', chunkingSelect.value === 'server_side');
+
+    const previewToggle = document.getElementById('knowledge-preview-toggle');
+    if (previewToggle) previewToggle.style.display = chunkingSelect.value === 'server_side' ? 'none' : '';
 }
 
 /** Swaps the embedding model dropdown to show options appropriate for the backend. */
@@ -190,6 +263,7 @@ function openKnowledgeRepositoryModal() {
     if (backendSelect) backendSelect.value = 'chromadb';
     document.getElementById('knowledge-repo-teradata-config')?.classList.add('hidden');
     _updateEmbeddingOptionsForBackend('chromadb');
+    _updateChunkingOptionsForBackend('chromadb');
 
     // Populate MCP server dropdown
     const mcpServerSelect = document.getElementById('knowledge-repo-mcp-server');
@@ -393,13 +467,17 @@ function closeKnowledgeRepositoryModal() {
 function handleChunkingStrategyChange(e) {
     const strategy = e.target.value;
     const chunkParams = document.getElementById('knowledge-repo-chunk-params');
-    
+
     // Show chunk size/overlap only for fixed_size strategy
     if (strategy === 'fixed_size') {
         chunkParams?.classList.remove('hidden');
     } else {
         chunkParams?.classList.add('hidden');
     }
+
+    // Hide preview toggle when server_side chunking is active (preview requires local chunking)
+    const previewToggle = document.getElementById('knowledge-preview-toggle');
+    if (previewToggle) previewToggle.style.display = strategy === 'server_side' ? 'none' : '';
 }
 
 /**
@@ -696,6 +774,9 @@ async function handleKnowledgeRepositorySubmit(e) {
             
             const createData = await createResponse.json();
             collectionId = createData.collection_id;
+
+            // Cache Teradata credentials on successful creation
+            if (backendType === 'teradata') _cacheTeradataCredentials();
         }
         
         // Get metadata (for both create and upload modes)
@@ -704,7 +785,7 @@ async function handleKnowledgeRepositorySubmit(e) {
         const tags = document.getElementById('knowledge-repo-tags')?.value.trim() || '';
         
         // Get chunking parameters
-        const chunkingStrategy = document.getElementById('knowledge-chunking-strategy')?.value || 'semantic';
+        const chunkingStrategy = document.getElementById('knowledge-repo-chunking')?.value || 'semantic';
         const chunkSize = parseInt(document.getElementById('knowledge-chunk-size')?.value || '1000');
         const chunkOverlap = parseInt(document.getElementById('knowledge-chunk-overlap')?.value || '200');
         const embeddingModel = document.getElementById('knowledge-repo-embedding')?.value || 'all-MiniLM-L6-v2';
@@ -2609,4 +2690,53 @@ export async function resetKnowledgeRepository(collectionId, collectionName) {
         `Are you sure you want to reset <strong>${escapeHtml(collectionName)}</strong>?<br><br>This will remove all documents and chunks but keep the repository structure intact.`,
         doReset
     );
+}
+
+/**
+ * Test Teradata backend connection using VSManager.health()
+ */
+export async function testTeradataConnection() {
+    const btn = document.getElementById('knowledge-repo-test-connection-btn');
+    const statusEl = document.getElementById('knowledge-repo-test-connection-status');
+    const token = localStorage.getItem('tda_auth_token');
+    const config = _buildBackendConfig('teradata');
+
+    if (!config.host || (!config.username && !config.pat_token)) {
+        if (statusEl) {
+            statusEl.textContent = 'Fill in Host and either Username or PAT Token';
+            statusEl.className = 'ml-2 text-xs text-red-400';
+        }
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (statusEl) {
+        statusEl.textContent = 'Testing...';
+        statusEl.className = 'ml-2 text-xs text-yellow-400';
+    }
+
+    try {
+        const resp = await fetch('/api/v1/knowledge/test-connection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ backend_type: 'teradata', backend_config: config }),
+        });
+        const data = await resp.json();
+        if (statusEl) {
+            statusEl.textContent = data.message || (resp.ok ? 'Connected' : 'Failed');
+            statusEl.className = `ml-2 text-xs ${resp.ok ? 'text-green-400' : 'text-red-400'}`;
+        }
+        // Cache credentials on successful connection
+        if (resp.ok) _cacheTeradataCredentials();
+    } catch (e) {
+        if (statusEl) {
+            statusEl.textContent = `Error: ${e.message}`;
+            statusEl.className = 'ml-2 text-xs text-red-400';
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }

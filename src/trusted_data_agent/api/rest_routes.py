@@ -2657,7 +2657,13 @@ async def get_rag_collections():
         for coll in accessible_collections:
             coll_copy = coll.copy()
             # A collection is active if it's loaded in the retriever's collections dict
-            is_active = retriever and coll["id"] in retriever.collections if retriever else False
+            # or registered as a non-ChromaDB knowledge backend
+            is_active = False
+            if retriever:
+                is_active = (
+                    coll["id"] in retriever.collections
+                    or coll["id"] in getattr(retriever, "_knowledge_backends", {})
+                )
             coll_copy["is_active"] = is_active
             
             # --- MARKETPLACE PHASE 2: Add ownership indicators ---
@@ -2701,8 +2707,9 @@ async def get_rag_collections():
                         coll_copy["shared_by_username"] = (grantor.display_name or grantor.username) if grantor else "Unknown"
             # --- MARKETPLACE PHASE 2 END ---
             
-            # Get document count if collection is active
-            if is_active and retriever:
+            # Get document count if collection is active or is a non-ChromaDB knowledge repo
+            is_non_chromadb = coll.get("backend_type") and coll["backend_type"] != "chromadb"
+            if retriever and (is_active or is_non_chromadb):
                 try:
                     coll_copy["count"] = await retriever.get_collection_count(coll["id"])
                 except Exception as count_err:
@@ -3285,7 +3292,7 @@ async def delete_rag_collection(collection_id: int):
         )
 
         # Pass user_id for additional validation in remove_collection
-        success = retriever.remove_collection(collection_id, user_id=user_uuid)
+        success = await retriever.remove_collection(collection_id, user_id=user_uuid)
 
         if success:
             app_logger.info(f"Deleted RAG collection: {collection_id}")
@@ -3330,7 +3337,7 @@ async def reset_rag_collection(collection_id: int):
         if not retriever.is_user_collection_owner(collection_id, user_uuid):
             return jsonify({"status": "error", "message": "Only collection owners can reset collections"}), 403
 
-        result = retriever.reset_collection(collection_id, user_id=user_uuid)
+        result = await retriever.reset_collection(collection_id, user_id=user_uuid)
 
         if result["success"]:
             app_logger.info(f"Reset RAG collection {collection_id}: {result['items_deleted']} items removed")
@@ -3455,8 +3462,8 @@ async def toggle_rag_collection(collection_id: int):
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized. Please configure and connect the application first."}), 500
         
-        success = retriever.toggle_collection(collection_id, enabled)
-        
+        success = await retriever.toggle_collection(collection_id, enabled)
+
         if success:
             action = "enabled" if enabled else "disabled"
             app_logger.info(f"{action.capitalize()} RAG collection: {collection_id}")
@@ -4718,7 +4725,7 @@ async def delete_mcp_server(server_id: str):
             app_logger.info(f"Archived {archived_count} sessions for MCP server {server_id}")
 
         # Try to remove the server (will fail if collections are assigned)
-        success, error_message = config_manager.remove_mcp_server(server_id, user_uuid)
+        success, error_message = await config_manager.remove_mcp_server(server_id, user_uuid)
 
         if not success:
             return jsonify({
@@ -9155,7 +9162,7 @@ async def fork_marketplace_collection(collection_id: int):
             return jsonify({"status": "error", "message": "You don't have access to this collection"}), 403
         
         # Fork the collection
-        forked_id = retriever.fork_collection(
+        forked_id = await retriever.fork_collection(
             source_collection_id=collection_id,
             new_name=new_name,
             new_description=new_description,

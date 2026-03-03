@@ -2302,7 +2302,7 @@ Ranking:"""
         
         # Query with repository_type filter
         collection_ids = {coll["id"] for coll in knowledge_collections}
-        all_results = self.rag_retriever.retrieve_examples(
+        all_results = await self.rag_retriever.retrieve_examples(
             query=query,
             k=max_docs * len(knowledge_collections),  # Retrieve more candidates for diversity balancing
             min_score=min_relevance,
@@ -2671,7 +2671,7 @@ Ranking:"""
                 retriever=self.rag_retriever
             )
             
-            retrieved_cases = self.rag_retriever.retrieve_examples(
+            retrieved_cases = await self.rag_retriever.retrieve_examples(
                 query=self.executor.original_user_input,
                 k=APP_CONFIG.RAG_NUM_EXAMPLES,
                 allowed_collection_ids=allowed_collection_ids,

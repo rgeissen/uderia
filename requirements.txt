@@ -32,6 +32,8 @@ asyncpg>=0.29.0          # PostgreSQL
 aiomysql>=0.2.0          # MySQL
 aiosqlite>=0.20.0        # SQLite (async)
 teradatasql>=20.0.0      # Teradata
+teradatagenai>=20.0      # Teradata Vector Store (GenAI SDK)
+teradataml>=20.0         # Teradata ML/Analytics
 JayDeBeApi>=1.2.3        # JDBC (requires Java runtime)
 
 # Knowledge graph algorithms

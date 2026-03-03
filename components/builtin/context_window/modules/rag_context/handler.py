@@ -94,8 +94,7 @@ class RAGContextModule(ContextModule):
                     condensable=False,
                 )
 
-            # retrieve_examples is synchronous
-            cases = retriever.retrieve_examples(
+            cases = await retriever.retrieve_examples(
                 query=query,
                 k=max_examples,
                 min_score=0.7,

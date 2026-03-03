@@ -388,7 +388,7 @@ class AgentPackManager:
                                 continue
                             if retriever:
                                 try:
-                                    success = retriever.remove_collection(coll_id, user_id=user_uuid)
+                                    success = await retriever.remove_collection(coll_id, user_id=user_uuid)
                                     if success:
                                         app_logger.info(f"  Deleted orphaned collection id={coll_id}")
                                     else:
@@ -1023,7 +1023,7 @@ class AgentPackManager:
                         )
 
                     if retriever:
-                        success = retriever.remove_collection(collection_id, user_id=user_uuid)
+                        success = await retriever.remove_collection(collection_id, user_id=user_uuid)
                         if success:
                             collections_deleted += 1
                             app_logger.info(f"  Deleted collection id={collection_id}")

@@ -398,6 +398,25 @@ Files: `src/trusted_data_agent/auth/middleware.py`, `database.py`, `auth_routes.
 
 Files: `src/trusted_data_agent/agent/rag_retriever.py`, `repository_constructor.py`, `rag_template_manager.py`
 
+#### 4a. Vector Store Abstraction Layer
+
+**Decouples platform from specific vector database implementations.** Single async-first interface with capability-based negotiation. Two production backends:
+
+- **ChromaDB** (default): Local/embedded, client-side embedding via SentenceTransformer, 12 capabilities
+- **Teradata** (enterprise): Server-side embedding via Amazon Bedrock/Azure, 10 capabilities including `SERVER_SIDE_CHUNKING`
+
+**Two ingestion paths for Teradata:**
+- **Client-side chunking**: Platform chunks locally → staging table → VectorStore (full doc management)
+- **Server-side chunking**: Raw files passed to `VectorStore.create(document_files=[...])` — SDK handles everything
+
+**Connection resilience**: All SQL operations use `_execute_sql()` wrapper that auto-reconnects on stale `teradataml` connection (catches `AttributeError: 'NoneType' ... cursor` at failure point, reconnects via `create_context()`, retries once).
+
+**Factory**: Singleton cache with config fingerprinting + asyncio lock to prevent concurrent initialization races.
+
+**Detailed Architecture:** [docs/Architecture/VECTOR_STORE_ABSTRACTION_ARCHITECTURE.md](docs/Architecture/VECTOR_STORE_ABSTRACTION_ARCHITECTURE.md)
+
+Files: `src/trusted_data_agent/vectorstore/` (8 files: `base.py`, `capabilities.py`, `types.py`, `filters.py`, `embedding_providers.py`, `factory.py`, `chromadb_backend.py`, `teradata_backend.py`), `test/test_teradata_backend.py`
+
 #### 5. Fusion Optimizer Execution Flow
 
 ```

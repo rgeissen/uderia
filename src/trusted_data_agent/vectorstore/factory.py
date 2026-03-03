@@ -14,6 +14,7 @@ New backends are registered at import time via ``register_backend()``.
 """
 
 from __future__ import annotations
+import asyncio
 import hashlib
 import json
 import logging
@@ -36,6 +37,11 @@ _INSTANCES: Dict[str, VectorStoreBackend] = {}
 
 # Shared default ChromaDB backend (used by rag_retriever bridge)
 _DEFAULT_CHROMADB: Optional[ChromaDBBackend] = None
+
+# Per-key locks to serialize concurrent get_backend() calls.
+# Prevents two callers from both missing the cache and initializing
+# separate instances concurrently (crashes Teradata's global SDK singleton).
+_INIT_LOCKS: Dict[str, asyncio.Lock] = {}
 
 
 def register_backend(backend_type: str, cls: Type[VectorStoreBackend]) -> None:
@@ -77,34 +83,46 @@ async def get_backend(
     if key in _INSTANCES:
         return _INSTANCES[key]
 
-    if backend_type not in _REGISTRY:
-        available = ", ".join(sorted(_REGISTRY))
-        raise ValueError(
-            f"Unknown vector store backend: '{backend_type}'. "
-            f"Available backends: {available}"
-        )
+    # Serialize concurrent initialization for the same config key.
+    # Without this lock, two callers can both miss the cache above,
+    # create separate instances, and call initialize() concurrently —
+    # crashing backends like Teradata that use a global SDK singleton.
+    if key not in _INIT_LOCKS:
+        _INIT_LOCKS[key] = asyncio.Lock()
 
-    cls = _REGISTRY[backend_type]
+    async with _INIT_LOCKS[key]:
+        # Double-check after acquiring the lock
+        if key in _INSTANCES:
+            return _INSTANCES[key]
 
-    if backend_type == "chromadb":
-        persist = config.get("persist_directory")
-        instance = cls(persist_directory=Path(persist) if persist else None)
-    else:
-        instance = cls(connection_config=config)  # type: ignore[call-arg]
+        if backend_type not in _REGISTRY:
+            available = ", ".join(sorted(_REGISTRY))
+            raise ValueError(
+                f"Unknown vector store backend: '{backend_type}'. "
+                f"Available backends: {available}"
+            )
 
-    await instance.initialize()
+        cls = _REGISTRY[backend_type]
 
-    # Validate required capabilities
-    missing = REQUIRED_CAPABILITIES - instance.capabilities()
-    if missing:
-        names = ", ".join(c.name for c in missing)
-        raise RuntimeError(
-            f"Backend '{backend_type}' is missing required capabilities: {names}"
-        )
+        if backend_type == "chromadb":
+            persist = config.get("persist_directory")
+            instance = cls(persist_directory=Path(persist) if persist else None)
+        else:
+            instance = cls(connection_config=config)  # type: ignore[call-arg]
 
-    _INSTANCES[key] = instance
-    logger.info(f"Created vector store backend: {backend_type} (key={key})")
-    return instance
+        await instance.initialize()
+
+        # Validate required capabilities
+        missing = REQUIRED_CAPABILITIES - instance.capabilities()
+        if missing:
+            names = ", ".join(c.name for c in missing)
+            raise RuntimeError(
+                f"Backend '{backend_type}' is missing required capabilities: {names}"
+            )
+
+        _INSTANCES[key] = instance
+        logger.info(f"Created vector store backend: {backend_type} (key={key})")
+        return instance
 
 
 async def get_default_chromadb_backend(persist_directory: Optional[Path] = None) -> ChromaDBBackend:
@@ -145,6 +163,11 @@ async def get_backend_for_collection(coll_meta: Dict[str, Any]) -> VectorStoreBa
     else:
         backend_config = backend_config_raw
 
+    # Merge embedding_model from collection metadata (stored as separate DB column)
+    embedding_model = coll_meta.get("embedding_model")
+    if embedding_model and "embedding_model" not in backend_config:
+        backend_config["embedding_model"] = embedding_model
+
     # ChromaDB always returns the shared singleton regardless of per-collection config
     if backend_type == "chromadb":
         return await get_default_chromadb_backend()
@@ -156,4 +179,5 @@ def reset_instances() -> None:
     """Clear all cached backend instances.  Used in tests only."""
     global _DEFAULT_CHROMADB
     _INSTANCES.clear()
+    _INIT_LOCKS.clear()
     _DEFAULT_CHROMADB = None

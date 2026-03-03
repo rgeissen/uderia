@@ -99,3 +99,9 @@ __all__ = [
     "QueryResult",
     "VectorDocument",
 ]
+
+# Auto-register optional backends (no-op if SDKs not installed)
+try:
+    from . import teradata_backend as _teradata_backend  # noqa: F401
+except Exception:
+    pass  # teradatagenai/teradataml not installed — Teradata backend unavailable

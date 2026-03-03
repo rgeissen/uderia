@@ -7272,18 +7272,50 @@
                                     <input type="text" id="knowledge-repo-teradata-database" placeholder="VECTORS_DB"
                                            class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
                                 </div>
+                                <div class="col-span-2">
+                                    <label for="knowledge-repo-teradata-base-url" class="block text-xs text-gray-400 mb-1">Vector Store API URL <span class="text-red-400">*</span></label>
+                                    <input type="text" id="knowledge-repo-teradata-base-url" placeholder="https://td-endpoint.company.com/api/accounts/..."
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                </div>
                                 <div>
-                                    <label for="knowledge-repo-teradata-username" class="block text-xs text-gray-400 mb-1">Username <span class="text-red-400">*</span></label>
+                                    <label for="knowledge-repo-teradata-username" class="block text-xs text-gray-400 mb-1">Username</label>
                                     <input type="text" id="knowledge-repo-teradata-username" placeholder="td_user"
                                            class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
                                            autocomplete="off">
                                 </div>
                                 <div>
-                                    <label for="knowledge-repo-teradata-password" class="block text-xs text-gray-400 mb-1">Password <span class="text-red-400">*</span></label>
+                                    <label for="knowledge-repo-teradata-password" class="block text-xs text-gray-400 mb-1">Password</label>
                                     <input type="password" id="knowledge-repo-teradata-password" placeholder="••••••••"
                                            class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
                                            autocomplete="new-password">
                                 </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Or use PAT Token as alternative to Username/Password:</p>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label for="knowledge-repo-teradata-pat-token" class="block text-xs text-gray-400 mb-1">PAT Token</label>
+                                    <input type="password" id="knowledge-repo-teradata-pat-token" placeholder="eyJ..."
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
+                                           autocomplete="off">
+                                </div>
+                                <div>
+                                    <label for="knowledge-repo-teradata-pem-file" class="block text-xs text-gray-400 mb-1">PEM File Path</label>
+                                    <input type="text" id="knowledge-repo-teradata-pem-file" placeholder="/path/to/cert.pem"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                </div>
+                            </div>
+                            <div class="flex justify-end items-center mt-2">
+                                <button type="button" id="knowledge-repo-test-connection-btn"
+                                        onclick="window.knowledgeRepositoryHandler?.testTeradataConnection()"
+                                        class="px-3 py-1.5 text-xs font-medium text-orange-300 border border-orange-500/30 rounded-lg
+                                               hover:bg-orange-500/10 transition-colors flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                    </svg>
+                                    Test Connection
+                                </button>
+                                <span id="knowledge-repo-test-connection-status" class="ml-2 text-xs"></span>
                             </div>
                         </div>
                     </div>
@@ -7307,6 +7339,7 @@
                                 <option value="paragraph">Paragraph - Split by paragraphs</option>
                                 <option value="sentence">Sentence - Split by sentences</option>
                                 <option value="fixed_size">Fixed Size - Split by character count</option>
+                                <option value="server_side" style="display:none">Server-Side - Teradata handles chunking &amp; embedding</option>
                             </select>
                             <p class="mt-1 text-xs text-gray-400">Controls how documents are divided for retrieval</p>
                         </div>

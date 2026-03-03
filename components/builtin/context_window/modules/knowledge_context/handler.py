@@ -102,8 +102,7 @@ class KnowledgeContextModule(ContextModule):
                     condensable=False,
                 )
 
-            # retrieve_examples is synchronous
-            docs = retriever.retrieve_examples(
+            docs = await retriever.retrieve_examples(
                 query=query,
                 k=max_docs,
                 min_score=min_score,

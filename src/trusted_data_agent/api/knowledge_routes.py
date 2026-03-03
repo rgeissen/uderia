@@ -16,6 +16,7 @@ import os
 import logging
 import tempfile
 from datetime import datetime, timezone
+from uuid import uuid4
 from quart import Blueprint, request, jsonify, Response
 import hashlib
 import asyncio
@@ -30,6 +31,7 @@ from trusted_data_agent.agent.repository_constructor import (
     RepositoryType,
     ChunkingStrategy
 )
+from trusted_data_agent.vectorstore.capabilities import VectorStoreCapability
 
 # Create blueprint
 knowledge_api_bp = Blueprint('knowledge_api', __name__)
@@ -261,27 +263,123 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 yield format_sse({"type": "error", "message": "RAG retriever not initialized"}, "error")
                 return
             
+            # Save file temporarily (needed by both client-side and server-side paths)
+            yield format_sse({"type": "progress", "message": "Saving file...", "percentage": 2}, "progress")
+
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1])
+            temp_file.write(file_content)
+            temp_file.flush()
+            temp_file.close()
+
+            # Calculate file hash
+            content_hash = hashlib.sha256(file_content).hexdigest()
+
+            # ── Server-side chunking path (streaming) ─────────────────────────
+            # Pass the raw file to the backend SDK — skip text extraction &
+            # local chunking entirely.
+            if chunking_strategy_str == "server_side":
+                backend = await retriever._get_knowledge_backend(collection_id)
+
+                if not backend or not backend.has_capability(VectorStoreCapability.SERVER_SIDE_CHUNKING):
+                    yield format_sse({
+                        "type": "error",
+                        "message": "Selected backend does not support server-side chunking."
+                    }, "error")
+                    os.unlink(temp_file.name)
+                    return
+
+                document_id = str(uuid4())
+
+                yield format_sse({
+                    "type": "progress",
+                    "message": "Uploading file to Teradata for server-side chunking & embedding...",
+                    "percentage": 10
+                }, "progress")
+
+                # Run server-side chunking as a background task so we can
+                # emit SSE progress events while Teradata processes the PDF.
+                import asyncio as _asyncio
+                ingest_task = _asyncio.create_task(
+                    backend.add_document_files(
+                        collection_name=collection_name,
+                        file_paths=[temp_file.name],
+                        chunking_config={
+                            "chunk_size": chunk_size,
+                            "optimized_chunking": True,
+                        },
+                    )
+                )
+
+                elapsed = 0
+                while not ingest_task.done():
+                    await _asyncio.sleep(5)
+                    elapsed += 5
+                    # Progress: 10% → 90% over ~30 min (1800s)
+                    pct = min(10 + int((elapsed / 1800) * 80), 90)
+                    minutes = elapsed // 60
+                    seconds = elapsed % 60
+                    time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+                    yield format_sse({
+                        "type": "progress",
+                        "message": f"Teradata is processing the document (server-side chunking & embedding)... {time_str} elapsed",
+                        "percentage": pct
+                    }, "progress")
+
+                # Retrieve result — raises if the task failed
+                try:
+                    await ingest_task
+                except Exception as ingest_err:
+                    yield format_sse({
+                        "type": "error",
+                        "message": f"Server-side chunking failed: {ingest_err}"
+                    }, "error")
+                    os.unlink(temp_file.name)
+                    return
+
+                # Store document metadata
+                from trusted_data_agent.core.collection_db import CollectionDatabase
+                db = CollectionDatabase()
+                conn = db._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO knowledge_documents
+                    (collection_id, document_id, filename, document_type, title, author,
+                     source, category, tags, file_size, content_hash, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    collection_id, document_id, filename,
+                    os.path.splitext(filename)[1].lstrip('.'), title, author,
+                    'upload', category, ','.join(tags),
+                    len(file_content), content_hash,
+                    datetime.now(timezone.utc).isoformat(),
+                ))
+                conn.commit()
+                conn.close()
+
+                os.unlink(temp_file.name)
+
+                yield format_sse({
+                    "type": "complete",
+                    "status": "success",
+                    "message": f"Document '{filename}' ingested via server-side chunking",
+                    "document_id": document_id,
+                    "chunks_stored": 0,
+                    "chunking_mode": "server_side",
+                }, "complete")
+                return
+
+            # ── Client-side chunking path ─────────────────────────────────────
             # Validate chunking strategy
             try:
                 chunking_strategy = ChunkingStrategy[chunking_strategy_str.upper()]
             except KeyError:
                 yield format_sse({"type": "error", "message": f"Invalid chunking_strategy: {chunking_strategy_str}"}, "error")
+                os.unlink(temp_file.name)
                 return
-            
-            # Save file temporarily
-            yield format_sse({"type": "progress", "message": "Saving file...", "percentage": 2}, "progress")
-            
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1])
-            temp_file.write(file_content)
-            temp_file.flush()
-            temp_file.close()
-            
-            # Calculate file hash
-            content_hash = hashlib.sha256(file_content).hexdigest()
-            
+
             # Process document
             yield format_sse({"type": "progress", "message": "Extracting text from document...", "percentage": 3}, "progress")
-            
+
             doc_handler = DocumentUploadHandler()
             prepared_doc = doc_handler.prepare_document_for_llm(
                 file_path=temp_file.name,
@@ -289,14 +387,14 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 model_name="",
                 effective_config={"enabled": True, "use_native_upload": False}
             )
-            
+
             if 'content' not in prepared_doc or not prepared_doc['content']:
                 yield format_sse({"type": "error", "message": "Failed to extract text from document"}, "error")
                 os.unlink(temp_file.name)
                 return
-            
+
             document_content = prepared_doc['content']
-            
+
             # Create repository constructor (backend-abstracted path)
             backend = await retriever._get_knowledge_backend(collection_id)
             constructor = create_repository_constructor(
@@ -327,7 +425,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 save_original=True,
                 progress_callback=progress_callback
             )
-            
+
             # Drain any remaining progress messages
             while not progress_queue.empty():
                 try:
@@ -335,15 +433,15 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     yield progress_msg
                 except asyncio.QueueEmpty:
                     break
-            
+
             # Clean up temp file
             os.unlink(temp_file.name)
-            
+
             if result['status'] == 'success':
                 # Store metadata in database (same as original)
                 from trusted_data_agent.core.collection_db import CollectionDatabase
                 db = CollectionDatabase()
-                
+
                 doc_data = {
                     'collection_id': collection_id,
                     'document_id': result['metadata']['document_id'],
@@ -358,12 +456,12 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     'content_hash': content_hash,
                     'created_at': datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 conn = db._get_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO knowledge_documents 
-                    (collection_id, document_id, filename, document_type, title, author, 
+                    INSERT INTO knowledge_documents
+                    (collection_id, document_id, filename, document_type, title, author,
                      source, category, tags, file_size, content_hash, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
@@ -374,7 +472,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 ))
                 conn.commit()
                 conn.close()
-                
+
                 yield format_sse({
                     "type": "complete",
                     "status": "success",
@@ -480,30 +578,100 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
         chunk_size = int(form.get('chunk_size', 1000))
         chunk_overlap = int(form.get('chunk_overlap', 200))
         embedding_model = form.get('embedding_model', 'all-MiniLM-L6-v2')
-        
-        # Validate chunking strategy
-        try:
-            chunking_strategy = ChunkingStrategy[chunking_strategy_str.upper()]
-        except KeyError:
-            return jsonify({
-                "status": "error",
-                "message": f"Invalid chunking_strategy: {chunking_strategy_str}"
-            }), 400
-        
-        # Save file temporarily
+
+        # Save file temporarily (needed by both client-side and server-side paths)
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1])
         file_content = file.read()
         temp_file.write(file_content)
         temp_file.flush()
         temp_file.close()
-        
+
         # Calculate file hash
         content_hash = hashlib.sha256(file_content).hexdigest()
-        
+
         try:
+            # ── Server-side chunking path ──────────────────────────────────────
+            # Pass the raw file to the backend SDK — skip text extraction &
+            # local chunking entirely.  Follows the Chatbot PDF pattern:
+            #   VectorStore.create(document_files=[...], chunk_size=500, ...)
+            if chunking_strategy_str == "server_side":
+                backend = await retriever._get_knowledge_backend(collection_id)
+
+                if not backend or not backend.has_capability(VectorStoreCapability.SERVER_SIDE_CHUNKING):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Selected backend does not support server-side chunking. "
+                                   f"Use a client-side chunking strategy instead."
+                    }), 400
+
+                document_id = str(uuid4())
+
+                await backend.add_document_files(
+                    collection_name=collection_name,
+                    file_paths=[temp_file.name],
+                    chunking_config={
+                        "chunk_size": chunk_size,
+                        "optimized_chunking": True,
+                    },
+                )
+
+                app_logger.info(
+                    f"Successfully uploaded document '{file.filename}' to Knowledge "
+                    f"repository {collection_id} (server-side chunking)"
+                )
+
+                # Store document metadata in knowledge_documents table
+                from trusted_data_agent.core.collection_db import CollectionDatabase
+                db = CollectionDatabase()
+                conn = db._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO knowledge_documents
+                    (collection_id, document_id, filename, document_type, title, author,
+                     source, category, tags, file_size, content_hash, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    collection_id,
+                    document_id,
+                    file.filename,
+                    os.path.splitext(file.filename)[1].lstrip('.'),
+                    title,
+                    author,
+                    'upload',
+                    category,
+                    ','.join(tags),
+                    len(file_content),
+                    content_hash,
+                    datetime.now(timezone.utc).isoformat(),
+                ))
+                conn.commit()
+                conn.close()
+
+                return jsonify({
+                    "status": "success",
+                    "message": f"Document '{file.filename}' ingested via server-side chunking",
+                    "chunks_stored": 0,
+                    "metadata": {
+                        "document_id": document_id,
+                        "filename": file.filename,
+                        "document_type": os.path.splitext(file.filename)[1].lstrip('.'),
+                        "chunking_mode": "server_side",
+                    }
+                }), 200
+
+            # ── Client-side chunking path (unchanged) ──────────────────────────
+            # Validate chunking strategy enum
+            try:
+                chunking_strategy = ChunkingStrategy[chunking_strategy_str.upper()]
+            except KeyError:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Invalid chunking_strategy: {chunking_strategy_str}"
+                }), 400
+
             # Process document using DocumentUploadHandler
             doc_handler = DocumentUploadHandler()
-            
+
             # For Knowledge repos, we always extract text
             prepared_doc = doc_handler.prepare_document_for_llm(
                 file_path=temp_file.name,
@@ -511,16 +679,16 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 model_name="",
                 effective_config={"enabled": True, "use_native_upload": False}
             )
-            
+
             # Check if content was extracted
             if 'content' not in prepared_doc or not prepared_doc['content']:
                 return jsonify({
                     "status": "error",
                     "message": "Failed to extract text from document"
                 }), 400
-            
+
             document_content = prepared_doc['content']
-            
+
             # Create repository constructor (backend-abstracted path)
             backend = await retriever._get_knowledge_backend(collection_id)
             constructor = create_repository_constructor(
@@ -550,14 +718,14 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 content_hash=content_hash,
                 save_original=True
             )
-            
+
             if result['status'] == 'success':
                 app_logger.info(f"Successfully uploaded document '{file.filename}' to Knowledge repository {collection_id}")
-                
+
                 # Store document metadata in database
                 from trusted_data_agent.core.collection_db import CollectionDatabase
                 db = CollectionDatabase()
-                
+
                 doc_data = {
                     'collection_id': collection_id,
                     'document_id': result['metadata']['document_id'],
@@ -572,13 +740,13 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                     'content_hash': content_hash,
                     'created_at': datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 # Insert into knowledge_documents table
                 conn = db._get_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO knowledge_documents
-                    (collection_id, document_id, filename, document_type, title, author, 
+                    (collection_id, document_id, filename, document_type, title, author,
                      source, category, tags, file_size, content_hash, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
@@ -597,11 +765,11 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 ))
                 conn.commit()
                 conn.close()
-                
+
                 return jsonify(result), 200
             else:
                 return jsonify(result), 400
-        
+
         finally:
             # Cleanup temp file
             try:
@@ -1090,3 +1258,93 @@ async def get_single_chunk(current_user: dict, collection_id: int, chunk_id: str
     except Exception as e:
         app_logger.error(f"Error getting chunk {chunk_id} from collection {collection_id}: {e}", exc_info=True)
         return jsonify({"error": "Failed to get chunk"}), 500
+
+
+@knowledge_api_bp.route("/v1/knowledge/test-connection", methods=["POST"])
+@require_auth
+async def test_knowledge_backend_connection(current_user: dict):
+    """Validate Teradata connection credentials without creating a collection.
+
+    Uses VSManager.health() from the teradatagenai SDK to verify connectivity.
+    """
+    data = await request.get_json()
+    backend_type = data.get("backend_type", "chromadb")
+    backend_config = data.get("backend_config", {})
+
+    if backend_type == "chromadb":
+        return jsonify({"status": "success", "message": "ChromaDB is local — no connection needed"}), 200
+
+    if backend_type != "teradata":
+        return jsonify({"status": "error", "message": f"Unknown backend: {backend_type}"}), 400
+
+    # Validate required fields
+    has_user_pass = backend_config.get("username") and backend_config.get("password")
+    has_pat = backend_config.get("pat_token")
+    if not (has_user_pass or has_pat):
+        return jsonify({
+            "status": "error",
+            "message": "Provide either (username + password) or pat_token"
+        }), 400
+    if not backend_config.get("host"):
+        return jsonify({"status": "error", "message": "host is required"}), 400
+
+    try:
+        from teradataml import create_context  # type: ignore[import]
+        from teradatagenai import set_auth_token, VSManager  # type: ignore[import]
+    except ImportError:
+        return jsonify({
+            "status": "error",
+            "message": "Teradata SDK not installed. Run: pip install teradatagenai teradataml"
+        }), 500
+
+    try:
+        # Strip /open-analytics suffix (Getting Started pattern)
+        base_url = backend_config.get("base_url", "")
+        if base_url.endswith("/open-analytics"):
+            base_url = base_url[:-len("/open-analytics")]
+
+        # 1. SQL context — must be established BEFORE set_auth_token (SDK requirement).
+        #    Matches Getting Started: create_context(host, username, password=my_variable)
+        ctx_kwargs: dict = {
+            "host": backend_config["host"],
+            "username": backend_config.get("username", ""),
+        }
+        if backend_config.get("password"):
+            ctx_kwargs["password"] = backend_config["password"]
+        if backend_config.get("database"):
+            ctx_kwargs["database"] = backend_config["database"]
+        await asyncio.to_thread(create_context, **ctx_kwargs)
+
+        # 2. VS REST API auth — matches Getting Started:
+        #    set_auth_token(base_url=ues_uri, pat_token=access_token, pem_file=pem_file)
+        if has_pat:
+            await asyncio.to_thread(
+                set_auth_token,
+                base_url=base_url,
+                pat_token=backend_config["pat_token"],
+                pem_file=backend_config.get("pem_file") or None,
+            )
+        elif base_url:
+            await asyncio.to_thread(
+                set_auth_token,
+                base_url=base_url,
+                username=backend_config["username"],
+                password=backend_config["password"],
+            )
+
+        # 3. Vector Store health check (from the SDK chatbot pattern)
+        health = await asyncio.to_thread(VSManager.health)
+
+        return jsonify({
+            "status": "success",
+            "message": "Connection successful",
+            "server_info": {
+                "host": backend_config["host"],
+                "database": backend_config.get("database"),
+                "vs_health": str(health),
+            }
+        }), 200
+
+    except Exception as e:
+        app_logger.warning(f"Teradata test-connection failed: {e}")
+        return jsonify({"status": "error", "message": f"Connection failed: {e}"}), 400

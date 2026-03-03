@@ -4117,7 +4117,7 @@ function initializeRepositoryTabs() {
  */
 async function initializeKnowledgeRepositoryHandlers() {
     try {
-        const { initializeKnowledgeRepositoryHandlers, loadKnowledgeRepositories, deleteKnowledgeRepository, resetKnowledgeRepository, openUploadDocumentsModal } = await import('./knowledgeRepositoryHandler.js');
+        const { initializeKnowledgeRepositoryHandlers, loadKnowledgeRepositories, deleteKnowledgeRepository, resetKnowledgeRepository, openUploadDocumentsModal, testTeradataConnection } = await import('./knowledgeRepositoryHandler.js');
 
         // Initialize handlers
         initializeKnowledgeRepositoryHandlers();
@@ -4127,7 +4127,8 @@ async function initializeKnowledgeRepositoryHandlers() {
             loadKnowledgeRepositories,
             deleteKnowledgeRepository,
             resetKnowledgeRepository,
-            openUploadDocumentsModal
+            openUploadDocumentsModal,
+            testTeradataConnection
         };
 
         console.log('[Knowledge] Knowledge repository handlers loaded');

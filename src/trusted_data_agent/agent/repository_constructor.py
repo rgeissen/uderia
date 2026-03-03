@@ -592,7 +592,7 @@ class KnowledgeRepositoryConstructor(RepositoryConstructor):
             )
 
         from trusted_data_agent.vectorstore import CollectionConfig, VectorDocument
-        from trusted_data_agent.vectorstore.embedding_providers import SentenceTransformerProvider
+        from trusted_data_agent.vectorstore.embedding_providers import get_embedding_provider
 
         progress_callback = kwargs.get("progress_callback")
 
@@ -641,7 +641,7 @@ class KnowledgeRepositoryConstructor(RepositoryConstructor):
                 f"Generating embeddings for {len(chunks)} chunks...", 30
             ))
 
-        embedding_provider = SentenceTransformerProvider.get_cached(embedding_model)
+        embedding_provider = get_embedding_provider(self._backend.backend_type, embedding_model)
         documents = [
             VectorDocument(
                 id=chunk.chunk_id,

@@ -41,6 +41,10 @@ class VectorStoreCapability(Enum):
     When declared, the EmbeddingProvider passed to add()/query() is a
     ServerSideEmbeddingProvider marker and must NOT be called for inference."""
 
+    SERVER_SIDE_CHUNKING = auto()
+    """Backend can ingest raw files (PDF, etc.) and handle chunking + embedding
+    internally.  Backends declaring this support ``add_document_files()``."""
+
 
 # Every concrete backend must declare at least these:
 REQUIRED_CAPABILITIES: Set[VectorStoreCapability] = {

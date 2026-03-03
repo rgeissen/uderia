@@ -80,7 +80,8 @@ class ConversationAgentExecutor:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         canvas_context: Optional[str] = None,
-        component_instructions: Optional[str] = None
+        component_instructions: Optional[str] = None,
+        profile_type: Optional[str] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -126,6 +127,7 @@ class ConversationAgentExecutor:
         self.turn_number = turn_number
         self.provider = provider or "Unknown"
         self.model = model or "Unknown"
+        self.profile_type = profile_type or "conversation_with_tools"
 
         # Collect events during execution for session storage/replay
         self.collected_events = []
@@ -307,7 +309,7 @@ RESPONSE FORMAT:
         await self._emit_event("conversation_agent_start", {
             "session_id": self.session_id,
             "profile_tag": self.profile_tag,
-            "profile_type": "conversation_with_tools",
+            "profile_type": self.profile_type,
             "available_tools": [tool.name for tool in self.mcp_tools],
             "query": query[:200] if query else "",
             "turn_id": self.turn_number,
@@ -807,7 +809,7 @@ RESPONSE FORMAT:
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens,
                 "profile_tag": self.profile_tag,
-                "profile_type": "conversation_with_tools",
+                "profile_type": self.profile_type,
                 "cost_usd": total_cost
             })
 
@@ -858,7 +860,7 @@ RESPONSE FORMAT:
                 "error": str(e),
                 "session_id": self.session_id,
                 "profile_tag": self.profile_tag,
-                "profile_type": "conversation_with_tools",
+                "profile_type": self.profile_type,
             })
 
             return {

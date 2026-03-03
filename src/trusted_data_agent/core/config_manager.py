@@ -530,7 +530,7 @@ class ConfigManager:
         server.update(updates)
         return self.save_mcp_servers(servers, user_uuid)
     
-    def remove_mcp_server(self, server_id: str, user_uuid: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    async def remove_mcp_server(self, server_id: str, user_uuid: Optional[str] = None) -> tuple[bool, Optional[str]]:
         """
         Remove an MCP server configuration.
 
@@ -624,7 +624,7 @@ class ConfigManager:
                         # omitted so only the global-default guard (ID 0) applies —
                         # all MCP-bound collections must be removable here.
                         try:
-                            rag_retriever.remove_collection(coll_id)
+                            await rag_retriever.remove_collection(coll_id)
                             app_logger.info(f"  ✓ Deleted collection {coll_id}")
                         except Exception as coll_error:
                             app_logger.error(f"  ✗ Failed to delete collection {coll_id}: {coll_error}")
