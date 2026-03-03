@@ -288,7 +288,7 @@ skill_ratings (
 | DELETE | `/v1/marketplace/skills/:id` | Unpublish (publisher only) |
 
 **Key Implementation Detail — Hot Reload:**
-After installation, the skill manager hot-reloads so the new skill is immediately available for activation via `!skill-name` syntax without restart.
+After installation, the skill manager hot-reloads so the new skill is immediately available for activation via `#skill-name` syntax without restart.
 
 **Export Format:**
 Skills export as `.skill` files (ZIP containing `skill.json` + `<name>.md`). Import accepts both `.skill` and `.zip`.

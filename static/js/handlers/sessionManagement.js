@@ -784,7 +784,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             // --- MODIFICATION END ---
 
             // --- Re-render extension download cards for chat_append results ---
-            // Extension cards (e.g., #pdf download) are rendered into the DOM during
+            // Extension cards (e.g., !pdf download) are rendered into the DOM during
             // live execution but NOT persisted in session_history messages. The data IS
             // persisted in workflow_history[turn].extension_results. Re-render them here
             // so download cards survive page reloads and session switches.
@@ -821,7 +821,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
                                  style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
                                 <div class="flex items-center gap-2 mb-2">
                                     <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
-                                          style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
+                                          style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${extName}</span>
                                     <span class="text-xs text-gray-500">${result.content_type}</span>
                                 </div>
                                 <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48"

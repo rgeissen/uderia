@@ -5,7 +5,7 @@ Skills are reusable markdown knowledge documents that get injected into
 the LLM's system prompt or user message before execution. Fully compatible
 with Claude Code skills format (bidirectional import/export).
 
-Triggered by !name:param syntax in user queries.
+Triggered by #name:param syntax in user queries.
 
 Format:
   skill-name/

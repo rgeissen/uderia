@@ -1,7 +1,7 @@
 /**
  * Skills tab handler — manages the Skills configuration panel.
  *
- * Skills are pre-processing prompt injections (emerald green, ! trigger).
+ * Skills are pre-processing prompt injections (emerald green, # trigger).
  * This handler renders skill cards, manages activation/deactivation,
  * and provides import/export functionality.
  */
@@ -172,7 +172,7 @@ function _createSkillCard(skill, activation) {
     const badge = document.createElement('span');
     badge.className = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded';
     badge.style.cssText = 'background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);';
-    badge.textContent = `!${activationName}`;
+    badge.textContent = `#${activationName}`;
     left.appendChild(badge);
 
     const nameEl = document.createElement('span');
@@ -212,7 +212,7 @@ function _createSkillCard(skill, activation) {
                 await _deactivateSkill(activationName);
                 await _refreshSkillData();
                 if (window.loadActivatedSkills) window.loadActivatedSkills();
-                _notify('success', `Skill !${activationName} deactivated`);
+                _notify('success', `Skill #${activationName} deactivated`);
             } catch (err) {
                 _notify('error', `Deactivation failed: ${err.message}`);
             }
@@ -225,7 +225,7 @@ function _createSkillCard(skill, activation) {
                 await _activateSkill(skill.skill_id);
                 await _refreshSkillData();
                 if (window.loadActivatedSkills) window.loadActivatedSkills();
-                _notify('success', `Skill !${skill.skill_id} activated`);
+                _notify('success', `Skill #${skill.skill_id} activated`);
             } catch (err) {
                 _notify('error', `Activation failed: ${err.message}`);
             }
@@ -1422,7 +1422,7 @@ function openSkillEditor(existingSkill = null) {
         header.className = 'flex items-center justify-between px-5 py-3 flex-shrink-0';
         header.style.cssText = 'border-bottom: 1px solid rgba(148,163,184,0.08); background: rgba(0,0,0,0.05);';
 
-        const badgeText = editorState.skillId ? `!${editorState.skillId}` : 'New Skill';
+        const badgeText = editorState.skillId ? `#${editorState.skillId}` : 'New Skill';
         const statusBadges = [
             editorState.isBuiltin ? '<span class="inline-flex items-center px-1.5 py-0.5 text-[10px] rounded" style="background:rgba(148,163,184,0.08);color:#94a3b8;border:1px solid rgba(148,163,184,0.15);">built-in</span>' : '',
             isNew ? '<span class="inline-flex items-center px-1.5 py-0.5 text-[10px] rounded" style="background:rgba(34,197,94,0.08);color:#22c55e;border:1px solid rgba(34,197,94,0.15);">new</span>' : '',
@@ -1669,9 +1669,9 @@ function openSkillEditor(existingSkill = null) {
 
             // Update badge
             const badge = editorPanel.querySelector('#skill-editor-badge');
-            if (badge) badge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> !${skillId}`;
+            if (badge) badge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> #${skillId}`;
 
-            _notify('success', `Skill !${skillId} saved`);
+            _notify('success', `Skill #${skillId} saved`);
             await loadSkills();
             if (window.loadActivatedSkills) window.loadActivatedSkills();
 
@@ -1739,7 +1739,7 @@ function _renderCitizenLevel(container, state) {
                     class="w-full text-white rounded-lg px-3 py-2.5 text-sm font-mono transition-all duration-200"
                     style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);caret-color:${EMERALD};outline:none;"
                     ${state.isBuiltin ? 'readonly' : ''}>
-                <p class="text-[11px] mt-1.5" style="color:#6b7280;">Users invoke with <span id="skill-ed-trigger-preview" style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">!${state.skillId || 'name'}</span></p>
+                <p class="text-[11px] mt-1.5" style="color:#6b7280;">Users invoke with <span id="skill-ed-trigger-preview" style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">#${state.skillId || 'name'}</span></p>
             </div>
 
             <div>
@@ -1787,10 +1787,10 @@ function _renderCitizenLevel(container, state) {
             const slug = _slugify(nameEl.value);
             state.skillId = slug;
             const preview = container.querySelector('#skill-ed-trigger-preview');
-            if (preview) preview.textContent = `!${slug || 'name'}`;
+            if (preview) preview.textContent = `#${slug || 'name'}`;
             // Update header badge
             const badge = document.querySelector('#skill-editor-badge');
-            if (badge) badge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> !${slug || 'New Skill'}`;
+            if (badge) badge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> #${slug || 'New Skill'}`;
         });
     }
 }
@@ -1815,7 +1815,7 @@ function _renderIntermediateLevel(container, state) {
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="#ef4444" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
-            <textarea class="param-content w-full text-white rounded-md px-2.5 py-1.5 text-xs font-mono resize-y transition-all duration-200" rows="3" placeholder="Additional instructions when !${state.skillId}:${p.name || 'param'} is used..."
+            <textarea class="param-content w-full text-white rounded-md px-2.5 py-1.5 text-xs font-mono resize-y transition-all duration-200" rows="3" placeholder="Additional instructions when #${state.skillId}:${p.name || 'param'} is used..."
                 style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.1);line-height:1.6;caret-color:${EMERALD};outline:none;">${p.content}</textarea>
         </div>
     `).join('');
@@ -1911,8 +1911,8 @@ function _renderIntermediateLevel(container, state) {
                     ${paramsHtml}
                 </div>
                 ${state.params.length === 0
-                    ? `<p class="text-[11px] mt-2" style="color:#6b7280;">No parameters defined. Users trigger with <span style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">!${state.skillId || 'name'}</span> only.</p>`
-                    : `<p class="text-[11px] mt-2" style="color:#6b7280;">Users trigger with <span style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">!${state.skillId || 'name'}:param</span> to include param-specific content.</p>`
+                    ? `<p class="text-[11px] mt-2" style="color:#6b7280;">No parameters defined. Users trigger with <span style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">#${state.skillId || 'name'}</span> only.</p>`
+                    : `<p class="text-[11px] mt-2" style="color:#6b7280;">Users trigger with <span style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">#${state.skillId || 'name'}:param</span> to include param-specific content.</p>`
                 }
             </div>
         </div>`;
@@ -2015,7 +2015,7 @@ function _renderIntermediateLevel(container, state) {
         nameEl.addEventListener('input', () => {
             state.skillId = _slugify(nameEl.value);
             const badge = document.querySelector('#skill-editor-badge');
-            if (badge) badge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> !${state.skillId || 'New Skill'}`;
+            if (badge) badge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> #${state.skillId || 'New Skill'}`;
         });
     }
 }

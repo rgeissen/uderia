@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class SkillSpec:
-    """A skill selection parsed from user input (e.g., !sql-expert:strict)."""
+    """A skill selection parsed from user input (e.g., #sql-expert:strict)."""
 
     name: str
     """Activation name (e.g., 'sql-expert')."""

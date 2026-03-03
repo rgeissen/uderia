@@ -2,7 +2,7 @@
 Pre-built regex patterns for common extraction tasks.
 
 Extension authors can import and reuse these instead of writing their own.
-These patterns are battle-tested from the built-in #extract extension.
+These patterns are battle-tested from the built-in !extract extension.
 """
 
 from __future__ import annotations

@@ -7524,7 +7524,7 @@ Content-Disposition: attachment; filename="sql-expert.skill"
 
 **Endpoint:** `GET /v1/skills/activated`
 
-**Purpose:** Get the current user's activated skills (for `!` autocomplete).
+**Purpose:** Get the current user's activated skills (for `#` autocomplete).
 
 **Success Response:**
 ```json

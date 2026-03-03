@@ -1133,14 +1133,14 @@ function _showExtensionResult(tagEl, messageBubble) {
         popover.className = 'ext-result-popover';
         popover.dataset.extName = extName;
         popover.innerHTML = `
-            <div class="text-xs font-medium text-amber-300 mb-1">#${extName} result
+            <div class="text-xs font-medium text-amber-300 mb-1">!${extName} result
                 <span class="text-gray-500 font-normal">${result.content_type || 'json'}</span>
             </div>
             <pre class="text-xs text-gray-400 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${escapedContent}</pre>
         `;
         messageBubble.appendChild(popover);
     }).catch(err => {
-        console.warn(`[ExtTag] Failed to fetch result for #${extName}:`, err);
+        console.warn(`[ExtTag] Failed to fetch result for !${extName}:`, err);
     });
 }
 
@@ -1299,23 +1299,23 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         author.appendChild(primerTag);
     }
 
-    // Render skill tags for user messages (emerald badges like !sql-expert, !concise)
+    // Render skill tags for user messages (emerald badges like #sql-expert, #concise)
     if (role === 'user' && skillSpecs && skillSpecs.length > 0) {
         skillSpecs.forEach(spec => {
             const skillTag = document.createElement('span');
             skillTag.className = 'skill-tag';
-            skillTag.textContent = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            skillTag.textContent = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
             skillTag.title = `Skill: ${spec.name}${spec.param ? ' (' + spec.param + ')' : ''}`;
             author.appendChild(skillTag);
         });
     }
 
-    // Render extension tags for user messages (amber badges like #json, #decision:critical)
+    // Render extension tags for user messages (amber badges like !json, !decision:critical)
     if (role === 'user' && extensionSpecs && extensionSpecs.length > 0) {
         extensionSpecs.forEach(spec => {
             const extTag = document.createElement('span');
             extTag.className = 'extension-tag';
-            extTag.textContent = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            extTag.textContent = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
             extTag.title = `Extension: ${spec.name}${spec.param ? ' (' + spec.param + ')' : ''} — click to view result`;
             extTag.dataset.extName = spec.name;
             extTag.dataset.extParam = spec.param || '';
@@ -3630,7 +3630,7 @@ function _renderExtensionStep(eventData, parentContainer) {
                 resultEl.innerHTML = `
                     <details class="group">
                         <summary class="text-xs cursor-pointer hover:text-amber-200" style="color: #fbbf24;">
-                            &#9660; #${name} output <span class="text-gray-500">(${result.content_type || 'application/json'})</span>
+                            &#9660; !${name} output <span class="text-gray-500">(${result.content_type || 'application/json'})</span>
                         </summary>
                         <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                     </details>`;
@@ -3668,7 +3668,7 @@ function _renderSkillStep(eventData, parentContainer) {
 
     // Render each skill as a compact row
     skills.forEach(skill => {
-        const nameDisplay = skill.param ? `!${skill.name}:${skill.param}` : `!${skill.name}`;
+        const nameDisplay = skill.param ? `#${skill.name}:${skill.param}` : `#${skill.name}`;
         const target = skill.injection_target === 'user_context' ? 'user context' : 'system prompt';
         const tokens = skill.estimated_tokens || 0;
 

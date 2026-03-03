@@ -1,5 +1,5 @@
 """
-#summary extension — LLM-powered executive summary.
+!summary extension — LLM-powered executive summary.
 
 Produces a concise executive summary of the LLM answer with key points.
 Output is displayed in the chat via CHAT_APPEND.
@@ -7,9 +7,9 @@ Output is displayed in the chat via CHAT_APPEND.
 Tier: LLM (LLMExtension) — calls the session's configured LLM.
 
 Usage:
-    #summary           → brief summary (default)
-    #summary:brief     → 2-3 sentence summary with key points
-    #summary:detailed  → comprehensive summary with sections
+    !summary           → brief summary (default)
+    !summary:brief     → 2-3 sentence summary with key points
+    !summary:detailed  → comprehensive summary with sections
 """
 
 import json

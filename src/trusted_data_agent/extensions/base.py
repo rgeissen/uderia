@@ -34,7 +34,7 @@ class Extension(ABC):
     Abstract base class for post-processing extensions.
 
     Subclasses must define:
-        name        — unique identifier matching the #name trigger syntax
+        name        — unique identifier matching the !name trigger syntax
         execute()   — async method that transforms the LLM answer
 
     Optional overrides:
@@ -47,7 +47,7 @@ class Extension(ABC):
     def name(self) -> str:
         """
         Unique extension identifier. Lowercase, no spaces.
-        Must match the #name syntax users type in queries.
+        Must match the !name syntax users type in queries.
         """
 
     @property
@@ -71,7 +71,7 @@ class Extension(ABC):
             context: Rich context with answer text, metadata, tokens,
                      execution trace, and results from prior extensions
                      in the chain (context.previous_extension_results).
-            param:   Optional parameter from #name:param syntax.
+            param:   Optional parameter from !name:param syntax.
                      None if no colon was used.
 
         Returns:
@@ -80,7 +80,7 @@ class Extension(ABC):
 
     def validate_param(self, param: Optional[str] = None) -> tuple[bool, Optional[str]]:
         """
-        Validate the parameter passed via #name:param syntax.
+        Validate the parameter passed via !name:param syntax.
 
         Override in subclass to enforce specific parameter values.
 
@@ -99,7 +99,7 @@ class SimpleExtension(Extension):
     Zero-boilerplate base for stateless, deterministic transforms.
 
     Override:
-        name            — unique #name trigger (property or class attribute)
+        name            — unique !name trigger (property or class attribute)
         transform()     — receives answer_text + param, returns dict or str
 
     Optional overrides:
@@ -139,7 +139,7 @@ class SimpleExtension(Extension):
 
         Args:
             answer_text: Clean plain-text LLM answer.
-            param:       Optional parameter from #name:param syntax.
+            param:       Optional parameter from !name:param syntax.
 
         Returns:
             dict or str — will be wrapped into an ExtensionResult automatically.

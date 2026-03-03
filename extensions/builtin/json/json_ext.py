@@ -1,5 +1,5 @@
 """
-#json extension — Structured JSON output.
+!json extension — Structured JSON output.
 
 Wraps the LLM answer and execution metadata into a standardized JSON
 structure that downstream tools (n8n, Flowise, Airflow) can parse reliably.
@@ -7,9 +7,9 @@ structure that downstream tools (n8n, Flowise, Airflow) can parse reliably.
 Tier: Standard (Extension) — needs full ExtensionContext for metadata.
 
 Usage:
-    #json           → standard output (query, answer, metadata, tokens, tools)
-    #json:minimal   → query + answer only
-    #json:full      → includes execution trace and collected data
+    !json           → standard output (query, answer, metadata, tokens, tools)
+    !json:minimal   → query + answer only
+    !json:full      → includes execution trace and collected data
 """
 
 from datetime import datetime, timezone

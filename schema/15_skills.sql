@@ -3,7 +3,7 @@
 -- Version: 1.0
 -- Description: Per-user skill activation with configuration
 --              parameters. Each activation has a unique
---              activation_name (what the user types as !name)
+--              activation_name (what the user types as #name)
 --              mapped to a skill_id (which skill content to load).
 -- ============================================================
 
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS user_skills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_uuid VARCHAR(36) NOT NULL,
     skill_id VARCHAR(100) NOT NULL,              -- Base skill (sql-expert, concise, etc.)
-    activation_name VARCHAR(100) NOT NULL,       -- User-facing name (!sql-expert, !sql2)
+    activation_name VARCHAR(100) NOT NULL,       -- User-facing name (#sql-expert, #sql2)
     is_active BOOLEAN NOT NULL DEFAULT 1,
     default_param VARCHAR(255),                  -- Default parameter value (e.g., "strict")
     config_json TEXT,                             -- JSON object for advanced configuration

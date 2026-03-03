@@ -3,7 +3,7 @@ Database operations for per-user extension activation.
 
 Supports multiple activations of the same extension with different
 default parameters. Each activation has a unique `activation_name`
-(what the user types as #name) mapped to an `extension_id` (which
+(what the user types as !name) mapped to an `extension_id` (which
 Python extension to execute).
 
 Auto-naming: json → json2 → json3 → ...

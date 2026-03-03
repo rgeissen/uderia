@@ -11075,7 +11075,7 @@ async def get_activated_extensions():
     """
     Get the current user's activated extensions.
     Returns activated extensions merged with their manifest metadata.
-    This is what the frontend uses for # autocomplete.
+    This is what the frontend uses for ! autocomplete.
     """
     try:
         user_uuid = _get_user_uuid_from_request()

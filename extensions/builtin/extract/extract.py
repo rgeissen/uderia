@@ -1,5 +1,5 @@
 """
-#extract extension — Structured data extraction.
+!extract extension — Structured data extraction.
 
 Pulls numbers, percentages, and entity names from the LLM answer
 using deterministic regex patterns. No LLM call required.
@@ -7,10 +7,10 @@ using deterministic regex patterns. No LLM call required.
 Tier: Simple (SimpleExtension) — only needs answer_text.
 
 Usage:
-    #extract              → extract all data types
-    #extract:numbers      → numbers only
-    #extract:percentages  → percentages only
-    #extract:entities     → entity names only
+    !extract              → extract all data types
+    !extract:numbers      → numbers only
+    !extract:percentages  → percentages only
+    !extract:entities     → entity names only
 """
 
 from trusted_data_agent.extensions.base import SimpleExtension

@@ -286,7 +286,7 @@ async function initializeRAGAutoCompletion() {
     let activeExtensions = [];  // [{name, param}] — active extension badges
     window.activeExtensions = activeExtensions;
 
-    // --- Skill badge system (mirrors extension badges, emerald green, ! trigger) ---
+    // --- Skill badge system (mirrors extension badges, emerald green, # trigger) ---
     const skillSelector = document.getElementById('skill-selector');
     const activeSkillTagsContainer = document.getElementById('active-skill-tags');
     let currentSkills = [];
@@ -959,7 +959,7 @@ async function initializeRAGAutoCompletion() {
 
             const badge = document.createElement('span');
             badge.className = 'extension-item-badge';
-            badge.textContent = `#${activationName}`;
+            badge.textContent = `!${activationName}`;
             header.appendChild(badge);
 
             const name = document.createElement('span');
@@ -1013,13 +1013,13 @@ async function initializeRAGAutoCompletion() {
             const ext = currentExtensions[index];
             const activationName = ext.activation_name || ext.extension_id;
 
-            // Remove the partial #tag from input text
+            // Remove the partial !tag from input text
             const currentValue = userInput.value;
-            const hashMatch = currentValue.match(/#(\w*)$/);
-            if (hashMatch) {
-                const beforeHash = currentValue.substring(0, hashMatch.index);
+            const bangMatch = currentValue.match(/!(\w*)$/);
+            if (bangMatch) {
+                const beforeBang = currentValue.substring(0, bangMatch.index);
                 isUpdatingInput = true;
-                userInput.value = beforeHash.trimEnd();
+                userInput.value = beforeBang.trimEnd();
                 isUpdatingInput = false;
             }
 
@@ -1081,7 +1081,7 @@ async function initializeRAGAutoCompletion() {
 
             const badge = document.createElement('span');
             badge.className = 'skill-item-badge';
-            badge.textContent = `!${activationName}`;
+            badge.textContent = `#${activationName}`;
             header.appendChild(badge);
 
             const name = document.createElement('span');
@@ -1155,13 +1155,13 @@ async function initializeRAGAutoCompletion() {
             const skill = currentSkills[index];
             const activationName = skill.activation_name || skill.skill_id;
 
-            // Remove the partial !tag from input text
+            // Remove the partial #tag from input text
             const currentValue = userInput.value;
-            const bangMatch = currentValue.match(/!(\w*)$/);
-            if (bangMatch) {
-                const beforeBang = currentValue.substring(0, bangMatch.index);
+            const hashMatch = currentValue.match(/#(\w*)$/);
+            if (hashMatch) {
+                const beforeHash = currentValue.substring(0, hashMatch.index);
                 isUpdatingInput = true;
-                userInput.value = beforeBang.trimEnd();
+                userInput.value = beforeHash.trimEnd();
                 isUpdatingInput = false;
             }
 
@@ -1222,7 +1222,7 @@ async function initializeRAGAutoCompletion() {
                 badge.classList.add('active-skill-badge--invalid');
             }
 
-            const label = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            const label = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
             badge.innerHTML = `<span>${label}</span><span class="active-skill-badge__remove" title="Remove skill">×</span>`;
             badge.querySelector('.active-skill-badge__remove').addEventListener('click', () => {
                 removeSkillBadge(spec.name);
@@ -1387,7 +1387,7 @@ async function initializeRAGAutoCompletion() {
                 badge.classList.add('active-extension-badge--invalid');
             }
 
-            const label = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            const label = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
             badge.innerHTML = `<span>${label}</span><span class="active-extension-badge__remove" title="Remove extension">×</span>`;
             badge.querySelector('.active-extension-badge__remove').addEventListener('click', () => {
                 removeExtensionBadge(spec.name);
@@ -1698,10 +1698,10 @@ async function initializeRAGAutoCompletion() {
                 hideSkillParamPicker();
             }
 
-            // Check if user is typing !skill (show skill autocomplete)
-            const bangMatch = inputValue.match(/!(\w*)$/);
-            if (bangMatch && window.skillState?.activated?.length > 0) {
-                const prefix = bangMatch[1].toLowerCase();
+            // Check if user is typing #skill (show skill autocomplete)
+            const hashMatch = inputValue.match(/#(\w*)$/);
+            if (hashMatch && window.skillState?.activated?.length > 0) {
+                const prefix = hashMatch[1].toLowerCase();
                 const filtered = window.skillState.activated.filter(s =>
                     (s.activation_name || s.skill_id).toLowerCase().startsWith(prefix)
                 );
@@ -1710,15 +1710,15 @@ async function initializeRAGAutoCompletion() {
                     return;
                 }
             }
-            // Hide skill selector if not typing !
+            // Hide skill selector if not typing #
             if (isShowingSkillSelector) {
                 hideSkillSelector();
             }
 
-            // Check if user is typing #extension (show extension autocomplete)
-            const hashMatch = inputValue.match(/#(\w*)$/);
-            if (hashMatch && window.extensionState?.activated?.length > 0) {
-                const prefix = hashMatch[1].toLowerCase();
+            // Check if user is typing !extension (show extension autocomplete)
+            const bangMatch = inputValue.match(/!(\w*)$/);
+            if (bangMatch && window.extensionState?.activated?.length > 0) {
+                const prefix = bangMatch[1].toLowerCase();
                 const filtered = window.extensionState.activated.filter(e =>
                     (e.activation_name || e.extension_id).toLowerCase().startsWith(prefix)
                 );
@@ -1727,7 +1727,7 @@ async function initializeRAGAutoCompletion() {
                     return;
                 }
             }
-            // Hide extension selector if not typing #
+            // Hide extension selector if not typing !
             if (isShowingExtensionSelector) {
                 hideExtensionSelector();
             }
@@ -1961,7 +1961,7 @@ async function initializeRAGAutoCompletion() {
 }
 
 /**
- * Load activated extensions from the API for # autocomplete.
+ * Load activated extensions from the API for ! autocomplete.
  * Stores results in window.extensionState.activated for access by the input handler.
  */
 async function loadActivatedExtensions() {
@@ -1987,7 +1987,7 @@ async function loadActivatedExtensions() {
 window.loadActivatedExtensions = loadActivatedExtensions;
 
 /**
- * Load activated skills from the API for ! autocomplete.
+ * Load activated skills from the API for # autocomplete.
  * Stores results in window.skillState.activated for access by the input handler.
  */
 async function loadActivatedSkills() {
@@ -2256,10 +2256,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('[Startup] Resource panel initialized with default profile:', window.configState.defaultProfileId);
     }
 
-    // Load activated extensions for # autocomplete
+    // Load activated extensions for ! autocomplete
     loadActivatedExtensions();
 
-    // Load activated skills for ! autocomplete
+    // Load activated skills for # autocomplete
     loadActivatedSkills();
 
     // Hide prompt editor menu item if it exists (may be removed from UI)

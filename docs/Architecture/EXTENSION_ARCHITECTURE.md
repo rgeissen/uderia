@@ -4,12 +4,12 @@
 
 ## Overview
 
-Uderia's LLM answers are natural-language text — inherently non-deterministic. Downstream workflow tools need structured, deterministic output to branch on. The Extensions system adds a post-processing pipeline triggered by `#name:param` syntax that transforms LLM output into machine-parseable formats.
+Uderia's LLM answers are natural-language text — inherently non-deterministic. Downstream workflow tools need structured, deterministic output to branch on. The Extensions system adds a post-processing pipeline triggered by `!name:param` syntax that transforms LLM output into machine-parseable formats.
 
-Extensions complement the existing `@TAG` input routing with `#Extension` output processing:
+Extensions complement the existing `@TAG` input routing with `!Extension` output processing:
 
 ```
-@PROFILE (how to answer) → Query → LLM Answer → #Extension (structured output) → n8n/Flowise
+@PROFILE (how to answer) → Query → LLM Answer → !Extension (structured output) → n8n/Flowise
 ```
 
 ### Design Principle: Progressive Disclosure
@@ -34,7 +34,7 @@ Maximum Python flexibility through progressive disclosure. Every friction point 
 │                              FRONTEND                                        │
 │                                                                              │
 │  ┌──────────┐    ┌──────────────┐    ┌────────────────┐    ┌─────────────┐  │
-│  │ # Auto-  │    │ Badge Mgmt   │    │ SSE Event      │    │ Tag Render  │  │
+│  │ ! Auto-  │    │ Badge Mgmt   │    │ SSE Event      │    │ Tag Render  │  │
 │  │ complete │───▶│ (amber chips) │───▶│ Handling       │◀───│ (clickable) │  │
 │  │ Dropdown │    │ activeExts[] │    │ ext_start/     │    │ + Popover   │  │
 │  └──────────┘    └──────────────┘    │ ext_complete/  │    └─────────────┘  │
@@ -84,7 +84,7 @@ Maximum Python flexibility through progressive disclosure. Every friction point 
 │  ┌───────────────────────────────────────────────────────────┐              │
 │  │  Built-in Extensions                                       │              │
 │  │  ┌──────┐ ┌──────────┐ ┌───────┐ ┌─────────┐ ┌─────────┐│              │
-│  │  │#json │ │#decision │ │#extract│ │#classify│ │#summary ││              │
+│  │  │!json │ │!decision │ │!extract│ │!classify│ │!summary ││              │
 │  │  │Tier 2│ │ Tier 3   │ │Tier 1 │ │ Tier 3  │ │ Tier 3  ││              │
 │  │  └──────┘ └──────────┘ └───────┘ └─────────┘ └─────────┘│              │
 │  └───────────────────────────────────────────────────────────┘              │
@@ -120,19 +120,19 @@ extensions/
 ├── schemas/
 │   └── extension-manifest-schema.json
 └── builtin/
-    ├── json/                # #json — Structured JSON output (Tier 2)
+    ├── json/                # !json — Structured JSON output (Tier 2)
     │   ├── manifest.json
     │   └── json_ext.py
-    ├── decision/            # #decision — LLM workflow branching (Tier 3)
+    ├── decision/            # !decision — LLM workflow branching (Tier 3)
     │   ├── manifest.json
     │   └── decision.py
-    ├── extract/             # #extract — Regex data extraction (Tier 1)
+    ├── extract/             # !extract — Regex data extraction (Tier 1)
     │   ├── manifest.json
     │   └── extract.py
-    ├── classify/            # #classify — LLM semantic classification (Tier 3)
+    ├── classify/            # !classify — LLM semantic classification (Tier 3)
     │   ├── manifest.json
     │   └── classify.py
-    └── summary/             # #summary — LLM executive summary (Tier 3)
+    └── summary/             # !summary — LLM executive summary (Tier 3)
         ├── manifest.json
         └── summary.py
 
@@ -145,7 +145,7 @@ extensions/
     └── analyzer.py
 
 static/js/
-├── main.js                  # # autocomplete, badge management
+├── main.js                  # ! autocomplete, badge management
 ├── eventHandlers.js         # Extension parsing, SSE events, historical recall
 ├── ui.js                    # Extension tags, _renderExtensionStep(), cost display
 ├── notifications.js         # REST notification dispatch (extension events)
@@ -173,9 +173,9 @@ Every extension transforms the LLM's answer into structured output. The tiers di
 | **Needs registry?** | No | No | No (auto-discovered) | No (auto-discovered) |
 | **Can call LLM?** | No | No | No | Yes (automatic) |
 
-**`answer_text`** is the LLM's plain-text response to the user's query, with any `#extension` tags already stripped. This is the primary input for all tiers — it's the text your extension transforms.
+**`answer_text`** is the LLM's plain-text response to the user's query, with any `!extension` tags already stripped. This is the primary input for all tiers — it's the text your extension transforms.
 
-**`param`** is the optional parameter from `#name:param` syntax (e.g., `#decision:binary` → `param="binary"`). It's `None` when the user types just `#name`.
+**`param`** is the optional parameter from `!name:param` syntax (e.g., `!decision:binary` → `param="binary"`). It's `None` when the user types just `!name`.
 
 **`ExtensionContext`** (Tiers 2-3 only) wraps `answer_text` with rich metadata: session/turn IDs, profile info, provider/model, token counts, execution trace, tools used, and results from prior extensions in the chain. See [Core Data Models](#core-data-models) for the full field list.
 
@@ -347,8 +347,8 @@ class ExtensionContext:
     # Core answer data
     answer_text: str                    # Plain text LLM answer
     answer_html: str                    # HTML formatted answer
-    original_query: str                 # User query including #tags
-    clean_query: str                    # Query with #tags stripped (what LLM saw)
+    original_query: str                 # User query including !tags
+    clean_query: str                    # Query with !tags stripped (what LLM saw)
 
     # Session & turn identity
     session_id: str
@@ -655,7 +655,7 @@ This ensures cost data is available even when the LLM provider's cost lookup fai
 
 ## Per-User Activation System
 
-Extensions must be **activated** per-user before they appear in the `#` autocomplete. This supports multiple activations of the same extension with different default parameters.
+Extensions must be **activated** per-user before they appear in the `!` autocomplete. This supports multiple activations of the same extension with different default parameters.
 
 ### Database Schema (`user_extensions` table)
 
@@ -664,7 +664,7 @@ CREATE TABLE user_extensions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_uuid VARCHAR(36) NOT NULL,
     extension_id VARCHAR(100) NOT NULL,       -- Base extension (json, decision, etc.)
-    activation_name VARCHAR(100) NOT NULL,    -- User-facing #name
+    activation_name VARCHAR(100) NOT NULL,    -- User-facing !name
     is_active BOOLEAN NOT NULL DEFAULT 1,
     default_param VARCHAR(255),               -- Default param (e.g., "critical")
     config_json TEXT,                         -- Advanced config as JSON
@@ -684,10 +684,10 @@ When activating the same extension multiple times:
 | Second | `json2` | `json` |
 | Third | `json3` | `json` |
 
-Query-time `#name:param` overrides the activation's `default_param`:
+Query-time `!name:param` overrides the activation's `default_param`:
 ```
-#json:minimal  → param="minimal" (overrides default)
-#json          → param=default_param from activation (or null)
+!json:minimal  → param="minimal" (overrides default)
+!json          → param=default_param from activation (or null)
 ```
 
 ### API Endpoints
@@ -890,7 +890,7 @@ async def run_agent_execution(
 
 ## Built-in Extensions
 
-### #json — Structured JSON Output (Tier 2: Extension)
+### !json — Structured JSON Output (Tier 2: Extension)
 
 | Property | Value |
 |----------|-------|
@@ -903,9 +903,9 @@ Wraps the LLM answer and execution metadata into a standardized JSON structure:
 
 | Mode | Fields |
 |------|--------|
-| `#json` (default) | query, answer, session_id, turn_id, profile_tag, profile_type, provider, model, tokens, tools_used, timestamp |
-| `#json:minimal` | query, answer |
-| `#json:full` | All default fields + execution_trace, collected_data |
+| `!json` (default) | query, answer, session_id, turn_id, profile_tag, profile_type, provider, model, tokens, tools_used, timestamp |
+| `!json:minimal` | query, answer |
+| `!json:full` | All default fields + execution_trace, collected_data |
 
 **Example output (default):**
 ```json
@@ -924,7 +924,7 @@ Wraps the LLM answer and execution metadata into a standardized JSON structure:
 }
 ```
 
-### #decision — Workflow Branching (Tier 3: LLMExtension)
+### !decision — Workflow Branching (Tier 3: LLMExtension)
 
 | Property | Value |
 |----------|-------|
@@ -935,7 +935,7 @@ Wraps the LLM answer and execution metadata into a standardized JSON structure:
 
 LLM-powered semantic analysis to produce branching output for n8n/Flowise Switch nodes.
 
-**Standard mode** (`#decision` or `#decision:critical`):
+**Standard mode** (`!decision` or `!decision:critical`):
 ```json
 {
   "result": "threshold_exceeded",
@@ -954,7 +954,7 @@ LLM-powered semantic analysis to produce branching output for n8n/Flowise Switch
 | `severity` | `critical`, `warning`, `info`, `ok` |
 | `branch_key` | `{result}_{severity}` (e.g., `"threshold_exceeded_critical"`) |
 
-**Binary mode** (`#decision:binary`):
+**Binary mode** (`!decision:binary`):
 ```json
 {
   "result": "yes",
@@ -966,7 +966,7 @@ LLM-powered semantic analysis to produce branching output for n8n/Flowise Switch
 
 **n8n integration:** Branch on `branch_key` or `severity` in Switch node.
 
-### #extract — Structured Data Extraction (Tier 1: SimpleExtension)
+### !extract — Structured Data Extraction (Tier 1: SimpleExtension)
 
 | Property | Value |
 |----------|-------|
@@ -990,9 +990,9 @@ Regex-based extraction of structured data from LLM answers using patterns from `
 }
 ```
 
-With param, returns only the specified type: `#extract:numbers` → `{"numbers": [...]}`.
+With param, returns only the specified type: `!extract:numbers` → `{"numbers": [...]}`.
 
-### #classify — Answer Classification (Tier 3: LLMExtension)
+### !classify — Answer Classification (Tier 3: LLMExtension)
 
 | Property | Value |
 |----------|-------|
@@ -1025,7 +1025,7 @@ LLM-powered semantic classification into predefined categories:
 }
 ```
 
-### #summary — Executive Summary (Tier 3: LLMExtension)
+### !summary — Executive Summary (Tier 3: LLMExtension)
 
 | Property | Value |
 |----------|-------|
@@ -1036,7 +1036,7 @@ LLM-powered semantic classification into predefined categories:
 
 LLM-powered executive summary of the LLM answer.
 
-**Brief mode** (`#summary` or `#summary:brief`):
+**Brief mode** (`!summary` or `!summary:brief`):
 ```json
 {
   "summary": "System health is nominal with CPU at 45% and memory at 62%...",
@@ -1049,7 +1049,7 @@ LLM-powered executive summary of the LLM answer.
 }
 ```
 
-**Detailed mode** (`#summary:detailed`):
+**Detailed mode** (`!summary:detailed`):
 ```json
 {
   "summary": "Comprehensive system analysis reveals...",
@@ -1070,13 +1070,13 @@ LLM-powered executive summary of the LLM answer.
 Extensions execute in the order specified. Each extension sees results from all prior extensions:
 
 ```
-Query: "Check health #extract #decision:critical"
+Query: "Check health !extract !decision:critical"
 
-1. #extract executes
+1. !extract executes
    context.previous_extension_results = {}
    → Returns: {numbers: [...], percentages: [...], entities: [...]}
 
-2. #decision executes (LLM call)
+2. !decision executes (LLM call)
    context.previous_extension_results = {"extract": {content: {...}, success: true}}
    → LLM can use extracted data to inform decision
    → Returns: {result, severity, branch_key, ...}
@@ -1126,26 +1126,26 @@ Each extension directory may contain a `manifest.json`. Validated against `exten
 User types in input box
         │
         ├─ Starts with @ → Profile autocomplete dropdown (orange)
-        ├─ Contains #     → Extension autocomplete dropdown (amber)
+        ├─ Contains !     → Extension autocomplete dropdown (amber)
         └─ Other text     → RAG suggestions (if enabled)
 ```
 
 ### Extension Autocomplete
 
-**Trigger:** User types `#` anywhere in the input.
+**Trigger:** User types `!` anywhere in the input.
 
 **Data source:** `window.extensionState.activated` — loaded from `GET /v1/extensions/activated` on page load.
 
 **Flow:**
 
 ```
-1. User types "#dec"
-2. Input handler detects /#(\w*)$/ pattern
+1. User types "!dec"
+2. Input handler detects /!(\w*)$/ pattern
 3. Filters activated extensions by prefix match
 4. Shows dropdown with amber-accented items
 5. Keyboard: Arrow Up/Down to navigate, Enter/Tab to select, Escape to dismiss
 6. On select:
-   a. Remove "#dec" from input text
+   a. Remove "!dec" from input text
    b. Create amber badge chip in input area
    c. Track in activeExtensions[] array
 7. Multiple extensions can be selected (multiple badges)
@@ -1155,7 +1155,7 @@ User types in input box
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ [📎] [@OPTIM ×] [#json ×] [#decision ×]  Ask about...     │
+│ [📎] [@OPTIM ×] [!json ×] [!decision ×]  Ask about...     │
 │       ▲ purple    ▲ amber    ▲ amber       ▲ text input    │
 │       profile     extension  extension                      │
 └─────────────────────────────────────────────────────────────┘
@@ -1178,13 +1178,13 @@ Events are rendered in the Live Status window using the amber-accented `_renderE
 
 | Event | Live Rendering |
 |-------|----------------|
-| `extension_start` | "Running extension #decision:binary" with processing indicator |
-| `extension_complete` | "Extension #decision" with tokens, cost, and timing metrics |
+| `extension_start` | "Running extension !decision:binary" with processing indicator |
+| `extension_complete` | "Extension !decision" with tokens, cost, and timing metrics |
 | `extension_results` | Per-extension based on `output_target` |
 
 **Metrics display on extension_complete (LLM extensions):**
 ```
-✓ #decision — 621 in / 68 out · $0.000089 · 1155ms
+✓ !decision — 621 in / 68 out · $0.000089 · 1155ms
 ```
 
 **Reload rendering:** Historical extension events use `_renderExtensionEventsForReload()` in `eventHandlers.js`, which shows the same token/cost/time metrics.
@@ -1207,7 +1207,7 @@ User messages display amber clickable tags:
 
 ```
 ┌──────────────────────────────────────────────┐
-│ You  [Rest Call] [#json:minimal] [#decision] │
+│ You  [Rest Call] [!json:minimal] [!decision] │
 │ What is the CPU usage?                       │
 └──────────────────────────────────────────────┘
 ```
@@ -1226,7 +1226,7 @@ The Extensions tab (`extensionHandler.js`) shows:
 **Available extensions** with tier badges:
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ [#decision]  Workflow Branching  [Automation] [Tier: LLM]    │
+│ [!decision]  Workflow Branching  [Automation] [Tier: LLM]    │
 │ LLM-powered binary/multi-branch decision output              │
 │ ⚠ This extension makes LLM calls and consumes tokens         │
 │                                          [+ Activate]        │
@@ -1236,7 +1236,7 @@ The Extensions tab (`extensionHandler.js`) shows:
 **User activations** with configuration:
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ [#json]  (json)                    [View Script]  [✕]       │
+│ [!json]  (json)                    [View Script]  [✕]       │
 │ Default param: [minimal      ] [Save]                        │
 │ Output: chat_append  •  v1.0.0  •  Tier: Standard            │
 └──────────────────────────────────────────────────────────────┘
@@ -1526,7 +1526,7 @@ rag_children = context.genie.get_children_by_type("rag_focused")
 2. **Progressive Disclosure:** Four tiers from zero-friction (drop a file) to full-power (LLM calls).
 3. **Deterministic + Semantic:** Simple extensions use regex/text analysis; LLM extensions provide real semantic understanding.
 4. **Serial Chaining:** Extensions execute in order; each sees all prior results.
-5. **Per-User Activation:** Users control which extensions are available via `#` autocomplete.
+5. **Per-User Activation:** Users control which extensions are available via `!` autocomplete.
 6. **Multi-Activation:** Same extension can be activated multiple times with different default params.
 7. **Flexible Output:** Extensions declare their display target (silent, chat_append, status_panel).
 8. **Persistent:** Extension specs on messages and results on turns are persisted to session files.
@@ -1569,16 +1569,16 @@ curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
   -H "Authorization: Bearer $JWT" | jq '.extension_results'
 ```
 
-**Note:** The REST API does NOT parse `@TAG` or `#extension` syntax from prompt text. Use explicit `profile_id` and `extensions` parameters.
+**Note:** The REST API does NOT parse `@TAG` or `!extension` syntax from prompt text. Use explicit `profile_id` and `extensions` parameters.
 
 ### Verification Checklist
 
 | Test | Expected |
 |------|----------|
-| Submit with `#json` | Extension result in task response + chat_append block in UI |
-| Submit with `#decision` | LLM-powered analysis, tokens tracked, `output_target: silent` |
-| Submit with `#summary:detailed` | Executive summary appended to chat |
-| Serial chain `#extract #decision` | Decision sees extract in `previous_extension_results` |
+| Submit with `!json` | Extension result in task response + chat_append block in UI |
+| Submit with `!decision` | LLM-powered analysis, tokens tracked, `output_target: silent` |
+| Submit with `!summary:detailed` | Executive summary appended to chat |
+| Serial chain `!extract !decision` | Decision sees extract in `previous_extension_results` |
 | Invalid extension name | Main answer delivered, error in extension_results |
 | Session reload | Extension tags visible, click to see results with metrics |
 | Tag click (chat_append) | Scrolls to and highlights output block |
@@ -1620,7 +1620,7 @@ curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
 
 | File | Purpose |
 |------|---------|
-| `static/js/main.js` | `#` autocomplete, badge management, keyboard handling |
+| `static/js/main.js` | `!` autocomplete, badge management, keyboard handling |
 | `static/js/eventHandlers.js` | Extension SSE events, historical recall, reload renderer |
 | `static/js/ui.js` | `_renderExtensionStep()`, extension tags, cost display |
 | `static/js/notifications.js` | REST notification dispatch for extension events |
@@ -1635,8 +1635,8 @@ curl -s "http://localhost:5050/api/v1/tasks/$TASK_ID" \
 |------|---------|
 | `extensions/extension_registry.json` | Central registry (5 built-in extensions) |
 | `extensions/schemas/extension-manifest-schema.json` | Manifest validation schema |
-| `extensions/builtin/json/` | #json — Structured JSON output (Tier 2) |
-| `extensions/builtin/decision/` | #decision — LLM workflow branching (Tier 3) |
-| `extensions/builtin/extract/` | #extract — Regex data extraction (Tier 1) |
-| `extensions/builtin/classify/` | #classify — LLM semantic classification (Tier 3) |
-| `extensions/builtin/summary/` | #summary — LLM executive summary (Tier 3) |
+| `extensions/builtin/json/` | !json — Structured JSON output (Tier 2) |
+| `extensions/builtin/decision/` | !decision — LLM workflow branching (Tier 3) |
+| `extensions/builtin/extract/` | !extract — Regex data extraction (Tier 1) |
+| `extensions/builtin/classify/` | !classify — LLM semantic classification (Tier 3) |
+| `extensions/builtin/summary/` | !summary — LLM executive summary (Tier 3) |

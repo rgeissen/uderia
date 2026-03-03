@@ -46,7 +46,7 @@ Skills inject markdown instructions into LLM context to modify behavior — resp
 ┌──────────────────────────────────────────────────────────────────────┐
 │ FRONTEND                                                             │
 │                                                                      │
-│  User types !sql-expert:strict                                      │
+│  User types #sql-expert:strict                                      │
 │       ↓                                                              │
 │  Badge rendered in input area                                        │
 │       ↓                                                              │
@@ -120,7 +120,7 @@ skills/
 ### Data Models (`models.py`)
 
 #### SkillSpec
-Parsed from user input (e.g., `!sql-expert:strict`):
+Parsed from user input (e.g., `#sql-expert:strict`):
 
 ```python
 @dataclass
@@ -385,7 +385,7 @@ The user message is saved to `chat_object` at `execution_service.py:312` — **b
 ### Timeline: Turn with Skill → Turn without Skill
 
 ```
-Turn 1 (skill !concise activated):
+Turn 1 (skill #concise activated):
   execution_service.py:312  → save original "What is X?" to chat_object
   execution_service.py:477  → resolve skills → SkillResult with markdown
   executor.py:2655          → system_prompt += skill markdown (LOCAL var)
@@ -545,7 +545,7 @@ Targeted visibility reuses the existing `marketplace_sharing_grants` table (from
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/v1/skills/activated` | GET | User's active skills (for `!` autocomplete) |
+| `/v1/skills/activated` | GET | User's active skills (for `#` autocomplete) |
 | `/v1/skills/{skill_id}/activate` | POST | Activate skill with optional custom name |
 | `/v1/skills/activations/{name}/deactivate` | POST | Soft-deactivate (set `is_active=0`) |
 | `/v1/skills/activations/{name}/config` | PUT | Update default param |
@@ -644,8 +644,8 @@ window.skillState = {
    └─ loadActivatedSkills() → GET /v1/skills/activated
       └─ window.skillState.activated = [skills...]
 
-2. USER TYPES "!"
-   └─ Input handler matches /!(\w*)$/
+2. USER TYPES "#"
+   └─ Input handler matches /#(\w*)$/
       └─ Filter activated skills by prefix
          └─ showSkillSelector(filtered) → emerald dropdown
 
@@ -657,7 +657,7 @@ window.skillState = {
 4. USER TYPES ":param" (optional)
    └─ Input handler matches /^:(\S*)$/
       └─ activeSkills[last].param = typedParam
-         └─ _renderSkillBadges() → badge updates to !name:param
+         └─ _renderSkillBadges() → badge updates to #name:param
          └─ showParamPicker() if allowed_params exist
 
 5. USER SUBMITS QUERY
@@ -713,7 +713,7 @@ if (role === 'user' && skillSpecs && skillSpecs.length > 0) {
     skillSpecs.forEach(spec => {
         const skillTag = document.createElement('span');
         skillTag.className = 'skill-tag';
-        skillTag.textContent = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
+        skillTag.textContent = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
         metaContainer.appendChild(skillTag);
     });
 }
@@ -826,7 +826,7 @@ are_auto_skills_enabled()       # Phase 2 feature flag
 
 1. **API Level**: `GET /v1/skills` and `GET /v1/skills/activated` filter by governance
 2. **Execution Level**: `execution_service.py:465` checks `is_skill_available()` before resolving
-3. **Frontend Level**: Disabled skills hidden from `!` autocomplete (filtered server-side)
+3. **Frontend Level**: Disabled skills hidden from `#` autocomplete (filtered server-side)
 
 ---
 
@@ -854,10 +854,10 @@ Skills use emerald green throughout the UI, distinct from extensions (amber/yell
 | `.active-skill-badge` | Input area | Selected skill badge |
 | `.active-skill-badge--invalid` | Input area | Invalid parameter indicator |
 | `.active-skill-badge__remove` | Input area | Remove button (x) |
-| `#skill-selector` | Dropdown | `!` autocomplete container |
+| `#skill-selector` | Dropdown | `#` autocomplete container |
 | `.skill-item` | Dropdown | Individual skill entry |
 | `.skill-item.skill-highlighted` | Dropdown | Keyboard-selected item |
-| `.skill-item-badge` | Dropdown | `!name` badge in item |
+| `.skill-item-badge` | Dropdown | `#name` badge in item |
 | `.skill-item-name` | Dropdown | Skill display name |
 | `.skill-item-description` | Dropdown | Skill description text |
 | `.skill-step` | Live Status | Skill event in status window |
@@ -867,7 +867,7 @@ Skills use emerald green throughout the UI, distinct from extensions (amber/yell
 ```
 Skills (emerald):     Extensions (amber):
 ┌─────────────────┐   ┌─────────────────┐
-│ !sql-expert     │   │ @json-export    │
+│ #sql-expert     │   │ @json-export    │
 │ #34d399 text    │   │ #fbbf24 text    │
 │ emerald border  │   │ amber border    │
 └─────────────────┘   └─────────────────┘
@@ -898,7 +898,7 @@ Skills (emerald):     Extensions (amber):
 | File | Purpose |
 |------|---------|
 | `static/js/handlers/skillHandler.js` | Skills tab, card grid, filter bar, editor dialog |
-| `static/js/main.js` | `!` trigger, badge system, `loadActivatedSkills()`, autocomplete |
+| `static/js/main.js` | `#` trigger, badge system, `loadActivatedSkills()`, autocomplete |
 | `static/js/ui.js` | `addMessage()` skill tags, `_renderSkillStep()`, status window routing |
 | `static/js/eventHandlers.js` | `processStream()` skill events, `_renderSkillEventsForReload()` |
 | `static/js/notifications.js` | `skills_applied` handler in `_dispatchRestEvent()` |

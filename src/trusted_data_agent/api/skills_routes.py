@@ -131,7 +131,7 @@ async def get_activated_skills():
     """
     Get the current user's activated skills, merged with manifest metadata.
 
-    This is what the frontend uses for ! autocomplete.
+    This is what the frontend uses for # autocomplete.
     """
     try:
         user_uuid = _get_user_uuid_from_request()

@@ -4,7 +4,7 @@ Extensions package — post-processing pipeline for LLM answers.
 Extensions transform non-deterministic LLM output into structured,
 machine-parseable formats for downstream workflow tools (n8n, Flowise, Airflow).
 
-Triggered by #name:param syntax in user queries.
+Triggered by !name:param syntax in user queries.
 
 Three-tier hierarchy for extension authors:
   - SimpleExtension: ~15 lines, stateless transforms, no manifest needed

@@ -36,7 +36,7 @@ def transform(answer_text, param=None):
 
     Args:
         answer_text: The LLM's plain-text response.
-        param:       Optional parameter from #name:param syntax.
+        param:       Optional parameter from !name:param syntax.
 
     Returns:
         A dict (for JSON) or str (for text) result.
@@ -56,7 +56,7 @@ def transform(answer_text, param=None):
 
 SIMPLE_TEMPLATE = '''\
 """
-#{name} extension — {description}
+!{name} extension — {description}
 
 Tier: Simple (SimpleExtension)
 Only override transform() — everything else is auto-wired.
@@ -78,7 +78,7 @@ class {class_name}(SimpleExtension):
 
         Args:
             answer_text: The LLM's plain-text response.
-            param:       Optional parameter from #name:param syntax.
+            param:       Optional parameter from !name:param syntax.
 
         Returns:
             A dict (for JSON) or str (for text) result.
@@ -98,7 +98,7 @@ class {class_name}(SimpleExtension):
 
 STANDARD_TEMPLATE = '''\
 """
-#{name} extension — {description}
+!{name} extension — {description}
 
 Tier: Standard (Extension)
 Full access to ExtensionContext for advanced processing.
@@ -132,8 +132,8 @@ class {class_name}(Extension):
         Full context available:
             context.answer_text        — plain text LLM answer
             context.answer_html        — HTML formatted answer
-            context.original_query     — user's query with #tags
-            context.clean_query        — query without #tags
+            context.original_query     — user's query with !tags
+            context.clean_query        — query without !tags
             context.session_id         — session identifier
             context.turn_id            — turn number
             context.profile_tag        — active profile tag
@@ -141,7 +141,7 @@ class {class_name}(Extension):
             context.turn_input_tokens  — tokens used this turn
             context.execution_trace    — tool calls and results
             context.tools_used         — list of MCP tools used
-            context.previous_extension_results — results from prior #extensions
+            context.previous_extension_results — results from prior !extensions
         """
         # TODO: Replace this with your logic
         output = {{
@@ -165,7 +165,7 @@ class {class_name}(Extension):
 
 LLM_TEMPLATE = '''\
 """
-#{name} extension — {description}
+!{name} extension — {description}
 
 Tier: LLM (LLMExtension)
 Calls the session's configured LLM with automatic cost tracking.

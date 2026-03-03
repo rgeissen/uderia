@@ -265,10 +265,10 @@ class ExtensionContext:
     """HTML-formatted version of the LLM answer."""
 
     original_query: str
-    """User's original query text including #extension tags."""
+    """User's original query text including !extension tags."""
 
     clean_query: str
-    """Query with #extension tags stripped (what the LLM actually saw)."""
+    """Query with !extension tags stripped (what the LLM actually saw)."""
 
     # --- Session / turn identity ---
     session_id: str

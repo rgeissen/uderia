@@ -463,7 +463,7 @@ function createExtensionMarketplaceCard(ext) {
         <!-- Category + Extension ID -->
         <div class="flex flex-wrap gap-1.5">
             ${ext.category ? `<span class="px-1.5 py-0.5 text-xs rounded bg-cyan-500/10 text-cyan-400">${escapeHtml(ext.category)}</span>` : ''}
-            <span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">#${escapeHtml(ext.extension_id)}</span>
+            <span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">!${escapeHtml(ext.extension_id)}</span>
         </div>
 
         <!-- Publisher -->
@@ -608,7 +608,7 @@ function createMyExtensionCard(ext) {
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
                 </svg>
-                <span class="text-gray-300 font-mono">#${escapeHtml(ext.extension_id)}</span>
+                <span class="text-gray-300 font-mono">!${escapeHtml(ext.extension_id)}</span>
             </div>
             ${ext.category ? `
                 <div class="flex items-center gap-1">
@@ -1579,7 +1579,7 @@ function createSkillMarketplaceCard(skill) {
         <!-- Tags + Skill ID -->
         <div class="flex flex-wrap gap-1.5">
             ${tags.map(t => `<span class="px-1.5 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-400">${escapeHtml(t)}</span>`).join('')}
-            <span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">!${escapeHtml(skill.skill_id)}</span>
+            <span class="px-1.5 py-0.5 text-xs rounded bg-white/10 text-gray-300 font-mono">#${escapeHtml(skill.skill_id)}</span>
         </div>
 
         <!-- Publisher -->
@@ -1735,7 +1735,7 @@ function createMySkillCard(skill) {
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
                 </svg>
-                <span class="text-gray-300 font-mono">!${escapeHtml(skill.skill_id)}</span>
+                <span class="text-gray-300 font-mono">#${escapeHtml(skill.skill_id)}</span>
             </div>
             ${tags.length > 0 ? `
                 <div class="flex flex-wrap gap-1">

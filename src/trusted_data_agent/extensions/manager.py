@@ -243,7 +243,7 @@ class ExtensionManager:
         then auto-wraps them into a SimpleExtension instance.
 
         Required:
-            EXTENSION_NAME = "name"           — the #name trigger
+            EXTENSION_NAME = "name"           — the !name trigger
             def transform(answer_text, param=None) -> dict|str
 
         Optional:

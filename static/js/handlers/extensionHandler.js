@@ -6,7 +6,7 @@
  *
  * Supports multiple activations of the same extension with different
  * default parameters. Each activation has a unique activation_name
- * (json, json2, json3, ...) that the user types as #name in the query box.
+ * (json, json2, json3, ...) that the user types as !name in the query box.
  *
  * Extension accent color: yellow/amber (#fbbf24)
  */
@@ -409,7 +409,7 @@ function showScaffoldModal() {
                     style="border-color: rgba(148,163,184,0.2); font-family: 'JetBrains Mono','Fira Code',monospace;"
                     pattern="[a-z][a-z0-9_]*">
                 <div class="flex items-center justify-between mt-1">
-                    <p id="scaffold-name-hint" class="text-[10px] text-gray-600">Lowercase, underscores ok. This becomes the <span class="font-mono" style="color: #fbbf24;">#name</span> trigger.</p>
+                    <p id="scaffold-name-hint" class="text-[10px] text-gray-600">Lowercase, underscores ok. This becomes the <span class="font-mono" style="color: #fbbf24;">!name</span> trigger.</p>
                     <span id="scaffold-name-counter" class="text-[10px] text-gray-600">0/30</span>
                 </div>
                 <p id="scaffold-name-error" class="text-[10px] mt-0.5 hidden" style="color: #ef4444;"></p>
@@ -570,7 +570,7 @@ function showScaffoldModal() {
             createBtn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Creating...`;
             const result = await scaffoldExtension(name, selectedLevel, desc);
             overlay.remove();
-            _notify('success', `Extension #${name} created (${selectedLevel})`);
+            _notify('success', `Extension !${name} created (${selectedLevel})`);
             await loadExtensions();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
 
@@ -621,7 +621,7 @@ function createExtensionGridCard(ext, activations, activationCount) {
     const badge = document.createElement('span');
     badge.className = 'ext-id-badge inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded';
     badge.style.fontFamily = '"JetBrains Mono","Fira Code",monospace';
-    badge.textContent = `#${ext.extension_id}`;
+    badge.textContent = `!${ext.extension_id}`;
     row1.appendChild(badge);
 
     const displayName = document.createElement('span');
@@ -696,7 +696,7 @@ function createExtensionGridCard(ext, activations, activationCount) {
             activateBtn.disabled = true;
             activateBtn.textContent = '...';
             const result = await activateExtension(ext.extension_id);
-            _notify('success', `Activated as #${result.activation_name}`);
+            _notify('success', `Activated as !${result.activation_name}`);
             _expandedExtId = ext.extension_id; // auto-expand to show new activation
             await _refreshExtensionData();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
@@ -882,7 +882,7 @@ function _buildCardDetailPanel(ext, activations) {
             dupBtn.disabled = true;
             dupBtn.textContent = '...';
             const result = await duplicateExtension(ext.extension_id);
-            _notify('success', `Duplicated as #${result.extension_id}`);
+            _notify('success', `Duplicated as !${result.extension_id}`);
             _expandedExtId = result.extension_id;
             await _refreshExtensionData();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
@@ -997,7 +997,7 @@ function _buildActivationSubCard(activation, extInfo) {
     const badge = document.createElement('span');
     badge.className = 'ext-activation-badge inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded';
     badge.style.fontFamily = '"JetBrains Mono","Fira Code",monospace';
-    badge.textContent = `#${activation.activation_name}`;
+    badge.textContent = `!${activation.activation_name}`;
     header.appendChild(badge);
 
     const actions = document.createElement('div');
@@ -1026,7 +1026,7 @@ function _buildActivationSubCard(activation, extInfo) {
         e.stopPropagation();
         try {
             await deleteActivation(activation.activation_name);
-            _notify('success', `#${activation.activation_name} removed`);
+            _notify('success', `!${activation.activation_name} removed`);
             await _refreshExtensionData();
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
         } catch (err) {
@@ -1065,7 +1065,7 @@ function _buildActivationSubCard(activation, extInfo) {
         e.stopPropagation();
         try {
             await updateConfig(activation.activation_name, input.value || null, null);
-            _notify('success', `Param updated for #${activation.activation_name}`);
+            _notify('success', `Param updated for !${activation.activation_name}`);
             if (window.loadActivatedExtensions) window.loadActivatedExtensions();
         } catch (err) {
             _notify('error', err.message);
@@ -1180,7 +1180,7 @@ function showExtensionEditor(name, source, tier, isNew = false, readOnly = false
 
     header.innerHTML = `
         <div class="flex items-center gap-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 text-sm font-semibold rounded" style="background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${name}</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 text-sm font-semibold rounded" style="background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${name}</span>
             <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded" style="background: ${cfg.bg}; border: 1px solid ${cfg.border}; color: ${cfg.color};">${info.title}</span>
             ${readOnly ? '<span class="text-[10px] text-gray-500 px-1.5 py-0.5 rounded" style="background: rgba(148,163,184,0.08);">read-only</span>' : ''}
             ${isNew ? '<span class="text-[10px] px-1.5 py-0.5 rounded" style="background: rgba(34,197,94,0.1); color: #22c55e;">new</span>' : ''}
@@ -1406,7 +1406,7 @@ function showExtensionEditor(name, source, tier, isNew = false, readOnly = false
                     setTimeout(() => { statusEl.textContent = ''; }, 3000);
                 }
 
-                _notify('success', `Extension #${name} saved${result.loaded ? ' & reloaded' : ''}`);
+                _notify('success', `Extension !${name} saved${result.loaded ? ' & reloaded' : ''}`);
                 await loadExtensions();
                 if (window.loadActivatedExtensions) window.loadActivatedExtensions();
             } catch (err) {

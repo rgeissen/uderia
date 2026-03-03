@@ -1,5 +1,5 @@
 """
-#pdf extension — Export LLM answer as downloadable PDF.
+!pdf extension — Export LLM answer as downloadable PDF.
 
 Generates a clean PDF document from the LLM answer with
 Markdown-aware formatting (headings, bullet points, code blocks).
@@ -7,11 +7,11 @@ The PDF is base64-encoded and delivered as a browser download.
 
 Genie-aware: When running under a genie coordinator profile,
 supports scope-based content via the param:
-    #pdf              → Non-genie: full answer; Genie: all nodes (children + coordinator)
-    #pdf:coordinator  → Coordinator synthesis only
-    #pdf:children     → Child profile responses only
-    #pdf:all          → All nodes (children + coordinator)
-    #pdf:My Report    → Custom title (genie: defaults to scope "all")
+    !pdf              → Non-genie: full answer; Genie: all nodes (children + coordinator)
+    !pdf:coordinator  → Coordinator synthesis only
+    !pdf:children     → Child profile responses only
+    !pdf:all          → All nodes (children + coordinator)
+    !pdf:My Report    → Custom title (genie: defaults to scope "all")
 
 Tier: Extension (full context access for genie support).
 """

@@ -17,7 +17,7 @@
     },
     "extension_id": {
       "type": "string",
-      "description": "Unique identifier matching the #name trigger syntax. Lowercase, no spaces.",
+      "description": "Unique identifier matching the !name trigger syntax. Lowercase, no spaces.",
       "pattern": "^[a-z][a-z0-9_]*$"
     },
     "display_name": {
@@ -79,7 +79,7 @@
     },
     "parameters": {
       "type": "object",
-      "description": "Parameter specification for #name:param syntax.",
+      "description": "Parameter specification for !name:param syntax.",
       "properties": {
         "supported": {
           "type": "boolean",

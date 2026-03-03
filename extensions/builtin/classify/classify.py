@@ -1,5 +1,5 @@
 """
-#classify extension — LLM-powered answer categorization.
+!classify extension — LLM-powered answer categorization.
 
 Uses the session's LLM to semantically classify the answer into
 topic categories. Produces a primary category with confidence score,
@@ -11,7 +11,7 @@ Compatible categories:
 Tier: LLM (LLMExtension) — calls the session's configured LLM.
 
 Usage:
-    #classify   → categorize the answer
+    !classify   → categorize the answer
 """
 
 import json

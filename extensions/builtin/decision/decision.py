@@ -1,5 +1,5 @@
 """
-#decision extension — LLM-powered semantic decision output.
+!decision extension — LLM-powered semantic decision output.
 
 Uses the session's LLM to semantically analyze the answer and produce a structured
 decision that downstream workflow tools can branch on.
@@ -10,9 +10,9 @@ Compatible with the same JSON shape as previous keyword-based version.
 Tier: LLM (LLMExtension) — calls the session's configured LLM.
 
 Usage:
-    #decision           → auto-detect severity from answer content
-    #decision:critical  → focus analysis on critical severity
-    #decision:binary    → simplified yes/no output
+    !decision           → auto-detect severity from answer content
+    !decision:critical  → focus analysis on critical severity
+    !decision:binary    → simplified yes/no output
 """
 
 import json

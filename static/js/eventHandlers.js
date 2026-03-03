@@ -159,7 +159,7 @@ function _buildExtensionDownloadCard(extName, result) {
             <div class="flex items-center gap-2 mb-2">
                 <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
                       style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
-                    #${extName}
+                    !${extName}
                 </span>
                 <span class="text-xs text-gray-500">${result.content_type}</span>
             </div>
@@ -1168,14 +1168,14 @@ async function processStream(responseBody, originSessionId) {
                         } else if (eventData.type === 'extension_start') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
-                                step: `Running extension #${extPayload.name}${extPayload.param ? ':' + extPayload.param : ''}`,
+                                step: `Running extension !${extPayload.name}${extPayload.param ? ':' + extPayload.param : ''}`,
                                 details: 'Processing...',
                                 type: 'extension_running'
                             }, false, 'extension');
                         } else if (eventData.type === 'extension_complete') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
-                                step: `Extension #${extPayload.name}`,
+                                step: `Extension !${extPayload.name}`,
                                 details: extPayload,
                                 type: 'extension_complete'
                             }, false, 'extension');
@@ -1313,7 +1313,7 @@ async function processStream(responseBody, originSessionId) {
                                     extHtml = `
                                     <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}" style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
                                         <div class="flex items-center gap-2 mb-2">
-                                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${extName}</span>
+                                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${extName}</span>
                                             <span class="text-xs text-gray-500">${result.content_type}</span>
                                         </div>
                                         <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${
@@ -1332,7 +1332,7 @@ async function processStream(responseBody, originSessionId) {
                                 }
                             } else if (outputTarget === 'status_panel' && result.content) {
                                 UI.updateStatusWindow({
-                                    step: `Extension: #${extName}`,
+                                    step: `Extension: !${extName}`,
                                     details: typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content,
                                     type: 'extension_result'
                                 }, false, 'extension');
@@ -1785,9 +1785,9 @@ export async function handleChatSubmit(e, source = 'text') {
         console.log('ℹ️  No @TAG detected or profiles not loaded');
     }
     
-    // Check for !skill:param directives in text (manual typing)
+    // Check for #skill:param directives in text (manual typing)
     let skillSpecs = [];
-    const skillRegex = /!(\w[\w-]*)(?::(\S+))?/g;
+    const skillRegex = /#(\w[\w-]*)(?::(\S+))?/g;
     let skillMatch;
     while ((skillMatch = skillRegex.exec(cleanedMessage)) !== null) {
         skillSpecs.push({
@@ -1795,9 +1795,9 @@ export async function handleChatSubmit(e, source = 'text') {
             param: skillMatch[2] || null
         });
     }
-    // Strip !skill tags from message sent to LLM
+    // Strip #skill tags from message sent to LLM
     if (skillSpecs.length > 0) {
-        cleanedMessage = cleanedMessage.replace(/!\w[\w-]*(?::\S+)?/g, '').trim();
+        cleanedMessage = cleanedMessage.replace(/#\w[\w-]*(?::\S+)?/g, '').trim();
     }
 
     // Merge badge-based skills (from autocomplete selection)
@@ -1809,12 +1809,12 @@ export async function handleChatSubmit(e, source = 'text') {
     }
 
     if (skillSpecs.length > 0) {
-        console.log(`✦ Skills: ${skillSpecs.map(s => '!' + s.name + (s.param ? ':' + s.param : '')).join(' ')}`);
+        console.log(`✦ Skills: ${skillSpecs.map(s => '#' + s.name + (s.param ? ':' + s.param : '')).join(' ')}`);
     }
 
-    // Check for #extension:param directives in text (manual typing)
+    // Check for !extension:param directives in text (manual typing)
     let extensionSpecs = [];
-    const extensionRegex = /#(\w+)(?::(\S+))?/g;
+    const extensionRegex = /!(\w+)(?::(\S+))?/g;
     let extMatch;
     while ((extMatch = extensionRegex.exec(cleanedMessage)) !== null) {
         extensionSpecs.push({
@@ -1822,9 +1822,9 @@ export async function handleChatSubmit(e, source = 'text') {
             param: extMatch[2] || null
         });
     }
-    // Strip #extension tags from message sent to LLM
+    // Strip !extension tags from message sent to LLM
     if (extensionSpecs.length > 0) {
-        cleanedMessage = cleanedMessage.replace(/#\w+(?::\S+)?/g, '').trim();
+        cleanedMessage = cleanedMessage.replace(/!\w+(?::\S+)?/g, '').trim();
     }
 
     // Merge badge-based extensions (from autocomplete selection)
@@ -1836,7 +1836,7 @@ export async function handleChatSubmit(e, source = 'text') {
     }
 
     if (extensionSpecs.length > 0) {
-        console.log(`🧩 Extensions: ${extensionSpecs.map(e => '#' + e.name + (e.param ? ':' + e.param : '')).join(' ')}`);
+        console.log(`🧩 Extensions: ${extensionSpecs.map(e => '!' + e.name + (e.param ? ':' + e.param : '')).join(' ')}`);
     }
 
     // Collect pending file attachments
@@ -1972,7 +1972,7 @@ function _renderSkillEventsForReload(turnData, container) {
     // --- Render each skill ---
     let totalTokens = 0;
     skills.forEach(skill => {
-        const nameDisplay = skill.param ? `!${skill.name}:${skill.param}` : `!${skill.name}`;
+        const nameDisplay = skill.param ? `#${skill.name}:${skill.param}` : `#${skill.name}`;
         const target = skill.injection_target === 'user_context' ? 'user context' : 'system prompt';
         const tokens = skill.estimated_tokens || 0;
         totalTokens += tokens;
@@ -2025,7 +2025,7 @@ function _renderExtensionEventsForReload(turnData, container) {
             stepEl.innerHTML = `
                 <div class="flex items-center gap-2">
                     <span class="text-amber-400 text-xs">&#9654;</span>
-                    <span class="text-xs text-gray-300">Running <span class="text-amber-300 font-medium">#${payload.name || '?'}${payload.param ? ':' + payload.param : ''}</span></span>
+                    <span class="text-xs text-gray-300">Running <span class="text-amber-300 font-medium">!${payload.name || '?'}${payload.param ? ':' + payload.param : ''}</span></span>
                 </div>`;
             container.appendChild(stepEl);
         } else if (eventType === 'extension_complete') {
@@ -2060,7 +2060,7 @@ function _renderExtensionEventsForReload(turnData, container) {
             stepEl.innerHTML = `
                 <div class="flex items-center gap-2">
                     <span class="${color} text-xs">${icon}</span>
-                    <span class="text-xs text-gray-300"><span class="text-amber-300 font-medium">#${payload.name || '?'}</span> ${success ? 'completed' : 'failed'}</span>
+                    <span class="text-xs text-gray-300"><span class="text-amber-300 font-medium">!${payload.name || '?'}</span> ${success ? 'completed' : 'failed'}</span>
                     ${metricsHtml}
                 </div>`;
             container.appendChild(stepEl);
@@ -2082,7 +2082,7 @@ function _renderExtensionEventsForReload(turnData, container) {
             resultEl.innerHTML = `
                 <details class="group">
                     <summary class="text-xs text-amber-300 cursor-pointer hover:text-amber-200">
-                        #${name} output <span class="text-gray-500">(${result.content_type || 'json'})</span>
+                        !${name} output <span class="text-gray-500">(${result.content_type || 'json'})</span>
                     </summary>
                     <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                 </details>`;
@@ -2120,7 +2120,7 @@ function _renderExtensionEventsForReload(turnData, container) {
                          style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
                         <div class="flex items-center gap-2 mb-2">
                             <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
-                                  style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">#${name}</span>
+                                  style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${name}</span>
                             <span class="text-xs text-gray-500">${result.content_type}</span>
                         </div>
                         <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48"
@@ -2286,6 +2286,9 @@ export async function handleReloadPlanClick(element) {
             // Render skill events at the top (pre-processing, before main execution)
             _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
 
+            // Render context window snapshot early (matches live execution order)
+            _renderContextWindowSnapshotForReload(turnData);
+
             // If we have detailed genie_events, replay them for full UI experience
             const genieEvents = turnData.genie_events || [];
             if (genieEvents.length > 0) {
@@ -2388,7 +2391,6 @@ export async function handleReloadPlanClick(element) {
 
             // Render extension events if present
             _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
-            _renderContextWindowSnapshotForReload(turnData);
 
             // Hide replay buttons for genie profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -2407,6 +2409,9 @@ export async function handleReloadPlanClick(element) {
 
             // Render skill events at the top (pre-processing, before main execution)
             _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Render context window snapshot early (matches live execution order)
+            _renderContextWindowSnapshotForReload(turnData);
 
             // If we have detailed conversation_agent_events, replay them for full UI experience
             const agentEvents = turnData.conversation_agent_events || [];
@@ -2557,7 +2562,6 @@ export async function handleReloadPlanClick(element) {
 
             // Render extension events if present
             _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
-            _renderContextWindowSnapshotForReload(turnData);
 
             // Hide replay buttons for conversation_with_tools (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
@@ -2576,6 +2580,9 @@ export async function handleReloadPlanClick(element) {
 
             // Render skill events at the top (pre-processing, before main execution)
             _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Render context window snapshot early (matches live execution order)
+            _renderContextWindowSnapshotForReload(turnData);
 
             const isRagFocused = turnData.profile_type === 'rag_focused';
 
@@ -2718,7 +2725,6 @@ export async function handleReloadPlanClick(element) {
 
             // Render extension events if present
             _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
-            _renderContextWindowSnapshotForReload(turnData);
 
             // Hide replay buttons for non-tool profiles (no plan to replay)
             if (DOM.headerReplayPlannedButton) {
