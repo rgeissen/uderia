@@ -1,7 +1,7 @@
 # Cost Tracking Architecture
 
-**Version**: 1.0
-**Last Updated**: February 2026
+**Version**: 2.0
+**Last Updated**: March 2026
 **Status**: Production
 
 ---
@@ -14,14 +14,18 @@
 4. [Data Flow](#data-flow)
 5. [Storage Schema](#storage-schema)
 6. [API Contracts](#api-contracts)
-7. [Frontend Integration](#frontend-integration)
-8. [Cost Calculation](#cost-calculation)
-9. [Session Naming Attribution](#session-naming-attribution)
-10. [Legacy Session Support](#legacy-session-support)
-11. [Edge Cases](#edge-cases)
-12. [Testing & Validation](#testing--validation)
-13. [Performance Considerations](#performance-considerations)
-14. [Future Enhancements](#future-enhancements)
+7. [Cost Management REST API](#cost-management-rest-api)
+8. [Frontend Integration](#frontend-integration)
+9. [Frontend Cost Management Admin UI](#frontend-cost-management-admin-ui)
+10. [Cost Calculation](#cost-calculation)
+11. [Consumption Tracking Subsystem](#consumption-tracking-subsystem)
+12. [Efficiency Tracker Subsystem](#efficiency-tracker-subsystem)
+13. [Session Naming Attribution](#session-naming-attribution)
+14. [Legacy Session Support](#legacy-session-support)
+15. [Edge Cases](#edge-cases)
+16. [Testing & Validation](#testing--validation)
+17. [Performance Considerations](#performance-considerations)
+18. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -38,6 +42,12 @@ The **Cost Tracking Engine** provides accurate, real-time cost tracking for LLM 
 - **Session Naming Attribution**: Includes system-level LLM costs in Turn 1
 - **Legacy Compatibility**: Transparent fallback for sessions created before the cost engine
 - **Dual-Model Support**: Separate tracking for strategic vs tactical models
+- **Cost Management Admin UI**: Full admin dashboard for pricing configuration and analytics
+- **LiteLLM Auto-Sync**: Automatic pricing updates from LiteLLM with provider availability checking
+- **Consumption Tracking**: Per-user token quotas, rate limiting, and monthly rollover with archiving
+- **RAG Efficiency Tracking**: Measures token/cost savings from RAG-guided improvements
+- **Model Deprecation Tracking**: Automatic detection of unavailable models via provider API queries
+- **Bootstrap Pricing**: Default costs loaded from `tda_config.json` at startup
 
 ### Problem Solved
 
@@ -114,37 +124,68 @@ The **Cost Tracking Engine** provides accurate, real-time cost tracking for LLM 
 └─────────────────┘  └──────────────────┘  └──────────────────┘
         │                     │                      │
         ├─ CostManager        ├─ get_turn_details   ├─ updateTokenDisplay
-        ├─ Executor            ├─ SSE events         ├─ handleReloadPlanClick
-        ├─ SessionManager      └─ Legacy fallback    ├─ handleLoadSession
-        └─ WorkflowHistory                            └─ sessionCostAccumulator
+        ├─ ConsumptionMgr     ├─ SSE events         ├─ handleReloadPlanClick
+        ├─ EfficiencyTracker   ├─ Legacy fallback    ├─ handleLoadSession
+        ├─ Executor            ├─ Cost Mgmt REST API ├─ sessionCostAccumulator
+        ├─ SessionManager      │  (7 endpoints)      └─ CostManagementHandler
+        └─ WorkflowHistory     └─ Cost Analytics         (Admin UI)
 ```
 
 ### Component Responsibilities
 
 #### Backend Components
 
-**CostManager** (`src/trusted_data_agent/core/cost_manager.py`)
-- Calculates cost from (provider, model, input_tokens, output_tokens)
-- Maintains pricing table (`llm_model_costs`)
-- Provider-specific pricing logic
+**CostManager** (`src/trusted_data_agent/core/cost_manager.py`) — Singleton
+- Calculates cost from (provider, model, input_tokens, output_tokens) via `calculate_cost()`
+- Maintains pricing table (`llm_model_costs`) with `get_model_cost()` and `get_fallback_cost()`
+- Syncs pricing from LiteLLM library via `sync_from_litellm()` (two-phase: availability check + pricing sync)
+- Normalizes model names for AWS Bedrock ARNs and regional prefixes via `_normalize_model_name()`
+- Loads bootstrap pricing from `tda_config.json` at startup via `_ensure_bootstrap_costs_loaded()`
+- Checks model availability across provider APIs via `_check_model_availability()` (Google, Anthropic, OpenAI, Amazon)
+- Manages manual cost entries, fallback pricing, and deprecation tracking
+
+**ConsumptionManager** (`src/trusted_data_agent/auth/consumption_manager.py`)
+- Real-time per-user consumption tracking with database persistence
+- Rate limiting enforcement (hourly/daily request limits) via `check_rate_limits()`
+- Monthly token quota enforcement via `check_token_quota()`
+- Turn-level audit trail via `record_turn()` (stores to `consumption_turns` table)
+- Monthly rollover with archiving via `rollover_period()`
+- Session count reconciliation via `reconcile_session_count()`
+
+**EfficiencyTracker** (`src/trusted_data_agent/core/efficiency_tracker.py`) — Singleton
+- Tracks RAG-based token and cost savings across sessions
+- Compares sequential turns (Turn N vs Turn N-1) within sessions
+- Per-user and per-session efficiency metrics
+- Persistent JSON state file at `tda_sessions/efficiency_state.json`
 
 **Executor** (`src/trusted_data_agent/agent/executor.py`)
 - Accumulates tokens per turn (`self.turn_input_tokens`, `self.turn_output_tokens`)
 - Calculates `turn_cost` before saving turn_summary
 - Calculates `session_cost_usd` (cumulative) via `_calculate_session_cost_at_turn()`
 - Stores both in workflow_history
+- Manages dual-model configuration (strategic vs tactical) for `tool_enabled` profile
 
 **SessionManager** (`src/trusted_data_agent/core/session_manager.py`)
 - Persists workflow_history to session files
 - Updates turn costs when session naming adds tokens (`update_turn_token_counts()`)
-- Recalculates `session_cost_usd` when turn costs change
+- Recalculates `turn_cost` and `session_cost_usd` when turn tokens change
 
 #### API Layer
 
-**Routes** (`src/trusted_data_agent/api/routes.py`)
+**Session Routes** (`src/trusted_data_agent/api/routes.py`)
 - Endpoint: `GET /api/session/{session_id}/turn/{turn_id}/details`
-- Returns: `turn_cost`, `session_cost_usd`, tokens, provider, model
+- Returns: `turn_cost`, `session_cost_usd`, tokens, provider, model, `dual_model_info`
 - Legacy fallback: Calculates costs from tokens if missing
+
+**Cost Management REST API** (`src/trusted_data_agent/api/rest_routes.py`)
+- `POST /api/v1/costs/sync` — Sync pricing from LiteLLM with availability checking
+- `GET /api/v1/costs/models` — Retrieve all model costs (paginated)
+- `PUT /api/v1/costs/models/<cost_id>` — Update model pricing (manual override)
+- `POST /api/v1/costs/models` — Add manual cost entry
+- `DELETE /api/v1/costs/models/<cost_id>` — Remove cost entry
+- `PUT /api/v1/costs/fallback` — Update default fallback pricing
+- `GET /api/v1/costs/analytics` — Comprehensive cost analytics dashboard
+- All endpoints require admin authentication (`@require_admin`)
 
 **SSE Events** (live execution)
 - Event: `token_update` with `cost_usd` per LLM call
@@ -158,6 +199,7 @@ The **Cost Tracking Engine** provides accurate, real-time cost tracking for LLM 
 - **Historical mode**: Trusts backend `turn_cost` and `session_cost_usd`
 - **Live mode**: Accumulates `cost_usd` from SSE events
 - Maintains `window.sessionCostAccumulator`
+- Terminal event protection (preserves statement tokens when cost-only events arrive)
 
 **handleReloadPlanClick()** (`static/js/eventHandlers.js`)
 - Fetches turn details from API
@@ -170,6 +212,14 @@ The **Cost Tracking Engine** provides accurate, real-time cost tracking for LLM 
 - Fetches last turn's cost data from `workflow_history`
 - Sets `sessionCostAccumulator` immediately
 - Updates cost display before rendering UI
+
+**CostManagementHandler** (`static/js/handlers/costManagement.js`)
+- Admin cost management dashboard (analytics KPIs + pricing configuration table)
+- LiteLLM sync with availability checking
+- Manual cost entry management
+- Fallback pricing configuration
+- Search filtering, pagination with infinite scroll, auto-refresh (30s)
+- Deprecated model visibility toggle with localStorage persistence
 
 ---
 
@@ -460,6 +510,156 @@ if "session_cost_usd" not in turn_data_copy:
 
 ---
 
+## Cost Management REST API
+
+**File**: `src/trusted_data_agent/api/rest_routes.py` (lines 9889+)
+
+All endpoints require admin authentication (`@require_admin` decorator).
+
+### POST /api/v1/costs/sync
+
+**Purpose**: Sync pricing from LiteLLM and check model availability across providers.
+
+#### Request
+
+```http
+POST /api/v1/costs/sync
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+
+{
+    "check_availability": true    // Optional, default true
+}
+```
+
+#### Response (Success)
+
+```json
+{
+    "status": "success",
+    "pricing": {
+        "synced_count": 150,
+        "new_models": ["OpenAI/gpt-4o-mini"],
+        "updated_models": ["Anthropic/claude-sonnet-4-5"],
+        "errors": []
+    },
+    "availability": {
+        "checked": true,
+        "deprecated_count": 3,
+        "undeprecated_count": 1,
+        "skipped_providers": ["Azure"]
+    }
+}
+```
+
+**Two-Phase Process**:
+1. **Phase 1 — Availability Check**: Queries Google, Anthropic, OpenAI, Amazon APIs for available models. Marks missing models as `is_deprecated=True`. Skips providers without configured credentials.
+2. **Phase 2 — Pricing Sync**: Iterates LiteLLM's `model_cost` dictionary. Creates new entries, updates existing `litellm`-sourced entries. Protects `manual` and `config_default` entries from overwrite.
+
+### GET /api/v1/costs/models
+
+**Purpose**: Retrieve all model pricing entries.
+
+```http
+GET /api/v1/costs/models?include_fallback=true
+Authorization: Bearer {jwt_token}
+```
+
+```json
+{
+    "status": "success",
+    "costs": [
+        {
+            "id": "uuid-string",
+            "provider": "Google",
+            "model": "gemini-2.5-flash",
+            "input_cost_per_million": 75,
+            "output_cost_per_million": 300,
+            "is_manual_entry": false,
+            "is_fallback": false,
+            "is_deprecated": false,
+            "source": "config_default",
+            "last_updated": "2026-02-13T10:00:00+00:00",
+            "notes": "Bootstrap pricing"
+        }
+    ]
+}
+```
+
+### PUT /api/v1/costs/models/{cost_id}
+
+**Purpose**: Update pricing for a specific model (creates manual override).
+
+```json
+{
+    "input_cost": 0.15,
+    "output_cost": 0.60,
+    "notes": "Updated via admin interface"
+}
+```
+
+Sets `is_manual_entry=True` and `source='manual'`, protecting from future LiteLLM sync overwrites.
+
+### POST /api/v1/costs/models
+
+**Purpose**: Add a manual cost entry for a model not in LiteLLM.
+
+```json
+{
+    "provider": "Friendli",
+    "model": "Llama-3.3-70B-Instruct",
+    "input_cost": 0.09,
+    "output_cost": 0.16,
+    "notes": "Friendli serverless endpoint pricing"
+}
+```
+
+### DELETE /api/v1/costs/models/{cost_id}
+
+**Purpose**: Remove a cost entry. Fallback entries cannot be deleted.
+
+### PUT /api/v1/costs/fallback
+
+**Purpose**: Update the default fallback pricing for unknown models.
+
+```json
+{
+    "input_cost": 0.10,
+    "output_cost": 0.40
+}
+```
+
+### GET /api/v1/costs/analytics
+
+**Purpose**: Comprehensive cost analytics across all sessions.
+
+Scans all session files in `tda_sessions/` and calculates real-time analytics.
+
+#### Response
+
+```json
+{
+    "total_cost": 12.45,
+    "cost_by_provider": {
+        "Google": 5.20,
+        "Anthropic": 4.80,
+        "Friendli": 2.45
+    },
+    "cost_by_model": {
+        "Google/gemini-2.5-flash": 5.20,
+        "Anthropic/claude-sonnet-4-5": 4.80
+    },
+    "avg_cost_per_session": 0.0245,
+    "avg_cost_per_turn": 0.0082,
+    "total_sessions": 508,
+    "most_expensive_sessions": [...],
+    "most_expensive_queries": [...],
+    "cost_trend": [...]
+}
+```
+
+---
+
 ## Frontend Integration
 
 ### Cost Display Components
@@ -553,10 +753,14 @@ export function updateTokenDisplay(data, isHistorical = false) {
 
 ### CostManager Implementation
 
-**File**: `src/trusted_data_agent/core/cost_manager.py`
+**File**: `src/trusted_data_agent/core/cost_manager.py` — Singleton via `get_cost_manager()`
 
 ```python
 class CostManager:
+    def __init__(self):
+        # Loads LiteLLM library (optional dependency)
+        # Calls _ensure_bootstrap_costs_loaded() from tda_config.json
+
     def calculate_cost(
         self,
         provider: str,
@@ -568,46 +772,91 @@ class CostManager:
         Calculate cost for an LLM call.
 
         Returns:
-            Cost in USD (float with 6 decimal precision)
+            Cost in USD (float)
         """
-        # Lookup pricing from llm_model_costs table
-        pricing = self._get_pricing(provider, model)
+        # Lookup model-specific pricing, with ARN normalization
+        costs = self.get_model_cost(provider, model)
+        if not costs:
+            # Falls back to configurable fallback pricing (NOT $0.00)
+            costs = self.get_fallback_cost()
 
-        if not pricing:
-            app_logger.warning(f"No pricing found for {provider}/{model}")
-            return 0.0
+        input_cost_per_million, output_cost_per_million = costs
 
-        # Calculate cost
-        input_cost = (input_tokens / 1_000_000) * pricing['input_cost_per_1m']
-        output_cost = (output_tokens / 1_000_000) * pricing['output_cost_per_1m']
+        input_cost = (input_tokens / 1_000_000) * input_cost_per_million
+        output_cost = (output_tokens / 1_000_000) * output_cost_per_million
 
         return input_cost + output_cost
+
+    def get_model_cost(self, provider, model) -> Optional[Tuple[float, float]]:
+        """Lookup pricing with ARN normalization fallback."""
+        # 1. Try exact match (provider + model)
+        # 2. Try normalized model name (strips ARN prefix, regional prefix)
+        # Returns (input_cost_per_million, output_cost_per_million) or None
+
+    def get_fallback_cost(self) -> Tuple[float, float]:
+        """Get configurable fallback pricing (default: $0.10 input, $0.40 output)."""
+
+    def sync_from_litellm(self, check_availability=True, user_uuid=None) -> Dict:
+        """Two-phase sync:
+        Phase 1: Check model availability across provider APIs (marks deprecated)
+        Phase 2: Sync pricing from LiteLLM model_cost dictionary
+        Protected entries (manual, config_default) are never overwritten."""
+
+    def _normalize_model_name(self, model) -> str:
+        """Strips ARN prefixes and regional identifiers.
+        e.g., 'arn:aws:bedrock:eu-central-1:123:.../eu.amazon.nova-lite-v1:0'
+              → 'amazon.nova-lite-v1:0'"""
+
+    def _check_model_availability(self, user_uuid) -> Dict:
+        """Queries Google, Anthropic, OpenAI, Amazon APIs for available models.
+        Marks DB entries as deprecated/un-deprecated based on availability."""
+
+    def _ensure_bootstrap_costs_loaded(self):
+        """Loads default_model_costs from tda_config.json on first init."""
 ```
+
+**Key Design Decisions**:
+- Fallback pricing ensures costs are never `$0.00` for unknown models (configurable via admin UI)
+- Manual entries and config_default entries are protected from LiteLLM sync overwrite
+- ARN normalization handles AWS Bedrock inference profile identifiers
+- Singleton pattern via `get_cost_manager()` ensures pricing is loaded once
 
 ### Pricing Table Schema
 
 **Table**: `llm_model_costs`
+**Model**: `LLMModelCost` (`src/trusted_data_agent/auth/models.py`)
 
 ```sql
 CREATE TABLE llm_model_costs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    provider TEXT NOT NULL,
-    model TEXT NOT NULL,
-    input_cost_per_1m REAL NOT NULL,    -- Cost per 1M input tokens (USD)
-    output_cost_per_1m REAL NOT NULL,   -- Cost per 1M output tokens (USD)
-    currency TEXT DEFAULT 'USD',
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id VARCHAR(36) PRIMARY KEY,                    -- UUID string
+    provider VARCHAR(50) NOT NULL,                 -- Google, Anthropic, OpenAI, Amazon, Azure, Friendli, Ollama
+    model VARCHAR(100) NOT NULL,                   -- Model identifier
+    input_cost_per_million INTEGER NOT NULL,        -- USD per 1M input tokens (stored as integer cents)
+    output_cost_per_million INTEGER NOT NULL,       -- USD per 1M output tokens (stored as integer cents)
+    is_manual_entry BOOLEAN NOT NULL DEFAULT FALSE, -- True if manually entered by admin
+    is_fallback BOOLEAN NOT NULL DEFAULT FALSE,     -- True for fallback/default pricing
+    is_deprecated BOOLEAN NOT NULL DEFAULT FALSE,   -- True if model is deprecated/discontinued
+    source VARCHAR(50) NOT NULL,                   -- 'litellm', 'manual', 'config_default', 'system_default'
+    last_updated TIMESTAMP WITH TIME ZONE NOT NULL,
+    notes TEXT,                                     -- Admin notes
     UNIQUE(provider, model)
 );
+CREATE INDEX idx_llm_cost_provider_model ON llm_model_costs(provider, model);
 ```
+
+**Source Priority** (determines update behavior during LiteLLM sync):
+- `config_default` — Bootstrap pricing from `tda_config.json`, protected from sync overwrite
+- `manual` — Admin-created entries, protected from sync overwrite (`is_manual_entry=True`)
+- `litellm` — Auto-synced from LiteLLM library, updated on each sync
+- `system_default` — Hardcoded fallback entries
 
 **Example Data**:
 
-| Provider | Model | Input Cost (per 1M) | Output Cost (per 1M) |
-|----------|-------|---------------------|----------------------|
-| Friendli | MiniMaxAI/MiniMax-M2.1 | $0.10 | $0.40 |
-| Anthropic | claude-sonnet-4-5 | $3.00 | $15.00 |
-| OpenAI | gpt-4o | $2.50 | $10.00 |
+| Provider | Model | Input Cost (per 1M) | Output Cost (per 1M) | Source |
+|----------|-------|---------------------|----------------------|--------|
+| Friendli | MiniMaxAI/MiniMax-M2.1 | $0.10 | $0.40 | config_default |
+| Anthropic | claude-sonnet-4-5 | $3.00 | $15.00 | litellm |
+| OpenAI | gpt-4o | $2.50 | $10.00 | litellm |
 
 ### Cost Calculation in Executor
 
@@ -682,6 +931,235 @@ def _calculate_session_cost_at_turn(self, session_data: dict) -> float:
                 app_logger.warning(f"Failed to calculate legacy turn cost: {e}")
 
     return session_cost
+```
+
+---
+
+## Frontend Cost Management Admin UI
+
+**File**: `static/js/handlers/costManagement.js` (871 lines)
+**Class**: `CostManagementHandler` — initialized on DOMContentLoaded as `window.costManager`
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Cost Analytics Dashboard** | KPI cards: total cost, avg cost per session, avg cost per turn, total sessions |
+| **Cost by Provider Chart** | Horizontal bar chart showing cost breakdown by provider |
+| **Top 5 Expensive Models** | Horizontal bar chart showing the most expensive models |
+| **Pricing Configuration Table** | Editable table with inline cost editing (input/output per 1M tokens) |
+| **LiteLLM Sync** | Button triggers `POST /api/v1/costs/sync` with availability checking |
+| **Manual Entry** | Prompt-based flow to add custom provider/model pricing |
+| **Fallback Configuration** | Adjustable default costs for unknown models |
+| **Search Filtering** | Filter by provider or model name |
+| **Deprecated Model Toggle** | Checkbox to show/hide deprecated models (persisted in localStorage) |
+| **Infinite Scroll** | Paginated table with scroll-based loading (20/50/100 items) |
+| **Auto-Refresh** | Optional 30-second polling for live data (persisted in localStorage) |
+
+### Table Row Styling
+
+| Entry Type | Visual Indicator |
+|------------|-----------------|
+| Manual entry | Green left border + green dot + "MANUAL" badge |
+| Deprecated model | Yellow left border + warning badge + reduced opacity |
+| LiteLLM entry | Standard styling + blue "litellm" source label |
+| Config default | Standard styling + gray "config_default" source label |
+
+### Sort Priority
+
+1. `config_default` entries first
+2. `manual` entries second
+3. `litellm` entries third
+4. Within same priority: alphabetical by provider, then model
+
+---
+
+## Consumption Tracking Subsystem
+
+**File**: `src/trusted_data_agent/auth/consumption_manager.py` (561 lines)
+**Class**: `ConsumptionManager`
+
+### Purpose
+
+Provides real-time per-user consumption tracking, rate limiting enforcement, and monthly quota management. Operates as a database-backed tracking layer complementing the session-file-based cost tracking.
+
+### Database Tables
+
+#### `user_consumption` (UserConsumption model)
+
+Tracks real-time consumption metrics per user per monthly period.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | String (PK) | User identifier |
+| `current_period` | String | Monthly period (YYYY-MM) |
+| `total_input_tokens` | Integer | Cumulative input tokens this period |
+| `total_output_tokens` | Integer | Cumulative output tokens this period |
+| `total_tokens` | Integer | Combined total tokens |
+| `input_tokens_limit` | Integer (nullable) | Monthly input quota (NULL = unlimited) |
+| `output_tokens_limit` | Integer (nullable) | Monthly output quota (NULL = unlimited) |
+| `estimated_cost_usd` | Integer | Micro-dollars (USD x 1,000,000) |
+| `rag_cost_saved_usd` | Integer | Micro-dollars saved by RAG |
+| `successful_turns` | Integer | Quality metric |
+| `failed_turns` | Integer | Quality metric |
+| `total_turns` | Integer | Total turn count |
+| `rag_guided_turns` | Integer | RAG-used turn count |
+| `rag_output_tokens_saved` | Integer | Tokens saved by RAG |
+| `requests_this_hour` | Integer | Rate limiting counter |
+| `requests_today` | Integer | Rate limiting counter |
+| `models_used` | JSON | Model usage breakdown |
+| `providers_used` | JSON | Provider usage breakdown |
+| `total_sessions` | Integer | Session count |
+| `active_sessions` | Integer | Currently open sessions |
+
+#### `consumption_turns` (ConsumptionTurn model)
+
+Granular per-turn audit trail.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID (PK) | Turn record ID |
+| `user_id` | String | User identifier |
+| `session_id` | String | Session identifier |
+| `turn_number` | Integer | 1-indexed turn number |
+| `user_query` | Text | User's query text |
+| `session_name` | String | Session name (updated retroactively) |
+| `input_tokens` | Integer | Turn input tokens |
+| `output_tokens` | Integer | Turn output tokens |
+| `provider` | String | LLM provider |
+| `model` | String | Model name |
+| `cost_usd_cents` | Integer | Micro-dollars per turn |
+| `status` | String | success / failure / partial |
+| `rag_used` | Boolean | Whether RAG was used |
+| `rag_tokens_saved` | Integer | Tokens saved by RAG |
+
+#### `consumption_periods_archive` (ConsumptionPeriodsArchive model)
+
+Immutable monthly snapshots for historical reporting.
+
+#### `consumption_profiles` (ConsumptionProfile model)
+
+Defines rate limiting and quota tiers assignable to users.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prompts_per_hour` | Integer | Hourly rate limit (default: 100) |
+| `prompts_per_day` | Integer | Daily rate limit (default: 1000) |
+| `input_tokens_per_month` | Integer (nullable) | Monthly input quota |
+| `output_tokens_per_month` | Integer (nullable) | Monthly output quota |
+
+### Cost Units
+
+- **Storage**: Micro-dollars (USD x 1,000,000) for precision without floating-point issues
+- **API Response**: Converted to USD for display
+- **Example**: 500,000 micro-dollars = $0.50
+
+### Per-Turn Cost Recording Flow
+
+```
+1. LLM Call Completes
+   ↓
+2. Extract: provider, model, input_tokens, output_tokens
+   ↓
+3. CostManager.calculate_cost() → cost_usd (float)
+   ↓
+4. Convert to micro-dollars: cost_usd_cents = int(cost_usd * 1_000_000)
+   ↓
+5. ConsumptionManager.record_turn()
+   → Store in consumption_turns table (audit trail)
+   → Update user_consumption totals (running counters)
+   → Track model/provider usage (JSON fields)
+   → Calculate RAG cost savings if applicable
+```
+
+### Monthly Rollover
+
+`ConsumptionManager.rollover_period()`:
+1. Archives current month to `consumption_periods_archive`
+2. Resets all token counts, turn counts, sessions for new period
+3. Preserves historical data for analytics and reporting
+
+### Maintenance Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `maintenance/backfill_consumption_costs.py` | Populate historical cost data |
+| `maintenance/consumption_periodic_jobs.py` | Recurring maintenance tasks |
+| `maintenance/reconcile_consumption.py` | Fix data inconsistencies |
+| `maintenance/check_token_usage.py` | Verify consumption records |
+| `maintenance/check_user_profile.py` | Audit user profiles and limits |
+
+---
+
+## Efficiency Tracker Subsystem
+
+**File**: `src/trusted_data_agent/core/efficiency_tracker.py` (233 lines)
+**Class**: `EfficiencyTracker` — Singleton via `get_efficiency_tracker()`
+
+### Purpose
+
+Tracks RAG-based token and cost savings by comparing sequential turns within sessions. Quantifies the efficiency gains from RAG-guided responses.
+
+### How It Works
+
+```
+Turn N-1: 1000 output tokens (cost: $0.04)
+Turn N:    750 output tokens (cost: $0.03), RAG used: True
+
+Tokens Saved: 250
+Cost Saved:   $0.01
+Attribution:  Only counted because RAG was used AND tokens decreased
+```
+
+### Key Rules
+
+1. **RAG Attribution**: Savings only counted if `had_rag=True` AND `tokens_saved > 0`
+2. **Sequential Comparison**: Always Turn N vs Turn N-1 within same session
+3. **Per-User Tracking**: Separate metrics per `user_uuid`
+4. **Per-Session Tracking**: Cumulative improvements within sessions
+
+### State Structure
+
+**File**: `tda_sessions/efficiency_state.json`
+
+```json
+{
+    "total_output_tokens_saved": 15000,
+    "total_rag_improvements": 42,
+    "total_sessions_tracked": 18,
+    "cumulative_cost_saved": 1.2345,
+    "last_updated": "2026-03-01T12:00:00",
+    "session_improvements": {
+        "session-uuid": [
+            {"turn_index": 2, "tokens_saved": 250, "cost_saved": 0.01, "timestamp": "..."}
+        ]
+    },
+    "user_metrics": {
+        "user-uuid": {
+            "tokens_saved": 5000,
+            "improvements": 15,
+            "cost_saved": 0.45,
+            "sessions": ["session-1", "session-2"]
+        }
+    }
+}
+```
+
+### API
+
+```python
+# Record an improvement
+tracker.record_improvement(
+    session_id, turn_index,
+    previous_output_tokens, current_output_tokens,
+    had_rag=True, cost_per_output_token=0.0004,
+    user_uuid="user-123"
+)
+
+# Get metrics (global or per-user)
+metrics = tracker.get_metrics(user_uuid="user-123")
+# Returns: total_output_tokens_saved, total_rag_improvements,
+#          cumulative_cost_saved, avg_tokens_saved_per_improvement
 ```
 
 ---
@@ -955,14 +1433,17 @@ if self.turn_input_tokens == 0 and self.turn_output_tokens == 0:
 **Scenario**: Provider/model not in `llm_model_costs` table.
 
 **Behavior**:
-- CostManager returns $0.000000
-- Logs warning: "No pricing found for {provider}/{model}"
-- Turn/session costs set to $0.000000
-- Frontend displays $0.000000
+- CostManager falls back to configurable fallback pricing via `get_fallback_cost()`
+- Default fallback: $0.10 input / $0.40 output per 1M tokens (configurable via admin UI)
+- Logs debug: "No pricing found for {provider}/{model}, using fallback"
+- Costs are approximate but non-zero — never `$0.000000` for actual token usage
+- Frontend displays fallback-based cost
 
 **Mitigation**:
-- Admins should populate pricing before using new models
-- Fallback to default pricing if configured
+- Admins can adjust fallback pricing via `PUT /api/v1/costs/fallback`
+- Admins can add manual entries via `POST /api/v1/costs/models` or admin UI
+- `POST /api/v1/costs/sync` pulls pricing for 100+ models from LiteLLM automatically
+- Bootstrap pricing from `tda_config.json` covers commonly used models
 
 ### 3. Mid-Turn Session Naming Failure
 
@@ -1214,38 +1695,14 @@ const lastTurn = workflow_history[workflow_history.length - 1];  // O(1)
 
 ## Future Enhancements
 
-### 1. Cost Budgets & Alerts
+### Implemented (moved from v1.0 future list)
 
-**Feature**: Set per-session or per-user cost limits with alerts.
+The following features were listed as future enhancements in v1.0 and have since been implemented:
 
-```python
-# Configuration
-user_config = {
-    "cost_budget_per_session": 1.00,      # $1.00 max per session
-    "cost_budget_per_month": 100.00,      # $100.00 max per month
-    "alert_threshold_percent": 80         # Alert at 80% of budget
-}
+- **Cost Budgets & Rate Limiting** — Implemented via `ConsumptionProfile` and `ConsumptionManager`. Per-user hourly/daily request limits and monthly token quotas with enforcement. See [Consumption Tracking Subsystem](#consumption-tracking-subsystem).
+- **Cost Analytics Dashboard** — Implemented via `GET /api/v1/costs/analytics` and `CostManagementHandler` frontend. Includes KPI cards (total cost, avg per session/turn), cost by provider/model charts, and most expensive sessions/queries. See [Frontend Cost Management Admin UI](#frontend-cost-management-admin-ui).
 
-# Implementation
-if session_cost_usd >= (user_config["cost_budget_per_session"] * 0.80):
-    emit_sse_event({
-        "type": "cost_alert",
-        "message": f"Approaching session budget: ${session_cost_usd:.2f} / ${user_config['cost_budget_per_session']:.2f}",
-        "severity": "warning"
-    })
-```
-
-### 2. Cost Analytics Dashboard
-
-**Feature**: Visualize cost trends over time.
-
-- Cost per session (histogram)
-- Cost per profile type (pie chart)
-- Cost per model (bar chart)
-- Daily/weekly/monthly cost trends (line chart)
-- Cost breakdown by phase (strategic vs tactical)
-
-### 3. Cost Optimization Suggestions
+### 1. Cost Optimization Suggestions
 
 **Feature**: AI-powered cost optimization recommendations.
 
@@ -1255,7 +1712,7 @@ Suggestion: Switch to claude-haiku-4-5 for 60% cost savings on simple queries.
 Estimated savings: $0.15 per session"
 ```
 
-### 4. Cost Projections
+### 2. Cost Projections
 
 **Feature**: Estimate costs before execution.
 
@@ -1270,7 +1727,7 @@ estimated_cost = cost_estimator.estimate(
 # Show to user: "Estimated cost: $0.15 - $0.25"
 ```
 
-### 5. Cost Allocation Tags
+### 3. Cost Allocation Tags
 
 **Feature**: Tag sessions with cost centers for enterprise billing.
 
@@ -1286,7 +1743,7 @@ estimated_cost = cost_estimator.estimate(
 }
 ```
 
-### 6. Cost Caching for Common Queries
+### 4. Cost Caching for Common Queries
 
 **Feature**: Detect and cache responses for repeated queries to save costs.
 
@@ -1300,7 +1757,7 @@ else:
     cost_cache.set(query_hash, response)
 ```
 
-### 7. Multi-Currency Support
+### 5. Multi-Currency Support
 
 **Feature**: Display costs in user's preferred currency.
 
@@ -1316,7 +1773,7 @@ session_cost_eur = session_cost_usd * user_preferences["exchange_rate"]
 # Show: "€0.0087" instead of "$0.0094"
 ```
 
-### 8. Cost Export & Reporting
+### 6. Cost Export & Reporting
 
 **Feature**: Export cost data for accounting systems.
 
@@ -1334,28 +1791,55 @@ def456,2026-02-01,3,30000,1500,0.75
 
 ## Appendix A: File Locations
 
-### Backend
+### Backend — Core
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `src/trusted_data_agent/core/cost_manager.py` | 279-304 | Cost calculation engine |
-| `src/trusted_data_agent/agent/executor.py` | Multiple | Cost tracking in all profile types |
-| `src/trusted_data_agent/core/session_manager.py` | 1583-1648 | Token/cost updates, session persistence |
-| `src/trusted_data_agent/api/routes.py` | 1743-1830 | Cost API endpoint with legacy fallback |
+| File | Purpose |
+|------|---------|
+| `src/trusted_data_agent/core/cost_manager.py` | Cost calculation engine, LiteLLM sync, availability checking (704 lines) |
+| `src/trusted_data_agent/auth/consumption_manager.py` | Per-user consumption tracking, rate limiting, quotas (561 lines) |
+| `src/trusted_data_agent/core/efficiency_tracker.py` | RAG efficiency and cost savings tracking (233 lines) |
+| `src/trusted_data_agent/auth/models.py` | Database models: LLMModelCost, ConsumptionProfile, UserConsumption, ConsumptionTurn, ConsumptionPeriodsArchive |
+
+### Backend — Integration
+
+| File | Purpose |
+|------|---------|
+| `src/trusted_data_agent/agent/executor.py` | Cost tracking in all profile types, dual-model config, session naming |
+| `src/trusted_data_agent/core/session_manager.py` | Token/cost updates (`update_turn_token_counts`), session persistence |
+| `src/trusted_data_agent/api/routes.py` | Turn details endpoint with legacy cost fallback |
+| `src/trusted_data_agent/api/rest_routes.py` | Cost management REST API (7 endpoints), cost analytics |
 
 ### Frontend
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `static/js/ui.js` | 3875-4060 | Cost display (updateTokenDisplay) |
-| `static/js/eventHandlers.js` | 91-179, 1576-2110 | Historical reload cost handling |
-| `static/js/handlers/sessionManagement.js` | 630-665 | Session switching cost initialization |
+| File | Purpose |
+|------|---------|
+| `static/js/ui.js` | Cost display (`updateTokenDisplay`), cost accumulator, terminal event protection |
+| `static/js/eventHandlers.js` | Historical reload cost handling |
+| `static/js/handlers/sessionManagement.js` | Session switching cost initialization |
+| `static/js/handlers/costManagement.js` | Admin cost management UI (871 lines) |
+
+### Maintenance
+
+| File | Purpose |
+|------|---------|
+| `maintenance/backfill_consumption_costs.py` | Populate historical cost data |
+| `maintenance/consumption_periodic_jobs.py` | Recurring maintenance tasks |
+| `maintenance/reconcile_consumption.py` | Fix data inconsistencies |
+| `maintenance/check_token_usage.py` | Verify consumption records |
+| `maintenance/check_user_profile.py` | Audit user profiles and limits |
+
+### Configuration
+
+| File | Purpose |
+|------|---------|
+| `tda_config.json` | Bootstrap `default_model_costs` for startup |
 
 ### Documentation
 
 | File | Purpose |
 |------|---------|
 | `docs/Architecture/COST_TRACKING_ARCHITECTURE.md` | This document |
+| `docs/Finops/COST_MANAGEMENT_IMPLEMENTATION.md` | Implementation guide |
 | `.claude/plans/wobbly-roaming-sun.md` | Original implementation plan |
 
 ---
@@ -1371,10 +1855,19 @@ def456,2026-02-01,3,30000,1500,0.75
 | **Session Naming** | System LLM call to generate descriptive session name (occurs after Turn 1) |
 | **Cost Accumulator** | Frontend state object tracking costs during live execution |
 | **Authoritative Cost** | Cost calculated and stored by backend (single source of truth) |
-| **Fallback Cost** | Cost estimated from tokens when authoritative cost unavailable (legacy sessions) |
+| **Fallback Cost** | Configurable default pricing for unknown models (default: $0.10/$0.40 per 1M tokens) |
 | **Live Execution** | Real-time query execution with SSE streaming |
 | **Historical Reload** | Loading past turn data by clicking turn avatar |
 | **Dual-Model** | Profile using separate strategic and tactical LLM models |
+| **Micro-dollars** | Cost storage unit in consumption tables: USD × 1,000,000 (avoids floating-point) |
+| **Bootstrap Costs** | Default model pricing loaded from `tda_config.json` at CostManager startup |
+| **Consumption Profile** | Rate limiting and quota tier (prompts/hour, tokens/month) assigned to users |
+| **Consumption Turn** | Per-turn audit record in `consumption_turns` table |
+| **RAG Efficiency** | Token/cost savings from RAG-guided responses (Turn N < Turn N-1) |
+| **Model Deprecation** | Marking models as unavailable after provider API availability check |
+| **ARN Normalization** | Stripping AWS Bedrock ARN prefixes and regional identifiers for cost lookup |
+| **LiteLLM Sync** | Two-phase process: availability check + pricing sync from LiteLLM library |
+| **Manual Override** | Admin-set pricing protected from LiteLLM sync overwrite (`is_manual_entry=True`) |
 
 ---
 
@@ -1383,6 +1876,7 @@ def456,2026-02-01,3,30000,1500,0.75
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-13 | Claude Code | Initial architecture document |
+| 2.0 | 2026-03-03 | Claude Code | Major update: Added Cost Management REST API section (7 endpoints). Added Consumption Tracking Subsystem section (ConsumptionManager, 4 DB tables, rate limiting, quotas, monthly rollover). Added Efficiency Tracker Subsystem section (RAG savings). Added Frontend Cost Management Admin UI section (CostManagementHandler). Fixed database schema (wrong column names/types, missing columns). Fixed CostManager API (wrong method names, added fallback pricing, ARN normalization, bootstrap costs, availability checking). Updated Architecture Components diagram. Fixed Edge Cases (fallback pricing behavior). Moved implemented features from Future Enhancements. Updated Appendix A file locations. Updated Glossary with 10 new terms. |
 
 ---
 
