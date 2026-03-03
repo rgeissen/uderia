@@ -31,6 +31,7 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
    - [Retrieval-Augmented Generation (RAG)](#-retrieval-augmented-generation-rag-for-self-improving-ai)
    - [Skills: Pre-Processing Context Injection](#-skills-pre-processing-context-injection)
    - [Extensions: Post-Processing Transformations](#-extensions-post-processing-transformations)
+   - [Interactive Visual Components: Generative UI](#-interactive-visual-components-generative-ui)
 4. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
 5. [Installation and Setup Guide](#-installation-and-setup-guide)
    - [Model Selection: Recommended vs All Models](#model-selection-recommended-vs-all-models)
@@ -233,6 +234,15 @@ Build trust through complete visibility into every decision, action, and data po
   - tiktoken-based BPE token estimation for accurate budget planning
   - [Full architecture documentation →](docs/Architecture/CONTEXT_WINDOW_ARCHITECTURE.md)
 
+* **Interactive Visual Components**: Modular, plugin-based UI component library:
+  - **Canvas Component:** Interactive code editor powered by CodeMirror 6 with syntax highlighting (SQL, Python, JavaScript), live database connectors, in-place query execution, split-panel and fullscreen modes, and result rendering directly in chat
+  - **Chart Component:** Data visualization via G2Plot with 16 chart types (bar, line, pie, scatter, heatmap, gauge, radar, treemap, and more), 5-stage mapping resolution pipeline with cardinality-aware column selection, deterministic fast-path execution, and LLM-assisted fallback
+  - **Knowledge Graph:** Entity-relationship visualization for context enrichment and document structure exploration
+  - Self-contained component architecture with manifest-driven discovery and hot-reload
+  - Profile-level intensity control and admin governance
+  - 3 render targets: inline (chat bubble), sub_window (persistent canvas panel), status_panel (Live Status area)
+  - Third-party extensibility: add custom components without modifying core files
+
 * **System Customization**: Take control of agent behavior:
   - System Prompt Editor for per-model instruction customization
   - Save and reset capabilities for experimentation
@@ -369,6 +379,31 @@ Maintain complete control over your data exposure strategy with flexible deploym
   - Regulatory compliance: PHI, PII, financial data stays local
   - Cost optimization: Expensive planning calls (8K tokens) happen once; cheap execution (2K tokens) reuses patterns
   - Best of both worlds: Hyperscaler reasoning + on-prem sovereignty
+
+* **Enterprise OAuth Authentication**: Federated identity with five providers:
+  - **Supported Providers:** Google (OIDC), GitHub (OAuth2), Microsoft/Azure AD (OIDC), Discord (OAuth2), Okta (OIDC)
+  - CSRF protection via cryptographic state parameter validation
+  - Email verification with configurable enforcement
+  - Account merging and deduplication (link multiple providers to one account)
+  - Rate limiting with abuse detection and progressive lockout
+  - Throwaway email blocking for registration integrity
+  - Brute force detection on login attempts
+  - Comprehensive audit logging for all authentication events
+  - Provider popularity analytics and usage tracking
+  - Account linking/unlinking for existing users
+  - Full REST API: initiate, callback, link, disconnect, verification endpoints
+
+* **Three-Tier Role-Based Access Control**: Hierarchical permission system with granular feature governance:
+  - **User Tier** (19 features): Execute prompts, use MCP tools, manage own sessions and credentials, basic configuration
+  - **Developer Tier** (+25 features, 44 total): RAG collection management, template creation/testing, MCP diagnostics, import/export, advanced configuration
+  - **Admin Tier** (+24 features, 68 total): User management, credential oversight, system configuration, security settings, database administration, compliance reporting
+  - 68 distinct feature tags mapped to tiers with `@require_feature` decorators
+  - Hierarchical permission inheritance (Admin inherits all Developer features, Developer inherits all User features)
+  - 5 predefined feature groups for bulk permission checks (session_management, rag_management, template_management, user_management, system_admin)
+  - Tier-based UI adaptation: features appear/disappear based on user's tier
+  - REST API endpoint: `GET /api/v1/auth/me/features` returns user's available features
+  - Admin self-protection: administrators cannot modify their own tier
+  - Backward compatible with legacy `is_admin` field
 
 ---
 
@@ -1568,6 +1603,59 @@ User Query → LLM Answer → #Extension Post-Processing → Structured Output �
 The `#decision` extension produces `{result, severity, branch_key}` — exactly what n8n Switch nodes need for deterministic routing (e.g., `threshold_exceeded_critical` → PagerDuty, `nominal_ok` → log only).
 
 Architecture details: [**Extension Architecture (docs/Architecture/EXTENSION_ARCHITECTURE.md)**](docs/Architecture/EXTENSION_ARCHITECTURE.md)
+
+[⬆️ Back to Table of Contents](#table-of-contents)
+
+---
+
+### 🎨 Interactive Visual Components: Generative UI
+
+The platform renders LLM output through a **plugin-based component library** where each content type — chart, canvas, knowledge graph — is a self-contained module with its own prompt instructions, backend handler, and frontend renderer. Components are toggled per-profile, injected into LLM prompts at runtime, and rendered via tool calls or data-driven detection.
+
+**Canvas — Interactive Code & Document Workspace**
+
+The Canvas component (`TDA_Canvas`) transforms LLM-generated code and documents into an editable, executable workspace. Built on CodeMirror 6 with a modular capability-plugin architecture (11 capabilities, 4 execution connectors):
+
+- **Editing:** Syntax-highlighted code editor with SQL, Python, JavaScript, HTML, and Markdown support
+- **Live Preview:** Responsive HTML preview with viewport simulation, Markdown rendering, SVG rendering
+- **Execution:** Run SQL queries directly against connected databases (PostgreSQL, MySQL, SQLite, Teradata) via MCP server connectors — results render in-place
+- **Version Tracking:** Turn-based version history with side-by-side diff view across conversation turns
+- **Inline AI:** Select code and request targeted modifications without regenerating the entire canvas
+- **Split-Screen:** Toggle between editor-only, preview-only, and split-panel modes; fullscreen expansion
+- **Template Gallery:** 12 starter templates for common tasks (SQL queries, HTML pages, data analysis)
+- **RAG-Aware:** Source attribution badges when canvas content is generated from knowledge base retrieval
+
+**Charts — Automated Data Visualization**
+
+The Chart component (`TDA_Charting`) renders data as interactive visualizations via G2Plot. Supports 16 chart types (column, line, pie, scatter, area, bar, heatmap, gauge, radar, treemap, donut, funnel, waterfall, histogram, box, dual-axis). Key to reliability is the **5-stage mapping validation pipeline** — a deterministic repair chain that guarantees valid chart specs even when the LLM hallucinates column names or swaps axes:
+
+1. **Sanitize** — normalize LLM field names to canonical schema
+2. **Validate** — check column existence against actual query results
+3. **Deterministic Repair** — cardinality-aware column reassignment using data shape heuristics
+4. **LLM Repair** — (if needed) targeted LLM call to resolve ambiguous mappings
+5. **Positional Fallback** — last-resort mapping by column position
+
+Charts render inline in chat bubbles by default, with optional sub-window mode for interactive exploration.
+
+**Knowledge Graph — Context-Enriching Entity-Relationship System**
+
+The Knowledge Graph component (`TDA_KnowledgeGraph`) maintains a living, queryable model of database topology, business concepts, metrics, and domain taxonomies as a typed entity-relationship graph. Scoped per `(profile_id, user_uuid)` for multi-user isolation.
+
+- **Planner Context Injection:** Before every strategic planning call, the system extracts a relevant subgraph based on the user's query and injects it as context — guiding tool selection, SQL construction, and argument generation. Functions as a semantic guardrail that reduces hallucination
+- **Visualization:** D3.js force-directed graph with three display modes, interactive node exploration, and theme compliance
+- **Progressive Enrichment:** Graphs grow through LLM-inferred entities during conversation, manual JSON import, or (V2) MCP schema auto-discovery
+- **Intensity Control:** At `medium` intensity, graph context is advisory; at `heavy` intensity, the LLM strictly validates against known relationships
+
+**Component Architecture:**
+- **Self-contained modules** — each component is a directory with `manifest.json`, `instructions.json`, `handler.py`, and `renderer.js`
+- **Two handler tiers** — Action (LLM explicitly calls `TDA_*` tool) and Structural (automatic rendering from data type)
+- **Three render targets** — `inline` (chat bubble), `sub_window` (persistent panel), `status_panel` (Live Status area)
+- **Deterministic fast-path** — components with predictable output bypass the tactical LLM entirely, saving ~3,000 tokens per invocation
+- **Profile-level intensity control** — `componentConfig` on the profile JSON toggles components and sets instruction intensity (`none`/`medium`/`heavy`)
+- **Admin governance** — platform-wide component control (all/selective mode, user imports, marketplace access)
+- **Third-party extensibility** — add custom components without modifying core files; manifest-driven discovery with hot-reload
+
+Architecture details: [**Component Architecture (docs/Architecture/COMPONENT_ARCHITECTURE.md)**](docs/Architecture/COMPONENT_ARCHITECTURE.md) · [**Canvas Architecture (docs/Architecture/CANVAS_ARCHITECTURE.md)**](docs/Architecture/CANVAS_ARCHITECTURE.md) · [**Knowledge Graph Architecture (docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)**](docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
