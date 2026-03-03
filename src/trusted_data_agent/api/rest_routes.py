@@ -2774,28 +2774,35 @@ async def create_rag_collection():
         chunk_size = data.get("chunk_size", 1000)
         chunk_overlap = data.get("chunk_overlap", 200)
         embedding_model = data.get("embedding_model", "all-MiniLM-L6-v2")
-        
+        backend_type = data.get("backend_type", "chromadb")
+        backend_config = data.get("backend_config", {})
+        if isinstance(backend_config, dict):
+            import json as _json
+            backend_config = _json.dumps(backend_config)
+
         # Add collection via RAG retriever
         retriever = get_rag_retriever()
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
-        
+
         # --- MARKETPLACE PHASE 2: Pass owner_user_id and repository configuration ---
         collection_id = retriever.add_collection(
             name, description, mcp_server_id, owner_user_id=user_uuid,
             repository_type=repository_type, chunking_strategy=chunking_strategy,
-            chunk_size=chunk_size, chunk_overlap=chunk_overlap, embedding_model=embedding_model
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap, embedding_model=embedding_model,
+            backend_type=backend_type, backend_config=backend_config,
         )
         # --- MARKETPLACE PHASE 2 END ---
-        
+
         if collection_id is not None:
             app_logger.info(f"Created {repository_type} RAG collection with ID: {collection_id}, MCP server: {mcp_server_id}")
             return jsonify({
-                "status": "success", 
-                "message": "Collection created successfully", 
+                "status": "success",
+                "message": "Collection created successfully",
                 "collection_id": collection_id,
                 "mcp_server_id": mcp_server_id,
-                "repository_type": repository_type
+                "repository_type": repository_type,
+                "backend_type": backend_type,
             }), 201
         else:
             return jsonify({"status": "error", "message": "Failed to create collection"}), 500

@@ -220,6 +220,15 @@ def _create_collections_table():
             cursor.execute("ALTER TABLE collections ADD COLUMN embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2'")
             conn.commit()
 
+        # Migration: Add backend_type/backend_config columns if they don't exist
+        try:
+            cursor.execute("SELECT backend_type FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding backend_type/backend_config columns to collections table")
+            cursor.execute("ALTER TABLE collections ADD COLUMN backend_type TEXT DEFAULT 'chromadb'")
+            cursor.execute("ALTER TABLE collections ADD COLUMN backend_config TEXT DEFAULT '{}'")
+            conn.commit()
+
         # Create document_chunks table for Knowledge repositories
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_chunks (

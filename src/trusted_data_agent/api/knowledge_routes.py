@@ -297,7 +297,8 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             
             document_content = prepared_doc['content']
             
-            # Create repository constructor
+            # Create repository constructor (backend-abstracted path)
+            backend = await retriever._get_knowledge_backend(collection_id)
             constructor = create_repository_constructor(
                 repository_type=RepositoryType.KNOWLEDGE,
                 chroma_client=retriever.client,
@@ -305,11 +306,12 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 embedding_model=embedding_model,
                 chunking_strategy=chunking_strategy,
                 chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
+                chunk_overlap=chunk_overlap,
+                backend=backend,
             )
-            
+
             # Construct repository entry with progress updates
-            result = constructor.construct(
+            result = await constructor.construct_async(
                 collection_id=collection_id,
                 content=document_content,
                 collection_name=collection_name,
@@ -519,7 +521,8 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
             
             document_content = prepared_doc['content']
             
-            # Create repository constructor
+            # Create repository constructor (backend-abstracted path)
+            backend = await retriever._get_knowledge_backend(collection_id)
             constructor = create_repository_constructor(
                 repository_type=RepositoryType.KNOWLEDGE,
                 chroma_client=retriever.client,
@@ -527,11 +530,12 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 embedding_model=embedding_model,
                 chunking_strategy=chunking_strategy,
                 chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
+                chunk_overlap=chunk_overlap,
+                backend=backend,
             )
-            
+
             # Construct repository entry
-            result = constructor.construct(
+            result = await constructor.construct_async(
                 collection_id=collection_id,
                 content=document_content,
                 collection_name=collection_name,
@@ -717,14 +721,22 @@ async def delete_knowledge_document(current_user: dict, collection_id: int, docu
             conn.close()
             return jsonify({"status": "error", "message": "Access denied"}), 403
         
-        # Delete from ChromaDB (all chunks for this document)
-        collection = retriever.collections.get(collection_id)
-        if collection:
-            # Get all chunk IDs for this document
-            results = collection.get(where={"document_id": document_id})
-            if results and results['ids']:
-                collection.delete(ids=results['ids'])
-                app_logger.info(f"Deleted {len(results['ids'])} chunks from ChromaDB")
+        # Delete all chunks for this document via backend
+        backend = await retriever._get_knowledge_backend(collection_id)
+        if backend:
+            from trusted_data_agent.vectorstore import FieldFilter, FilterOp
+            coll_meta = retriever.get_collection_metadata(collection_id)
+            coll_name = coll_meta["collection_name"] if coll_meta else f"collection_{collection_id}"
+            get_result = await backend.get(
+                coll_name,
+                where=FieldFilter("document_id", FilterOp.EQ, document_id),
+                include_documents=False,
+                include_metadata=False,
+            )
+            if get_result.documents:
+                chunk_ids = [d.id for d in get_result.documents]
+                await backend.delete(coll_name, chunk_ids)
+                app_logger.info(f"Deleted {len(chunk_ids)} chunks via backend")
         
         # Delete from database (reuse connection)
         
@@ -802,31 +814,32 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
         if not query:
             return jsonify({"status": "error", "message": "query is required"}), 400
         
-        # Search in ChromaDB
-        collection = retriever.collections.get(collection_id)
-        if not collection:
+        # Search via backend
+        backend = await retriever._get_knowledge_backend(collection_id)
+        if not backend:
             return jsonify({"status": "error", "message": "Collection not loaded"}), 404
-        
-        search_kwargs = {
-            'query_texts': [query],
-            'n_results': k
-        }
-        
+
+        coll_meta = retriever.get_collection_metadata(collection_id)
+        coll_name = coll_meta["collection_name"] if coll_meta else f"collection_{collection_id}"
+
+        where_filter = None
         if metadata_filter:
-            search_kwargs['where'] = metadata_filter
-        
-        results = collection.query(**search_kwargs)
-        
+            from trusted_data_agent.vectorstore import from_chromadb_where
+            where_filter = from_chromadb_where(metadata_filter)
+
+        query_result = await backend.query(
+            coll_name, query_text=query, n_results=k, where=where_filter
+        )
+
         # Format results
         search_results = []
-        if results and results['ids']:
-            for i in range(len(results['ids'][0])):
-                search_results.append({
-                    'chunk_id': results['ids'][0][i],
-                    'content': results['documents'][0][i],
-                    'metadata': results['metadatas'][0][i] if results['metadatas'] else {},
-                    'distance': results['distances'][0][i] if results['distances'] else None
-                })
+        for doc, distance in query_result:
+            search_results.append({
+                'chunk_id': doc.id,
+                'content': doc.content,
+                'metadata': doc.metadata,
+                'distance': distance,
+            })
         
         return jsonify({
             "status": "success",
@@ -914,71 +927,59 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
         sort_by = request.args.get('sort_by', default=None, type=str)
         sort_order = request.args.get('sort_order', default='asc', type=str)
         
-        # Get ChromaDB collection
-        collection = retriever.collections.get(collection_id)
-        if not collection:
+        # Get backend for this knowledge collection
+        backend = await retriever._get_knowledge_backend(collection_id)
+        if not backend:
             return jsonify({"error": "Collection not loaded"}), 404
-        
+
+        coll_meta_full = retriever.get_collection_metadata(collection_id)
+        coll_name_full = coll_meta_full["collection_name"] if coll_meta_full else f"collection_{collection_id}"
+
         chunks = []
         total = 0
-        
+
         # If search query provided (min 3 chars), do semantic search
         if query_text and len(query_text) >= 3:
             try:
-                results = collection.query(
-                    query_texts=[query_text],
-                    n_results=min(limit, 100),  # Cap at 100 for performance
-                    include=["documents", "metadatas", "distances"]
+                query_result = await backend.query(
+                    coll_name_full,
+                    query_text=query_text,
+                    n_results=min(limit, 100),
                 )
-                
-                ids = results.get("ids", [[]])[0]
-                documents = results.get("documents", [[]])[0]
-                metadatas = results.get("metadatas", [[]])[0]
-                distances = results.get("distances", [[]])[0]
-                
-                total = len(ids)
-                
-                for i in range(len(ids)):
-                    metadata = metadatas[i] or {}
+                total = len(query_result.documents)
+                for doc, distance in query_result:
+                    metadata = doc.metadata or {}
+                    content = doc.content
                     chunks.append({
-                        "id": ids[i],
+                        "id": doc.id,
                         "document_id": metadata.get("document_id", ""),
                         "chunk_index": metadata.get("chunk_index", 0),
-                        "content": documents[i] if not light else documents[i][:200] + "..." if len(documents[i]) > 200 else documents[i],
+                        "content": content if not light else content[:200] + "..." if len(content) > 200 else content,
                         "token_count": metadata.get("token_count", 0),
                         "metadata": metadata,
-                        "similarity_score": 1.0 - distances[i] if i < len(distances) else None
+                        "similarity_score": 1.0 - distance,
                     })
-                    
             except Exception as qe:
                 app_logger.warning(f"Query failed for knowledge collection '{collection_name}': {qe}")
         else:
             # Get all chunks with pagination
             try:
-                all_results = collection.get(
-                    include=["documents", "metadatas"],
-                    limit=None  # Get all, we'll paginate manually
-                )
-                
-                ids = all_results.get("ids", [])
-                documents = all_results.get("documents", [])
-                metadatas = all_results.get("metadatas", [])
-                
-                total = len(ids)
-                
-                # Build full list first (for sorting)
+                get_result = await backend.get(coll_name_full)
+                total = get_result.total_count
+
                 all_chunks = []
-                for i in range(len(ids)):
-                    metadata = metadatas[i] or {}
+                for doc in get_result.documents:
+                    metadata = doc.metadata or {}
+                    content = doc.content
                     all_chunks.append({
-                        "id": ids[i],
+                        "id": doc.id,
                         "document_id": metadata.get("document_id", ""),
                         "chunk_index": metadata.get("chunk_index", 0),
-                        "content": documents[i] if not light else documents[i][:200] + "..." if len(documents[i]) > 200 else documents[i],
+                        "content": content if not light else content[:200] + "..." if len(content) > 200 else content,
                         "token_count": metadata.get("token_count", 0),
-                        "metadata": metadata
+                        "metadata": metadata,
                     })
-                
+
                 # Apply sorting if requested
                 if sort_by and sort_by in ['id', 'document_id', 'chunk_index', 'token_count']:
                     reverse = sort_order.lower() == 'desc'
@@ -987,10 +988,10 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
                         app_logger.debug(f"Applied server-side sorting: {sort_by} {sort_order}")
                     except Exception as e:
                         app_logger.debug(f"Sorting failed: {e}")
-                
+
                 # Apply pagination
                 chunks = all_chunks[offset:offset + limit]
-                
+
             except Exception as ge:
                 app_logger.error(f"Failed to get chunks for collection '{collection_name}': {ge}", exc_info=True)
         
@@ -1055,37 +1056,33 @@ async def get_single_chunk(current_user: dict, collection_id: int, chunk_id: str
         if owner_user_id != user_id:
             return jsonify({"error": "Access denied"}), 403
         
-        # Get ChromaDB collection
-        collection = retriever.collections.get(collection_id)
-        if not collection:
+        # Get chunk via backend
+        backend = await retriever._get_knowledge_backend(collection_id)
+        if not backend:
             return jsonify({"error": "Collection not loaded"}), 404
-        
-        # Get specific chunk by ID
+
+        coll_meta_chunk = retriever.get_collection_metadata(collection_id)
+        coll_name_chunk = coll_meta_chunk["collection_name"] if coll_meta_chunk else f"collection_{collection_id}"
+
         try:
-            result = collection.get(
-                ids=[chunk_id],
-                include=["documents", "metadatas"]
-            )
-            
-            ids = result.get("ids", [])
-            documents = result.get("documents", [])
-            metadatas = result.get("metadatas", [])
-            
-            if not ids or len(ids) == 0:
+            get_result = await backend.get(coll_name_chunk, ids=[chunk_id])
+
+            if not get_result.documents:
                 return jsonify({"error": "Chunk not found"}), 404
-            
-            metadata = metadatas[0] or {}
+
+            doc = get_result.documents[0]
+            metadata = doc.metadata or {}
             chunk = {
-                "id": ids[0],
+                "id": doc.id,
                 "document_id": metadata.get("document_id", ""),
                 "chunk_index": metadata.get("chunk_index", 0),
-                "content": documents[0],  # Full content, no truncation
+                "content": doc.content,
                 "token_count": metadata.get("token_count", 0),
-                "metadata": metadata
+                "metadata": metadata,
             }
-            
+
             return jsonify({"chunk": chunk}), 200
-            
+
         except Exception as e:
             app_logger.error(f"Failed to get chunk {chunk_id}: {e}", exc_info=True)
             return jsonify({"error": "Failed to get chunk"}), 500

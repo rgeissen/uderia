@@ -567,15 +567,120 @@ class PlannerRepositoryConstructor(RepositoryConstructor):
 
 class KnowledgeRepositoryConstructor(RepositoryConstructor):
     """Constructor for Knowledge Repositories - stores reference documents."""
-    
+
     def __init__(self, chroma_client, storage_dir: Path, embedding_model: str = "all-MiniLM-L6-v2",
                  chunking_strategy: ChunkingStrategy = ChunkingStrategy.SEMANTIC,
-                 chunk_size: int = 1000, chunk_overlap: int = 200):
+                 chunk_size: int = 1000, chunk_overlap: int = 200, backend=None):
         super().__init__(RepositoryType.KNOWLEDGE, chroma_client, storage_dir, embedding_model)
-        
+        # VectorStoreBackend for abstracted storage (None = fall back to chroma_client)
+        self._backend = backend
+
         # Override document processor with Knowledge-specific configuration
         self.document_processor = DocumentProcessor(chunking_strategy, chunk_size, chunk_overlap)
-    
+
+    async def construct_async(self, collection_id: int, content: str, **kwargs) -> Dict[str, Any]:
+        """Async construction pipeline using the VectorStoreBackend abstraction.
+
+        Drop-in replacement for ``construct()`` when a backend is available.
+        Called from knowledge_routes.py so that non-ChromaDB backends are
+        supported without blocking the Quart event loop.
+        """
+        if self._backend is None:
+            raise RuntimeError(
+                "construct_async() requires a VectorStoreBackend. "
+                "Pass backend= to create_repository_constructor()."
+            )
+
+        from trusted_data_agent.vectorstore import CollectionConfig, VectorDocument
+        from trusted_data_agent.vectorstore.embedding_providers import SentenceTransformerProvider
+
+        progress_callback = kwargs.get("progress_callback")
+
+        # Step 1: Validate input
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback("Validating document...", 5))
+
+        is_valid, error_msg = self.validate_input(content=content, **kwargs)
+        if not is_valid:
+            return {"status": "error", "message": error_msg}
+
+        # Step 2: Prepare metadata
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback("Preparing metadata...", 10))
+
+        metadata = self.prepare_metadata(
+            collection_id=collection_id,
+            repository_type=self.repository_type.value,
+            **kwargs
+        )
+
+        # Step 3: Process document into chunks
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback("Chunking document...", 15))
+
+        chunks = self.document_processor.process_document(content, metadata)
+        logger.info(f"Processed document into {len(chunks)} chunk(s)")
+
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback(f"Created {len(chunks)} chunks", 20))
+
+        # Step 4: Ensure collection exists in backend
+        collection_name = kwargs.get("collection_name", f"collection_{collection_id}")
+        embedding_model = self.embedding_strategy.model_name if hasattr(self.embedding_strategy, "model_name") else "all-MiniLM-L6-v2"
+        config = CollectionConfig(name=collection_name, embedding_model=embedding_model)
+        await self._backend.get_or_create_collection(config)
+
+        # Step 5: Store chunks via backend (triggers embedding generation)
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback(
+                f"Generating embeddings for {len(chunks)} chunks...", 30
+            ))
+
+        embedding_provider = SentenceTransformerProvider.get_cached(embedding_model)
+        documents = [
+            VectorDocument(
+                id=chunk.chunk_id,
+                content=chunk.content,
+                metadata={
+                    **chunk.metadata,
+                    "chunk_index": chunk.chunk_index,
+                    "token_count": len(chunk.content) // 4,
+                },
+            )
+            for chunk in chunks
+        ]
+        await self._backend.upsert(collection_name, documents, embedding_provider)
+
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback("Embeddings complete, saving document...", 90))
+
+        # Step 6: Save original document to disk
+        if kwargs.get("save_original", True):
+            document_id = metadata.get("document_id", str(uuid.uuid4()))
+            self.storage_adapter.save_document_file(document_id, content, metadata)
+
+        if progress_callback:
+            import asyncio
+            asyncio.create_task(progress_callback("Document upload complete!", 100))
+
+        logger.info(
+            f"Stored {len(chunks)} chunks in collection '{collection_name}' via backend '{self._backend.backend_type}'"
+        )
+        return {
+            "status": "success",
+            "chunks_stored": len(chunks),
+            "collection_name": collection_name,
+            "repository_type": self.repository_type.value,
+            "collection_id": collection_id,
+            "metadata": metadata,
+        }
+
     def prepare_metadata(self, **kwargs) -> Dict[str, Any]:
         """Prepare metadata for knowledge document."""
         # Convert tags list to comma-separated string for ChromaDB
@@ -612,19 +717,23 @@ class KnowledgeRepositoryConstructor(RepositoryConstructor):
 
 
 # Factory function for creating appropriate constructor
-def create_repository_constructor(repository_type: RepositoryType, chroma_client,
-                                  storage_dir: Path, **config) -> RepositoryConstructor:
+def create_repository_constructor(repository_type: RepositoryType, chroma_client=None,
+                                  storage_dir: Path = None, backend=None, **config) -> RepositoryConstructor:
     """
     Factory function to create appropriate constructor based on repository type.
-    
+
     Args:
-        repository_type: Type of repository to construct
-        chroma_client: ChromaDB client instance
-        storage_dir: Directory for file storage
-        **config: Additional configuration options
-        
+        repository_type:  Type of repository to construct.
+        chroma_client:    Raw ChromaDB client — required for PLANNER repos;
+                          optional for KNOWLEDGE repos when ``backend`` is provided.
+        storage_dir:      Directory for file storage.
+        backend:          VectorStoreBackend — use for KNOWLEDGE repos to enable
+                          backend-abstracted async construction via
+                          ``construct_async()``.  Ignored for PLANNER repos.
+        **config:         Additional configuration options.
+
     Returns:
-        Appropriate RepositoryConstructor instance
+        Appropriate RepositoryConstructor instance.
     """
     if repository_type == RepositoryType.PLANNER:
         return PlannerRepositoryConstructor(
@@ -637,7 +746,8 @@ def create_repository_constructor(repository_type: RepositoryType, chroma_client
             embedding_model=config.get('embedding_model', 'all-MiniLM-L6-v2'),
             chunking_strategy=config.get('chunking_strategy', ChunkingStrategy.SEMANTIC),
             chunk_size=config.get('chunk_size', 1000),
-            chunk_overlap=config.get('chunk_overlap', 200)
+            chunk_overlap=config.get('chunk_overlap', 200),
+            backend=backend,
         )
     else:
         raise ValueError(f"Unsupported repository type: {repository_type}")

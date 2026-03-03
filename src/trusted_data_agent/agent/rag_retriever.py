@@ -62,6 +62,16 @@ class RAGRetriever:
 
         # Initialize feedback cache: maps case_id -> feedback_score
         self.feedback_cache = {}
+
+        # Per-collection VectorStoreBackend instances (knowledge repos only).
+        # Populated lazily by _get_knowledge_backend() and eagerly by
+        # _register_knowledge_collection_with_backend().
+        self._knowledge_backends: Dict[int, Any] = {}
+
+        # Pre-seed the shared ChromaDB backend singleton with this client so
+        # get_default_chromadb_backend() never opens a second connection to the
+        # same persist directory.
+        self._init_chromadb_backend_singleton()
         
         # Initialize default collection if not already in APP_STATE
         self._ensure_default_collection()
@@ -96,6 +106,97 @@ class RAGRetriever:
                 model_name=embedding_model
             )
         return self.embedding_functions_cache[embedding_model]
+
+    # ── Vector store backend helpers ─────────────────────────────────────────
+
+    def _init_chromadb_backend_singleton(self) -> None:
+        """Pre-seed the shared ChromaDB backend singleton with this retriever's client.
+
+        Prevents the factory from opening a second PersistentClient to the same
+        persist directory when knowledge_routes.py first calls
+        ``get_default_chromadb_backend()``.
+        """
+        try:
+            import hashlib, json
+            from trusted_data_agent.vectorstore.chromadb_backend import ChromaDBBackend
+            import trusted_data_agent.vectorstore.factory as _factory
+
+            if _factory._DEFAULT_CHROMADB is not None:
+                return  # Already seeded (e.g., tests or second retriever instance)
+
+            backend = ChromaDBBackend(persist_directory=self.persist_directory)
+            backend._client = self.client  # Inject existing client — no new DB connection
+
+            # Register under the same config fingerprint the factory would compute
+            _config: Dict[str, Any] = {}
+            if self.persist_directory:
+                _config["persist_directory"] = str(self.persist_directory)
+            payload = json.dumps({"t": "chromadb", "c": _config}, sort_keys=True)
+            key = hashlib.md5(payload.encode()).hexdigest()[:12]
+            _factory._INSTANCES[key] = backend
+            _factory._DEFAULT_CHROMADB = backend  # type: ignore[assignment]
+            logger.debug("ChromaDB backend singleton seeded with RAGRetriever's PersistentClient")
+        except Exception as e:
+            logger.debug(f"Could not pre-seed ChromaDB backend singleton: {e}")
+
+    def _register_knowledge_collection_with_backend(
+        self, collection_id: int, collection_name: str, collection: Any
+    ) -> None:
+        """Register a loaded ChromaDB collection object in the backend's cache.
+
+        Called whenever a knowledge collection is loaded into ``self.collections``
+        so the backend can serve ``query()`` / ``get()`` calls without a second
+        DB lookup.  Safe to call multiple times for the same collection.
+        """
+        try:
+            from trusted_data_agent.vectorstore.chromadb_backend import ChromaDBBackend
+            import trusted_data_agent.vectorstore.factory as _factory
+
+            backend = _factory._DEFAULT_CHROMADB
+            if isinstance(backend, ChromaDBBackend):
+                backend.register_collection(collection_name, collection)
+                self._knowledge_backends[collection_id] = backend
+        except Exception as e:
+            logger.debug(f"Could not register collection {collection_id} with backend: {e}")
+
+    async def _get_knowledge_backend(self, collection_id: int) -> Any:
+        """Return the VectorStoreBackend for a knowledge repository.
+
+        Returns the cached backend if already initialised, otherwise resolves
+        it from the factory and populates the collection cache.  Returns
+        ``None`` if the collection is not a knowledge repository.
+
+        This is the entry point used by ``knowledge_routes.py`` for all
+        backend-abstracted read/write operations on knowledge repos.
+        """
+        if collection_id in self._knowledge_backends:
+            return self._knowledge_backends[collection_id]
+
+        coll_meta = self.get_collection_metadata(collection_id)
+        if not coll_meta or coll_meta.get("repository_type") != "knowledge":
+            return None
+
+        from trusted_data_agent.vectorstore import get_backend_for_collection, CollectionConfig
+        from trusted_data_agent.vectorstore.chromadb_backend import ChromaDBBackend
+
+        backend = await get_backend_for_collection(coll_meta)
+
+        # For ChromaDB: register the already-loaded collection so backend
+        # doesn't issue a duplicate get_collection() call.
+        if isinstance(backend, ChromaDBBackend):
+            coll_name = coll_meta["collection_name"]
+            if not backend.is_collection_loaded(coll_name):
+                if collection_id in self.collections:
+                    # Fast path — reuse the object already in self.collections
+                    backend.register_collection(coll_name, self.collections[collection_id])
+                else:
+                    # Fallback — ask backend to load from DB
+                    embedding_model = coll_meta.get("embedding_model", self.embedding_model_name)
+                    config = CollectionConfig(name=coll_name, embedding_model=embedding_model)
+                    await backend.get_or_create_collection(config)
+
+        self._knowledge_backends[collection_id] = backend
+        return backend
 
     def _ensure_default_collection(self):
         """
@@ -436,6 +537,10 @@ class RAGRetriever:
                     logger.debug(f"Created new empty collection '{coll_name}'")
 
                 self.collections[coll_id] = collection
+                # Register knowledge collections with the backend cache for
+                # abstracted access from knowledge_routes.py.
+                if repo_type == "knowledge":
+                    self._register_knowledge_collection_with_backend(coll_id, coll_name, collection)
             except KeyError as e:
                 if "'_type'" in str(e):
                     logger.error(f"Collection '{coll_id}' has corrupted metadata (missing _type field). Attempting to delete and recreate...")
@@ -451,6 +556,8 @@ class RAGRetriever:
                             metadata={"hnsw:space": "cosine"}
                         )
                         self.collections[coll_id] = collection
+                        if repo_type == "knowledge":
+                            self._register_knowledge_collection_with_backend(coll_id, coll_name, collection)
                     except Exception as delete_error:
                         logger.error(f"Failed to recover collection '{coll_id}': {delete_error}. Run maintenance/reset_chromadb.py to fix.", exc_info=True)
                 else:
@@ -669,9 +776,10 @@ class RAGRetriever:
                 pass
             return None
     
-    def add_collection(self, name: str, description: str = "", mcp_server_id: Optional[str] = None, owner_user_id: Optional[str] = None, 
+    def add_collection(self, name: str, description: str = "", mcp_server_id: Optional[str] = None, owner_user_id: Optional[str] = None,
                       repository_type: str = "planner", chunking_strategy: str = "none", chunk_size: int = 1000, chunk_overlap: int = 200,
-                      embedding_model: str = "all-MiniLM-L6-v2") -> Optional[int]:
+                      embedding_model: str = "all-MiniLM-L6-v2",
+                      backend_type: str = "chromadb", backend_config: str = "{}") -> Optional[int]:
         """
         Adds a new RAG collection and enables it.
         
@@ -720,7 +828,9 @@ class RAGRetriever:
             "chunking_strategy": chunking_strategy,
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
-            "embedding_model": embedding_model
+            "embedding_model": embedding_model,
+            "backend_type": backend_type,
+            "backend_config": backend_config,
         }
         
         # Save to database
@@ -746,12 +856,15 @@ class RAGRetriever:
         
         if should_load:
             try:
+                embedding_func = self._get_embedding_function(embedding_model)
                 collection = self.client.get_or_create_collection(
                     name=collection_name,
-                    embedding_function=self.embedding_function,
+                    embedding_function=embedding_func,
                     metadata={"hnsw:space": "cosine", "repository_type": repository_type}
                 )
                 self.collections[collection_id] = collection
+                if repository_type == "knowledge":
+                    self._register_knowledge_collection_with_backend(collection_id, collection_name, collection)
                 logger.info(f"Added and loaded new {repository_type} collection '{collection_id}' (ChromaDB: '{collection_name}', MCP Server ID: '{mcp_server_id or 'N/A'}')")
             except Exception as e:
                 logger.error(f"Failed to create collection '{collection_id}': {e}", exc_info=True)
@@ -798,10 +911,20 @@ class RAGRetriever:
         try:
             # Delete from ChromaDB
             self.client.delete_collection(name=coll_meta["collection_name"])
-            
+
             # Remove from runtime
             if collection_id in self.collections:
                 del self.collections[collection_id]
+
+            # Evict from backend cache (knowledge repos)
+            if collection_id in self._knowledge_backends:
+                backend = self._knowledge_backends.pop(collection_id)
+                try:
+                    from trusted_data_agent.vectorstore.chromadb_backend import ChromaDBBackend
+                    if isinstance(backend, ChromaDBBackend):
+                        backend.evict_collection(coll_meta["collection_name"])
+                except Exception:
+                    pass
             
             # Delete from database
             from trusted_data_agent.core.collection_db import get_collection_db
@@ -911,6 +1034,10 @@ class RAGRetriever:
                     metadata={"hnsw:space": "cosine"}
                 )
                 self.collections[collection_id] = collection
+                if repo_type == "knowledge":
+                    self._register_knowledge_collection_with_backend(
+                        collection_id, coll_meta["collection_name"], collection
+                    )
                 logger.info(f"Enabled and loaded collection '{collection_id}'")
             except Exception as e:
                 logger.error(f"Failed to enable collection '{collection_id}': {e}", exc_info=True)
@@ -918,6 +1045,14 @@ class RAGRetriever:
         elif not enabled and collection_id in self.collections:
             # Unload the collection
             del self.collections[collection_id]
+            if collection_id in self._knowledge_backends:
+                backend = self._knowledge_backends.pop(collection_id)
+                try:
+                    from trusted_data_agent.vectorstore.chromadb_backend import ChromaDBBackend
+                    if isinstance(backend, ChromaDBBackend):
+                        backend.evict_collection(coll_meta["collection_name"])
+                except Exception:
+                    pass
             logger.info(f"Disabled collection '{collection_id}'")
         
         return True

@@ -112,73 +112,95 @@ async def import_collection_from_zip(
         if not retriever:
             raise RuntimeError("RAG retriever not initialized")
 
-        # Setup embedding function
+        # Setup embedding function (still needed for planner path)
         embedding_model = metadata.get('embedding_model', 'all-MiniLM-L6-v2')
         embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=embedding_model
         )
 
-        # Create ChromaDB collection
-        chroma_client = retriever.client
         repo_type = metadata.get('repository_type', 'knowledge')
-        collection_metadata = {
-            "hnsw:space": "cosine",
-            "repository_type": repo_type
-        }
+        backend_type = metadata.get('backend_type', 'chromadb')
+        app_logger.info(f"Importing {repo_type} collection (backend: {backend_type}): {new_collection_name}")
 
-        app_logger.info(f"Creating ChromaDB collection: {new_collection_name}")
-        chroma_collection = chroma_client.create_collection(
-            name=new_collection_name,
-            metadata=collection_metadata,
-            embedding_function=embedding_func
-        )
+        # Resolve backend for knowledge repos; planner repos go through raw chroma_client
+        use_backend = (repo_type == 'knowledge')
+        backend = None
+        chroma_collection = None
+
+        if use_backend:
+            from trusted_data_agent.vectorstore import (
+                get_backend_for_collection, CollectionConfig, VectorDocument
+            )
+            coll_meta_stub = {"backend_type": backend_type, "backend_config": "{}"}
+            backend = await get_backend_for_collection(coll_meta_stub)
+            config = CollectionConfig(name=new_collection_name, embedding_model=embedding_model)
+            await backend.get_or_create_collection(config)
+        else:
+            chroma_client = retriever.client
+            chroma_collection = chroma_client.create_collection(
+                name=new_collection_name,
+                metadata={"hnsw:space": "cosine", "repository_type": repo_type},
+                embedding_function=embedding_func,
+            )
 
         # Import documents (batched)
         total_added = 0
         all_metadatas_for_docs = []  # Collect for knowledge_documents population
 
         if use_jsonl:
-            # Batched JSONL format — one batch per line
-            app_logger.info(f"Importing from documents.jsonl (batched format)")
+            app_logger.info("Importing from documents.jsonl (batched format)")
             with open(documents_jsonl, 'r') as f:
                 for line_num, line in enumerate(f, 1):
                     line = line.strip()
                     if not line:
                         continue
                     batch = json.loads(line)
-                    batch_added = _add_batch_to_chroma(
-                        chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs
-                    )
+                    if use_backend:
+                        batch_added = await _add_batch_to_backend(
+                            backend, new_collection_name, batch,
+                            populate_knowledge_docs, all_metadatas_for_docs
+                        )
+                    else:
+                        batch_added = _add_batch_to_chroma(
+                            chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs
+                        )
                     total_added += batch_added
                     app_logger.info(f"  Batch {line_num}: added {batch_added} documents (total: {total_added})")
         else:
-            # Legacy JSON format — load and batch manually
-            app_logger.info(f"Importing from documents.json (legacy format)")
+            app_logger.info("Importing from documents.json (legacy format)")
             with open(documents_json, 'r') as f:
                 documents_data = json.load(f)
 
             ids = documents_data.get('ids', [])
-            documents = documents_data.get('documents', [])
-            metadatas = documents_data.get('metadatas', [])
-            embeddings = documents_data.get('embeddings', [])
+            documents_list = documents_data.get('documents', [])
+            metadatas_list = documents_data.get('metadatas', [])
+            embeddings_list = documents_data.get('embeddings', [])
 
-            if ids and documents and embeddings:
-                # Process in batches
+            if ids and documents_list:
                 for start in range(0, len(ids), BATCH_SIZE):
                     end = min(start + BATCH_SIZE, len(ids))
                     batch = {
                         'ids': ids[start:end],
-                        'documents': documents[start:end],
-                        'metadatas': metadatas[start:end] if metadatas else [],
-                        'embeddings': embeddings[start:end] if embeddings else [],
+                        'documents': documents_list[start:end],
+                        'metadatas': metadatas_list[start:end] if metadatas_list else [],
+                        'embeddings': embeddings_list[start:end] if embeddings_list else [],
                     }
-                    batch_added = _add_batch_to_chroma(
-                        chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs
-                    )
+                    if use_backend:
+                        batch_added = await _add_batch_to_backend(
+                            backend, new_collection_name, batch,
+                            populate_knowledge_docs, all_metadatas_for_docs
+                        )
+                    else:
+                        batch_added = _add_batch_to_chroma(
+                            chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs
+                        )
                     total_added += batch_added
 
         # Verify import
-        document_count = chroma_collection.count()
+        if use_backend:
+            document_count = await backend.count(new_collection_name)
+        else:
+            document_count = chroma_collection.count()
         app_logger.info(f"Imported collection has {document_count} documents")
 
         # Determine MCP server binding
@@ -205,6 +227,8 @@ async def import_collection_from_zip(
             "chunk_size": metadata.get('chunk_size', 1000),
             "chunk_overlap": metadata.get('chunk_overlap', 200),
             "embedding_model": embedding_model,
+            "backend_type": backend_type,
+            "backend_config": metadata.get('backend_config', '{}'),
             "owner_user_id": user_uuid,
             "enabled": True,
             "visibility": "private"
@@ -293,6 +317,45 @@ def _add_batch_to_chroma(
     return len(ids)
 
 
+async def _add_batch_to_backend(
+    backend,
+    collection_name: str,
+    batch: dict,
+    collect_metadatas: bool,
+    all_metadatas: list,
+) -> int:
+    """Add a batch of documents to a VectorStoreBackend.
+
+    Returns the number of documents added.
+    """
+    from trusted_data_agent.vectorstore import VectorDocument
+
+    ids = batch.get('ids', [])
+    documents = batch.get('documents', [])
+    metadatas = batch.get('metadatas', [])
+    embeddings = batch.get('embeddings', [])
+
+    if not ids or not documents:
+        return 0
+
+    docs = [
+        VectorDocument(
+            id=ids[i],
+            content=documents[i] or "",
+            metadata={k: v for k, v in (metadatas[i] or {}).items() if v is not None},
+            # Treat missing or empty embeddings as None so the backend re-embeds
+            embedding=(embeddings[i] or None) if (embeddings and i < len(embeddings)) else None,
+        )
+        for i in range(len(ids))
+    ]
+
+    if collect_metadatas and metadatas:
+        all_metadatas.extend(m for m in metadatas if m)
+
+    await backend.add(collection_name, docs)
+    return len(ids)
+
+
 def _populate_knowledge_documents(collection_id: int, all_metadatas: list):
     """Populate the knowledge_documents table from chunk metadata."""
     from trusted_data_agent.auth.database import DATABASE_URL
@@ -377,20 +440,29 @@ async def export_collection_to_zip(
         if collection['owner_user_id'] != user_uuid:
             raise ValueError("You don't own this collection")
 
-        # Get ChromaDB collection
+        # Get collection handle (knowledge: via backend; planner: raw ChromaDB)
         collection_name = collection['collection_name']
+        repo_type = collection.get('repository_type', 'knowledge')
+        backend_type = collection.get('backend_type', 'chromadb')
+
         retriever = get_rag_retriever()
         if not retriever:
             raise RuntimeError("RAG retriever not initialized")
 
+        use_backend = (repo_type == 'knowledge')
         chroma_collection = None
-        try:
-            chroma_collection = retriever.client.get_collection(name=collection_name)
-        except Exception as e:
-            raise ValueError(f"ChromaDB collection not found: {e}")
+        backend = None
 
-        # Get document count
-        total_count = chroma_collection.count()
+        if use_backend:
+            backend = await retriever._get_knowledge_backend(collection_id)
+            total_count = await backend.count(collection_name)
+        else:
+            try:
+                chroma_collection = retriever.client.get_collection(name=collection_name)
+            except Exception as e:
+                raise ValueError(f"ChromaDB collection not found: {e}")
+            total_count = chroma_collection.count()
+
         app_logger.info(f"Export: Collection {collection_id} has {total_count} documents")
 
         # Build collection metadata
@@ -398,7 +470,8 @@ async def export_collection_to_zip(
             "collection_id": collection_id,
             "name": collection['name'],
             "description": collection['description'],
-            "repository_type": collection['repository_type'],
+            "repository_type": repo_type,
+            "backend_type": backend_type,
             "mcp_server_id": collection.get('mcp_server_id'),
             "chunking_strategy": collection['chunking_strategy'],
             "chunk_size": collection['chunk_size'],
@@ -421,33 +494,58 @@ async def export_collection_to_zip(
             offset = 0
             batch_num = 0
             while offset < total_count:
-                batch_data = chroma_collection.get(
-                    offset=offset,
-                    limit=BATCH_SIZE,
-                    include=['embeddings', 'documents', 'metadatas']
-                )
-
-                if not batch_data['ids']:
-                    break
-
-                # Convert embeddings to lists if needed
-                embeddings_list = []
-                for emb in batch_data['embeddings']:
-                    if isinstance(emb, list):
-                        embeddings_list.append(emb)
-                    else:
-                        embeddings_list.append(emb.tolist() if hasattr(emb, 'tolist') else list(emb))
-
-                batch_obj = {
-                    'ids': batch_data['ids'],
-                    'documents': batch_data['documents'],
-                    'metadatas': batch_data['metadatas'],
-                    'embeddings': embeddings_list,
-                }
+                if use_backend:
+                    get_result = await backend.get(
+                        collection_name,
+                        include_embeddings=True,
+                        include_documents=True,
+                        include_metadata=True,
+                        limit=BATCH_SIZE,
+                        offset=offset,
+                    )
+                    if not get_result.documents:
+                        break
+                    batch_ids = [d.id for d in get_result.documents]
+                    embeddings_list = []
+                    for d in get_result.documents:
+                        emb = d.embedding
+                        if emb is None:
+                            embeddings_list.append([])
+                        elif isinstance(emb, list):
+                            embeddings_list.append(emb)
+                        else:
+                            embeddings_list.append(list(emb))
+                    batch_obj = {
+                        'ids': batch_ids,
+                        'documents': [d.content for d in get_result.documents],
+                        'metadatas': [d.metadata for d in get_result.documents],
+                        'embeddings': embeddings_list,
+                    }
+                else:
+                    batch_data = chroma_collection.get(
+                        offset=offset,
+                        limit=BATCH_SIZE,
+                        include=['embeddings', 'documents', 'metadatas']
+                    )
+                    if not batch_data['ids']:
+                        break
+                    batch_ids = batch_data['ids']
+                    embeddings_list = []
+                    for emb in batch_data['embeddings']:
+                        if isinstance(emb, list):
+                            embeddings_list.append(emb)
+                        else:
+                            embeddings_list.append(emb.tolist() if hasattr(emb, 'tolist') else list(emb))
+                    batch_obj = {
+                        'ids': batch_ids,
+                        'documents': batch_data['documents'],
+                        'metadatas': batch_data['metadatas'],
+                        'embeddings': embeddings_list,
+                    }
 
                 f.write(json.dumps(batch_obj, allow_nan=False) + '\n')
                 batch_num += 1
-                offset += len(batch_data['ids'])
+                offset += len(batch_ids)
                 app_logger.info(f"Export: Wrote batch {batch_num} ({offset}/{total_count} documents)")
 
         # Create ZIP file
