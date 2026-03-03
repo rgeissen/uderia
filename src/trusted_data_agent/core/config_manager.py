@@ -618,30 +618,17 @@ class ConfigManager:
                         coll_name = coll.get("name", "Unknown")
                         app_logger.info(f"  Deleting collection {coll_id} ('{coll_name}')")
 
-                        # Note: remove_collection has default collection protection built-in
-                        # But we're deleting the MCP server, so all its collections must go
-                        # We'll bypass the default check by directly calling the deletion logic
+                        # remove_collection() is the single backend-aware entry point:
+                        # handles ChromaDB/Teradata deletion, runtime cache eviction,
+                        # and database removal in one call.  user_id is intentionally
+                        # omitted so only the global-default guard (ID 0) applies —
+                        # all MCP-bound collections must be removable here.
                         try:
-                            # Delete from ChromaDB
-                            collection_name = coll.get("collection_name", f"tda_rag_collection_{coll_id}")
-                            rag_retriever.client.delete_collection(name=collection_name)
-
-                            # Remove from runtime
-                            if coll_id in rag_retriever.collections:
-                                del rag_retriever.collections[coll_id]
-
-                            # Delete from database
-                            from trusted_data_agent.core.collection_db import get_collection_db
-                            collection_db = get_collection_db()
-                            collection_db.delete_collection(coll_id)
-
+                            rag_retriever.remove_collection(coll_id)
                             app_logger.info(f"  ✓ Deleted collection {coll_id}")
                         except Exception as coll_error:
                             app_logger.error(f"  ✗ Failed to delete collection {coll_id}: {coll_error}")
                             # Continue with other collections even if one fails
-
-                    # Reload APP_STATE after deletions
-                    APP_STATE["rag_collections"] = self.get_rag_collections(user_uuid)
                 else:
                     app_logger.warning("RAG retriever not available - collections may not be fully deleted")
             except Exception as e:

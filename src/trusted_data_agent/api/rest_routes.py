@@ -2704,11 +2704,7 @@ async def get_rag_collections():
             # Get document count if collection is active
             if is_active and retriever:
                 try:
-                    chromadb_collection = retriever.collections.get(coll["id"])
-                    if chromadb_collection:
-                        coll_copy["count"] = chromadb_collection.count()
-                    else:
-                        coll_copy["count"] = 0
+                    coll_copy["count"] = await retriever.get_collection_count(coll["id"])
                 except Exception as count_err:
                     app_logger.warning(f"Failed to get count for collection {coll['id']}: {count_err}")
                     coll_copy["count"] = 0
@@ -8892,12 +8888,9 @@ async def browse_marketplace_collections():
             
             # Add document count and ownership flag
             coll_copy = coll.copy()
-            if coll["id"] in retriever.collections:
-                try:
-                    coll_copy["count"] = retriever.collections[coll["id"]].count()
-                except:
-                    coll_copy["count"] = 0
-            else:
+            try:
+                coll_copy["count"] = await retriever.get_collection_count(coll["id"])
+            except Exception:
                 coll_copy["count"] = 0
             
             # Check if current user owns this collection

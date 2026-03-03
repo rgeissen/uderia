@@ -51,6 +51,16 @@ export function initializeKnowledgeRepositoryHandlers() {
         console.warn('[Knowledge] Form element not found during init (will attach later): add-knowledge-repository-form');
     }
     
+    // Backend type change — reveal Teradata fields, swap embedding options
+    const backendTypeSelect = document.getElementById('knowledge-repo-backend-type');
+    if (backendTypeSelect) {
+        backendTypeSelect.addEventListener('change', (e) => {
+            document.getElementById('knowledge-repo-teradata-config')
+                ?.classList.toggle('hidden', e.target.value !== 'teradata');
+            _updateEmbeddingOptionsForBackend(e.target.value);
+        });
+    }
+
     // Chunking strategy change handler with auto-preview
     const chunkingSelect = document.getElementById('knowledge-repo-chunking');
     if (chunkingSelect) {
@@ -124,6 +134,44 @@ export function initializeKnowledgeRepositoryHandlers() {
     console.log('[Knowledge] Knowledge repository handlers initialized');
 }
 
+// ── Backend-type helpers ──────────────────────────────────────────────────────
+
+/** Renders a colored inline backend-type badge for repository cards. */
+function _knowledgeBackendBadge(backendType) {
+    const backends = {
+        chromadb: { label: 'ChromaDB', color: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)' },
+        teradata: { label: 'Teradata', color: '#F15F22', bg: 'rgba(241,95,34,0.12)', border: 'rgba(241,95,34,0.3)' },
+    };
+    const c = backends[backendType] || backends.chromadb;
+    return `<span style="display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;background:${c.bg};color:${c.color};border:1px solid ${c.border};">${c.label}:</span>`;
+}
+
+/** Collects Teradata connection form fields into a plain object. Returns {} for ChromaDB. */
+function _buildBackendConfig(backendType) {
+    if (backendType !== 'teradata') return {};
+    return {
+        host:     document.getElementById('knowledge-repo-teradata-host')?.value.trim() || '',
+        username: document.getElementById('knowledge-repo-teradata-username')?.value.trim() || '',
+        password: document.getElementById('knowledge-repo-teradata-password')?.value || '',
+        database: document.getElementById('knowledge-repo-teradata-database')?.value.trim() || '',
+    };
+}
+
+/** Swaps the embedding model dropdown to show options appropriate for the backend. */
+function _updateEmbeddingOptionsForBackend(backendType) {
+    const sel = document.getElementById('knowledge-repo-embedding');
+    if (!sel) return;
+    sel.innerHTML = backendType === 'teradata'
+        ? `<option value="amazon.titan-embed-text-v1">amazon.titan-embed-text-v1 (AWS Bedrock)</option>
+           <option value="amazon.titan-embed-text-v2:0">amazon.titan-embed-text-v2:0 (AWS Bedrock v2)</option>
+           <option value="text-embedding-ada-002">text-embedding-ada-002 (Azure OpenAI)</option>`
+        : `<option value="all-MiniLM-L6-v2">all-MiniLM-L6-v2 (fast, lightweight)</option>
+           <option value="all-mpnet-base-v2">all-mpnet-base-v2 (balanced)</option>
+           <option value="all-distilroberta-v1">all-distilroberta-v1 (high quality)</option>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Open the Knowledge repository modal
  */
@@ -136,7 +184,13 @@ function openKnowledgeRepositoryModal() {
     // Reset form
     const form = document.getElementById('add-knowledge-repository-form');
     if (form) form.reset();
-    
+
+    // Reset backend selector to ChromaDB default and hide Teradata fields
+    const backendSelect = document.getElementById('knowledge-repo-backend-type');
+    if (backendSelect) backendSelect.value = 'chromadb';
+    document.getElementById('knowledge-repo-teradata-config')?.classList.add('hidden');
+    _updateEmbeddingOptionsForBackend('chromadb');
+
     // Populate MCP server dropdown
     const mcpServerSelect = document.getElementById('knowledge-repo-mcp-server');
     if (mcpServerSelect) {
@@ -576,7 +630,8 @@ async function handleKnowledgeRepositorySubmit(e) {
             // Get from form fields (pre-filled by template) or use minimal defaults
             const chunkingStrategy = chunkingInput?.value || 'semantic';  // Default from knowledge_repo_v1 template
             const embeddingModel = embeddingInput?.value || 'all-MiniLM-L6-v2';  // Default from template
-            
+            const backendType = document.getElementById('knowledge-repo-backend-type')?.value || 'chromadb';
+
             let chunkSize = 1000;  // Default from template
             let chunkOverlap = 200;  // Default from template
             
@@ -591,7 +646,18 @@ async function handleKnowledgeRepositorySubmit(e) {
                 showAppBanner('Repository name is required', 'warning');
                 return;
             }
-            
+
+            if (backendType === 'teradata') {
+                const tdHost = document.getElementById('knowledge-repo-teradata-host')?.value.trim();
+                const tdDb   = document.getElementById('knowledge-repo-teradata-database')?.value.trim();
+                const tdUser = document.getElementById('knowledge-repo-teradata-username')?.value.trim();
+                const tdPass = document.getElementById('knowledge-repo-teradata-password')?.value;
+                if (!tdHost || !tdDb || !tdUser || !tdPass) {
+                    showAppBanner('Teradata backend requires host, database, username and password', 'warning');
+                    return;
+                }
+            }
+
             // Disable submit button
             submitBtn.disabled = true;
             submitBtn.textContent = 'Creating...';
@@ -617,7 +683,9 @@ async function handleKnowledgeRepositorySubmit(e) {
                     chunking_strategy: chunkingStrategy,
                     chunk_size: chunkSize,
                     chunk_overlap: chunkOverlap,
-                    embedding_model: embeddingModel
+                    embedding_model: embeddingModel,
+                    backend_type: backendType,
+                    backend_config: _buildBackendConfig(backendType),
                 })
             });
             
@@ -1264,7 +1332,7 @@ function createKnowledgeRepositoryCard(repo) {
             </div>
             
             <p class="text-xs text-gray-500 mb-2">
-                <span class="text-gray-400">ChromaDB:</span> ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
+                ${_knowledgeBackendBadge(repo.backend_type)} ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
             </p>
 
             <p class="text-xs text-gray-400 mb-2">

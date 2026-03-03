@@ -7234,6 +7234,60 @@
                         </div>
                     </div>
 
+                    <!-- Storage Backend -->
+                    <div class="space-y-3 pt-3 border-t border-gray-700">
+                        <h3 class="text-base font-semibold text-white flex items-center gap-2">
+                            <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+                            </svg>
+                            Storage Backend
+                        </h3>
+                        <div>
+                            <label for="knowledge-repo-backend-type" class="block text-sm font-medium text-gray-300 mb-2">Backend</label>
+                            <select id="knowledge-repo-backend-type" name="backend_type"
+                                    class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none text-white">
+                                <option value="chromadb">ChromaDB — Local embedded, zero-config</option>
+                                <option value="teradata">Teradata — Enterprise, server-side embedding</option>
+                            </select>
+                            <p class="mt-1 text-xs text-gray-400">ChromaDB stores vectors locally. Teradata uses an enterprise vector store with embedding via AWS Bedrock or Azure OpenAI.</p>
+                        </div>
+                        <!-- Teradata connection config — revealed by JS when "teradata" is selected -->
+                        <div id="knowledge-repo-teradata-config" class="hidden space-y-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                            <p class="text-xs text-orange-300 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Embedding is handled server-side — no local model is loaded.
+                            </p>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label for="knowledge-repo-teradata-host" class="block text-xs text-gray-400 mb-1">Host <span class="text-red-400">*</span></label>
+                                    <input type="text" id="knowledge-repo-teradata-host" placeholder="teradata-host.company.com"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                </div>
+                                <div>
+                                    <label for="knowledge-repo-teradata-database" class="block text-xs text-gray-400 mb-1">Database <span class="text-red-400">*</span></label>
+                                    <input type="text" id="knowledge-repo-teradata-database" placeholder="VECTORS_DB"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                </div>
+                                <div>
+                                    <label for="knowledge-repo-teradata-username" class="block text-xs text-gray-400 mb-1">Username <span class="text-red-400">*</span></label>
+                                    <input type="text" id="knowledge-repo-teradata-username" placeholder="td_user"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
+                                           autocomplete="off">
+                                </div>
+                                <div>
+                                    <label for="knowledge-repo-teradata-password" class="block text-xs text-gray-400 mb-1">Password <span class="text-red-400">*</span></label>
+                                    <input type="password" id="knowledge-repo-teradata-password" placeholder="••••••••"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
+                                           autocomplete="new-password">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Document Processing -->
                     <div class="space-y-3 pt-3 border-t border-gray-700">
                         <h3 class="text-base font-semibold text-white flex items-center gap-2">

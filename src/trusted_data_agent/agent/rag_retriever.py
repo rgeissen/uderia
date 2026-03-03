@@ -228,7 +228,26 @@ class RAGRetriever:
         except Exception as e:
             logger.warning(f"Error fetching collection {collection_id} from database: {e}")
             return None
-    
+
+    async def get_collection_count(self, collection_id: int) -> int:
+        """Return document count for any backend type.
+
+        Knowledge repositories delegate to their configured backend (ChromaDB or
+        Teradata).  Planner repositories always use the raw ChromaDB object in
+        ``self.collections``.
+        """
+        coll_meta = self.get_collection_metadata(collection_id)
+        if coll_meta and coll_meta.get("repository_type") == "knowledge":
+            try:
+                backend = await self._get_knowledge_backend(collection_id)
+                if backend:
+                    return await backend.count(coll_meta["collection_name"])
+            except Exception as e:
+                logger.warning(f"get_collection_count: backend count failed for {collection_id}: {e}")
+        # Planner repo or fallback: raw ChromaDB object
+        coll = self.collections.get(collection_id)
+        return coll.count() if coll else 0
+
     def _get_user_accessible_collections(self, user_id: Optional[str] = None) -> List[int]:
         """
         Get collection IDs accessible to a specific user.
