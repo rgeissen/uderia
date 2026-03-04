@@ -400,10 +400,11 @@ Files: `src/trusted_data_agent/agent/rag_retriever.py`, `repository_constructor.
 
 #### 4a. Vector Store Abstraction Layer
 
-**Decouples platform from specific vector database implementations.** Single async-first interface with capability-based negotiation. Two production backends:
+**Decouples platform from specific vector database implementations.** Single async-first interface with capability-based negotiation. Three production backends:
 
 - **ChromaDB** (default): Local/embedded, client-side embedding via SentenceTransformer, 12 capabilities
 - **Teradata** (enterprise): Server-side embedding via Amazon Bedrock/Azure, 11 capabilities including `SERVER_SIDE_CHUNKING` and `GET_ALL`
+- **Qdrant Cloud**: Managed cloud vector DB, client-side embedding via SentenceTransformer, 12 capabilities. Uses `AsyncQdrantClient` with optional gRPC. Compound document IDs (e.g. `uuid_chunk_0_hash`) are hashed to deterministic UUID5 values; originals stored in `_uderia_id` payload field for round-trip fidelity.
 
 **Two ingestion paths for Teradata:**
 - **Client-side chunking**: Platform chunks locally → staging table → VectorStore (full doc management)
@@ -417,7 +418,7 @@ Files: `src/trusted_data_agent/agent/rag_retriever.py`, `repository_constructor.
 
 **Detailed Architecture:** [docs/Architecture/VECTOR_STORE_ABSTRACTION_ARCHITECTURE.md](docs/Architecture/VECTOR_STORE_ABSTRACTION_ARCHITECTURE.md)
 
-Files: `src/trusted_data_agent/vectorstore/` (8 files: `base.py`, `capabilities.py`, `types.py`, `filters.py`, `embedding_providers.py`, `factory.py`, `chromadb_backend.py`, `teradata_backend.py`), `test/test_teradata_backend.py`
+Files: `src/trusted_data_agent/vectorstore/` (9 files: `base.py`, `capabilities.py`, `types.py`, `filters.py`, `embedding_providers.py`, `factory.py`, `chromadb_backend.py`, `teradata_backend.py`, `qdrant_backend.py`), `test/test_teradata_backend.py`, `test/test_qdrant_backend.py`
 
 #### 5. Fusion Optimizer Execution Flow
 

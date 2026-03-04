@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Uderia Platform's **Vector Store Abstraction Layer** decouples the core platform from any specific vector database implementation. It defines a single, async-first interface that all backends must satisfy, enables capability-based negotiation for optional features, and ships with two production-ready backends: **ChromaDB** (local/embedded, default) and **Teradata** (enterprise, server-side embedding via Amazon Bedrock or Azure).
+The Uderia Platform's **Vector Store Abstraction Layer** decouples the core platform from any specific vector database implementation. It defines a single, async-first interface that all backends must satisfy, enables capability-based negotiation for optional features, and ships with three production-ready backends: **ChromaDB** (local/embedded, default), **Teradata** (enterprise, server-side embedding via Amazon Bedrock or Azure), and **Qdrant Cloud** (managed cloud vector DB, client-side embedding via SentenceTransformer).
 
 The abstraction makes it possible to add new backends without touching any agent, route, or UI code — only the new backend module and a one-line registry call are required.
 
@@ -20,7 +20,8 @@ src/trusted_data_agent/vectorstore/
 ├── embedding_providers.py    # EmbeddingProvider ABC + concrete implementations
 ├── factory.py                # Singleton factory + backend registry
 ├── chromadb_backend.py       # ChromaDB implementation (~435 lines)
-└── teradata_backend.py       # Teradata implementation (~756 lines)
+├── teradata_backend.py       # Teradata implementation (~756 lines)
+└── qdrant_backend.py         # Qdrant Cloud implementation (~445 lines)
 ```
 
 | File | Lines | Role |
@@ -33,7 +34,8 @@ src/trusted_data_agent/vectorstore/
 | `factory.py` | ~175 | Singleton caching factory with asyncio lock |
 | `chromadb_backend.py` | 435 | ChromaDB concrete backend |
 | `teradata_backend.py` | ~990 | Teradata concrete backend (client + server-side chunking) |
-| **Total** | **~2,241** | Core layer |
+| `qdrant_backend.py` | ~445 | Qdrant Cloud concrete backend (client-side embedding) |
+| **Total** | **~2,686** | Core layer |
 
 ---
 
@@ -658,6 +660,52 @@ When `set_auth_token` fails, the test endpoint appends diagnostic information:
 
 This aids troubleshooting since `TDML_2412` is a generic error that doesn't indicate which specific argument is invalid.
 
+### Qdrant Cloud Backend
+
+**File:** [vectorstore/qdrant_backend.py](../../src/trusted_data_agent/vectorstore/qdrant_backend.py)
+
+Managed cloud vector database backend. Uses `AsyncQdrantClient` (native async — no `asyncio.to_thread()` wrapping needed) for all operations. Embedding is client-side via `SentenceTransformerProvider`, identical to ChromaDB. Supports optional gRPC transport for higher throughput.
+
+#### ID Mapping
+
+Qdrant requires point IDs to be valid UUIDs or unsigned 64-bit integers. Uderia document IDs are often compound strings (e.g. `f602a7e6-..._chunk_0_8aa7f63d`) that fail UUID parsing. The backend handles this transparently:
+
+1. If the document ID is already a valid UUID, it is used as-is
+2. Otherwise, a deterministic UUID5 is generated from the ID using a fixed namespace
+3. The original ID is stored in the payload under `_uderia_id` for round-trip fidelity
+
+Content is stored in the payload under `_content` (Qdrant has no native "document" concept).
+
+#### Score-to-Distance Conversion
+
+Qdrant returns similarity scores (higher = better). The backend converts to distances (lower = better) via `distance = 1.0 - score` for abstraction layer consistency with ChromaDB.
+
+#### Scroll Pagination
+
+Qdrant uses cursor-based pagination (point ID offset), not integer offset. For compatibility with the abstraction layer's integer offset interface, the backend uses a fetch-and-slice strategy: fetch `offset + limit` points, then slice the result.
+
+#### Capabilities (12 declared)
+
+`CREATE_COLLECTION` · `DELETE_COLLECTION` · `ADD_DOCUMENTS` · `DELETE_DOCUMENTS` · `SIMILARITY_SEARCH` · `GET_BY_ID` · `COUNT` · `UPSERT` · `GET_BY_METADATA_FILTER` · `UPDATE_METADATA` · `EMBEDDING_PASSTHROUGH` · `GET_ALL`
+
+#### Configuration
+
+```json
+{
+    "url":          "https://xxx.cloud.qdrant.io:6333",
+    "api_key":      "xxx",
+    "prefer_grpc":  false,
+    "timeout":      30
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `url` | Yes | Qdrant Cloud cluster URL (HTTPS) |
+| `api_key` | Yes | API key from Qdrant Cloud dashboard |
+| `prefer_grpc` | No | Use gRPC transport for data operations (default: `false`). ~2-3x faster for bulk operations. |
+| `timeout` | No | Client timeout in seconds (default: `30`) |
+
 ---
 
 ## Integration Points
@@ -1149,3 +1197,4 @@ Manually running `DROP TABLE` / `DROP VIEW` on EVS-managed objects during an ad-
 | [api/knowledge_routes.py](../../src/trusted_data_agent/api/knowledge_routes.py) | Knowledge search/upload routes using abstraction layer (client + server-side paths) |
 | [static/js/handlers/knowledgeRepositoryHandler.js](../../static/js/handlers/knowledgeRepositoryHandler.js) | Frontend backend type badge, create dialog, server-side chunking toggle |
 | [test/test_teradata_backend.py](../../test/test_teradata_backend.py) | 29 unit tests covering both ingestion paths, browse/inspect fallback, and capabilities |
+| [test/test_qdrant_backend.py](../../test/test_qdrant_backend.py) | 41 unit tests covering ID hashing, lifecycle, collections, reads/writes, filter translation |

@@ -4425,7 +4425,7 @@ Update the list of users who can access a private marketplace pack.
 
 ### 3.15. Knowledge Repository Management
 
-Knowledge repositories store reference documents and domain knowledge that can be retrieved during query execution. Documents are chunked and embedded for semantic search via ChromaDB.
+Knowledge repositories store reference documents and domain knowledge that can be retrieved during query execution. Documents are chunked and embedded for semantic search via the Vector Store Abstraction Layer (ChromaDB, Teradata, or Qdrant Cloud).
 
 **Key Features:**
 - Upload documents (PDF, TXT, DOCX, MD)
