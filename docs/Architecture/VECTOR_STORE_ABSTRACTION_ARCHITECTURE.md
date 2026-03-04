@@ -1024,6 +1024,14 @@ If the backend uses server-side embedding, return `ServerSideEmbeddingProvider` 
 
 ## Design Decisions
 
+### Bridge Pattern — ChromaDB Dual Access (by design)
+
+ChromaDB-backed knowledge repos use **dual access**: both direct ChromaDB objects (`self.collections[id]`) and the abstraction layer (`self._knowledge_backends[id]`). Reads (queries, counts, listing) go direct; writes (upload, export, delete) go through the abstraction layer.
+
+Non-ChromaDB backends (Teradata) use **single access**: exclusively through the abstraction layer. All 13 direct-ChromaDB code paths in `rag_retriever.py`, `routes.py`, `rest_routes.py`, and `auth_routes.py` are guarded by `_is_chromadb_backend()` checks and are unreachable for Teradata collections.
+
+This is intentional — ChromaDB was the original implementation, and the abstraction layer was added around it for Teradata. Any future third backend would follow the Teradata pattern (fully abstracted).
+
 ### Async-First, Sync Backends Allowed
 All interface methods are `async`. Sync backends adapt via `asyncio.to_thread()`. This keeps Quart's event loop unblocked regardless of backend choice.
 

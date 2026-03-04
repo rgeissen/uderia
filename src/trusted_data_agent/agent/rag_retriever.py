@@ -1093,15 +1093,17 @@ class RAGRetriever:
         try:
             # 1. Clear documents via the appropriate backend
             if not self._is_chromadb_backend(coll_meta):
-                # Non-ChromaDB backend: delete all docs via abstraction layer
+                # Non-ChromaDB backend: destroy and recreate the collection.
+                # This is necessary because server-side chunked collections
+                # have no staging table, so per-document delete() won't work.
                 backend = await self._get_knowledge_backend(collection_id)
                 if backend:
                     coll_name = coll_meta["collection_name"]
-                    result = await backend.get(coll_name, include_documents=False)
-                    if result and result.documents:
-                        ids = [doc.id for doc in result.documents]
-                        items_deleted = await backend.delete(coll_name, ids)
-                        logger.info(f"Deleted {items_deleted} documents from {coll_meta.get('backend_type')} for collection '{collection_id}'")
+                    items_deleted = await backend.count(coll_name)
+                    await backend.delete_collection(coll_name)
+                    from trusted_data_agent.vectorstore.types import CollectionConfig
+                    await backend.get_or_create_collection(CollectionConfig(name=coll_name))
+                    logger.info(f"Reset {items_deleted} documents from {coll_meta.get('backend_type')} for collection '{collection_id}' (destroy + recreate)")
             elif collection_id in self.collections:
                 # ChromaDB path: delete via raw collection object
                 collection = self.collections[collection_id]

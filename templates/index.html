@@ -10256,7 +10256,7 @@
             tip.style.top = top + 'px';
             tip.style.left = left + 'px';
 
-            requestAnimationFrame(function() { tip.classList.add('visible'); });
+            requestAnimationFrame(function() { if (tip) tip.classList.add('visible'); });
         }
 
         function hide() {

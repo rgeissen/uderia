@@ -234,6 +234,16 @@ async function handleInstallAgentPack() {
             return;
         }
 
+        // Show VS config picker only if pack contains knowledge collections
+        let vectorStoreConfigId = null;
+        const hasKnowledgeCollections = manifest && (manifest.collections || [])
+            .some(c => c.repository_type === 'knowledge');
+        if (hasKnowledgeCollections) {
+            const vsResult = await _showVectorStoreConfigPicker();
+            if (vsResult === null) return; // User cancelled
+            vectorStoreConfigId = vsResult || null; // '' → null (use original)
+        }
+
         // Check for tag conflicts client-side
         let conflictStrategy = null;
         if (manifest) {
@@ -269,6 +279,7 @@ async function handleInstallAgentPack() {
             if (mcpServerId) formData.append('mcp_server_id', mcpServerId);
             formData.append('llm_configuration_id', llmConfigId);
             if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
+            if (vectorStoreConfigId) formData.append('vector_store_config_id', vectorStoreConfigId);
 
             const token = localStorage.getItem('tda_auth_token');
             const res = await fetch('/api/v1/agent-packs/import', {
@@ -411,6 +422,70 @@ function _showLlmConfigPicker() {
             const val = overlay.querySelector('#llm-config-picker-select').value || null;
             overlay.remove();
             resolve(val);
+        };
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { overlay.remove(); resolve(null); }
+        });
+    });
+}
+
+// ── Vector Store Configuration Picker ─────────────────────────────────────────
+
+function _showVectorStoreConfigPicker() {
+    return new Promise(async (resolve) => {
+        // Fetch available VS configurations
+        let vsConfigs = [];
+        try {
+            const res = await fetch('/api/v1/vectorstore/configurations', {
+                headers: _headers(false),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                vsConfigs = data.configurations || [];
+            }
+        } catch (e) {
+            console.warn('Failed to fetch vector store configurations:', e);
+        }
+
+        // If no configs available, skip (use original from export)
+        if (vsConfigs.length === 0) {
+            resolve('');
+            return;
+        }
+
+        // Build options HTML — "Use Original" first, then each config
+        const optionsHtml = vsConfigs.map(c => {
+            const backendLabel = (c.backend_type || 'unknown').charAt(0).toUpperCase() + (c.backend_type || 'unknown').slice(1);
+            const label = `${_esc(c.name)} (${_esc(backendLabel)})`;
+            return `<option value="${_esc(c.id)}">${label}</option>`;
+        }).join('');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]';
+        overlay.innerHTML = `
+            <div class="glass-panel rounded-xl p-6 w-full max-w-md border border-white/10 shadow-2xl">
+                <h3 class="text-lg font-bold text-white mb-2">Vector Store Backend</h3>
+                <p class="text-sm text-gray-400 mb-4">Select which vector store backend to use for knowledge collections in this agent pack. Choose "Use Original" to keep the backend from the export.</p>
+                <select id="vs-config-picker-select" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4 focus:outline-none focus:border-blue-500">
+                    <option value="">Use Original (from export)</option>
+                    ${optionsHtml}
+                </select>
+                <div class="flex justify-end gap-3">
+                    <button id="vs-picker-cancel" class="px-4 py-2 text-sm rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+                    <button id="vs-picker-confirm" class="card-btn card-btn--info">Continue</button>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#vs-picker-cancel').onclick = () => {
+            overlay.remove();
+            resolve(null);  // null = user cancelled
+        };
+        overlay.querySelector('#vs-picker-confirm').onclick = () => {
+            const val = overlay.querySelector('#vs-config-picker-select').value;
+            overlay.remove();
+            resolve(val);  // '' = use original, non-empty = override config ID
         };
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) { overlay.remove(); resolve(null); }

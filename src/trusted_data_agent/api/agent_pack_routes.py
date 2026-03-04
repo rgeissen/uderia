@@ -99,6 +99,7 @@ async def import_agent_pack(current_user):
             mcp_server_id = form.get("mcp_server_id") or None
             llm_configuration_id = form.get("llm_configuration_id") or None
             conflict_strategy = form.get("conflict_strategy") or None
+            vector_store_config_id = form.get("vector_store_config_id") or None
 
             # Save to temp file
             tmp = tempfile.NamedTemporaryFile(suffix=".agentpack", delete=False)
@@ -116,6 +117,7 @@ async def import_agent_pack(current_user):
             mcp_server_id = data.get("mcp_server_id") or None
             llm_configuration_id = data.get("llm_configuration_id") or None
             conflict_strategy = data.get("conflict_strategy") or None
+            vector_store_config_id = data.get("vector_store_config_id") or None
 
         else:
             return jsonify({
@@ -130,6 +132,7 @@ async def import_agent_pack(current_user):
             mcp_server_id=mcp_server_id,
             llm_configuration_id=llm_configuration_id,
             conflict_strategy=conflict_strategy,
+            vector_store_config_id=vector_store_config_id,
         )
         return jsonify({"status": "success", **result}), 200
 
@@ -1250,6 +1253,7 @@ async def fork_marketplace_agent_pack(current_user, pack_id: str):
         mcp_server_id = data.get("mcp_server_id") or None
         llm_configuration_id = data.get("llm_configuration_id") or None
         conflict_strategy = data.get("conflict_strategy", "expand")
+        vector_store_config_id = data.get("vector_store_config_id") or None
 
         # Find the marketplace pack
         conn = sqlite3.connect(str(DB_PATH))
@@ -1303,6 +1307,7 @@ async def fork_marketplace_agent_pack(current_user, pack_id: str):
             mcp_server_id=mcp_server_id,
             llm_configuration_id=llm_configuration_id,
             conflict_strategy=conflict_strategy,
+            vector_store_config_id=vector_store_config_id,
         )
 
         # Increment download_count on the marketplace pack

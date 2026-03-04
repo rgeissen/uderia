@@ -32,6 +32,7 @@ async def import_collection_from_zip(
     mcp_server_id: str | None = None,
     skip_reload: bool = False,
     populate_knowledge_docs: bool = False,
+    vector_store_config_id: str | None = None,
 ) -> dict:
     """Import a collection ZIP into Uderia.
 
@@ -121,6 +122,23 @@ async def import_collection_from_zip(
 
         repo_type = metadata.get('repository_type', 'knowledge')
         backend_type = metadata.get('backend_type', 'chromadb')
+
+        # If a vector_store_config_id override is provided, resolve the actual backend from it
+        if vector_store_config_id and repo_type == 'knowledge':
+            try:
+                from trusted_data_agent.core.config_manager import get_config_manager
+                all_vs = get_config_manager().get_vector_store_configurations(user_uuid)
+                vs_config = next((c for c in all_vs if c.get("id") == vector_store_config_id), None)
+                if vs_config:
+                    backend_type = vs_config.get("backend_type", backend_type)
+                    app_logger.info(f"Import: vector_store_config_id override → backend_type={backend_type}")
+                else:
+                    app_logger.warning(f"Import: vector_store_config_id '{vector_store_config_id}' not found, using metadata backend_type")
+                    vector_store_config_id = None  # fall back to normal resolution
+            except Exception as e:
+                app_logger.warning(f"Import: failed to resolve vector_store_config_id override: {e}")
+                vector_store_config_id = None
+
         app_logger.info(f"Importing {repo_type} collection (backend: {backend_type}): {new_collection_name}")
 
         # Resolve backend for knowledge repos; planner repos go through raw chroma_client
@@ -215,49 +233,54 @@ async def import_collection_from_zip(
             assigned_mcp_server_id = None
 
         # Resolve vector store config for imported collection
-        vector_store_config_id = None
+        resolved_vs_config_id = vector_store_config_id  # Use override if provided
         import_warnings = []
-        vs_config_data = metadata.get("vector_store_config")
 
-        if vs_config_data:
-            try:
-                from trusted_data_agent.core.config_manager import get_config_manager
-                config_manager = get_config_manager()
-                existing_configs = config_manager.get_vector_store_configurations(user_uuid)
+        if not resolved_vs_config_id:
+            # No override — resolve from export metadata (original behavior)
+            vs_config_data = metadata.get("vector_store_config")
 
-                # Try to match by name + backend_type
-                match = next((c for c in existing_configs
-                              if c.get("backend_type") == vs_config_data.get("backend_type")
-                              and c.get("name") == vs_config_data.get("name")), None)
+            if vs_config_data:
+                try:
+                    from trusted_data_agent.core.config_manager import get_config_manager
+                    config_manager = get_config_manager()
+                    existing_configs = config_manager.get_vector_store_configurations(user_uuid)
 
-                if match:
-                    vector_store_config_id = match["id"]
-                    app_logger.info(f"Import: matched vector store config '{match['name']}' for collection")
-                else:
-                    # Create new config (without credentials)
-                    import random, string
-                    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-                    new_vs_config = {
-                        "id": f"vs-{int(time.time() * 1000)}-{suffix}",
-                        "name": vs_config_data.get("name", f"Imported {vs_config_data.get('backend_type', 'unknown').title()}"),
-                        "backend_type": vs_config_data.get("backend_type", "chromadb"),
-                        "backend_config": vs_config_data.get("backend_config", {}),
-                        "credentials": {},
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    config_manager.add_vector_store_configuration(new_vs_config, user_uuid)
-                    vector_store_config_id = new_vs_config["id"]
-                    app_logger.info(f"Import: created vector store config '{new_vs_config['name']}' for collection")
+                    # Try to match by name + backend_type
+                    match = next((c for c in existing_configs
+                                  if c.get("backend_type") == vs_config_data.get("backend_type")
+                                  and c.get("name") == vs_config_data.get("name")), None)
 
-                    if vs_config_data.get("backend_type") != "chromadb":
-                        import_warnings.append(
-                            f"Vector store '{new_vs_config['name']}' was created without credentials. "
-                            f"Configure credentials in Configuration → Vector Stores before using this collection."
-                        )
-            except Exception as e:
-                app_logger.warning(f"Could not resolve vector store config during import: {e}")
-        elif backend_type == "chromadb":
-            vector_store_config_id = "vs-default-chromadb"
+                    if match:
+                        resolved_vs_config_id = match["id"]
+                        app_logger.info(f"Import: matched vector store config '{match['name']}' for collection")
+                    else:
+                        # Create new config (without credentials)
+                        import random, string
+                        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                        new_vs_config = {
+                            "id": f"vs-{int(time.time() * 1000)}-{suffix}",
+                            "name": vs_config_data.get("name", f"Imported {vs_config_data.get('backend_type', 'unknown').title()}"),
+                            "backend_type": vs_config_data.get("backend_type", "chromadb"),
+                            "backend_config": vs_config_data.get("backend_config", {}),
+                            "credentials": {},
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        config_manager.add_vector_store_configuration(new_vs_config, user_uuid)
+                        resolved_vs_config_id = new_vs_config["id"]
+                        app_logger.info(f"Import: created vector store config '{new_vs_config['name']}' for collection")
+
+                        if vs_config_data.get("backend_type") != "chromadb":
+                            import_warnings.append(
+                                f"Vector store '{new_vs_config['name']}' was created without credentials. "
+                                f"Configure credentials in Configuration → Vector Stores before using this collection."
+                            )
+                except Exception as e:
+                    app_logger.warning(f"Could not resolve vector store config during import: {e}")
+            elif backend_type == "chromadb":
+                resolved_vs_config_id = "vs-default-chromadb"
+        else:
+            app_logger.info(f"Import: using override vector_store_config_id='{resolved_vs_config_id}'")
 
         # Create collection in database
         from trusted_data_agent.core.collection_db import CollectionDatabase, get_collection_db
@@ -275,7 +298,7 @@ async def import_collection_from_zip(
             "embedding_model": embedding_model,
             "backend_type": backend_type,
             "backend_config": metadata.get('backend_config', '{}'),
-            "vector_store_config_id": vector_store_config_id,
+            "vector_store_config_id": resolved_vs_config_id,
             "owner_user_id": user_uuid,
             "enabled": True,
             "visibility": "private"
