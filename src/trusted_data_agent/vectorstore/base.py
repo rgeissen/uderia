@@ -18,6 +18,7 @@ from .types import (
     CollectionConfig,
     CollectionInfo,
     GetResult,
+    IngestionProgressCallback,
     QueryResult,
     ServerSideChunkingConfig,
     VectorDocument,
@@ -148,11 +149,16 @@ class VectorStoreBackend(ABC):
         collection_name: str,
         file_paths: List[str],
         chunking_config: Optional[ServerSideChunkingConfig] = None,
+        progress_callback: Optional[IngestionProgressCallback] = None,
     ) -> int:
         """Ingest raw files (PDF, etc.) with server-side chunking and embedding.
 
         Requires ``SERVER_SIDE_CHUNKING`` capability.  Backends that do not
         support this raise ``NotImplementedError``.
+
+        ``progress_callback``, when provided, is invoked with an
+        ``IngestionProgress`` on each status change during long-running
+        server-side operations (chunking, embedding, indexing).
 
         ``chunking_config`` controls chunking behavior (optimized vs fixed-size,
         header/footer trimming).  When ``None``, backend defaults apply

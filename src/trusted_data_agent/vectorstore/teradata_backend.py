@@ -44,10 +44,12 @@ and ``teradataml.copy_to_sql``.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
@@ -60,12 +62,105 @@ from .types import (
     CollectionInfo,
     DistanceMetric,
     GetResult,
+    IngestionProgress,
+    IngestionProgressCallback,
     QueryResult,
     ServerSideChunkingConfig,
     VectorDocument,
 )
 
 logger = logging.getLogger("vectorstore.teradata")
+
+# ── EVS phase → progress mapping ────────────────────────────────────────────
+# Teradata EVS reports status strings like "CREATING (EMBEDDING)".
+# Map these to approximate progress percentages and human-readable labels.
+
+_STATUS_PROGRESS: Dict[str, int] = {
+    "CREATING": 15,
+    "CREATING (PREPARING INPUT)": 20,
+    "CREATING (CHUNKING)": 35,
+    "CREATING (PROCESSING DOCUMENTS)": 40,
+    "CREATING (EMBEDDING)": 55,
+    "CREATING (INDEXING)": 80,
+    "READY": 100,
+    "COMPLETED": 100,
+    "SUCCESS": 100,
+}
+
+# Matches embedded percentages like "CREATING (PROCESSING DOCUMENTS 42.5 %)"
+_EMBEDDED_PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+
+# Phase ordering for interpolation when an embedded percentage is present.
+# Maps a phase keyword to (phase_start_pct, phase_end_pct) in the overall
+# progress bar.  The embedded % is scaled into this range.
+_PHASE_RANGES: Dict[str, tuple] = {
+    "PROCESSING DOCUMENTS": (25, 50),
+    "EMBEDDING": (50, 80),
+    "INDEXING": (80, 95),
+}
+
+
+def _resolve_progress_pct(status_str: str, elapsed: int, timeout: int) -> int:
+    """Map EVS status to percentage, with time-based fallback for unknown phases.
+
+    Handles three patterns:
+    1. Exact match in ``_STATUS_PROGRESS`` (e.g. ``CREATING (EMBEDDING)``).
+    2. Embedded percentage like ``CREATING (PROCESSING DOCUMENTS 42.5 %)``.
+       The embedded value is scaled into that phase's progress range.
+    3. Partial key match (e.g. ``CREATING (EMBEDDING BATCH 2)`` → ``EMBEDDING``).
+    4. Time-based fallback for truly unknown statuses.
+    """
+    # 1. Exact match
+    pct = _STATUS_PROGRESS.get(status_str)
+    if pct is not None:
+        return pct
+
+    upper = status_str.upper()
+
+    # 2. Extract embedded percentage and scale into phase range
+    m = _EMBEDDED_PCT_RE.search(status_str)
+    if m:
+        embedded = float(m.group(1))  # 0-100
+        for phase_key, (lo, hi) in _PHASE_RANGES.items():
+            if phase_key in upper:
+                return int(lo + (embedded / 100.0) * (hi - lo))
+
+    # 3. Partial key match
+    for key, val in _STATUS_PROGRESS.items():
+        if key in status_str:
+            pct = val
+            break
+    if pct is not None:
+        return pct
+
+    # 4. Time-based fallback
+    return min(10 + int((elapsed / max(timeout, 1)) * 80), 90)
+
+
+def _teradata_phase_label(status: str) -> str:
+    """Map EVS status string to user-friendly label."""
+    s = status.upper()
+    if "PREPARING" in s:
+        return "Preparing document for processing"
+    if "PROCESSING DOCUMENTS" in s:
+        m = _EMBEDDED_PCT_RE.search(status)
+        if m:
+            return f"Processing documents ({m.group(1)}%)"
+        return "Processing documents"
+    if "CHUNKING" in s:
+        return "Splitting document into chunks"
+    if "EMBEDDING" in s:
+        return "Generating embeddings (this may take a few minutes)"
+    if "INDEXING" in s:
+        return "Building search index"
+    if "READY" in s or "COMPLETED" in s or "SUCCESS" in s:
+        return "Processing complete"
+    if "FAILED" in s:
+        return "Processing failed"
+    if "CREATING" in s:
+        return "Creating vector store"
+    return f"Processing ({status})"
+
 
 class TeradataVectorBackend(VectorStoreBackend):
     """Teradata Enterprise Vector Store backend.
@@ -117,6 +212,27 @@ class TeradataVectorBackend(VectorStoreBackend):
         # reconnected *after* the caller's failed attempt, no second
         # create_context() is needed — just retry the SQL.
         self._last_reconnect_ts: float = 0.0
+        # Dedicated single-thread executor: teradataml uses SQLAlchemy's
+        # SingletonThreadPool (one connection per thread).  The default
+        # asyncio.to_thread() dispatches to random threads in a shared pool,
+        # so create_context() on thread A is invisible to execute_sql() on
+        # thread B → every call sees "connection lost" → constant reconnections.
+        # Pinning ALL teradataml/teradatagenai calls to one thread eliminates this.
+        self._td_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="teradataml"
+        )
+
+    async def _run_in_td_thread(self, fn, *args, **kwargs):
+        """Run *fn* on the dedicated teradataml thread.
+
+        All teradataml calls (create_context, execute_sql, VectorStore ops)
+        MUST go through this method to stay on the same thread and share
+        the SingletonThreadPool connection.
+        """
+        loop = asyncio.get_running_loop()
+        if kwargs:
+            fn = functools.partial(fn, **kwargs)
+        return await loop.run_in_executor(self._td_executor, fn, *args)
 
     # ── Identity & capabilities ───────────────────────────────────────────────
 
@@ -179,7 +295,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 ctx_kwargs["password"] = self._password
             if self._database:
                 ctx_kwargs["database"] = self._database
-            await asyncio.to_thread(create_context, **ctx_kwargs)
+            await self._run_in_td_thread(create_context, **ctx_kwargs)
 
             # 2. VS REST API auth — matches Getting Started cell [5]:
             #      ues_uri = env_vars.get("ues_uri")
@@ -220,10 +336,10 @@ class TeradataVectorBackend(VectorStoreBackend):
                 }
                 if self._pem_file:
                     pat_kwargs["pem_file"] = self._pem_file
-                await asyncio.to_thread(set_auth_token, **pat_kwargs)
+                await self._run_in_td_thread(set_auth_token, **pat_kwargs)
             else:
                 # Fallback: username/password Basic auth
-                await asyncio.to_thread(
+                await self._run_in_td_thread(
                     set_auth_token,
                     base_url=base_url,
                     username=self._username,
@@ -247,9 +363,10 @@ class TeradataVectorBackend(VectorStoreBackend):
         # Disconnect SDK sessions before clearing state
         try:
             from teradatagenai import VSManager  # type: ignore[import]
-            await asyncio.to_thread(VSManager.disconnect)
+            await self._run_in_td_thread(VSManager.disconnect)
         except Exception as exc:
             logger.debug(f"VSManager.disconnect() during shutdown: {exc}")
+        self._td_executor.shutdown(wait=False)
         # Clean up temp PEM dir if we created one
         if self._pem_tempfile:
             try:
@@ -299,7 +416,24 @@ class TeradataVectorBackend(VectorStoreBackend):
                 ctx_kwargs["password"] = self._password
             if self._database:
                 ctx_kwargs["database"] = self._database
-            await asyncio.to_thread(create_context, **ctx_kwargs)
+
+            try:
+                await self._run_in_td_thread(create_context, **ctx_kwargs)
+            except Exception as ce:
+                ce_str = str(ce)
+                if "TDML_2006" not in ce_str and "Failed to disconnect" not in ce_str:
+                    raise
+                # Pool disposal race: remove_context() inside create_context()
+                # failed because another thread was iterating the connection set.
+                # Best-effort cleanup, then retry once.
+                logger.warning(f"create_context() pool disposal race — retrying: {ce}")
+                try:
+                    from teradataml import remove_context  # type: ignore[import]
+                    await self._run_in_td_thread(remove_context)
+                except Exception:
+                    pass  # Pool may still be busy — proceed anyway
+                await asyncio.sleep(1.0)
+                await self._run_in_td_thread(create_context, **ctx_kwargs)
 
             if self._pat_token:
                 base_url = self._base_url
@@ -308,7 +442,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 pat_kwargs: dict = {"base_url": base_url, "pat_token": self._pat_token}
                 if self._pem_file:
                     pat_kwargs["pem_file"] = self._pem_file
-                await asyncio.to_thread(set_auth_token, **pat_kwargs)
+                await self._run_in_td_thread(set_auth_token, **pat_kwargs)
 
             self._last_reconnect_ts = time.monotonic()
 
@@ -321,7 +455,7 @@ class TeradataVectorBackend(VectorStoreBackend):
           (teradataml global context garbage-collected after idle timeout)
         - ``OperationalError: N is not a valid connection pool handle``
           (teradatasql pool invalidated by a concurrent ``create_context()``)
-        - ``OperationalError: … socket … / … connection …``
+        - ``OperationalError: … socket … / … connection refused|reset …``
           (TCP-level disconnect)
         """
         msg = str(exc).lower()
@@ -332,7 +466,9 @@ class TeradataVectorBackend(VectorStoreBackend):
             return (
                 "not a valid connection pool handle" in msg
                 or "socket" in msg
-                or "connection" in msg
+                or "connection refused" in msg
+                or "connection reset" in msg
+                or "broken pipe" in msg
             )
         # Catch-all: any exception mentioning the pool handle pattern
         return "not a valid connection pool handle" in msg
@@ -352,7 +488,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         from teradataml import execute_sql  # type: ignore[import]
 
         try:
-            return await asyncio.to_thread(execute_sql, sql)
+            return await self._run_in_td_thread(execute_sql, sql)
         except Exception as exc:
             if not self._is_connection_lost(exc):
                 raise
@@ -366,7 +502,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 )
                 raise
             await self._reconnect_all()
-            return await asyncio.to_thread(execute_sql, sql)
+            return await self._run_in_td_thread(execute_sql, sql)
 
     @staticmethod
     def _result_to_rows(result: Any) -> List[dict]:
@@ -405,6 +541,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         operation: str,
         timeout: int = 300,
         interval: int = 5,
+        progress_callback: Optional[IngestionProgressCallback] = None,
     ) -> Any:
         """Poll VectorStore until the operation completes, raises on failure or timeout.
 
@@ -420,6 +557,10 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         Returns the (possibly rebuilt) VectorStore instance so callers can
         cache the correct reference.
+
+        When ``progress_callback`` is provided, it is invoked with an
+        ``IngestionProgress`` on every status change and periodic heartbeat
+        so callers can relay real EVS phase information to the UI.
 
         Resilient to ``create_context()`` calls from other code paths (e.g.
         ``_execute_sql`` reconnect) that invalidate teradataml global state.
@@ -440,12 +581,24 @@ class TeradataVectorBackend(VectorStoreBackend):
                 consecutive_errors = 0  # reset on success
 
                 # Log status changes and periodic heartbeats
+                emit_progress = False
                 if status_str != last_status:
                     logger.info(f"VS '{operation}' status: {status_str}")
                     last_status = status_str
+                    emit_progress = True
                 elif poll_count % 12 == 0:  # Every ~60s at 5s interval
                     elapsed = int(time.monotonic() - (deadline - timeout))
                     logger.info(f"VS '{operation}' still {status_str} ({elapsed}s elapsed)")
+                    emit_progress = True
+
+                if emit_progress and progress_callback:
+                    elapsed = int(time.monotonic() - (deadline - timeout))
+                    progress_callback(IngestionProgress(
+                        status=status_str,
+                        phase=_teradata_phase_label(status_str),
+                        percentage=_resolve_progress_pct(status_str, elapsed, timeout),
+                        elapsed_seconds=elapsed,
+                    ))
 
                 if any(kw in status_str for kw in ("COMPLETED", "READY", "SUCCESS")):
                     self._vs_operation_active = False
@@ -487,8 +640,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             f"(last status: {last_status})"
         )
 
-    @staticmethod
-    async def _get_vs_status(vs: Any) -> str:
+    async def _get_vs_status(self, vs: Any) -> str:
         """Extract the canonical status string from a VectorStore instance.
 
         Prefers ``vs.get_details(return_type='json')`` because
@@ -504,7 +656,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         """
         # Primary: get_details(return_type='json') — plain dict, reliable
         try:
-            details = await asyncio.to_thread(
+            details = await self._run_in_td_thread(
                 lambda: vs.get_details(return_type="json")
             )
             if details and isinstance(details, dict):
@@ -516,10 +668,10 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         # Fallback: status() — works once the VS is past the initial phase
         try:
-            status = await asyncio.to_thread(vs.status)
+            status = await self._run_in_td_thread(vs.status)
             if status is not None:
                 # status() returns a teradataml DataFrame
-                pdf = await asyncio.to_thread(status.to_pandas)
+                pdf = await self._run_in_td_thread(status.to_pandas)
                 if not pdf.empty and "status" in pdf.columns:
                     return str(pdf["status"].iloc[0]).upper()
                 return str(status).upper()
@@ -657,11 +809,21 @@ class TeradataVectorBackend(VectorStoreBackend):
         """Destroy the VectorStore and drop the companion staging table."""
         deleted = False
 
-        # 1. Destroy the VectorStore
-        if name in self._stores:
-            vs = self._stores.pop(name)
+        # 1. Destroy the VectorStore via EVS REST API.
+        #    Use cached instance if available, otherwise create a fresh one
+        #    so the destroy fires even after server restarts.
+        vs = self._stores.pop(name, None)
+        if vs is None:
             try:
-                await asyncio.to_thread(vs.destroy)
+                from teradatagenai import VectorStore as _VS  # type: ignore[import]
+                vs = await self._run_in_td_thread(_VS, name)
+                logger.info(f"Created transient VectorStore instance for destroy: '{name}'")
+            except Exception as exc:
+                logger.warning(f"Could not create VectorStore instance for '{name}': {exc}")
+
+        if vs is not None:
+            try:
+                await self._run_in_td_thread(vs.destroy)
                 await self._poll_status(vs, operation="destroy", timeout=120)
                 deleted = True
                 logger.info(f"Teradata VS '{name}' destroyed")
@@ -736,7 +898,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         try:
             # Write delta to a named temp table (used for incremental VS ingestion)
-            await asyncio.to_thread(
+            await self._run_in_td_thread(
                 copy_to_sql,
                 df=df,
                 table_name=delta_table,
@@ -746,7 +908,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             )
 
             # Append to staging table for ID tracking
-            await asyncio.to_thread(
+            await self._run_in_td_thread(
                 copy_to_sql,
                 df=df,
                 table_name=staging,
@@ -758,7 +920,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             if collection_name not in self._stores:
                 # First add: create the VectorStore from the full staging table
                 vs = VectorStore(collection_name)
-                await asyncio.to_thread(
+                await self._run_in_td_thread(
                     vs.create,
                     embeddings_model=self._embedding_model,
                     search_algorithm=self._search_algorithm,
@@ -778,7 +940,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             else:
                 # Subsequent adds: ingest only the delta into the existing VS
                 vs = self._stores[collection_name]
-                await asyncio.to_thread(
+                await self._run_in_td_thread(
                     vs.add_datasets,
                     data=delta_qualified,
                     key_columns=["CHUNK_ID"],
@@ -812,11 +974,16 @@ class TeradataVectorBackend(VectorStoreBackend):
         collection_name: str,
         file_paths: List[str],
         chunking_config: Optional[ServerSideChunkingConfig] = None,
+        progress_callback: Optional[IngestionProgressCallback] = None,
     ) -> int:
         """Ingest files directly via ``VectorStore.create(document_files=...)``.
 
         The Teradata SDK handles chunking + embedding server-side.
         Follows the Chatbot PDF pattern from VantageCloud Lake notebooks.
+
+        When ``progress_callback`` is provided, it is invoked with real EVS
+        phase information (PREPARING INPUT → CHUNKING → EMBEDDING → INDEXING
+        → READY) so callers can relay progress to the UI.
         """
         if not self._initialized:
             await self.initialize()
@@ -847,9 +1014,12 @@ class TeradataVectorBackend(VectorStoreBackend):
         if config.footer_height > 0:
             create_kwargs["footer_height"] = config.footer_height
 
-        await asyncio.to_thread(vs.create, **create_kwargs)
+        await self._run_in_td_thread(vs.create, **create_kwargs)
         # PDF processing with Bedrock embeddings can take 15–30+ minutes
-        vs = await self._poll_status(vs, operation="create_from_files", timeout=1800)
+        vs = await self._poll_status(
+            vs, operation="create_from_files", timeout=1800,
+            progress_callback=progress_callback,
+        )
 
         self._stores[collection_name] = vs
         self._collections.add(collection_name)
@@ -907,7 +1077,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         try:
             # 2. Load the deleted rows into a temp table for VS removal
-            await asyncio.to_thread(
+            await self._run_in_td_thread(
                 copy_to_sql,
                 df=rows_df,
                 table_name=del_table,
@@ -917,7 +1087,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             )
 
             # 3. Remove from the VectorStore
-            await asyncio.to_thread(
+            await self._run_in_td_thread(
                 vs.delete_datasets,
                 data=del_qualified,
                 key_columns=["CHUNK_ID"],
@@ -976,7 +1146,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             )
 
         try:
-            result_df_raw = await asyncio.to_thread(
+            result_df_raw = await self._run_in_td_thread(
                 vs.similarity_search,
                 question=query_text,
                 return_type="pandas",
@@ -991,7 +1161,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             await self._reconnect_all()
             # Re-acquire VectorStore handle (SDK object may be invalidated)
             vs = self._get_store(collection_name)
-            result_df_raw = await asyncio.to_thread(
+            result_df_raw = await self._run_in_td_thread(
                 vs.similarity_search,
                 question=query_text,
                 return_type="pandas",

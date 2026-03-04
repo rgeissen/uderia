@@ -9,7 +9,7 @@ translates to/from its native format at the boundary.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 
 class DistanceMetric(Enum):
@@ -106,3 +106,21 @@ class ServerSideChunkingConfig:
     chunk_size: int = 500
     header_height: float = 0.0
     footer_height: float = 0.0
+
+
+@dataclass
+class IngestionProgress:
+    """Progress update from a long-running vector store ingestion operation.
+
+    Emitted by backends that support ``SERVER_SIDE_CHUNKING`` during
+    ``add_document_files()`` to report real operation phases back to callers
+    (e.g. SSE streaming endpoints).
+    """
+    status: str          # Backend-specific status (e.g. "CREATING (EMBEDDING)")
+    phase: str           # Human-readable phase label
+    percentage: int      # Estimated 0-100 progress
+    elapsed_seconds: int # Seconds since operation started
+
+
+# Callback type for ingestion progress updates.
+IngestionProgressCallback = Callable[[IngestionProgress], None]

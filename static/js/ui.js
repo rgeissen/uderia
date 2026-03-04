@@ -6436,16 +6436,6 @@ function createKnowledgeRepositoryCard(col) {
     header.appendChild(titleSection);
     header.appendChild(badgesContainer);
     
-    // MCP Server info
-    const mcpInfo = document.createElement('p');
-    mcpInfo.className = 'text-sm text-gray-300';
-    let mcpServerDisplay = 'None';
-    if (col.mcp_server_id && window.configState && window.configState.mcpServers) {
-        const mcpServer = window.configState.mcpServers.find(s => s.id === col.mcp_server_id);
-        mcpServerDisplay = mcpServer ? mcpServer.name : 'Unknown';
-    }
-    mcpInfo.innerHTML = `<span class="text-gray-500">MCP Server:</span> ${mcpServerDisplay}`;
-    
     // Description (if exists)
     const desc = col.description ? (() => {
         const d = document.createElement('p');
@@ -6475,7 +6465,6 @@ function createKnowledgeRepositoryCard(col) {
 
     card.appendChild(header);
     if (desc) card.appendChild(desc);
-    card.appendChild(mcpInfo);
     card.appendChild(meta);
     card.appendChild(embeddingInfo);
     card.appendChild(countsInfo);

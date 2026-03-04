@@ -297,9 +297,15 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     "percentage": 10
                 }, "progress")
 
-                # Run server-side chunking as a background task so we can
-                # emit SSE progress events while Teradata processes the PDF.
+                # Run server-side chunking as a background task.
+                # The progress_callback feeds real EVS status phases into
+                # the queue so we can relay them as SSE events.
                 import asyncio as _asyncio
+                progress_queue = _asyncio.Queue()
+
+                def _on_ingest_progress(update):
+                    progress_queue.put_nowait(update)
+
                 ingest_task = _asyncio.create_task(
                     backend.add_document_files(
                         collection_name=collection_name,
@@ -310,28 +316,67 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                             header_height=float(form.get("header_height", 0.0)),
                             footer_height=float(form.get("footer_height", 0.0)),
                         ),
+                        progress_callback=_on_ingest_progress,
                     )
                 )
 
-                elapsed = 0
+                last_pct = 10
                 while not ingest_task.done():
-                    await _asyncio.sleep(5)
-                    elapsed += 5
-                    # Progress: 10% → 90% over ~30 min (1800s)
-                    pct = min(10 + int((elapsed / 1800) * 80), 90)
-                    minutes = elapsed // 60
-                    seconds = elapsed % 60
-                    time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
-                    yield format_sse({
-                        "type": "progress",
-                        "message": f"Teradata is processing the document (server-side chunking & embedding)... {time_str} elapsed",
-                        "percentage": pct
-                    }, "progress")
+                    try:
+                        update = await _asyncio.wait_for(progress_queue.get(), timeout=10)
+                        pct = max(update.percentage, last_pct)  # never go backwards
+                        last_pct = pct
+                        minutes = update.elapsed_seconds // 60
+                        seconds = update.elapsed_seconds % 60
+                        time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+                        yield format_sse({
+                            "type": "progress",
+                            "message": f"{update.phase} ({time_str} elapsed)",
+                            "percentage": pct
+                        }, "progress")
+                    except _asyncio.TimeoutError:
+                        continue  # no status update in 10s — keep waiting
 
                 # Retrieve result — raises if the task failed
                 try:
                     await ingest_task
                 except Exception as ingest_err:
+                    # Clean up the failed EVS object on Teradata so it
+                    # doesn't leave a ghost dictionary entry.
+                    try:
+                        await backend.delete_collection(collection_name)
+                        app_logger.info(f"Cleaned up failed VS '{collection_name}' on Teradata")
+                    except Exception as cleanup_err:
+                        app_logger.warning(
+                            f"Could not clean up failed VS '{collection_name}': {cleanup_err}"
+                        )
+
+                    # If this was the first upload (no documents yet), remove
+                    # the orphaned local collection record — an empty knowledge
+                    # repo with no backend VS is useless.
+                    try:
+                        from trusted_data_agent.core.collection_db import CollectionDatabase
+                        _cleanup_db = CollectionDatabase()
+                        _cleanup_conn = _cleanup_db._get_connection()
+                        _cleanup_cur = _cleanup_conn.cursor()
+                        _cleanup_cur.execute(
+                            "SELECT COUNT(*) as cnt FROM knowledge_documents WHERE collection_id = ?",
+                            (collection_id,),
+                        )
+                        doc_count = _cleanup_cur.fetchone()["cnt"]
+                        _cleanup_conn.close()
+                        if doc_count == 0:
+                            from trusted_data_agent.core.collection_db import get_collection_db
+                            get_collection_db().delete_collection(collection_id)
+                            app_logger.info(
+                                f"Removed empty orphaned collection {collection_id} "
+                                f"('{collection_name}')"
+                            )
+                    except Exception as local_err:
+                        app_logger.warning(
+                            f"Could not clean up local collection {collection_id}: {local_err}"
+                        )
+
                     yield format_sse({
                         "type": "error",
                         "message": f"Server-side chunking failed: {ingest_err}"
@@ -1135,35 +1180,58 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
             except Exception as qe:
                 app_logger.warning(f"Query failed for knowledge collection '{collection_name}': {qe}")
         else:
-            # Get all chunks with pagination
+            # Get chunks with pagination
             try:
-                get_result = await backend.get(coll_name_full)
-                total = get_result.total_count
+                # Metadata-field sorts require fetching all rows (can't sort JSON in SQL)
+                needs_full_fetch = sort_by and sort_by in ['document_id', 'chunk_index', 'token_count']
 
-                all_chunks = []
-                for doc in get_result.documents:
-                    metadata = doc.metadata or {}
-                    content = doc.content
-                    all_chunks.append({
-                        "id": doc.id,
-                        "document_id": metadata.get("document_id", ""),
-                        "chunk_index": metadata.get("chunk_index", 0),
-                        "content": content if not light else content[:200] + "..." if len(content) > 200 else content,
-                        "token_count": metadata.get("token_count", 0),
-                        "metadata": metadata,
-                    })
+                if needs_full_fetch:
+                    # Full fetch + in-memory sort + slice
+                    get_result = await backend.get(coll_name_full)
+                    total = get_result.total_count
 
-                # Apply sorting if requested
-                if sort_by and sort_by in ['id', 'document_id', 'chunk_index', 'token_count']:
+                    all_chunks = []
+                    for doc in get_result.documents:
+                        metadata = doc.metadata or {}
+                        content = doc.content
+                        all_chunks.append({
+                            "id": doc.id,
+                            "document_id": metadata.get("document_id", ""),
+                            "chunk_index": metadata.get("chunk_index", 0),
+                            "content": content if not light else content[:200] + "..." if len(content) > 200 else content,
+                            "token_count": metadata.get("token_count", 0),
+                            "metadata": metadata,
+                        })
+
                     reverse = sort_order.lower() == 'desc'
                     try:
                         all_chunks.sort(key=lambda x: (x.get(sort_by) is None, x.get(sort_by)), reverse=reverse)
-                        app_logger.debug(f"Applied server-side sorting: {sort_by} {sort_order}")
                     except Exception as e:
                         app_logger.debug(f"Sorting failed: {e}")
 
-                # Apply pagination
-                chunks = all_chunks[offset:offset + limit]
+                    chunks = all_chunks[offset:offset + limit]
+                else:
+                    # Server-side pagination — only fetch the requested page
+                    total = await backend.count(coll_name_full)
+                    get_result = await backend.get(
+                        coll_name_full,
+                        offset=offset,
+                        limit=limit,
+                        include_documents=True,
+                        include_metadata=True,
+                    )
+
+                    for doc in get_result.documents:
+                        metadata = doc.metadata or {}
+                        content = doc.content
+                        chunks.append({
+                            "id": doc.id,
+                            "document_id": metadata.get("document_id", ""),
+                            "chunk_index": metadata.get("chunk_index", 0),
+                            "content": content if not light else content[:200] + "..." if len(content) > 200 else content,
+                            "token_count": metadata.get("token_count", 0),
+                            "metadata": metadata,
+                        })
 
             except Exception as ge:
                 app_logger.error(f"Failed to get chunks for collection '{collection_name}': {ge}", exc_info=True)
@@ -1294,51 +1362,23 @@ async def test_knowledge_backend_connection(current_user: dict):
         return jsonify({"status": "error", "message": "host is required"}), 400
 
     try:
-        from teradataml import create_context  # type: ignore[import]
-        from teradatagenai import set_auth_token, VSManager  # type: ignore[import]
+        from trusted_data_agent.vectorstore.teradata_backend import TeradataVectorBackend
     except ImportError:
         return jsonify({
             "status": "error",
             "message": "Teradata SDK not installed. Run: pip install teradatagenai teradataml"
         }), 500
 
+    # Use a temporary backend instance with its own dedicated thread so
+    # the test-connection does not overwrite the global teradataml context
+    # used by active backends (which would cause connection-lost cascades).
+    test_backend = TeradataVectorBackend(backend_config)
     try:
-        # Strip /open-analytics suffix (Getting Started pattern)
-        base_url = backend_config.get("base_url", "")
-        if base_url.endswith("/open-analytics"):
-            base_url = base_url[:-len("/open-analytics")]
+        await test_backend.initialize()
 
-        # 1. SQL context — must be established BEFORE set_auth_token (SDK requirement).
-        #    Matches Getting Started: create_context(host, username, password=my_variable)
-        ctx_kwargs: dict = {
-            "host": backend_config["host"],
-            "username": backend_config.get("username", ""),
-        }
-        if backend_config.get("password"):
-            ctx_kwargs["password"] = backend_config["password"]
-        if backend_config.get("database"):
-            ctx_kwargs["database"] = backend_config["database"]
-        await asyncio.to_thread(create_context, **ctx_kwargs)
-
-        # 2. VS REST API auth — matches Getting Started:
-        #    set_auth_token(base_url=ues_uri, pat_token=access_token, pem_file=pem_file)
-        if has_pat:
-            await asyncio.to_thread(
-                set_auth_token,
-                base_url=base_url,
-                pat_token=backend_config["pat_token"],
-                pem_file=backend_config.get("pem_file") or None,
-            )
-        elif base_url:
-            await asyncio.to_thread(
-                set_auth_token,
-                base_url=base_url,
-                username=backend_config["username"],
-                password=backend_config["password"],
-            )
-
-        # 3. Vector Store health check (from the SDK chatbot pattern)
-        health = await asyncio.to_thread(VSManager.health)
+        # Health check via the backend's own dedicated thread
+        from teradatagenai import VSManager  # type: ignore[import]
+        health = await test_backend._run_in_td_thread(VSManager.health)
 
         return jsonify({
             "status": "success",
@@ -1353,3 +1393,5 @@ async def test_knowledge_backend_connection(current_user: dict):
     except Exception as e:
         app_logger.warning(f"Teradata test-connection failed: {e}")
         return jsonify({"status": "error", "message": f"Connection failed: {e}"}), 400
+    finally:
+        await test_backend.shutdown()
