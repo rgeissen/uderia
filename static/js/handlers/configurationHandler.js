@@ -2861,6 +2861,11 @@ function initializeConfigTabs() {
             if (targetTabId === 'extensions-tab') {
                 loadExtensions();
             }
+
+            // Lazy-load vector stores when tab is activated
+            if (targetTabId === 'vector-stores-tab') {
+                // Future: loadVectorStores();
+            }
         });
     });
 }

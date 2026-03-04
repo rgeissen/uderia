@@ -2836,12 +2836,20 @@
                                 MCP Servers
                             </div>
                         </button>
+                        <button class="config-tab ind-tab ind-tab--underline" data-tab="vector-stores-tab">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                                </svg>
+                                Vector Stores
+                            </div>
+                        </button>
                         <button class="config-tab ind-tab ind-tab--underline" data-tab="llm-providers-tab">
                             <div class="flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                 </svg>
-                                LLM Providers
+                                LLMs
                             </div>
                         </button>
                         <button class="config-tab ind-tab ind-tab--underline" data-tab="context-window-tab">
@@ -2849,7 +2857,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                                 </svg>
-                                Context Window
+                                Context Windows
                             </div>
                         </button>
                         <button class="config-tab ind-tab ind-tab--underline" data-tab="profiles-tab">
@@ -3015,6 +3023,28 @@
 
                                     <div id="mcp-servers-container" class="space-y-4">
                                         <!-- MCP server cards will be dynamically added here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Vector Stores -->
+                        <div id="vector-stores-tab" class="config-tab-content hidden">
+                            <div class="space-y-6">
+                                <div class="glass-panel rounded-xl p-6">
+                                    <div class="flex justify-between items-center mb-6">
+                                        <div>
+                                            <h3 class="text-xl font-bold text-white">Vector Stores</h3>
+                                            <p class="text-sm text-gray-400 mt-1">Configure vector store backends for knowledge repositories</p>
+                                        </div>
+                                    </div>
+
+                                    <div id="vector-stores-container" class="flex flex-col items-center justify-center py-16 text-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                                        </svg>
+                                        <p class="text-gray-400 text-lg font-medium">Vector store configuration coming soon</p>
+                                        <p class="text-gray-500 text-sm mt-2 max-w-md">Manage ChromaDB and Teradata vector store backends, embedding models, and connection settings from here.</p>
                                     </div>
                                 </div>
                             </div>

@@ -2,9 +2,11 @@
 
 ## Overview
 
-The Knowledge Retrieval system powers the **Focus** profile class (`rag_focused`), delivering grounded, hallucination-free answers from verified documents. Unlike Planner Repositories that self-improve execution strategies, Knowledge Repositories serve as the organization's searchable institutional memory — policies, documentation, domain expertise, and reference materials accessible through natural language.
+The Knowledge Retrieval system powers the **Focus** profile class (`rag_focused`) and is also available as an optional capability for **Ideate** profiles (`llm_only`). It delivers grounded, hallucination-free answers from verified documents. Unlike Planner Repositories that self-improve execution strategies, Knowledge Repositories serve as the organization's searchable institutional memory — policies, documentation, domain expertise, and reference materials accessible through natural language.
 
-This document provides a comprehensive architectural deep-dive into the retrieval pipeline, scoring algorithms, configuration system, and integration points.
+This document provides a comprehensive architectural deep-dive into the retrieval pipeline, scoring algorithms, configuration system, vector store abstraction, and integration points.
+
+> **Related Documentation:** [Vector Store Abstraction Architecture](VECTOR_STORE_ABSTRACTION_ARCHITECTURE.md) — backend interface, factory pattern, ChromaDB and Teradata implementations.
 
 ---
 
@@ -13,18 +15,20 @@ This document provides a comprehensive architectural deep-dive into the retrieva
 1. [Design Philosophy](#design-philosophy)
 2. [Architecture Overview](#architecture-overview)
 3. [Execution Flow](#execution-flow)
-4. [Document Ingestion Pipeline](#document-ingestion-pipeline)
-5. [Retrieval Pipeline](#retrieval-pipeline)
-6. [Scoring Algorithms](#scoring-algorithms)
-7. [Configuration System](#configuration-system)
-8. [LLM Synthesis](#llm-synthesis)
-9. [Multi-User Access Control](#multi-user-access-control)
-10. [Event System](#event-system)
-11. [Comparison: Knowledge vs Planner Repositories](#comparison-knowledge-vs-planner-repositories)
-12. [Performance Characteristics](#performance-characteristics)
-13. [Advanced Features](#advanced-features)
-14. [Troubleshooting](#troubleshooting)
-15. [File Reference](#file-reference)
+4. [Knowledge Retrieval for Ideate Profiles](#knowledge-retrieval-for-ideate-profiles)
+5. [Vector Store Abstraction](#vector-store-abstraction)
+6. [Document Ingestion Pipeline](#document-ingestion-pipeline)
+7. [Retrieval Pipeline](#retrieval-pipeline)
+8. [Scoring Algorithms](#scoring-algorithms)
+9. [Configuration System](#configuration-system)
+10. [LLM Synthesis](#llm-synthesis)
+11. [Multi-User Access Control](#multi-user-access-control)
+12. [Event System](#event-system)
+13. [Comparison: Knowledge vs Planner Repositories](#comparison-knowledge-vs-planner-repositories)
+14. [Performance Characteristics](#performance-characteristics)
+15. [Advanced Features](#advanced-features)
+16. [Troubleshooting](#troubleshooting)
+17. [File Reference](#file-reference)
 
 ---
 
@@ -35,7 +39,7 @@ This document provides a comprehensive architectural deep-dive into the retrieva
 The Focus profile class enforces a strict retrieval-then-synthesize pattern:
 
 1. **No general knowledge**: The LLM receives a system prompt instructing it to answer **only** from retrieved documents
-2. **No tool calling**: The execution path bypasses the Planner/Executor entirely — no MCP tools, no strategic planning
+2. **No MCP tool calling**: The execution path bypasses the Planner/Executor entirely — no MCP tools, no strategic planning. *Exception*: When component tools (TDA_Charting, TDA_Canvas) are enabled on the profile, synthesis routes through `ConversationAgentExecutor`, allowing the LLM to visualize retrieved data. See [Agent-Based Synthesis](#agent-based-synthesis-with-component-tools).
 3. **Transparent failure**: If no relevant documents are found, the system reports this honestly rather than fabricating an answer
 4. **Source traceability**: Every synthesized answer carries citations back to specific document chunks and metadata
 
@@ -62,13 +66,14 @@ The system maintains a clear architectural boundary between two repository types
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌───────────┐    ┌──────────────┐    ┌──────────────┐    ┌─────────────┐  │
-│  │  Document  │    │  Repository  │    │   ChromaDB   │    │  Embedding  │  │
-│  │  Upload    │───►│  Constructor │───►│  Collection  │◄───│   Model     │  │
-│  │  (API)     │    │  (Chunking)  │    │  (Vectors)   │    │ MiniLM-L6   │  │
-│  └───────────┘    └──────────────┘    └──────┬───────┘    └─────────────┘  │
-│                                              │                              │
-│                                              │ query()                      │
-│                                              ▼                              │
+│  │  Document  │    │  Repository  │    │ Vector Store │    │  Embedding  │  │
+│  │  Upload    │───►│  Constructor │───►│   Backend    │◄───│  Provider   │  │
+│  │  (API)     │    │  (Chunking)  │    │ (ChromaDB /  │    │ (Client or  │  │
+│  └───────────┘    └──────────────┘    │  Teradata)   │    │  Server)    │  │
+│                                        └──────┬───────┘    └─────────────┘  │
+│                                               │                             │
+│                                               │ query()                     │
+│                                               ▼                             │
 │  ┌───────────┐    ┌──────────────┐    ┌──────────────┐    ┌─────────────┐  │
 │  │  Profile   │───►│  Config      │───►│  RAG         │───►│  LLM        │  │
 │  │  Config    │    │  Resolution  │    │  Retriever   │    │  Synthesis   │  │
@@ -76,8 +81,8 @@ The system maintains a clear architectural boundary between two repository types
 │  └───────────┘    └──────────────┘    └──────────────┘    └─────────────┘  │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  Executor (rag_focused path)                                         │  │
-│  │  - No planning, no tools                                             │  │
+│  │  Executor (rag_focused + llm_only paths)                             │  │
+│  │  - No planning, no MCP tools (component tools optional)              │  │
 │  │  - Mandatory retrieval → LLM synthesis → answer with citations       │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
@@ -88,12 +93,15 @@ The system maintains a clear architectural boundary between two repository types
 
 | Component | File | Responsibility |
 |-----------|------|----------------|
-| **Executor** | `agent/executor.py` | Orchestrates the rag_focused execution path |
+| **Executor** | `agent/executor.py` | Orchestrates rag_focused and llm_only knowledge paths |
 | **RAG Retriever** | `agent/rag_retriever.py` | Semantic search, scoring, deduplication |
-| **Repository Constructor** | `agent/repository_constructor.py` | Document chunking and ChromaDB population |
+| **Repository Constructor** | `agent/repository_constructor.py` | Document chunking and vector store population |
 | **Config Manager** | `core/config_manager.py` | Three-tier configuration resolution |
 | **Knowledge Routes** | `api/knowledge_routes.py` | Document upload and collection management API |
-| **Collection DB** | `core/collection_db.py` | ChromaDB client and collection lifecycle |
+| **Collection Utils** | `core/collection_utils.py` | Collection utility functions |
+| **Vector Store Backend** | `vectorstore/base.py` | Abstract interface for vector store operations |
+| **Vector Store Factory** | `vectorstore/factory.py` | Backend factory with singleton caching |
+| **Conversation Agent** | `agent/conversation_agent.py` | Agent-based synthesis when component tools enabled |
 
 ---
 
@@ -167,12 +175,121 @@ When a query arrives at a `rag_focused` profile, the executor follows a dedicate
 
 Unlike `tool_enabled` profiles, the `rag_focused` path:
 - Does **not** invoke the strategic planner
-- Does **not** call MCP tools
+- Does **not** call MCP tools (component tools like TDA_Charting are the exception — see [Agent-Based Synthesis](#agent-based-synthesis-with-component-tools))
 - Does **not** execute tactical planning phases
 - Does **not** save results as champion cases for future RAG
 - Does **not** perform self-correction loops
 
 This intentional simplicity ensures predictable, fast, grounded responses.
+
+---
+
+## Knowledge Retrieval for Ideate Profiles
+
+Knowledge retrieval is not exclusive to `rag_focused` profiles. **Ideate** (`llm_only`) profiles can also enable knowledge retrieval via `knowledgeConfig.enabled = true`. This allows conversational profiles to ground their answers in verified documents while retaining their direct-conversation execution model.
+
+### How It Works
+
+When an `llm_only` profile has `knowledgeConfig.enabled = true`, the executor:
+
+1. Detects knowledge is enabled from the profile configuration
+2. Runs the **identical retrieval pipeline** as `rag_focused` (3-tier config, scoring, deduplication)
+3. Formats retrieved documents into a knowledge context string
+4. Injects the context into the LLM prompt alongside the conversation history
+5. The LLM synthesizes an answer that blends knowledge documents with conversational context
+
+```python
+# executor.py — llm_only knowledge detection (line ~2833)
+knowledge_config = profile_config.get("knowledgeConfig", {})
+knowledge_enabled = knowledge_config.get("enabled", False)
+
+if knowledge_enabled and self.rag_retriever:
+    # Uses same retrieve_examples() pipeline as rag_focused
+    all_results = await self.rag_retriever.retrieve_examples(
+        query=self.original_user_input,
+        repository_type="knowledge",
+        ...
+    )
+```
+
+### Key Differences from Focus Profiles
+
+| Aspect | Focus (`rag_focused`) | Ideate with Knowledge (`llm_only`) |
+|--------|----------------------|------------------------------------|
+| **Primary purpose** | Document-grounded answers only | Conversational with optional grounding |
+| **System prompt** | RAG_FOCUSED_EXECUTION (strict) | Standard conversation prompt + knowledge |
+| **Component tools** | Optional via ConversationAgentExecutor | Optional via ConversationAgentExecutor |
+| **MCP tools** | Never | Available if `useMcpTools = true` |
+| **When no results found** | Reports "no relevant knowledge" | Falls back to general conversation |
+
+### Configuration
+
+The same `knowledgeConfig` structure applies to both profile types:
+
+```json
+{
+  "profile_type": "llm_only",
+  "knowledgeConfig": {
+    "enabled": true,
+    "collections": [
+      { "collectionId": 37, "reranking": false }
+    ],
+    "maxDocs": 5,
+    "minRelevanceScore": 0.30
+  }
+}
+```
+
+All configuration parameters, three-tier resolution, and admin locks work identically.
+
+### Events
+
+The `llm_only` knowledge path emits:
+- `execution_start` with `knowledge_enabled: true` and `knowledge_collections` count
+- `knowledge_retrieval` notification event (retrieval progress)
+- Standard `conversation_llm_step` events (synthesis tokens)
+
+---
+
+## Vector Store Abstraction
+
+Knowledge repositories are backed by a **pluggable vector store abstraction layer** (`src/trusted_data_agent/vectorstore/`). This allows collections to use different storage backends while presenting a unified async interface to the retrieval pipeline.
+
+### Backends
+
+| Backend | Type | Embedding | Capabilities |
+|---------|------|-----------|-------------|
+| **ChromaDB** | Local embedded | Client-side (SentenceTransformers) | 12 capabilities (default) |
+| **Teradata** | Enterprise server | Server-side (Bedrock / Azure OpenAI) | 8 capabilities |
+
+### Architecture
+
+```
+RAG Retriever
+     │
+     ▼
+VectorStoreFactory.get_backend(backend_type, config)
+     │
+     ├── ChromaDB  → PersistentClient, client-side embedding
+     └── Teradata  → REST API, server-side embedding
+```
+
+- **Factory pattern**: `vectorstore/factory.py` maintains singleton instances keyed by `(backend_type, config)` fingerprint (MD5 of sorted JSON)
+- **Async-first**: All interface methods are `async`; ChromaDB wraps sync calls via `asyncio.to_thread()`
+- **Capability negotiation**: Backends declare supported operations via `VectorStoreCapability` enum. Callers check `has_capability()` before attempting optional operations.
+- **Per-collection backend**: Each collection stores its `backend_type` and `backend_config` in the `collections` table, allowing mixed backends within a single deployment
+
+### Per-Collection Backend Resolution
+
+```python
+# factory.py — resolve backend from collection metadata
+async def get_backend_for_collection(coll_meta) -> VectorStoreBackend:
+    backend_type = coll_meta.get("backend_type", "chromadb")
+    backend_config = json.loads(coll_meta.get("backend_config", "{}"))
+    return await get_backend(backend_type, backend_config)
+```
+
+For a comprehensive deep-dive into the abstraction layer, see [Vector Store Abstraction Architecture](VECTOR_STORE_ABSTRACTION_ARCHITECTURE.md).
 
 ---
 
@@ -284,16 +401,26 @@ ChromaDB stores both the embedding vectors and the original chunk text, enabling
 
 ## Retrieval Pipeline
 
-### ChromaDB Query
+### Vector Store Query
 
-The retriever (`rag_retriever.py`) queries each knowledge collection independently:
+The retriever (`rag_retriever.py`) queries each knowledge collection independently. For ChromaDB collections, the query goes directly via the ChromaDB client. For non-ChromaDB collections (e.g., Teradata), the query routes through the **Vector Store Abstraction Layer** (`vectorstore/factory.py`):
 
 ```python
+# ChromaDB collections (default path) — rag_retriever.py:1677
 query_results = collection.query(
     query_texts=[query],        # User's natural language question
     n_results=k * 10,           # Over-fetch for post-filtering
     where=None,                 # Knowledge repos: no metadata filter
     include=["metadatas", "distances", "documents"]
+)
+
+# Non-ChromaDB collections — rag_retriever.py:1756
+backend = await get_backend_for_collection(coll_meta)
+results = await backend.query(
+    collection_name=coll_meta["collection_name"],
+    query_text=query,
+    n_results=k * 10,
+    include_metadata=True
 )
 ```
 
@@ -515,6 +642,19 @@ def get_effective_knowledge_config(self, profile_knowledge_config=None):
 }
 ```
 
+### Context Window Manager Budget Override
+
+When the Context Window Manager is enabled (`APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER`), the `maxTokens` parameter is subject to an additional budget constraint. The context window orchestrator allocates a token budget to the `knowledge_context` module during its five-pass assembly. This budget caps the effective `maxTokens`:
+
+```python
+# executor.py — CW budget override (line ~3536)
+cw_knowledge_budget = getattr(self, '_cw_knowledge_max_tokens', None)
+if cw_knowledge_budget:
+    max_tokens = min(cw_knowledge_budget, max_tokens)
+```
+
+**Priority**: The lower of `maxTokens` (from configuration) and the CW module budget wins. This ensures knowledge context respects the overall context window allocation, preventing knowledge documents from crowding out conversation history or other modules.
+
 ### Tuning Guidelines
 
 **For high-precision use cases** (compliance, legal, policy):
@@ -595,6 +735,42 @@ The LLM receives a message structured as:
   "What new features are planned for Q2?"
 ```
 
+### Agent-Based Synthesis with Component Tools
+
+When a `rag_focused` (or `llm_only` with knowledge) profile has **component tools** enabled (e.g., TDA_Charting, TDA_Canvas), the synthesis step routes through `ConversationAgentExecutor` instead of a direct LLM call. This allows the LLM to invoke component tools during synthesis — for example, visualizing retrieved data as a chart.
+
+```
+Standard synthesis:     Knowledge Context → LLM → Answer
+Agent-based synthesis:  Knowledge Context → LLM Agent → [TDA_Charting] → Answer + Chart
+```
+
+**Implementation** (`executor.py`, lines 4047-4080):
+
+```python
+rag_component_tools = get_component_langchain_tools(profile_id, user_uuid)
+
+if rag_component_tools:
+    # Agent-based synthesis — LLM can call component tools
+    rag_agent = ConversationAgentExecutor(
+        mcp_tools=rag_component_tools,
+        knowledge_context=knowledge_context,
+        profile_type="rag_focused",
+        ...
+    )
+    agent_result = await rag_agent.execute(user_query)
+else:
+    # Standard direct LLM synthesis (no tools)
+    response_text = await self._call_llm_and_update_tokens(prompt=user_message)
+```
+
+**Events emitted** by agent-based synthesis:
+- `conversation_agent_start` with `profile_type: "rag_focused"` (branded as "Focus Agent" in UI)
+- `conversation_llm_step` (per LLM call within the agent loop)
+- `conversation_tool_invoked` / `conversation_tool_completed` (if component tools are called)
+- `conversation_agent_complete` (final summary)
+
+When the agent path is active, the executor skips emitting its own `rag_llm_step` and `tool_result` events to avoid duplication.
+
 ### Token Tracking
 
 Token counts are extracted from the actual LLM response (not pre-estimated):
@@ -638,6 +814,28 @@ def _get_user_accessible_collections(self, user_id):
 
 At query time, the retriever intersects the user's accessible collections with the profile's configured collection IDs, ensuring no unauthorized data leaks into results.
 
+### RAGAccessContext
+
+Access control is encapsulated in the `RAGAccessContext` class (`agent/rag_access_context.py`), which is passed to `retrieve_examples()` at query time:
+
+```python
+# executor.py — RAGAccessContext initialization (line ~3585)
+from trusted_data_agent.agent.rag_access_context import RAGAccessContext
+rag_context = RAGAccessContext(user_id=self.user_uuid, retriever=self.rag_retriever)
+
+all_results = await self.rag_retriever.retrieve_examples(
+    query=self.original_user_input,
+    rag_context=rag_context,
+    repository_type="knowledge",
+    ...
+)
+```
+
+The `RAGAccessContext` provides:
+- **`accessible_collections`** (cached property): Set of collection IDs the user can read (owned + subscribed + public)
+- **`validate_collection_access(collection_id, access_type)`**: Validates read or write access before operations
+- **Caching**: Accessible collections are computed once per context and cached for the request lifecycle
+
 ### Marketplace Integration
 
 Collections published to the Intelligence Marketplace can be subscribed to by other users. Subscribed collections appear in the user's accessible set and can be assigned to their profiles.
@@ -646,13 +844,13 @@ Collections published to the Intelligence Marketplace can be subscribed to by ot
 
 ## Event System
 
-The Focus profile emits a specific set of events during execution, enabling real-time UI updates:
+Knowledge retrieval emits events for real-time UI updates. The event flow varies depending on the execution path.
 
-### Event Flow
+### Standard Event Flow (Direct LLM Synthesis)
 
 ```
 execution_start
-  │
+  │  → { profile_type: "rag_focused", knowledge_enabled: true }
   ▼
 knowledge_retrieval_start
   │  → UI shows "Retrieving knowledge..."
@@ -661,7 +859,7 @@ knowledge_retrieval_complete
   │  → UI shows retrieved document titles
   │  → UI updates knowledge banner
   ▼
-conversation_llm_step (synthesis)
+rag_llm_step (synthesis)
   │  → UI shows "Synthesizing answer..."
   │  → Token counts emitted
   ▼
@@ -675,14 +873,58 @@ execution_complete
   │  → UI clears execution indicators
 ```
 
+### Agent-Based Event Flow (Component Tools Active)
+
+When component tools are enabled, the synthesis step emits agent events instead:
+
+```
+execution_start
+  │
+  ▼
+knowledge_retrieval_start → knowledge_retrieval_complete
+  │
+  ▼
+conversation_agent_start          ← "Focus Agent Started"
+  │
+  ├── conversation_llm_step       ← LLM call (may invoke tools)
+  ├── conversation_tool_invoked   ← e.g., TDA_Charting called
+  ├── conversation_tool_completed ← Tool result
+  ├── conversation_llm_step       ← Follow-up LLM call
+  │
+  ▼
+conversation_agent_complete       ← "Focus Agent Complete"
+  │
+  ▼
+execution_complete
+```
+
+Note: When the agent path is active, `rag_llm_step` and `tool_result` events are **not** emitted by the executor (the agent's events replace them).
+
+### Ideate Profile Event Flow (`llm_only` with Knowledge)
+
+```
+execution_start
+  │  → { profile_type: "llm_only", knowledge_enabled: true }
+  ▼
+knowledge_retrieval (notification)
+  │  → Retrieval progress
+  ▼
+conversation_llm_step (synthesis)
+  │  → Token counts
+  ▼
+execution_complete
+```
+
 ### Key Events
 
 | Event | Payload | Purpose |
 |-------|---------|---------|
-| `execution_start` | `{ profile_type, profile_tag }` | Initialize UI execution state |
+| `execution_start` | `{ profile_type, profile_tag, knowledge_enabled, knowledge_collections }` | Initialize UI execution state |
 | `knowledge_retrieval_start` | `{ collection_count }` | Show retrieval indicator |
 | `knowledge_retrieval_complete` | `{ results_count, documents[], sources[] }` | Populate knowledge panel |
-| `conversation_llm_step` | `{ input_tokens, output_tokens, model }` | Token tracking |
+| `rag_llm_step` | `{ input_tokens, output_tokens, model, cost_usd }` | Token tracking (direct path only) |
+| `conversation_agent_start` | `{ profile_type, available_tools[] }` | Agent start (component tools path) |
+| `conversation_agent_complete` | `{ tools_used[], input_tokens, output_tokens, cost_usd }` | Agent complete (component tools path) |
 | `token_update` | `{ total_input, total_output }` | Cumulative token counters |
 | `final_answer` | `{ html, sources[], tts_payload }` | Render answer |
 | `execution_complete` | `{ duration_ms, tokens }` | Cleanup UI state |
@@ -697,7 +939,7 @@ When a user switches away from a session with active knowledge retrieval, the fu
 
 | Aspect | Planner Repositories | Knowledge Repositories |
 |--------|---------------------|----------------------|
-| **Profile class** | Optimize (`tool_enabled`) | Focus (`rag_focused`) |
+| **Profile class** | Optimize (`tool_enabled`) | Focus (`rag_focused`) + Ideate (`llm_only` opt-in) |
 | **Purpose** | Self-improving execution strategies | Grounded document retrieval |
 | **Data source** | Auto-captured execution traces | Uploaded documents (PDF, DOCX, TXT, MD) |
 | **Storage format** | JSON case files on disk + ChromaDB | Chunks in ChromaDB only |
@@ -843,18 +1085,25 @@ This transparent failure mode prevents hallucination — the system never fabric
 
 | File | Key Lines | Description |
 |------|-----------|-------------|
-| `src/trusted_data_agent/agent/executor.py` | 2584–3390 | RAG-focused execution path |
-| `src/trusted_data_agent/agent/executor.py` | 2638–2653 | Configuration parameter extraction |
-| `src/trusted_data_agent/agent/executor.py` | 2693–2703 | Core retrieval call |
-| `src/trusted_data_agent/agent/rag_retriever.py` | 1288–1345 | ChromaDB query and WHERE filter logic |
-| `src/trusted_data_agent/agent/rag_retriever.py` | 1355–1452 | Scoring: similarity, freshness, adjusted |
-| `src/trusted_data_agent/agent/rag_retriever.py` | 1454–1465 | Per-document deduplication |
-| `src/trusted_data_agent/agent/rag_retriever.py` | 662–755 | Collection creation |
+| `src/trusted_data_agent/agent/executor.py` | 3471–4200 | RAG-focused execution path |
+| `src/trusted_data_agent/agent/executor.py` | 2831–2867 | llm_only knowledge retrieval path |
+| `src/trusted_data_agent/agent/executor.py` | 3531–3548 | Configuration parameter extraction + CW budget override |
+| `src/trusted_data_agent/agent/executor.py` | 3585–3598 | RAGAccessContext initialization + retrieve_examples call |
+| `src/trusted_data_agent/agent/executor.py` | 4047–4080 | ConversationAgentExecutor for component tools synthesis |
+| `src/trusted_data_agent/agent/rag_retriever.py` | 1565–1814 | `retrieve_examples()` — full function with scoring and filtering |
+| `src/trusted_data_agent/agent/rag_retriever.py` | 1677–1682 | ChromaDB query |
+| `src/trusted_data_agent/agent/rag_retriever.py` | 1753–1809 | Non-ChromaDB (vector store abstraction) query path |
+| `src/trusted_data_agent/agent/rag_access_context.py` | 22–100 | RAGAccessContext class — access control encapsulation |
+| `src/trusted_data_agent/agent/conversation_agent.py` | 65–140 | ConversationAgentExecutor — agent-based synthesis |
 | `src/trusted_data_agent/agent/repository_constructor.py` | 40–312 | Chunking strategies |
-| `src/trusted_data_agent/core/config_manager.py` | 2026–2068 | Three-tier config resolution |
+| `src/trusted_data_agent/core/config_manager.py` | 2197–2239 | Three-tier config resolution |
+| `src/trusted_data_agent/core/collection_utils.py` | — | Collection utility functions |
 | `src/trusted_data_agent/api/knowledge_routes.py` | 175–393 | Document upload API |
-| `src/trusted_data_agent/core/collection_db.py` | — | ChromaDB client management |
+| `src/trusted_data_agent/vectorstore/base.py` | 31–150 | VectorStoreBackend abstract interface |
+| `src/trusted_data_agent/vectorstore/factory.py` | 64–150 | Backend factory with singleton caching |
+| `src/trusted_data_agent/vectorstore/capabilities.py` | — | VectorStoreCapability enum (8 capabilities) |
+| `components/builtin/context_window/modules/knowledge_context/handler.py` | — | CW knowledge module (budget allocation) |
 
 ---
 
-*Last updated: February 2026*
+*Last updated: March 2026*
