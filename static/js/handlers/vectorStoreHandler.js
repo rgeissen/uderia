@@ -105,7 +105,7 @@
     }
 
     function renderCard(config) {
-        const isDefault = config.id === 'vs-default-chromadb';
+        const isDefault = config.id === 'vs-default-chromadb' || config.id === 'vs-default-teradata' || config.id === 'vs-default-qdrant';
         const isChromaDB = config.backend_type === 'chromadb';
         const isQdrant = config.backend_type === 'qdrant';
         const collCount = config.collection_count || 0;
@@ -198,7 +198,7 @@
             const config = result.configuration;
             document.getElementById('vs-name').value = config.name || '';
             document.getElementById('vs-backend-type').value = config.backend_type || 'chromadb';
-            document.getElementById('vs-backend-type').disabled = (configId === 'vs-default-chromadb');
+            document.getElementById('vs-backend-type').disabled = (configId === 'vs-default-chromadb' || configId === 'vs-default-teradata' || configId === 'vs-default-qdrant');
 
             const bc = config.backend_config || {};
             const creds = config.credentials || {};

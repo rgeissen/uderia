@@ -1811,7 +1811,7 @@ class ConfigManager:
             Tuple of (success: bool, error_message: Optional[str])
         """
         # Prevent deletion of default configs
-        if config_id in ("vs-default-chromadb", "vs-default-teradata"):
+        if config_id in ("vs-default-chromadb", "vs-default-teradata", "vs-default-qdrant"):
             return False, "Cannot delete default vector store configurations"
 
         # Check if any collections reference this config
@@ -1846,7 +1846,7 @@ class ConfigManager:
     def ensure_default_vector_store_config(self, user_uuid: Optional[str] = None) -> None:
         """
         Ensure the default vector store configurations exist.
-        Creates a Local ChromaDB and a Teradata (empty credentials) config on first run.
+        Creates Local ChromaDB, Teradata, and Qdrant Cloud (empty credentials) configs on first run.
         Called during bootstrap and login.
         """
         if not user_uuid:
@@ -1884,6 +1884,21 @@ class ConfigManager:
             })
             changed = True
             app_logger.info(f"Created default Teradata vector store configuration for user {user_uuid}")
+
+        if not any(c.get("id") == "vs-default-qdrant" for c in configs):
+            from datetime import datetime, timezone
+            configs.append({
+                "id": "vs-default-qdrant",
+                "name": "Qdrant Cloud",
+                "backend_type": "qdrant",
+                "backend_config": {
+                    "url": "",
+                    "prefer_grpc": False
+                },
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            changed = True
+            app_logger.info(f"Created default Qdrant Cloud vector store configuration for user {user_uuid}")
 
         if changed:
             self.save_vector_store_configurations(configs, user_uuid)
