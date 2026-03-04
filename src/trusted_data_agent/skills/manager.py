@@ -147,8 +147,32 @@ class SkillManager:
 
         logger.info(f"Loaded {loaded} skill(s) ({auto_loaded} auto-discovered)")
 
+    @staticmethod
+    def _parse_frontmatter(content: str) -> "tuple[dict, str]":
+        """Parse YAML frontmatter from markdown. Returns (fields_dict, body).
+
+        Handles simple ``key: value`` pairs only (no PyYAML dependency).
+        The body is the content after the closing ``---`` marker.
+        """
+        if not content.startswith("---"):
+            return {}, content
+        try:
+            end = content.index("\n---", 3)
+        except ValueError:
+            return {}, content
+        yaml_block = content[3:end].strip()
+        body = content[end + 4:].lstrip("\n")
+        fields: dict = {}
+        for line in yaml_block.splitlines():
+            if ":" in line:
+                key, _, val = line.partition(":")
+                fields[key.strip()] = val.strip()
+        return fields, body
+
     def _has_content(self, directory: Path) -> bool:
-        """Check if a directory has skill content (.md file or skill.json)."""
+        """Check if a directory has skill content (.md file, SKILL.md, or skill.json)."""
+        if (directory / "SKILL.md").exists():
+            return True
         if (directory / "skill.json").exists():
             return True
         return any(directory.glob("*.md"))
@@ -184,6 +208,41 @@ class SkillManager:
             auto_loaded += 1
             loaded_ids.add(skill_id)
             logger.info(f"Auto-discovered user skill: {skill_id} (flat .md)")
+
+        # Mode D: Subdirectory with SKILL.md but no skill.json (pure Claude Code format)
+        for subdir in sorted(self.user_dir.iterdir()):
+            if not subdir.is_dir() or subdir.name.startswith((".", "_")):
+                continue
+            skill_md = subdir / "SKILL.md"
+            if not skill_md.exists() or (subdir / "skill.json").exists():
+                continue
+            skill_id = subdir.name
+            if skill_id in loaded_ids:
+                continue
+            try:
+                raw = skill_md.read_text(encoding="utf-8")
+                fm, _ = self._parse_frontmatter(raw)
+                manifest = {
+                    "name": fm.get("name", skill_id),
+                    "description": fm.get("description", ""),
+                    "version": fm.get("version", "1.0.0"),
+                    "author": fm.get("author", "User"),
+                    "tags": [],
+                    "keywords": [],
+                    "use_cases": [],
+                    "main_file": "SKILL.md",
+                    "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "_is_user": True,
+                    "_auto_generated": False,
+                    "_dir": str(subdir),
+                }
+                self.manifests[manifest["name"]] = manifest
+                self.skill_dirs[manifest["name"]] = subdir
+                auto_loaded += 1
+                loaded_ids.add(skill_id)
+                logger.info(f"Auto-discovered user skill: {skill_id} (Claude Code SKILL.md)")
+            except Exception as e:
+                logger.warning(f"Failed to load SKILL.md for '{skill_id}': {e}")
 
         # Mode A & B: Subdirectories
         for subdir in sorted(self.user_dir.iterdir()):
@@ -271,6 +330,20 @@ class SkillManager:
             logger.error(f"Failed to load manifest for skill '{skill_id}': {e}")
             return False
 
+        # If SKILL.md exists, merge its frontmatter (name/description take precedence)
+        skill_md_path = skill_dir / "SKILL.md"
+        if skill_md_path.exists():
+            try:
+                raw = skill_md_path.read_text(encoding="utf-8")
+                fm, _ = self._parse_frontmatter(raw)
+                if fm.get("name"):
+                    manifest["name"] = fm["name"]
+                if fm.get("description") and not manifest.get("description"):
+                    manifest["description"] = fm["description"]
+                manifest["main_file"] = "SKILL.md"
+            except Exception as e:
+                logger.debug(f"Could not merge SKILL.md frontmatter for '{skill_id}': {e}")
+
         # Use manifest name if available, fallback to directory name
         actual_name = manifest.get("name", skill_id)
 
@@ -278,12 +351,15 @@ class SkillManager:
         main_file = manifest.get("main_file", f"{actual_name}.md")
         md_path = skill_dir / main_file
         if not md_path.exists():
-            # Try any .md file
-            md_files = list(skill_dir.glob("*.md"))
-            if not md_files:
-                logger.warning(f"No markdown content found for skill '{skill_id}' in {skill_dir}")
-                return False
-            manifest["main_file"] = md_files[0].name
+            # Try SKILL.md first, then any .md file
+            if (skill_dir / "SKILL.md").exists():
+                manifest["main_file"] = "SKILL.md"
+            else:
+                md_files = list(skill_dir.glob("*.md"))
+                if not md_files:
+                    logger.warning(f"No markdown content found for skill '{skill_id}' in {skill_dir}")
+                    return False
+                manifest["main_file"] = md_files[0].name
 
         # Store
         manifest["_is_user"] = is_user
@@ -458,6 +534,17 @@ class SkillManager:
             )
             # Write content
             (target_dir / f"{name}.md").write_text(content, encoding="utf-8")
+
+            # Write Claude Code-compatible SKILL.md (frontmatter + content)
+            description_safe = manifest.get("description", "").replace("\n", " ")
+            skill_md_header = (
+                f"---\nname: {name}\ndescription: {description_safe}\n"
+                f"user-invocable: true\n---\n\n"
+            )
+            (target_dir / "SKILL.md").write_text(
+                skill_md_header + content,
+                encoding="utf-8",
+            )
 
             logger.info(f"Saved skill '{name}' to {target_dir}")
             self.reload()

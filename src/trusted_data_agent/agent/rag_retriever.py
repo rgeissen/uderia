@@ -176,7 +176,7 @@ class RAGRetriever:
             return
         try:
             from trusted_data_agent.vectorstore import get_backend_for_collection
-            backend = await get_backend_for_collection(coll_meta)
+            backend = await get_backend_for_collection(coll_meta, user_uuid=coll_meta.get("owner_user_id"))
             self._knowledge_backends[collection_id] = backend
             logger.info(f"Registered non-ChromaDB backend for collection {collection_id} "
                         f"(type: {coll_meta.get('backend_type')})")
@@ -203,7 +203,7 @@ class RAGRetriever:
         from trusted_data_agent.vectorstore import get_backend_for_collection, CollectionConfig
         from trusted_data_agent.vectorstore.chromadb_backend import ChromaDBBackend
 
-        backend = await get_backend_for_collection(coll_meta)
+        backend = await get_backend_for_collection(coll_meta, user_uuid=coll_meta.get("owner_user_id"))
 
         # For ChromaDB: register the already-loaded collection so backend
         # doesn't issue a duplicate get_collection() call.
@@ -725,7 +725,7 @@ class RAGRetriever:
                 new_meta = self.get_collection_metadata(new_collection_id)
                 target_coll_name = new_meta["collection_name"]
                 from trusted_data_agent.vectorstore import get_backend_for_collection, CollectionConfig
-                target_backend = await get_backend_for_collection(new_meta)
+                target_backend = await get_backend_for_collection(new_meta, user_uuid=new_meta.get("owner_user_id"))
                 config = CollectionConfig(
                     name=target_coll_name,
                     embedding_model=new_meta.get("embedding_model", "all-MiniLM-L6-v2"),
@@ -877,7 +877,8 @@ class RAGRetriever:
     def add_collection(self, name: str, description: str = "", mcp_server_id: Optional[str] = None, owner_user_id: Optional[str] = None,
                       repository_type: str = "planner", chunking_strategy: str = "none", chunk_size: int = 1000, chunk_overlap: int = 200,
                       embedding_model: str = "all-MiniLM-L6-v2",
-                      backend_type: str = "chromadb", backend_config: str = "{}") -> Optional[int]:
+                      backend_type: str = "chromadb", backend_config: str = "{}",
+                      vector_store_config_id: Optional[str] = None) -> Optional[int]:
         """
         Adds a new RAG collection and enables it.
         
@@ -929,6 +930,7 @@ class RAGRetriever:
             "embedding_model": embedding_model,
             "backend_type": backend_type,
             "backend_config": backend_config,
+            "vector_store_config_id": vector_store_config_id,
         }
         
         # Save to database

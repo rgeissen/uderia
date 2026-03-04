@@ -27,6 +27,6 @@
     "Creating Slack integration workflows",
     "Building scheduled report workflows"
   ],
-  "main_file": "n8n.md",
+  "main_file": "SKILL.md",
   "last_updated": "2026-02-09"
 }

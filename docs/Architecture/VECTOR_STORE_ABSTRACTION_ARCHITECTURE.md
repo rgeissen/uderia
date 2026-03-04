@@ -550,6 +550,94 @@ distance = 1.0 - similarity_score
 | Server-side: delete by ID | Not available — no staging table for server-side collections |
 | Server-side: add more docs | Not yet supported — would need `vs.add_datasets()` with file path |
 
+#### Provider-Specific: Teradata Credential Management
+
+This section documents the credential storage, runtime materialization, and connection testing patterns specific to the Teradata backend. These findings were discovered during the Vector Store Test Button implementation (March 2026).
+
+##### Critical Discovery: PEM Filename → JWT Key ID (`kid`)
+
+The `teradataml` SDK's `set_auth_token()` generates a JWT signed with the PEM private key using RS256. The JWT `kid` (key ID) header value is derived from **the PEM file's stem name**:
+
+```python
+# Inside teradataml SDK (not user code):
+kid = pathlib.Path(pem_file).stem
+# e.g., "/tmp/tda_vs_abc123.pem" → kid = "tda_vs_abc123" ← WRONG
+# e.g., "/tmp/dir/test_user.pem"  → kid = "test_user"     ← CORRECT
+```
+
+The VantageCloud Lake server validates the `kid` against registered keys. If the filename doesn't match the key name registered in the Lake Console, authentication fails with `TDML_2412` even when the key content is byte-identical to a working file.
+
+**Implication:** When storing PEM content in the database (rather than referencing a file path), the temp file created at runtime **must** be named `{key_name}.pem` where `key_name` matches the registered key in VantageCloud Lake Console. A random temp filename will always fail.
+
+##### Credential Storage Architecture
+
+Teradata credentials are stored encrypted in the `vectorstore_configurations` table using Fernet encryption (`encrypt_credentials` / `decrypt_credentials`). The stored credential fields:
+
+| Field | Storage | Purpose |
+|---|---|---|
+| `username` | Encrypted | Teradata database user |
+| `password` | Encrypted | Teradata database password |
+| `pat_token` | Encrypted | Personal Access Token from Lake Console |
+| `pem_content` | Encrypted | PEM private key content (full text, including headers) |
+| `pem_key_name` | Encrypted | Key name registered in Lake Console (used for temp file naming) |
+
+Non-sensitive configuration (`host`, `base_url`, `database`, `embedding_model`, etc.) is stored in plaintext `backend_config`.
+
+##### Runtime PEM Materialization
+
+When a `TeradataVectorBackend` instance is initialized with `pem_content` (no `pem_file` path):
+
+```
+initialize()
+    ↓ Check: pem_content provided AND no pem_file path?
+    ↓ Validate: pem_key_name is set (raise RuntimeError if missing)
+    ↓ Create temp directory: tempfile.mkdtemp(prefix="tda_vs_")
+    ↓ Write file: {tmpdir}/{pem_key_name}.pem
+    ↓ Ensure trailing newline (PEM format requirement)
+    ↓ Set self._pem_file = path to temp file
+    ↓ Continue with normal set_auth_token(pem_file=...) flow
+
+shutdown()
+    ↓ If self._pem_tempfile is set:
+    ↓   shutil.rmtree(temp_directory, ignore_errors=True)
+    ↓   Clear self._pem_tempfile
+```
+
+This ensures the PEM content is only on disk for the duration of the backend's lifecycle.
+
+##### Connection Test Flow (Test Before Save)
+
+The platform enforces "test before save" for Teradata configurations. The test uses the abstraction layer directly — **not** the factory singleton — to avoid cache pollution:
+
+```
+UI: Test Connection button
+    ↓ POST /v1/vectorstore/test-connection
+    ↓ Body: { backend_type, backend_config, credentials }
+    ↓ Merge credentials into backend_config
+    ↓
+_test_vectorstore_backend(backend_type, config)
+    ↓ ChromaDB? → return success immediately (local, no connection)
+    ↓ Validate: host, base_url, credentials present
+    ↓ Instantiate TeradataVectorBackend(connection_config=config) directly
+    ↓ await backend.initialize()  ← tests create_context + set_auth_token
+    ↓ Return success with server_info
+    ↓ finally: await backend.shutdown()  ← cleans up temp PEM + connections
+```
+
+**Why not use the factory?** The factory maintains a singleton cache keyed by config fingerprint. Test connections with potentially wrong credentials would pollute this cache, causing subsequent real connections to reuse a broken instance.
+
+**Credential gating:** The create/update endpoints require `connection_tested: true` in the request body for Teradata configurations. The frontend tracks this flag and resets it whenever credential fields change.
+
+##### Diagnostic Hints
+
+When `set_auth_token` fails, the test endpoint appends diagnostic information:
+
+- **Auth mode**: PAT token vs username/password
+- **Base URL**: The endpoint being used (helps catch missing `/open-analytics` strip)
+- **PEM status**: Whether PEM content was provided, and the key name being used
+
+This aids troubleshooting since `TDML_2412` is a generic error that doesn't indicate which specific argument is invalid.
+
 ---
 
 ## Integration Points

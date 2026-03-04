@@ -138,6 +138,10 @@ class ConfigManager:
                     if new_profile_count > original_profile_count:
                         self.save_config(user_config, user_uuid)
 
+                    # Ensure default vector store config exists and migrate inline configs
+                    self.ensure_default_vector_store_config(user_uuid)
+                    self.migrate_inline_vector_store_configs(user_uuid)
+
                     app_logger.info(f"Loaded configuration from database for user {user_uuid}")
                     return user_config
         except Exception as e:
@@ -173,7 +177,10 @@ class ConfigManager:
 
         # Save to database for future loads
         self.save_config(user_config, user_uuid)
-        
+
+        # Bootstrap default vector store config for new users
+        self.ensure_default_vector_store_config(user_uuid)
+
         return user_config
     
     def _load_bootstrap_template(self) -> Dict[str, Any]:
@@ -1721,6 +1728,249 @@ class ConfigManager:
         config = self.load_config(user_uuid)
         config["active_llm_configuration_id"] = config_id
         return self.save_config(config, user_uuid)
+
+    # =========================================================================
+    # VECTOR STORE CONFIGURATION METHODS
+    # =========================================================================
+
+    def get_vector_store_configurations(self, user_uuid: Optional[str] = None) -> list:
+        """
+        Get all vector store configurations.
+
+        Args:
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            List of vector store configuration dictionaries
+        """
+        config = self.load_config(user_uuid)
+        return config.get("vector_store_configurations", [])
+
+    def save_vector_store_configurations(self, configurations: list, user_uuid: Optional[str] = None) -> bool:
+        """
+        Save vector store configurations.
+
+        Args:
+            configurations: List of vector store configuration dictionaries
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            True if successful, False otherwise
+        """
+        config = self.load_config(user_uuid)
+        config["vector_store_configurations"] = configurations
+        return self.save_config(config, user_uuid)
+
+    def add_vector_store_configuration(self, configuration: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
+        """
+        Add a new vector store configuration.
+
+        Args:
+            configuration: Vector store configuration dictionary
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            True if successful, False otherwise
+        """
+        configurations = self.get_vector_store_configurations(user_uuid)
+        configurations.append(configuration)
+        return self.save_vector_store_configurations(configurations, user_uuid)
+
+    def update_vector_store_configuration(self, config_id: str, updates: Dict[str, Any], user_uuid: Optional[str] = None) -> bool:
+        """
+        Update an existing vector store configuration.
+
+        Args:
+            config_id: Unique ID of the configuration to update
+            updates: Dictionary of fields to update
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            True if successful, False otherwise
+        """
+        configurations = self.get_vector_store_configurations(user_uuid)
+        configuration = next((c for c in configurations if c.get("id") == config_id), None)
+
+        if not configuration:
+            app_logger.warning(f"Vector store configuration with ID {config_id} not found for update")
+            return False
+
+        configuration.update(updates)
+        return self.save_vector_store_configurations(configurations, user_uuid)
+
+    def remove_vector_store_configuration(self, config_id: str, user_uuid: Optional[str] = None) -> tuple:
+        """
+        Remove a vector store configuration.
+        Prevents deletion if any collections reference this config.
+
+        Args:
+            config_id: Unique ID of the configuration to remove
+            user_uuid: Optional user UUID for per-user configuration isolation
+
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str])
+        """
+        # Prevent deletion of default configs
+        if config_id in ("vs-default-chromadb", "vs-default-teradata"):
+            return False, "Cannot delete default vector store configurations"
+
+        # Check if any collections reference this config
+        try:
+            from trusted_data_agent.core.collection_db import get_collection_db
+            collection_db = get_collection_db()
+            user_collections = collection_db.get_user_owned_collections(user_uuid) if user_uuid else []
+            dependent_collections = [
+                c for c in user_collections
+                if c.get("vector_store_config_id") == config_id
+            ]
+
+            if dependent_collections:
+                names = ", ".join(c.get("name", "Unknown") for c in dependent_collections[:3])
+                suffix = f" and {len(dependent_collections) - 3} more" if len(dependent_collections) > 3 else ""
+                error_msg = f"Cannot delete: {len(dependent_collections)} collection(s) use this vector store: {names}{suffix}"
+                app_logger.warning(f"{error_msg} (Config ID: {config_id})")
+                return False, error_msg
+        except Exception as e:
+            app_logger.error(f"Error checking collection dependencies: {e}", exc_info=True)
+
+        configurations = self.get_vector_store_configurations(user_uuid)
+        original_count = len(configurations)
+        configurations = [c for c in configurations if c.get("id") != config_id]
+
+        if len(configurations) == original_count:
+            return False, "Vector store configuration not found"
+
+        success = self.save_vector_store_configurations(configurations, user_uuid)
+        return success, None if success else "Failed to save configuration"
+
+    def ensure_default_vector_store_config(self, user_uuid: Optional[str] = None) -> None:
+        """
+        Ensure the default vector store configurations exist.
+        Creates a Local ChromaDB and a Teradata (empty credentials) config on first run.
+        Called during bootstrap and login.
+        """
+        if not user_uuid:
+            return
+
+        configs = self.get_vector_store_configurations(user_uuid)
+        changed = False
+
+        if not any(c.get("id") == "vs-default-chromadb" for c in configs):
+            from datetime import datetime, timezone
+            configs.append({
+                "id": "vs-default-chromadb",
+                "name": "Local ChromaDB",
+                "backend_type": "chromadb",
+                "backend_config": {},
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            changed = True
+            app_logger.info(f"Created default ChromaDB vector store configuration for user {user_uuid}")
+
+        if not any(c.get("id") == "vs-default-teradata" for c in configs):
+            from datetime import datetime, timezone
+            configs.append({
+                "id": "vs-default-teradata",
+                "name": "Teradata Vector Store",
+                "backend_type": "teradata",
+                "backend_config": {
+                    "host": "",
+                    "base_url": "",
+                    "database": "",
+                    "search_algorithm": "VECTORDISTANCE",
+                    "top_k": 10
+                },
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            changed = True
+            app_logger.info(f"Created default Teradata vector store configuration for user {user_uuid}")
+
+        if changed:
+            self.save_vector_store_configurations(configs, user_uuid)
+
+    def migrate_inline_vector_store_configs(self, user_uuid: Optional[str] = None) -> None:
+        """
+        Auto-assign existing collections to centralized vector store configs.
+        Collections with inline backend_type/backend_config are matched to existing
+        centralized configs or have new configs created from their inline data.
+        """
+        if not user_uuid:
+            return
+
+        try:
+            import hashlib
+            from datetime import datetime, timezone
+
+            from trusted_data_agent.core.collection_db import get_collection_db
+            collection_db = get_collection_db()
+            collections = collection_db.get_user_owned_collections(user_uuid)
+            vs_configs = self.get_vector_store_configurations(user_uuid)
+
+            configs_changed = False
+
+            for coll in collections:
+                if coll.get("vector_store_config_id"):
+                    continue  # Already migrated
+
+                backend_type = coll.get("backend_type", "chromadb")
+                backend_config_str = coll.get("backend_config", "{}")
+                try:
+                    backend_config = json.loads(backend_config_str) if isinstance(backend_config_str, str) else backend_config_str
+                except (json.JSONDecodeError, TypeError):
+                    backend_config = {}
+
+                # ChromaDB with empty config → assign to default
+                if backend_type == "chromadb" and not backend_config:
+                    matching = next((c for c in vs_configs if c["id"] == "vs-default-chromadb"), None)
+                else:
+                    # Find matching config by fingerprint
+                    fingerprint = hashlib.md5(json.dumps({"type": backend_type, "config": backend_config}, sort_keys=True).encode()).hexdigest()
+                    matching = None
+                    for c in vs_configs:
+                        c_config = c.get("backend_config", {})
+                        c_fingerprint = hashlib.md5(json.dumps({"type": c["backend_type"], "config": c_config}, sort_keys=True).encode()).hexdigest()
+                        if c_fingerprint == fingerprint:
+                            matching = c
+                            break
+
+                if not matching and backend_type != "chromadb":
+                    # Create new centralized config from inline data
+                    import random, string
+                    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                    credential_keys = {"username", "password", "pat_token"}
+
+                    new_config = {
+                        "id": f"vs-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{suffix}",
+                        "name": f"Migrated {backend_type.title()} ({coll['name']})",
+                        "backend_type": backend_type,
+                        "backend_config": {k: v for k, v in backend_config.items() if k not in credential_keys},
+                        "credentials": {},
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+
+                    # Encrypt credentials if present
+                    cred_data = {k: backend_config[k] for k in credential_keys if k in backend_config}
+                    if cred_data:
+                        try:
+                            from trusted_data_agent.auth.encryption import encrypt_credentials
+                            encrypt_credentials(user_uuid, f"vectorstore_{new_config['id']}", cred_data)
+                            app_logger.info(f"Encrypted migrated credentials for vector store config {new_config['id']}")
+                        except Exception as e:
+                            app_logger.warning(f"Could not encrypt migrated credentials: {e}")
+
+                    vs_configs.append(new_config)
+                    configs_changed = True
+                    matching = new_config
+                    app_logger.info(f"Created vector store config '{new_config['name']}' from inline config of collection '{coll['name']}'")
+
+                if matching:
+                    collection_db.update_collection(coll["id"], {"vector_store_config_id": matching["id"]})
+                    app_logger.info(f"Migrated collection '{coll['name']}' → vector store config '{matching.get('name', matching['id'])}'")
+
+            if configs_changed:
+                self.save_vector_store_configurations(vs_configs, user_uuid)
+        except Exception as e:
+            app_logger.error(f"Error during vector store config migration: {e}", exc_info=True)
 
     # =========================================================================
     # Context Window Type Management

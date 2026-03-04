@@ -1,3 +1,9 @@
+---
+name: fusion-hardening
+description: Deep knowledge skill for analyzing and hardening the Fusion Optimizer (tool_enabled) execution pipeline. Covers strategic planning, plan rewrite passes, tactical execution, error recovery, orchestrators, enterprise safeguards, execution trace analysis, and prompt engineering guidance.
+user-invocable: true
+---
+
 # Fusion Optimizer Hardening Guide
 
 ## Overview

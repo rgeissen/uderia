@@ -38,7 +38,8 @@ Skills inject markdown instructions into LLM context to modify behavior — resp
 | **Transparent** | `skills_applied` SSE event shows what was injected and token cost |
 | **Parameterizable** | `<!-- param:strict -->` blocks enable runtime behavior variants |
 | **Governed** | Admin controls disable/enable skills globally or selectively |
-| **Portable** | Export/import as `.zip`; flat `.md` files auto-discover |
+| **Portable** | Export/import as `.skill` zip; flat `.md` and `SKILL.md` auto-discover |
+| **Claude Code Compatible** | `SKILL.md` with YAML frontmatter natively supported for import, export, and discovery |
 
 ### Architecture Diagram
 
@@ -185,7 +186,7 @@ The `to_applied_list()` method builds the `skills_applied` event payload:
 
 The `SkillManager` (singleton via `get_skill_manager()`) discovers skills from multiple sources with user overrides taking priority.
 
-### Four Discovery Modes
+### Five Discovery Modes
 
 | Mode | Source | Trigger | Manifest |
 |------|--------|---------|----------|
@@ -193,6 +194,9 @@ The `SkillManager` (singleton via `get_skill_manager()`) discovers skills from m
 | **User Override** | `~/.tda/skills/` | Same name as registry skill | Required (`skill.json`) |
 | **Manifest-Free** | `~/.tda/skills/<dir>/` | Subdirectory with `.md` file | Auto-generated |
 | **Flat File** | `~/.tda/skills/*.md` | Direct `.md` file | Auto-generated |
+| **Claude Code** | `~/.tda/skills/<dir>/` | Subdirectory with `SKILL.md`, no `skill.json` | Parsed from YAML frontmatter |
+
+When both `SKILL.md` and `skill.json` exist in a directory, `skill.json` is loaded first, then `SKILL.md` frontmatter is merged on top — `name` and `description` from frontmatter take precedence, and `main_file` is set to `SKILL.md`.
 
 ### Discovery Order
 
@@ -203,9 +207,10 @@ The `SkillManager` (singleton via `get_skill_manager()`) discovers skills from m
       └─ Fall back to skills/builtin/<name>/
 
 2. Auto-discover ~/.tda/skills/
+   ├─ Mode C: Direct .md files (flat mode — no dir)
+   ├─ Mode D: Subdirs with SKILL.md but no skill.json (Claude Code format)
    ├─ Mode A: Subdirs with skill.json (manifest mode)
-   ├─ Mode B: Subdirs with .md but no skill.json (manifest-free)
-   └─ Mode C: Direct .md files (flat mode)
+   └─ Mode B: Subdirs with .md but no skill.json (manifest-free)
 ```
 
 Later sources override earlier ones by skill name.
@@ -538,8 +543,8 @@ Targeted visibility reuses the existing `marketplace_sharing_grants` table (from
 | `/v1/skills/{skill_id}/content` | GET | Full content + manifest (for editor) |
 | `/v1/skills/{skill_id}` | PUT | Create or update user skill |
 | `/v1/skills/{skill_id}` | DELETE | Delete user-created skill |
-| `/v1/skills/{skill_id}/export` | POST | Export skill as `.skill` (ZIP) |
-| `/v1/skills/import` | POST | Import skill from `.skill` or `.zip` file |
+| `/v1/skills/{skill_id}/export` | POST | Export skill as `.skill` (ZIP with `skill.json` + `<name>.md` + `SKILL.md`) |
+| `/v1/skills/import` | POST | Import skill from `.skill`/`.zip` — accepts both Uderia (`skill.json`) and Claude Code (`SKILL.md` frontmatter) formats |
 
 ### User Activations
 

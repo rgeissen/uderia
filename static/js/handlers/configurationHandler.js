@@ -2864,7 +2864,9 @@ function initializeConfigTabs() {
 
             // Lazy-load vector stores when tab is activated
             if (targetTabId === 'vector-stores-tab') {
-                // Future: loadVectorStores();
+                if (window.vectorStoreHandler && !window.vectorStoreHandler.isLoaded()) {
+                    window.vectorStoreHandler.load();
+                }
             }
         });
     });

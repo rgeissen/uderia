@@ -43,6 +43,27 @@ skills_api_bp = Blueprint("skills_api", __name__)
 app_logger = logging.getLogger("quart.app")
 
 
+def _parse_frontmatter_static(content: str) -> "tuple[dict, str]":
+    """Parse YAML frontmatter from markdown content (no PyYAML dependency).
+
+    Returns (fields_dict, body_without_frontmatter).
+    """
+    if not content.startswith("---"):
+        return {}, content
+    try:
+        end = content.index("\n---", 3)
+    except ValueError:
+        return {}, content
+    yaml_block = content[3:end].strip()
+    body = content[end + 4:].lstrip("\n")
+    fields: dict = {}
+    for line in yaml_block.splitlines():
+        if ":" in line:
+            key, _, val = line.partition(":")
+            fields[key.strip()] = val.strip()
+    return fields, body
+
+
 def _get_user_uuid_from_request():
     """Extract user ID from request (from auth token or header)."""
     user = get_current_user_from_request()
@@ -481,8 +502,9 @@ async def export_skill_endpoint(skill_id: str):
     Export a skill as a downloadable .zip file.
 
     The archive contains:
-        skill.json     — manifest metadata
+        skill.json     — Uderia manifest metadata
         <name>.md      — markdown content
+        SKILL.md       — Claude Code-compatible (YAML frontmatter + content)
 
     Works for both built-in and user-created skills.
     """
@@ -524,9 +546,19 @@ async def export_skill_endpoint(skill_id: str):
         zip_filename = f"{skill_id}.skill"
         zip_path = Path(tmp_dir) / zip_filename
 
+        # Build Claude Code-compatible SKILL.md (frontmatter + content)
+        description_safe = manifest.get("description", "").replace("\n", " ")
+        skill_name = manifest.get("name", skill_id)
+        skill_md_content = (
+            f"---\nname: {skill_name}\ndescription: {description_safe}\n"
+            f"user-invocable: true\n---\n\n"
+            + content
+        )
+
         with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("skill.json", json.dumps(manifest, indent=2))
             zf.writestr(main_file, content)
+            zf.writestr("SKILL.md", skill_md_content)
 
         return await send_file(
             str(zip_path),
@@ -546,10 +578,11 @@ async def import_skill_endpoint():
     Import a skill from an uploaded .zip file.
 
     Accepts multipart/form-data with a 'file' field.
-    Extracts skill.json + *.md to ~/.tda/skills/<skill_id>/
-    and hot-reloads the skill manager.
+    Supports two formats:
+      - Uderia format: ZIP with skill.json + <name>.md
+      - Claude Code format: ZIP with SKILL.md (YAML frontmatter parsed as manifest)
 
-    Compatible with Claude Code skills (skill.json + name.md).
+    Saves to ~/.tda/skills/<skill_id>/ and hot-reloads the skill manager.
     """
     tmp_path = None
     try:
@@ -591,19 +624,52 @@ async def import_skill_endpoint():
 
             # Find skill.json (may be at root or in a subdirectory)
             manifest_candidates = [n for n in names if n.endswith("skill.json")]
-            if not manifest_candidates:
-                return jsonify({"error": "No skill.json found in archive."}), 400
 
-            manifest_path = manifest_candidates[0]
-            manifest_data = json.loads(zf.read(manifest_path).decode("utf-8"))
+            # Find SKILL.md (Claude Code format — may be at root or in subdirectory)
+            skill_md_candidates = [
+                n for n in names if n == "SKILL.md" or n.endswith("/SKILL.md")
+            ]
 
-            # Find .md file
-            md_candidates = [n for n in names if n.endswith(".md")]
-            if not md_candidates:
-                return jsonify({"error": "No .md file found in archive."}), 400
+            # Find any .md file for content
+            md_candidates = [
+                n for n in names
+                if n.endswith(".md") and not n.endswith("SKILL.md")
+            ]
 
-            md_filename = md_candidates[0]
-            md_content = zf.read(md_filename).decode("utf-8")
+            if manifest_candidates:
+                # Existing Uderia format — read skill.json for metadata
+                manifest_path = manifest_candidates[0]
+                manifest_data = json.loads(zf.read(manifest_path).decode("utf-8"))
+            elif skill_md_candidates:
+                # Claude Code format — parse SKILL.md frontmatter as manifest
+                raw = zf.read(skill_md_candidates[0]).decode("utf-8")
+                fm, body = _parse_frontmatter_static(raw)
+                if not fm.get("name"):
+                    return jsonify({
+                        "error": "SKILL.md frontmatter must include a 'name' field."
+                    }), 400
+                manifest_data = {
+                    "name": fm["name"],
+                    "description": fm.get("description", ""),
+                    "version": fm.get("version", "1.0.0"),
+                    "author": fm.get("author", "User"),
+                    "tags": [],
+                    "keywords": [],
+                    "use_cases": [],
+                }
+                # Use SKILL.md body as content if no separate .md file found
+                if not md_candidates:
+                    md_content = body
+                    md_filename = f"{fm['name']}.md"
+            else:
+                return jsonify({"error": "No skill.json or SKILL.md found in archive."}), 400
+
+            # Read .md content (if not already set from SKILL.md body)
+            if md_content is None:
+                if not md_candidates:
+                    return jsonify({"error": "No .md file found in archive."}), 400
+                md_filename = md_candidates[0]
+                md_content = zf.read(md_filename).decode("utf-8")
 
         # Determine skill ID from manifest
         skill_id = manifest_data.get("name")

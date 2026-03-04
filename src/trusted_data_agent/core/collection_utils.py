@@ -84,8 +84,9 @@ async def import_collection_from_zip(
             metadata = json.load(f)
 
         # Validate export version
-        if metadata.get('export_version') != "1.0":
-            raise ValueError(f"Unsupported export version: {metadata.get('export_version')}")
+        export_version = metadata.get('export_version', '1.0')
+        if export_version not in ("1.0", "1.1"):
+            raise ValueError(f"Unsupported export version: {export_version}")
 
         # Determine document format
         documents_jsonl = extract_path / "documents.jsonl"
@@ -213,6 +214,51 @@ async def import_collection_from_zip(
         else:
             assigned_mcp_server_id = None
 
+        # Resolve vector store config for imported collection
+        vector_store_config_id = None
+        import_warnings = []
+        vs_config_data = metadata.get("vector_store_config")
+
+        if vs_config_data:
+            try:
+                from trusted_data_agent.core.config_manager import get_config_manager
+                config_manager = get_config_manager()
+                existing_configs = config_manager.get_vector_store_configurations(user_uuid)
+
+                # Try to match by name + backend_type
+                match = next((c for c in existing_configs
+                              if c.get("backend_type") == vs_config_data.get("backend_type")
+                              and c.get("name") == vs_config_data.get("name")), None)
+
+                if match:
+                    vector_store_config_id = match["id"]
+                    app_logger.info(f"Import: matched vector store config '{match['name']}' for collection")
+                else:
+                    # Create new config (without credentials)
+                    import random, string
+                    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                    new_vs_config = {
+                        "id": f"vs-{int(time.time() * 1000)}-{suffix}",
+                        "name": vs_config_data.get("name", f"Imported {vs_config_data.get('backend_type', 'unknown').title()}"),
+                        "backend_type": vs_config_data.get("backend_type", "chromadb"),
+                        "backend_config": vs_config_data.get("backend_config", {}),
+                        "credentials": {},
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    config_manager.add_vector_store_configuration(new_vs_config, user_uuid)
+                    vector_store_config_id = new_vs_config["id"]
+                    app_logger.info(f"Import: created vector store config '{new_vs_config['name']}' for collection")
+
+                    if vs_config_data.get("backend_type") != "chromadb":
+                        import_warnings.append(
+                            f"Vector store '{new_vs_config['name']}' was created without credentials. "
+                            f"Configure credentials in Configuration → Vector Stores before using this collection."
+                        )
+            except Exception as e:
+                app_logger.warning(f"Could not resolve vector store config during import: {e}")
+        elif backend_type == "chromadb":
+            vector_store_config_id = "vs-default-chromadb"
+
         # Create collection in database
         from trusted_data_agent.core.collection_db import CollectionDatabase, get_collection_db
 
@@ -229,6 +275,7 @@ async def import_collection_from_zip(
             "embedding_model": embedding_model,
             "backend_type": backend_type,
             "backend_config": metadata.get('backend_config', '{}'),
+            "vector_store_config_id": vector_store_config_id,
             "owner_user_id": user_uuid,
             "enabled": True,
             "visibility": "private"
@@ -266,11 +313,14 @@ async def import_collection_from_zip(
             except Exception as e:
                 app_logger.warning(f"Failed to verify import: {e}", exc_info=True)
 
-        return {
+        result = {
             "collection_id": collection_id,
             "collection_name": final_display_name,
             "document_count": document_count,
         }
+        if import_warnings:
+            result["warnings"] = import_warnings
+        return result
 
     except (ValueError, RuntimeError):
         raise
@@ -476,6 +526,8 @@ async def export_collection_to_zip(
             "description": collection['description'],
             "repository_type": repo_type,
             "backend_type": backend_type,
+            "backend_config": collection.get('backend_config', '{}'),
+            "vector_store_config_id": collection.get('vector_store_config_id'),
             "mcp_server_id": collection.get('mcp_server_id'),
             "chunking_strategy": collection['chunking_strategy'],
             "chunk_size": collection['chunk_size'],
@@ -484,8 +536,25 @@ async def export_collection_to_zip(
             "collection_name": collection_name,
             "document_count": total_count,
             "exported_at": datetime.now(timezone.utc).isoformat(),
-            "export_version": "1.0"
+            "export_version": "1.1"
         }
+
+        # Embed resolved vector store config (without credentials) for portability
+        vs_config_id = collection.get('vector_store_config_id')
+        if vs_config_id:
+            try:
+                from trusted_data_agent.core.config_manager import get_config_manager
+                config_manager = get_config_manager()
+                vs_configs = config_manager.get_vector_store_configurations(user_uuid)
+                vs_config = next((c for c in vs_configs if c.get("id") == vs_config_id), None)
+                if vs_config:
+                    metadata["vector_store_config"] = {
+                        "name": vs_config.get("name"),
+                        "backend_type": vs_config.get("backend_type"),
+                        "backend_config": vs_config.get("backend_config", {}),
+                    }
+            except Exception as e:
+                app_logger.warning(f"Could not resolve vector store config for export: {e}")
 
         metadata_file = temp_export_dir / "collection_metadata.json"
         with open(metadata_file, 'w') as f:

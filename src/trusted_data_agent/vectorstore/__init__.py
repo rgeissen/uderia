@@ -55,6 +55,7 @@ from .types import (
     DistanceMetric,
     GetResult,
     QueryResult,
+    ServerSideChunkingConfig,
     VectorDocument,
 )
 
@@ -97,6 +98,7 @@ __all__ = [
     "DistanceMetric",
     "GetResult",
     "QueryResult",
+    "ServerSideChunkingConfig",
     "VectorDocument",
 ]
 

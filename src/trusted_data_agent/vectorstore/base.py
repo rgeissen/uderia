@@ -19,6 +19,7 @@ from .types import (
     CollectionInfo,
     GetResult,
     QueryResult,
+    ServerSideChunkingConfig,
     VectorDocument,
 )
 from .capabilities import VectorStoreCapability
@@ -146,15 +147,16 @@ class VectorStoreBackend(ABC):
         self,
         collection_name: str,
         file_paths: List[str],
-        chunking_config: Optional[dict] = None,
+        chunking_config: Optional[ServerSideChunkingConfig] = None,
     ) -> int:
         """Ingest raw files (PDF, etc.) with server-side chunking and embedding.
 
         Requires ``SERVER_SIDE_CHUNKING`` capability.  Backends that do not
         support this raise ``NotImplementedError``.
 
-        ``chunking_config`` may include backend-specific parameters such as
-        ``chunk_size`` and ``optimized_chunking``.
+        ``chunking_config`` controls chunking behavior (optimized vs fixed-size,
+        header/footer trimming).  When ``None``, backend defaults apply
+        (equivalent to ``ServerSideChunkingConfig()``).
         """
         raise NotImplementedError(
             f"{self.backend_type} does not support server-side file ingestion. "

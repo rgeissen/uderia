@@ -54,6 +54,6 @@
     "Compare actual execution trace against expected behavior",
     "Identify root causes of excessive token usage in Fusion Optimizer queries"
   ],
-  "main_file": "fusion-hardening.md",
+  "main_file": "SKILL.md",
   "last_updated": "2026-02-10"
 }

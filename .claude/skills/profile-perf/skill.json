@@ -33,6 +33,6 @@
     "Troubleshoot tool-focused profile complexity",
     "Optimize prompts, plans, and execution steps"
   ],
-  "main_file": "profile-perf.md",
+  "main_file": "SKILL.md",
   "last_updated": "2026-02-09"
 }

@@ -329,6 +329,13 @@ Maintain complete control over your data exposure strategy with flexible deploym
   - Secure passthrough to LLM/MCP providers
   - Admin oversight without credential access
 
+* **System Prompt Encryption**: Defense against prompt extraction and hijacking:
+  - All system prompts encrypted at rest in database (never stored as plain text)
+  - Two-layer encryption: distribution protection + license-tier keys
+  - Runtime-only decryption minimizes attack surface
+  - Database dumps and prompt injection attacks cannot extract system instructions
+  - Segregation of duty: all tiers decrypt for runtime execution, but only licensed Prompt Engineer/Enterprise tiers can view or edit system prompts in the UI — preventing unauthorized prompt tampering
+
 * **Multi-User Isolation**: Complete session and data segregation:
   - JWT-based authentication with 24-hour expiry
   - User-specific sessions in separate directories

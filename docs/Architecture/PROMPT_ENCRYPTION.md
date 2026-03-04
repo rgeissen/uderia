@@ -38,14 +38,21 @@ The Uderia prompt encryption system provides tier-based access control to system
 ### 1. Prompt Creation (Development Time)
 
 ```bash
-cd trusted-data-agent-license
-python encrypt_prompts.py  # Edit PROMPTS_TO_ENCRYPT dictionary
+# 1. Edit plain text prompt files
+cd trusted-data-agent-license/default_prompts/
+vim WORKFLOW_META_PLANNING_PROMPT.txt  # (or any .txt file)
 
-cd ../schema
-python encrypt_default_prompts.py  # Generate default_prompts.dat
+# 2. Generate encrypted distribution file
+cd ..
+python encrypt_default_prompts.py  # Reads default_prompts/*.txt, writes to uderia/schema/
+
+# 3. Commit the encrypted artifact
+cd ../uderia
+git add schema/default_prompts.dat
+git commit -m "Updated system prompts"
 ```
 
-**Output**: `schema/default_prompts.dat` (84KB encrypted JSON)
+**Output**: `schema/default_prompts.dat` (~86KB encrypted JSON, 15 prompts)
 
 ### 2. Bootstrap (First Application Start)
 
@@ -114,27 +121,31 @@ def derive_tier_key(license_info):
 
 ## Files Modified/Created
 
-### New Files
+### Key Files
 
-1. **`src/trusted_data_agent/agent/prompt_encryption.py`** (194 lines)
+1. **`src/trusted_data_agent/agent/prompt_encryption.py`** (~236 lines)
    - Core encryption utilities
-   - Key derivation functions
-   - Access control checks
+   - Key derivation functions (bootstrap + tier)
+   - Access control checks (`can_access_prompts_ui`, `can_access_prompts`)
+   - Re-encryption helper for bootstrap→tier conversion
 
-2. **`schema/encrypt_default_prompts.py`** (141 lines)
-   - Bootstrap encryption script
-   - Reads from `PROMPTS_TO_ENCRYPT`
-   - Generates `default_prompts.dat`
+2. **`trusted-data-agent-license/encrypt_default_prompts.py`** (~173 lines)
+   - Bootstrap encryption script (lives in the **license repo**, not `schema/`)
+   - Reads `.txt` files from `default_prompts/` directory
+   - Generates `schema/default_prompts.dat` in the uderia repo
 
-3. **`schema/default_prompts.dat`** (84KB)
-   - 13 encrypted prompts
+3. **`trusted-data-agent-license/update_prompt.py`** (~547 lines)
+   - Zero-downtime prompt deployment to existing installations
+   - See [Deploying Prompt Updates](#deploying-prompt-updates-to-existing-installations) below
+
+4. **`schema/default_prompts.dat`** (~86KB)
+   - 15 encrypted prompts
    - JSON format (base64-encoded Fernet tokens)
    - Distributed with application
 
-4. **`schema/test_prompt_encryption.py`** (295 lines)
+5. **`schema/test_prompt_encryption.py`**
    - Comprehensive test suite
-   - 5 test scenarios
-   - All tests passing ✅
+   - All tests passing
 
 ### Modified Files
 
@@ -154,23 +165,31 @@ def derive_tier_key(license_info):
 
 ### For Developers
 
-**Update Default Prompts**:
+**Update Default Prompts (for new installations)**:
 ```bash
-# 1. Edit prompts in trusted-data-agent-license/encrypt_prompts.py
-vim trusted-data-agent-license/encrypt_prompts.py
+# 1. Edit plain text prompt files in the license repo
+cd trusted-data-agent-license/default_prompts/
+vim WORKFLOW_META_PLANNING_PROMPT.txt
 
 # 2. Regenerate encrypted distribution file
-cd schema
+cd ..
 python encrypt_default_prompts.py
 
-# 3. Commit to repository
-git add default_prompts.dat
+# 3. Commit the encrypted artifact in the uderia repo
+cd ../uderia
+git add schema/default_prompts.dat
 git commit -m "Updated system prompts"
+```
+
+**Deploy to Existing Installations (zero-downtime)**:
+```bash
+cd trusted-data-agent-license
+python update_prompt.py --app-root /path/to/uderia --all
 ```
 
 **Test Encryption System**:
 ```bash
-cd schema
+cd uderia/schema
 python test_prompt_encryption.py
 ```
 
@@ -183,8 +202,9 @@ python test_prompt_encryption.py
 4. Prompts encrypted in database
 
 **Runtime**:
-- **Standard Tier**: Sees placeholder "[ENCRYPTED CONTENT]" messages
-- **PE/Enterprise**: Full prompt access, can view/edit through UI
+- **All Tiers**: Can decrypt prompts for LLM conversations (runtime usage)
+- **Standard Tier**: Cannot view/edit prompts in the System Prompts UI editor
+- **PE/Enterprise**: Full prompt access — can view/edit through UI
 
 ## Security Considerations
 
@@ -234,11 +254,11 @@ rm tda_auth.db
 
 ### "Access denied to prompt" Warning
 
-**Cause**: Standard tier license attempting to access prompts
+**Cause**: Standard tier license attempting to view/edit prompts in the UI
 
-**Expected**: This is normal - Standard tier cannot decrypt prompts
+**Expected**: This is normal — Standard tier can decrypt for LLM runtime but cannot access the System Prompts editor
 
-**Solution**: Upgrade to Prompt Engineer or Enterprise license
+**Solution**: Upgrade to Prompt Engineer or Enterprise license for UI access
 
 ### Prompts Show "[MIGRATE]" Placeholder
 
@@ -246,18 +266,104 @@ rm tda_auth.db
 
 **Solution**:
 ```bash
-# Generate encrypted prompts
-cd schema
+# Generate encrypted prompts (from the license repo)
+cd trusted-data-agent-license
 python encrypt_default_prompts.py
 
 # Delete and re-bootstrap database
-rm ../tda_auth.db
+cd ../uderia
+rm tda_auth.db
 # Restart application
 ```
 
+## Deploying Prompt Updates to Existing Installations
+
+The `update_prompt.py` script (in `trusted-data-agent-license/`) enables **zero-downtime** prompt deployments to running installations.
+
+### Usage
+
+```bash
+cd trusted-data-agent-license
+
+# Update a single prompt
+python update_prompt.py --app-root /path/to/uderia --prompt WORKFLOW_META_PLANNING_PROMPT
+
+# Update all prompts
+python update_prompt.py --app-root /path/to/uderia --all
+
+# List available prompts
+python update_prompt.py --list
+```
+
+### What It Does
+
+1. Loads source prompts from `default_prompts/*.txt`
+2. Compares against existing database content (skips unchanged — idempotent)
+3. Encrypts changed prompts with the installation's tier key
+4. Increments version numbers (audit trail in `prompt_versions` table)
+5. Syncs global parameters from `tda_config.json`
+6. Syncs profile prompt mappings
+7. Invalidates runtime cache via `POST /v1/admin/prompts/clear-cache` (JWT-authenticated)
+
+### When to Use
+
+| Scenario | `update_prompt.py` | `encrypt_default_prompts.py` |
+|----------|:-------------------:|:----------------------------:|
+| Update prompts for **new** installations | | Yes |
+| Update prompts on **existing** customers | Yes | |
+| Customer license tier upgrade | Yes | |
+| Re-encrypt with new license key | Yes | |
+
+For full details, see the `system-prompts` skill or CLAUDE.md.
+
+---
+
+## Prompt File Inventory
+
+All source prompts live in `trusted-data-agent-license/default_prompts/` as plain `.txt` files:
+
+| Prompt | Category | Description |
+|--------|----------|-------------|
+| `MASTER_SYSTEM_PROMPT.txt` | System | Core agent persona (OpenAI/Anthropic) |
+| `GOOGLE_MASTER_SYSTEM_PROMPT.txt` | System | Variant for Google Gemini |
+| `OLLAMA_MASTER_SYSTEM_PROMPT.txt` | System | Variant for Ollama local models |
+| `WORKFLOW_META_PLANNING_PROMPT.txt` | Planning | Strategic multi-phase plan decomposition |
+| `WORKFLOW_TACTICAL_PROMPT.txt` | Planning | Per-phase tool selection |
+| `TASK_CLASSIFICATION_PROMPT.txt` | Planning | Aggregation vs synthesis classification |
+| `ERROR_RECOVERY_PROMPT.txt` | Error Handling | Multi-step plan failure recovery |
+| `TACTICAL_SELF_CORRECTION_PROMPT.txt` | Error Handling | Single tool call correction |
+| `TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR.txt` | Error Handling | Column-not-found recovery |
+| `TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR.txt` | Error Handling | Table-not-found recovery |
+| `SQL_CONSOLIDATION_PROMPT.txt` | Optimization | SQL query consolidation |
+| `CONVERSATION_EXECUTION.txt` | Execution | `llm_only` profile (no tools) |
+| `CONVERSATION_WITH_TOOLS_EXECUTION.txt` | Execution | `llm_only` profile with MCP tools |
+| `GENIE_COORDINATOR_PROMPT.txt` | Execution | `genie` multi-profile coordination |
+| `RAG_FOCUSED_EXECUTION.txt` | Execution | `rag_focused` semantic search |
+
+---
+
+## License Repo Scripts
+
+The `trusted-data-agent-license/` repository contains these infrastructure scripts:
+
+| Script | Purpose |
+|--------|---------|
+| `generate_keys.py` | One-time RSA-4096 keypair generation |
+| `generate_license.py` | Create signed license files for customers |
+| `encrypt_default_prompts.py` | Generate `schema/default_prompts.dat` for distribution |
+| `update_prompt.py` | Deploy prompt changes to existing installations |
+
+### Related Documentation (in the license repo)
+
+- `docs/Prompt_Engineering_Manual.md` — User guide for PE/Enterprise prompt editors
+- `docs/Owners_Manual_Secret_Management_Licensing.md` — System admin guide for keys, licenses, deployment
+- `docs/Frontend_Developer_Guide_License_Tiers.md` — UI integration guide for tier-based access
+
+---
+
 ## Performance
 
-- **Bootstrap**: ~2-3 seconds for 13 prompts (one-time cost)
+- **Bootstrap**: ~2-3 seconds for 15 prompts (one-time cost)
 - **Runtime Decryption**: <10ms per prompt (cached after first load)
 - **Memory Overhead**: ~500KB for cached decrypted prompts
 - **Database Size**: Encrypted prompts add ~100KB to database
@@ -298,14 +404,20 @@ derive_tier_key(license_info: Dict) -> bytes
 encrypt_prompt(content: str, key: bytes) -> str
     """Encrypt prompt content"""
 
-decrypt_prompt(encrypted: str, key: bytes) -> str
-    """Decrypt prompt content"""
+decrypt_prompt(encrypted: str, key: bytes, silent_fail: bool = False) -> str
+    """Decrypt prompt content. silent_fail suppresses ERROR logs for plain text fallback."""
+
+re_encrypt_prompt(encrypted: str, old_key: bytes, new_key: bytes) -> str
+    """Re-encrypt from bootstrap key to tier key (used during bootstrap)"""
 
 can_access_prompts(tier: str) -> bool
-    """Check if tier can access prompts"""
+    """DEPRECATED: Always returns True. Use can_access_prompts_ui() instead."""
+
+can_access_prompts_ui(tier: str) -> bool
+    """Check if tier can view/edit prompts in the UI (PE/Enterprise only)"""
 
 get_placeholder_content(tier: str) -> str
-    """Get placeholder for unauthorized access"""
+    """Get placeholder for unauthorized UI access"""
 ```
 
 ### prompt_loader.py

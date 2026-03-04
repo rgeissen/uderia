@@ -3035,16 +3035,91 @@
                                     <div class="flex justify-between items-center mb-6">
                                         <div>
                                             <h3 class="text-xl font-bold text-white">Vector Stores</h3>
-                                            <p class="text-sm text-gray-400 mt-1">Configure vector store backends for knowledge repositories</p>
+                                            <p class="text-sm text-gray-400 mt-1">Centralized vector store backends for knowledge repositories</p>
                                         </div>
+                                        <button onclick="window.vectorStoreHandler.showAddModal()" class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2" style="background: var(--teradata-orange);">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Add Vector Store
+                                        </button>
                                     </div>
 
-                                    <div id="vector-stores-container" class="flex flex-col items-center justify-center py-16 text-center">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                                        </svg>
-                                        <p class="text-gray-400 text-lg font-medium">Vector store configuration coming soon</p>
-                                        <p class="text-gray-500 text-sm mt-2 max-w-md">Manage ChromaDB and Teradata vector store backends, embedding models, and connection settings from here.</p>
+                                    <div id="vector-stores-container" class="space-y-4">
+                                        <!-- Vector store cards rendered dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Modal: Add/Edit Vector Store -->
+                        <div id="vector-store-modal" class="fixed inset-0 z-50 hidden">
+                            <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" onclick="window.vectorStoreHandler.closeModal()"></div>
+                            <div class="fixed inset-0 flex items-center justify-center p-4">
+                                <div class="relative w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style="background: var(--card-bg);">
+                                    <div class="p-6">
+                                        <h3 id="vector-store-modal-title" class="text-xl font-bold text-white mb-4">Add Vector Store</h3>
+                                        <form id="vector-store-form" class="space-y-4">
+                                            <input type="hidden" id="vs-edit-id" value="">
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-300 mb-1">Name</label>
+                                                <input type="text" id="vs-name" placeholder="e.g., Production Teradata" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none" required>
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-300 mb-1">Backend Type</label>
+                                                <select id="vs-backend-type" onchange="window.vectorStoreHandler.toggleBackendFields()" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white focus:border-orange-500 focus:outline-none">
+                                                    <option value="chromadb">ChromaDB (Local)</option>
+                                                    <option value="teradata">Teradata Vector Store</option>
+                                                </select>
+                                            </div>
+                                            <div id="vs-teradata-fields" class="space-y-4 hidden">
+                                                <div>
+                                                    <label class="block text-sm font-medium text-gray-300 mb-1">Host</label>
+                                                    <input type="text" id="vs-host" placeholder="td-server.company.com" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-sm font-medium text-gray-300 mb-1">Base URL (REST API)</label>
+                                                    <input type="text" id="vs-base-url" placeholder="https://..." class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-sm font-medium text-gray-300 mb-1">Database</label>
+                                                    <input type="text" id="vs-database" placeholder="VECTORS_DB" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                </div>
+                                                <div class="border-t border-white/10 pt-4">
+                                                    <p class="text-sm text-gray-400 mb-3">Authentication (username/password or PAT token)</p>
+                                                    <div class="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label class="block text-sm font-medium text-gray-300 mb-1">Username</label>
+                                                            <input type="text" id="vs-username" placeholder="db_user" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                                                            <input type="password" id="vs-password" placeholder="••••••" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                        </div>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <label class="block text-sm font-medium text-gray-300 mb-1">PAT Token (alternative)</label>
+                                                        <input type="password" id="vs-pat-token" placeholder="Personal Access Token" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <label class="block text-sm font-medium text-gray-300 mb-1">PEM Key Name <span class="text-gray-500">(required with PEM)</span></label>
+                                                        <input type="text" id="vs-pem-key-name" placeholder="e.g. test_7joj0z04mw2w8ol2" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                        <p class="text-xs text-gray-500 mt-1">The key name used when generating the PEM file in VantageCloud Lake Console</p>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <label class="block text-sm font-medium text-gray-300 mb-1">PEM Private Key <span class="text-gray-500">(optional, for PAT auth)</span></label>
+                                                        <textarea id="vs-pem-content" rows="3" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none font-mono text-xs"></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <!-- Test Results (inline) -->
+                                            <div id="vs-test-results" class="hidden rounded-lg p-3 text-sm"></div>
+                                            <div class="flex justify-end gap-3 pt-4 border-t border-white/10">
+                                                <button type="button" onclick="window.vectorStoreHandler.closeModal()" class="px-4 py-2 rounded-lg border border-white/10 text-gray-300 hover:bg-white/5">Cancel</button>
+                                                <button type="button" id="vs-test-btn" onclick="window.vectorStoreHandler.testModalConnection()" class="px-4 py-2 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 font-medium hidden">Test Connection</button>
+                                                <button type="submit" id="vs-save-btn" class="px-4 py-2 rounded-lg text-white font-medium" style="background: var(--teradata-orange);">Save</button>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             </div>
@@ -7264,89 +7339,23 @@
                         </div>
                     </div>
 
-                    <!-- Storage Backend -->
+                    <!-- Vector Store -->
                     <div class="space-y-3 pt-3 border-t border-gray-700">
                         <h3 class="text-base font-semibold text-white flex items-center gap-2">
                             <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                       d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
                             </svg>
-                            Storage Backend
+                            Vector Store
                         </h3>
                         <div>
-                            <label for="knowledge-repo-backend-type" class="block text-sm font-medium text-gray-300 mb-2">Backend</label>
-                            <select id="knowledge-repo-backend-type" name="backend_type"
+                            <label for="knowledge-repo-vector-store" class="block text-sm font-medium text-gray-300 mb-2">Vector Store</label>
+                            <select id="knowledge-repo-vector-store" name="vector_store"
                                     class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange focus:border-teradata-orange outline-none text-white">
-                                <option value="chromadb">ChromaDB — Local embedded, zero-config</option>
-                                <option value="teradata">Teradata — Enterprise, server-side embedding</option>
+                                <!-- Populated dynamically from /v1/vectorstore/configurations -->
+                                <option value="vs-default-chromadb" data-backend-type="chromadb">Local ChromaDB (Default)</option>
                             </select>
-                            <p class="mt-1 text-xs text-gray-400">ChromaDB stores vectors locally. Teradata uses an enterprise vector store with embedding via AWS Bedrock or Azure OpenAI.</p>
-                        </div>
-                        <!-- Teradata connection config — revealed by JS when "teradata" is selected -->
-                        <div id="knowledge-repo-teradata-config" class="hidden space-y-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
-                            <p class="text-xs text-orange-300 flex items-center gap-1.5">
-                                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                                Embedding is handled server-side — no local model is loaded.
-                            </p>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label for="knowledge-repo-teradata-host" class="block text-xs text-gray-400 mb-1">Host <span class="text-red-400">*</span></label>
-                                    <input type="text" id="knowledge-repo-teradata-host" placeholder="teradata-host.company.com"
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
-                                </div>
-                                <div>
-                                    <label for="knowledge-repo-teradata-database" class="block text-xs text-gray-400 mb-1">Database <span class="text-red-400">*</span></label>
-                                    <input type="text" id="knowledge-repo-teradata-database" placeholder="VECTORS_DB"
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
-                                </div>
-                                <div class="col-span-2">
-                                    <label for="knowledge-repo-teradata-base-url" class="block text-xs text-gray-400 mb-1">Vector Store API URL <span class="text-red-400">*</span></label>
-                                    <input type="text" id="knowledge-repo-teradata-base-url" placeholder="https://td-endpoint.company.com/api/accounts/..."
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
-                                </div>
-                                <div>
-                                    <label for="knowledge-repo-teradata-username" class="block text-xs text-gray-400 mb-1">Username</label>
-                                    <input type="text" id="knowledge-repo-teradata-username" placeholder="td_user"
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
-                                           autocomplete="off">
-                                </div>
-                                <div>
-                                    <label for="knowledge-repo-teradata-password" class="block text-xs text-gray-400 mb-1">Password</label>
-                                    <input type="password" id="knowledge-repo-teradata-password" placeholder="••••••••"
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
-                                           autocomplete="new-password">
-                                </div>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Or use PAT Token as alternative to Username/Password:</p>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label for="knowledge-repo-teradata-pat-token" class="block text-xs text-gray-400 mb-1">PAT Token</label>
-                                    <input type="password" id="knowledge-repo-teradata-pat-token" placeholder="eyJ..."
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm"
-                                           autocomplete="off">
-                                </div>
-                                <div>
-                                    <label for="knowledge-repo-teradata-pem-file" class="block text-xs text-gray-400 mb-1">PEM File Path</label>
-                                    <input type="text" id="knowledge-repo-teradata-pem-file" placeholder="/path/to/cert.pem"
-                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
-                                </div>
-                            </div>
-                            <div class="flex justify-end items-center mt-2">
-                                <button type="button" id="knowledge-repo-test-connection-btn"
-                                        onclick="window.knowledgeRepositoryHandler?.testTeradataConnection()"
-                                        class="px-3 py-1.5 text-xs font-medium text-orange-300 border border-orange-500/30 rounded-lg
-                                               hover:bg-orange-500/10 transition-colors flex items-center gap-1.5">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                              d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                                    </svg>
-                                    Test Connection
-                                </button>
-                                <span id="knowledge-repo-test-connection-status" class="ml-2 text-xs"></span>
-                            </div>
+                            <p class="mt-1 text-xs text-gray-400">Select a configured vector store. Manage stores in <span class="text-orange-400 cursor-pointer hover:underline" onclick="document.querySelector('[data-tab-target=\\'vector-stores-tab\\']')?.click()">Configuration &rarr; Vector Stores</span>.</p>
                         </div>
                     </div>
 
@@ -7384,6 +7393,64 @@
                                 <label for="knowledge-repo-chunk-overlap" class="block text-xs text-gray-400 mb-1">Chunk Overlap</label>
                                 <input type="number" id="knowledge-repo-chunk-overlap" name="chunk_overlap" value="200" min="0" max="1000"
                                        class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Server-Side Chunking Sub-Options (shown only when server_side is selected) -->
+                        <div id="knowledge-repo-server-side-params" class="hidden space-y-3 p-3 bg-gray-700/30 rounded-lg border border-gray-600">
+                            <h4 class="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                </svg>
+                                Server-Side Chunking Options
+                            </h4>
+
+                            <!-- Chunking Mode Toggle -->
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Chunking Mode</label>
+                                <div class="flex gap-2">
+                                    <label class="flex items-center gap-2 p-2 bg-gray-700 rounded-lg border border-gray-600 cursor-pointer hover:border-orange-400 transition-colors flex-1">
+                                        <input type="radio" name="server_side_mode" value="optimized" checked
+                                               class="text-orange-500 focus:ring-orange-500">
+                                        <div>
+                                            <div class="text-sm text-white font-medium">Optimized</div>
+                                            <div class="text-xs text-gray-400">Structure-aware dynamic chunking</div>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 bg-gray-700 rounded-lg border border-gray-600 cursor-pointer hover:border-orange-400 transition-colors flex-1">
+                                        <input type="radio" name="server_side_mode" value="fixed_size"
+                                               class="text-orange-500 focus:ring-orange-500">
+                                        <div>
+                                            <div class="text-sm text-white font-medium">Fixed Size</div>
+                                            <div class="text-xs text-gray-400">Split by character count</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Chunk Size (only for Fixed Size) -->
+                            <div id="knowledge-repo-ss-chunk-size-row" class="hidden">
+                                <label for="knowledge-repo-ss-chunk-size" class="block text-xs text-gray-400 mb-1">Chunk Size (characters)</label>
+                                <input type="number" id="knowledge-repo-ss-chunk-size" value="500" min="100" max="10000"
+                                       class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                <p class="mt-0.5 text-xs text-gray-500">Number of characters per chunk (only used with Fixed Size mode)</p>
+                            </div>
+
+                            <!-- Header / Footer Trim -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label for="knowledge-repo-header-height" class="block text-xs text-gray-400 mb-1">Header Trim</label>
+                                    <input type="number" id="knowledge-repo-header-height" value="0" min="0" max="0.5" step="0.01"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                    <p class="mt-0.5 text-xs text-gray-500">Fraction of page to trim from top (0&ndash;0.5)</p>
+                                </div>
+                                <div>
+                                    <label for="knowledge-repo-footer-height" class="block text-xs text-gray-400 mb-1">Footer Trim</label>
+                                    <input type="number" id="knowledge-repo-footer-height" value="0" min="0" max="0.5" step="0.01"
+                                           class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
+                                    <p class="mt-0.5 text-xs text-gray-500">Fraction of page to trim from bottom (0&ndash;0.5)</p>
+                                </div>
                             </div>
                         </div>
 
@@ -7482,8 +7549,8 @@
                             <svg class="w-20 h-20 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                             </svg>
-                            <h4 class="text-lg font-medium text-gray-400 mb-2">No Preview Yet</h4>
-                            <p class="text-sm text-gray-500">Upload a document to automatically preview how it will be chunked</p>
+                            <h4 id="knowledge-repo-preview-title" class="text-lg font-medium text-gray-400 mb-2">No Preview Yet</h4>
+                            <p id="knowledge-repo-preview-subtitle" class="text-sm text-gray-500">Upload a document to automatically preview how it will be chunked</p>
                         </div>
                     </div>
 
@@ -7940,6 +8007,7 @@
     <script type="module" src="{{ url_for('static', filename='js/handlers/genieHandler.js') }}?v=3.1"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/splitViewHandler.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/agentPackHandler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/handlers/vectorStoreHandler.js') }}"></script>
     <script src="{{ url_for('static', filename='js/oauth.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/userProfileHandler.js') }}"></script>
     <!-- RAG Case Modal -->

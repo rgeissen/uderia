@@ -229,6 +229,14 @@ def _create_collections_table():
             cursor.execute("ALTER TABLE collections ADD COLUMN backend_config TEXT DEFAULT '{}'")
             conn.commit()
 
+        # Migration: Add vector_store_config_id column for centralized vector store configurations
+        try:
+            cursor.execute("SELECT vector_store_config_id FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding vector_store_config_id column to collections table")
+            cursor.execute("ALTER TABLE collections ADD COLUMN vector_store_config_id TEXT DEFAULT NULL")
+            conn.commit()
+
         # Create document_chunks table for Knowledge repositories
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_chunks (

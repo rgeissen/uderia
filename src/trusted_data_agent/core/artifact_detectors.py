@@ -309,11 +309,15 @@ class CollectionDetector(BaseDetector):
                         coll_id = coll_info
 
                     if coll_id and (coll_id == collection_id or str(coll_id) == collection_str):
+                        total_collections = len(profile_collections)
                         profiles_found.append({
                             "profile_id": profile.get("id"),
                             "profile_name": profile.get("name", "Unknown Profile"),
                             "profile_tag": profile.get("tag", ""),
-                            "relationship_type": "knowledge_configuration"
+                            "profile_type": profile.get("profile_type", ""),
+                            "relationship_type": "knowledge_configuration",
+                            "total_collections": total_collections,
+                            "will_be_deactivated": total_collections == 1
                         })
                         break
 

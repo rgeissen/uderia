@@ -162,21 +162,44 @@ class RelationshipAnalyzer:
                 f"reference{'s' if archived_count == 1 else ''} this {artifact_type}"
             )
 
-        # Profile impact warning
+        # Profile impact warning — differentiate deactivation vs reference removal
         if profiles:
-            count = len(profiles)
-            warnings.append(
-                f"{count} profile{'s' if count != 1 else ''} will lose access to this {artifact_type}"
-            )
+            deactivated = [p for p in profiles if p.get("will_be_deactivated")]
+            reference_removed = [p for p in profiles if not p.get("will_be_deactivated")]
+
+            if deactivated:
+                count = len(deactivated)
+                names = ", ".join(
+                    f"@{p['profile_tag']}" if p.get("profile_tag") else p.get("profile_name", "Unknown")
+                    for p in deactivated
+                )
+                warnings.append(
+                    f"{count} Focus profile{'s' if count != 1 else ''} will be deactivated "
+                    f"(sole collection): {names}"
+                )
+
+            if reference_removed:
+                count = len(reference_removed)
+                names = ", ".join(
+                    f"@{p['profile_tag']}" if p.get("profile_tag") else p.get("profile_name", "Unknown")
+                    for p in reference_removed
+                )
+                warnings.append(
+                    f"{count} profile{'s' if count != 1 else ''} will have this collection "
+                    f"reference removed: {names}"
+                )
 
         return {
             "can_delete": len(blockers) == 0,
             "blockers": blockers,
             "warnings": warnings,
+            "affected_profiles": profiles if profiles else [],
             "cascade_effects": {
                 "active_sessions_archived": active_count,
                 "archived_sessions_affected": archived_count,
                 "total_sessions_affected": total_count,
-                "profiles_affected": len(profiles)
+                "profiles_affected": len(profiles),
+                "profiles_deactivated": len([p for p in profiles if p.get("will_be_deactivated")]),
+                "profiles_reference_removed": len([p for p in profiles if not p.get("will_be_deactivated")])
             }
         }

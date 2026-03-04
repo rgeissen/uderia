@@ -89,3 +89,20 @@ class CollectionInfo:
     document_count: int
     distance_metric: DistanceMetric = DistanceMetric.COSINE
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ServerSideChunkingConfig:
+    """Configuration for server-side document chunking.
+
+    When ``optimized_chunking`` is True the backend uses structure-aware
+    dynamic chunking and ``chunk_size`` is ignored.  When False, splits
+    by fixed character count.
+
+    ``header_height`` / ``footer_height`` trim the specified fraction of
+    each PDF page before chunking (0.0 = no trim, 0.15 = trim 15%).
+    """
+    optimized_chunking: bool = True
+    chunk_size: int = 500
+    header_height: float = 0.0
+    footer_height: float = 0.0

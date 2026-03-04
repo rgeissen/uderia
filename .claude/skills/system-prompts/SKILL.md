@@ -1,3 +1,9 @@
+---
+name: system-prompts
+description: Quick reference for locating and encrypting Uderia system prompts. Covers bootstrap encryption workflow, database encryption, runtime decryption, and zero-downtime deployment with update_prompt.py.
+user-invocable: true
+---
+
 # System Prompts Management
 
 Quick reference for locating and encrypting Uderia's system prompts.

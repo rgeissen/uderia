@@ -18,6 +18,7 @@ Connection config (stored as JSON in collections.backend_config)::
         "password":         "td_pass",
         "pat_token":        "eyJ...",            # Option B: PAT token auth
         "pem_file":         "/path/to/cert.pem", # Optional, with PAT token
+        "pem_content":      "-----BEGIN...",     # Alternative: inline PEM content
         "database":         "VECTORS_DB",
         "embedding_model":  "amazon.titan-embed-text-v1",
         "search_algorithm": "VECTORDISTANCE",
@@ -60,6 +61,7 @@ from .types import (
     DistanceMetric,
     GetResult,
     QueryResult,
+    ServerSideChunkingConfig,
     VectorDocument,
 )
 
@@ -84,6 +86,9 @@ class TeradataVectorBackend(VectorStoreBackend):
         self._password: str = connection_config.get("password", "")
         self._pat_token: str = connection_config.get("pat_token", "")
         self._pem_file: str = connection_config.get("pem_file", "")
+        self._pem_content: str = connection_config.get("pem_content", "")
+        self._pem_key_name: str = connection_config.get("pem_key_name", "")
+        self._pem_tempfile: Optional[str] = None  # temp file path if pem_content used
         self._database: str = connection_config.get("database", "")
         self._embedding_model: str = connection_config.get(
             "embedding_model", "amazon.titan-embed-text-v1"
@@ -172,13 +177,35 @@ class TeradataVectorBackend(VectorStoreBackend):
             if base_url.endswith("/open-analytics"):
                 base_url = base_url[:-len("/open-analytics")]
 
+            # If pem_content provided but no pem_file path, write to temp file.
+            # CRITICAL: The SDK derives the JWT Key ID (kid) from the PEM *file name*.
+            # The temp file MUST be named {key_name}.pem to match the key registered
+            # in the VantageCloud Lake Console.
+            if self._pem_content and not self._pem_file:
+                import tempfile, os
+                if not self._pem_key_name:
+                    raise RuntimeError(
+                        "PEM Key Name is required when providing PEM content. "
+                        "Use the key name from VantageCloud Lake Console."
+                    )
+                tmpdir = tempfile.mkdtemp(prefix="tda_vs_")
+                pem_path = os.path.join(tmpdir, f"{self._pem_key_name}.pem")
+                with open(pem_path, "w") as f:
+                    content = self._pem_content
+                    if not content.endswith("\n"):
+                        content += "\n"
+                    f.write(content)
+                self._pem_tempfile = tmpdir  # track dir for cleanup
+                self._pem_file = pem_path
+
             if self._pat_token:
-                await asyncio.to_thread(
-                    set_auth_token,
-                    base_url=base_url,
-                    pat_token=self._pat_token,
-                    pem_file=self._pem_file or None,
-                )
+                pat_kwargs: dict = {
+                    "base_url": base_url,
+                    "pat_token": self._pat_token,
+                }
+                if self._pem_file:
+                    pat_kwargs["pem_file"] = self._pem_file
+                await asyncio.to_thread(set_auth_token, **pat_kwargs)
             else:
                 # Fallback: username/password Basic auth
                 await asyncio.to_thread(
@@ -208,6 +235,14 @@ class TeradataVectorBackend(VectorStoreBackend):
             await asyncio.to_thread(VSManager.disconnect)
         except Exception as exc:
             logger.debug(f"VSManager.disconnect() during shutdown: {exc}")
+        # Clean up temp PEM dir if we created one
+        if self._pem_tempfile:
+            try:
+                import shutil
+                shutil.rmtree(self._pem_tempfile, ignore_errors=True)
+            except Exception:
+                pass
+            self._pem_tempfile = None
         self._stores.clear()
         self._collections.clear()
         self._initialized = False
@@ -606,7 +641,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         self,
         collection_name: str,
         file_paths: List[str],
-        chunking_config: Optional[dict] = None,
+        chunking_config: Optional[ServerSideChunkingConfig] = None,
     ) -> int:
         """Ingest files directly via ``VectorStore.create(document_files=...)``.
 
@@ -618,7 +653,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         from teradatagenai import VectorStore  # type: ignore[import]
 
-        config = chunking_config or {}
+        config = chunking_config or ServerSideChunkingConfig()
         vs = VectorStore(collection_name)
 
         create_kwargs: dict = {
@@ -627,9 +662,16 @@ class TeradataVectorBackend(VectorStoreBackend):
             "top_k": self._top_k,
             "target_database": self._database,
             "document_files": file_paths,
-            "chunk_size": config.get("chunk_size", 500),
-            "optimized_chunking": config.get("optimized_chunking", True),
+            "chunk_size": config.chunk_size,
+            "optimized_chunking": config.optimized_chunking,
         }
+
+        # Header/footer trimming — only pass when non-zero to avoid
+        # sending unsupported kwargs to older SDK versions.
+        if config.header_height > 0:
+            create_kwargs["header_height"] = config.header_height
+        if config.footer_height > 0:
+            create_kwargs["footer_height"] = config.footer_height
 
         await asyncio.to_thread(vs.create, **create_kwargs)
         # PDF processing with Bedrock embeddings can take 15–30+ minutes
@@ -639,7 +681,8 @@ class TeradataVectorBackend(VectorStoreBackend):
         self._collections.add(collection_name)
         logger.info(
             f"Teradata VS '{collection_name}' created from {len(file_paths)} file(s) "
-            f"(server-side chunking, chunk_size={config.get('chunk_size', 500)})"
+            f"(server-side chunking, optimized={config.optimized_chunking}, "
+            f"chunk_size={config.chunk_size})"
         )
         return len(file_paths)
 

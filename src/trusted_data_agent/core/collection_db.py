@@ -161,8 +161,9 @@ class CollectionDatabase:
                 description, owner_user_id, visibility, is_marketplace_listed,
                 subscriber_count, marketplace_category, marketplace_tags,
                 marketplace_long_description, repository_type, chunking_strategy,
-                chunk_size, chunk_overlap, embedding_model, backend_type, backend_config
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                chunk_size, chunk_overlap, embedding_model, backend_type, backend_config,
+                vector_store_config_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             collection_data['name'],
             collection_data['collection_name'],
@@ -183,7 +184,8 @@ class CollectionDatabase:
             collection_data.get('chunk_overlap', 200),
             collection_data.get('embedding_model', 'all-MiniLM-L6-v2'),
             collection_data.get('backend_type', 'chromadb'),
-            collection_data.get('backend_config', '{}')
+            collection_data.get('backend_config', '{}'),
+            collection_data.get('vector_store_config_id')
         ))
         
         collection_id = cursor.lastrowid

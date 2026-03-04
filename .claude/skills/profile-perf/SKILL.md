@@ -1,3 +1,9 @@
+---
+name: profile-perf
+description: Performance testing and optimization framework for Uderia profiles. Compare execution metrics between profile types, analyze strategic plans, identify optimization opportunities, and detect issues like recursive executions or inappropriate LLM result formats.
+user-invocable: true
+---
+
 # Profile Performance Testing & Optimization Framework
 
 ## Overview

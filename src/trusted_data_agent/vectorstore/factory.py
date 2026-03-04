@@ -145,19 +145,60 @@ async def get_default_chromadb_backend(persist_directory: Optional[Path] = None)
     return _DEFAULT_CHROMADB
 
 
-async def get_backend_for_collection(coll_meta: Dict[str, Any]) -> VectorStoreBackend:
+async def get_backend_for_collection(coll_meta: Dict[str, Any], user_uuid: Optional[str] = None) -> VectorStoreBackend:
     """Resolve and return the correct backend for a collection metadata dict.
 
     ``coll_meta`` is the dict returned by ``CollectionDatabase.get_collection_by_id()``.
-    It must contain ``backend_type`` (defaults to ``"chromadb"``) and optionally
-    ``backend_config`` (JSON string with backend-specific connection parameters).
+    If the collection has a ``vector_store_config_id``, the backend configuration is
+    resolved from the centralized vector store configurations. Otherwise, falls back to
+    inline ``backend_type`` + ``backend_config``.
     """
+    # NEW: Resolve from centralized vector store config if available
+    vs_config_id = coll_meta.get("vector_store_config_id")
+    if vs_config_id and user_uuid:
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            vs_configs = config_manager.get_vector_store_configurations(user_uuid)
+            vs_config = next((c for c in vs_configs if c.get("id") == vs_config_id), None)
+
+            if vs_config:
+                backend_type = vs_config.get("backend_type", "chromadb")
+                backend_config = vs_config.get("backend_config", {})
+                if isinstance(backend_config, str):
+                    try:
+                        backend_config = json.loads(backend_config)
+                    except (json.JSONDecodeError, ValueError):
+                        backend_config = {}
+
+                # Merge decrypted credentials
+                try:
+                    from trusted_data_agent.auth.encryption import decrypt_credentials
+                    credentials = decrypt_credentials(user_uuid, f"vectorstore_{vs_config_id}")
+                    if credentials:
+                        backend_config = {**backend_config, **credentials}
+                except Exception as e:
+                    logger.warning(f"Could not decrypt credentials for vector store {vs_config_id}: {e}")
+
+                # Merge embedding_model from collection metadata (collection-level, not config-level)
+                embedding_model = coll_meta.get("embedding_model")
+                if embedding_model and "embedding_model" not in backend_config:
+                    backend_config["embedding_model"] = embedding_model
+
+                if backend_type == "chromadb":
+                    return await get_default_chromadb_backend()
+
+                return await get_backend(backend_type, backend_config)
+        except Exception as e:
+            logger.warning(f"Failed to resolve vector store config {vs_config_id}, falling back to inline config: {e}")
+
+    # FALLBACK: Inline backend_type + backend_config
     backend_type = coll_meta.get("backend_type") or "chromadb"
     backend_config_raw = coll_meta.get("backend_config") or "{}"
 
     if isinstance(backend_config_raw, str):
         try:
-            backend_config: Dict[str, Any] = json.loads(backend_config_raw)
+            backend_config = json.loads(backend_config_raw)
         except (json.JSONDecodeError, ValueError):
             backend_config = {}
     else:

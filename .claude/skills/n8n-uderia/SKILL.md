@@ -1,3 +1,9 @@
+---
+name: n8n-uderia
+description: Comprehensive guide for developing, testing, and deploying n8n workflows integrated with Uderia Platform. Covers REST API vs UI differences, Docker networking, reverse proxy configuration, profile override methods, common pitfalls, and troubleshooting.
+user-invocable: true
+---
+
 # n8n + Uderia Integration - Complete Development Guide
 
 **Version:** 1.0

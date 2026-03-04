@@ -32,6 +32,7 @@ from trusted_data_agent.agent.repository_constructor import (
     ChunkingStrategy
 )
 from trusted_data_agent.vectorstore.capabilities import VectorStoreCapability
+from trusted_data_agent.vectorstore.types import ServerSideChunkingConfig
 
 # Create blueprint
 knowledge_api_bp = Blueprint('knowledge_api', __name__)
@@ -303,10 +304,12 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     backend.add_document_files(
                         collection_name=collection_name,
                         file_paths=[temp_file.name],
-                        chunking_config={
-                            "chunk_size": chunk_size,
-                            "optimized_chunking": True,
-                        },
+                        chunking_config=ServerSideChunkingConfig(
+                            optimized_chunking=form.get("optimized_chunking", "true").lower() == "true",
+                            chunk_size=int(form.get("chunk_size", 500)),
+                            header_height=float(form.get("header_height", 0.0)),
+                            footer_height=float(form.get("footer_height", 0.0)),
+                        ),
                     )
                 )
 
@@ -609,10 +612,12 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 await backend.add_document_files(
                     collection_name=collection_name,
                     file_paths=[temp_file.name],
-                    chunking_config={
-                        "chunk_size": chunk_size,
-                        "optimized_chunking": True,
-                    },
+                    chunking_config=ServerSideChunkingConfig(
+                        optimized_chunking=form.get("optimized_chunking", "true").lower() == "true",
+                        chunk_size=int(form.get("chunk_size", 500)),
+                        header_height=float(form.get("header_height", 0.0)),
+                        footer_height=float(form.get("footer_height", 0.0)),
+                    ),
                 )
 
                 app_logger.info(

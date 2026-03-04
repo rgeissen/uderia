@@ -112,6 +112,7 @@ from trusted_data_agent.vectorstore.types import (
     VectorDocument,
     QueryResult,
     GetResult,
+    ServerSideChunkingConfig,
 )
 
 
@@ -540,7 +541,7 @@ class TestServerSideChunking(unittest.TestCase):
                 backend.add_document_files(
                     "my_collection",
                     ["/tmp/test.pdf"],
-                    chunking_config={"chunk_size": 500},
+                    chunking_config=ServerSideChunkingConfig(chunk_size=500),
                 )
             )
 
@@ -612,7 +613,9 @@ class TestServerSideChunking(unittest.TestCase):
                 backend.add_document_files(
                     "multi_file_vs",
                     ["/tmp/a.pdf", "/tmp/b.pdf", "/tmp/c.pdf"],
-                    chunking_config={"chunk_size": 1000, "optimized_chunking": False},
+                    chunking_config=ServerSideChunkingConfig(
+                        chunk_size=1000, optimized_chunking=False,
+                    ),
                 )
             )
 
@@ -626,6 +629,104 @@ class TestServerSideChunking(unittest.TestCase):
         self.assertFalse(create_call_kwargs.get("optimized_chunking"))
         # Should NOT have object_names (that's the client-side path)
         self.assertNotIn("object_names", create_call_kwargs)
+
+    def test_add_document_files_header_footer(self):
+        """header_height and footer_height are forwarded to VectorStore.create()."""
+        backend = _make_backend(pat_token="tok", pem_file="/p.pem")
+        backend._initialized = True
+
+        mock_vs = MagicMock()
+        _fake_teradatagenai.VectorStore.return_value = mock_vs
+
+        create_call_kwargs = {}
+
+        async def _fake_to_thread(fn, *args, **kwargs):
+            if fn == mock_vs.create:
+                create_call_kwargs.update(kwargs)
+                return None
+            return "COMPLETED"
+
+        with patch("trusted_data_agent.vectorstore.teradata_backend.asyncio") as mock_aio:
+            mock_aio.to_thread = _fake_to_thread
+            mock_aio.sleep = asyncio.sleep
+            result = _run(
+                backend.add_document_files(
+                    "trim_test",
+                    ["/tmp/doc.pdf"],
+                    chunking_config=ServerSideChunkingConfig(
+                        optimized_chunking=True,
+                        header_height=0.1,
+                        footer_height=0.15,
+                    ),
+                )
+            )
+
+        self.assertEqual(result, 1)
+        self.assertAlmostEqual(create_call_kwargs.get("header_height"), 0.1)
+        self.assertAlmostEqual(create_call_kwargs.get("footer_height"), 0.15)
+        self.assertTrue(create_call_kwargs.get("optimized_chunking"))
+
+    def test_add_document_files_zero_trim_not_passed(self):
+        """When header/footer are 0, they should NOT be in create_kwargs."""
+        backend = _make_backend(pat_token="tok", pem_file="/p.pem")
+        backend._initialized = True
+
+        mock_vs = MagicMock()
+        _fake_teradatagenai.VectorStore.return_value = mock_vs
+
+        create_call_kwargs = {}
+
+        async def _fake_to_thread(fn, *args, **kwargs):
+            if fn == mock_vs.create:
+                create_call_kwargs.update(kwargs)
+                return None
+            return "COMPLETED"
+
+        with patch("trusted_data_agent.vectorstore.teradata_backend.asyncio") as mock_aio:
+            mock_aio.to_thread = _fake_to_thread
+            mock_aio.sleep = asyncio.sleep
+            _run(
+                backend.add_document_files(
+                    "no_trim_test",
+                    ["/tmp/doc.pdf"],
+                    chunking_config=ServerSideChunkingConfig(),  # all defaults
+                )
+            )
+
+        self.assertNotIn("header_height", create_call_kwargs)
+        self.assertNotIn("footer_height", create_call_kwargs)
+
+    def test_add_document_files_none_config_uses_defaults(self):
+        """Passing None should behave identically to ServerSideChunkingConfig()."""
+        backend = _make_backend(pat_token="tok", pem_file="/p.pem")
+        backend._initialized = True
+
+        mock_vs = MagicMock()
+        _fake_teradatagenai.VectorStore.return_value = mock_vs
+
+        create_call_kwargs = {}
+
+        async def _fake_to_thread(fn, *args, **kwargs):
+            if fn == mock_vs.create:
+                create_call_kwargs.update(kwargs)
+                return None
+            return "COMPLETED"
+
+        with patch("trusted_data_agent.vectorstore.teradata_backend.asyncio") as mock_aio:
+            mock_aio.to_thread = _fake_to_thread
+            mock_aio.sleep = asyncio.sleep
+            _run(
+                backend.add_document_files(
+                    "default_vs",
+                    ["/tmp/a.pdf"],
+                    chunking_config=None,
+                )
+            )
+
+        self.assertEqual(create_call_kwargs.get("chunk_size"), 500)
+        self.assertTrue(create_call_kwargs.get("optimized_chunking"))
+        self.assertNotIn("header_height", create_call_kwargs)
+        self.assertNotIn("footer_height", create_call_kwargs)
 
 
 class TestServerSideBrowse(unittest.TestCase):

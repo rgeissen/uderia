@@ -2777,8 +2777,22 @@ async def create_rag_collection():
         chunk_size = data.get("chunk_size", 1000)
         chunk_overlap = data.get("chunk_overlap", 200)
         embedding_model = data.get("embedding_model", "all-MiniLM-L6-v2")
+        vector_store_config_id = data.get("vector_store_config_id")
+
+        # Resolve backend_type and backend_config from centralized vector store config
         backend_type = data.get("backend_type", "chromadb")
         backend_config = data.get("backend_config", {})
+        if vector_store_config_id:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            vs_configs = config_manager.get_vector_store_configurations(user_uuid)
+            vs_config = next((c for c in vs_configs if c.get("id") == vector_store_config_id), None)
+            if vs_config:
+                backend_type = vs_config.get("backend_type", backend_type)
+                backend_config = vs_config.get("backend_config", {})
+            else:
+                return jsonify({"status": "error", "message": f"Vector store configuration '{vector_store_config_id}' not found"}), 400
+
         if isinstance(backend_config, dict):
             import json as _json
             backend_config = _json.dumps(backend_config)
@@ -2794,11 +2808,12 @@ async def create_rag_collection():
             repository_type=repository_type, chunking_strategy=chunking_strategy,
             chunk_size=chunk_size, chunk_overlap=chunk_overlap, embedding_model=embedding_model,
             backend_type=backend_type, backend_config=backend_config,
+            vector_store_config_id=vector_store_config_id,
         )
         # --- MARKETPLACE PHASE 2 END ---
 
         if collection_id is not None:
-            app_logger.info(f"Created {repository_type} RAG collection with ID: {collection_id}, MCP server: {mcp_server_id}")
+            app_logger.info(f"Created {repository_type} RAG collection with ID: {collection_id}, MCP server: {mcp_server_id}, vector_store_config_id: {vector_store_config_id}")
             return jsonify({
                 "status": "success",
                 "message": "Collection created successfully",
@@ -2806,6 +2821,7 @@ async def create_rag_collection():
                 "mcp_server_id": mcp_server_id,
                 "repository_type": repository_type,
                 "backend_type": backend_type,
+                "vector_store_config_id": vector_store_config_id,
             }), 201
         else:
             return jsonify({"status": "error", "message": "Failed to create collection"}), 500
@@ -3291,6 +3307,98 @@ async def delete_rag_collection(collection_id: int):
             f"Archived {archive_result['archived_count']} sessions for collection {collection_id}"
         )
 
+        # Deactivate/update Focus profiles that reference this collection
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        profiles_deactivated = []
+        profiles_updated = []
+        default_cleared = False
+
+        user_profiles = config_manager.get_profiles(user_uuid)
+        default_profile_id = config_manager.get_default_profile_id(user_uuid)
+        active_consumption_ids = config_manager.get_active_for_consumption_profile_ids(user_uuid)
+        consumption_changed = False
+
+        for profile in user_profiles:
+            knowledge_config = profile.get("knowledgeConfig", {})
+            if not knowledge_config.get("enabled"):
+                continue
+
+            profile_collections = knowledge_config.get("collections", [])
+            # Check if this profile references the deleted collection
+            references_collection = False
+            for coll_info in profile_collections:
+                coll_id = coll_info.get("id") if isinstance(coll_info, dict) else coll_info
+                if coll_id and (coll_id == collection_id or str(coll_id) == str(collection_id)):
+                    references_collection = True
+                    break
+
+            if not references_collection:
+                continue
+
+            profile_id = profile.get("id")
+            profile_tag = profile.get("tag", "")
+            profile_name = profile.get("name", "Unknown")
+
+            if len(profile_collections) == 1:
+                # Sole collection — deactivate the profile
+                config_manager.update_profile(profile_id, {
+                    "knowledgeConfig": {
+                        **knowledge_config,
+                        "enabled": False,
+                        "collections": []
+                    }
+                }, user_uuid)
+
+                # Remove from active consumption tracking
+                if profile_id in active_consumption_ids:
+                    active_consumption_ids = [pid for pid in active_consumption_ids if pid != profile_id]
+                    consumption_changed = True
+
+                # Clear default if this was the default profile
+                if profile_id == default_profile_id:
+                    config_manager.set_default_profile_id(None, user_uuid)
+                    default_cleared = True
+
+                profiles_deactivated.append({
+                    "profile_id": profile_id,
+                    "profile_name": profile_name,
+                    "profile_tag": profile_tag
+                })
+                app_logger.info(
+                    f"Deactivated Focus profile @{profile_tag} ({profile_id}) — "
+                    f"sole collection {collection_id} deleted"
+                )
+            else:
+                # Multiple collections — just remove the reference
+                updated_collections = [
+                    c for c in profile_collections
+                    if not (
+                        (isinstance(c, dict) and (c.get("id") == collection_id or str(c.get("id")) == str(collection_id)))
+                        or (not isinstance(c, dict) and (c == collection_id or str(c) == str(collection_id)))
+                    )
+                ]
+                config_manager.update_profile(profile_id, {
+                    "knowledgeConfig": {
+                        **knowledge_config,
+                        "collections": updated_collections
+                    }
+                }, user_uuid)
+                profiles_updated.append({
+                    "profile_id": profile_id,
+                    "profile_name": profile_name,
+                    "profile_tag": profile_tag,
+                    "remaining_collections": len(updated_collections)
+                })
+                app_logger.info(
+                    f"Removed collection {collection_id} from profile @{profile_tag} ({profile_id}) — "
+                    f"{len(updated_collections)} collection(s) remaining"
+                )
+
+        if consumption_changed:
+            config_manager.set_active_for_consumption_profile_ids(active_consumption_ids, user_uuid)
+
         # Pass user_id for additional validation in remove_collection
         success = await retriever.remove_collection(collection_id, user_id=user_uuid)
 
@@ -3300,7 +3408,10 @@ async def delete_rag_collection(collection_id: int):
                 "status": "success",
                 "message": "Collection deleted successfully",
                 "sessions_archived": archive_result["archived_count"],
-                "archived_session_ids": archive_result["session_ids"]
+                "archived_session_ids": archive_result["session_ids"],
+                "profiles_deactivated": profiles_deactivated,
+                "profiles_updated": profiles_updated,
+                "default_profile_cleared": default_cleared
             }), 200
         else:
             return jsonify({"status": "error", "message": "Failed to delete collection or collection not found"}), 404
@@ -5543,6 +5654,405 @@ async def get_llm_context_limit(config_id: str):
     except Exception as e:
         app_logger.error(f"Error getting context limit: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ============================================================================
+# VECTOR STORE CONFIGURATION ENDPOINTS
+# ============================================================================
+
+@rest_api_bp.route("/v1/vectorstore/configurations", methods=["GET"])
+async def get_vectorstore_configurations():
+    """Get all vector store configurations."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "success", "configurations": []}), 200
+
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+
+        configurations = config_manager.get_vector_store_configurations(user_uuid)
+
+        # Count dependent collections for each config
+        try:
+            from trusted_data_agent.core.collection_db import get_collection_db
+            collection_db = get_collection_db()
+            user_collections = collection_db.get_user_owned_collections(user_uuid) if user_uuid else []
+            for config in configurations:
+                config["collection_count"] = sum(
+                    1 for c in user_collections
+                    if c.get("vector_store_config_id") == config.get("id")
+                )
+        except Exception:
+            pass
+
+        return jsonify({
+            "status": "success",
+            "configurations": configurations
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting vector store configurations: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/vectorstore/configurations", methods=["POST"])
+async def create_vectorstore_configuration():
+    """Create a new vector store configuration."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.auth import encryption
+        from trusted_data_agent.auth.admin import get_current_user_from_request
+        config_manager = get_config_manager()
+
+        data = await request.get_json()
+
+        # Validate required fields
+        if not all(k in data for k in ["id", "name", "backend_type"]):
+            return jsonify({
+                "status": "error",
+                "message": "Missing required fields: id, name, backend_type"
+            }), 400
+
+        # Validate name uniqueness
+        configurations = config_manager.get_vector_store_configurations(user_uuid)
+        if any(c.get("name") == data["name"] for c in configurations):
+            return jsonify({
+                "status": "error",
+                "message": f"Configuration name '{data['name']}' is already in use."
+            }), 400
+
+        # Validate ID uniqueness
+        if any(c.get("id") == data["id"] for c in configurations):
+            return jsonify({
+                "status": "error",
+                "message": "Configuration ID already exists."
+            }), 400
+
+        # Encrypt credentials if provided — Teradata requires successful test first
+        credentials = data.get("credentials", {})
+        if credentials:
+            if data.get("backend_type") == "teradata" and not data.get("connection_tested"):
+                return jsonify({
+                    "status": "error",
+                    "message": "Please test the connection before saving Teradata credentials."
+                }), 400
+
+            current_user = get_current_user_from_request()
+            if not current_user:
+                return jsonify({
+                    "status": "error",
+                    "message": "Authentication required to store credentials"
+                }), 401
+
+            encryption.encrypt_credentials(current_user.id, f"vectorstore_{data['id']}", credentials)
+            app_logger.info(f"Encrypted credentials for vector store config {data['id']}")
+
+        # Store config without credentials or transient flags (they're in encrypted storage)
+        config_data = {k: v for k, v in data.items() if k not in ("credentials", "connection_tested")}
+        config_data["credentials"] = {}
+
+        success = config_manager.add_vector_store_configuration(config_data, user_uuid)
+
+        if success:
+            app_logger.info(f"Created vector store configuration: {data['name']}")
+            return jsonify({
+                "status": "success",
+                "message": "Vector store configuration created successfully",
+                "configuration": config_data
+            }), 201
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Failed to create vector store configuration"
+            }), 500
+
+    except Exception as e:
+        app_logger.error(f"Error creating vector store configuration: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/vectorstore/configurations/<config_id>", methods=["GET"])
+async def get_vectorstore_configuration(config_id: str):
+    """Get a single vector store configuration with decrypted credentials."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.auth import encryption
+        from trusted_data_agent.auth.admin import get_current_user_from_request
+        config_manager = get_config_manager()
+
+        configurations = config_manager.get_vector_store_configurations(user_uuid)
+        config = next((c for c in configurations if c.get("id") == config_id), None)
+
+        if not config:
+            return jsonify({"status": "error", "message": "Vector store configuration not found"}), 404
+
+        config = config.copy()
+
+        # Decrypt credentials
+        current_user = get_current_user_from_request()
+        if current_user:
+            try:
+                credentials = encryption.decrypt_credentials(current_user.id, f"vectorstore_{config_id}")
+                config["credentials"] = credentials if credentials else {}
+            except Exception as e:
+                app_logger.error(f"Error decrypting vector store credentials: {e}", exc_info=True)
+                config["credentials"] = {}
+        else:
+            config["credentials"] = {}
+
+        return jsonify({"status": "success", "configuration": config}), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting vector store configuration: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/vectorstore/configurations/<config_id>", methods=["PUT"])
+async def update_vectorstore_configuration(config_id: str):
+    """Update an existing vector store configuration."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.auth import encryption
+        from trusted_data_agent.auth.admin import get_current_user_from_request
+        config_manager = get_config_manager()
+
+        data = await request.get_json()
+
+        # Prevent editing default ChromaDB ID
+        if config_id == "vs-default-chromadb" and "backend_type" in data and data["backend_type"] != "chromadb":
+            return jsonify({
+                "status": "error",
+                "message": "Cannot change the backend type of the default ChromaDB configuration"
+            }), 400
+
+        # Check name uniqueness if name is being updated
+        if "name" in data:
+            configurations = config_manager.get_vector_store_configurations(user_uuid)
+            if any(c.get("name") == data["name"] and c.get("id") != config_id for c in configurations):
+                return jsonify({
+                    "status": "error",
+                    "message": f"Configuration name '{data['name']}' is already in use."
+                }), 400
+
+        # Handle credential updates — Teradata requires successful test first
+        if "credentials" in data and data["credentials"]:
+            # Determine backend type from update data or existing config
+            bt = data.get("backend_type")
+            if not bt:
+                existing = next((c for c in configurations if c.get("id") == config_id), None) if "name" in data else None
+                if not existing:
+                    all_configs = config_manager.get_vector_store_configurations(user_uuid)
+                    existing = next((c for c in all_configs if c.get("id") == config_id), None)
+                bt = existing.get("backend_type", "chromadb") if existing else "chromadb"
+
+            if bt == "teradata" and not data.get("connection_tested"):
+                return jsonify({
+                    "status": "error",
+                    "message": "Please test the connection before saving Teradata credentials."
+                }), 400
+
+            current_user = get_current_user_from_request()
+            if not current_user:
+                return jsonify({
+                    "status": "error",
+                    "message": "Authentication required to store credentials"
+                }), 401
+
+            encryption.encrypt_credentials(current_user.id, f"vectorstore_{config_id}", data["credentials"])
+            app_logger.info(f"Updated encrypted credentials for vector store config {config_id}")
+
+        # Remove credentials and transient flags from update data
+        updates = {k: v for k, v in data.items() if k not in ("credentials", "connection_tested")}
+
+        success = config_manager.update_vector_store_configuration(config_id, updates, user_uuid)
+
+        if success:
+            return jsonify({
+                "status": "success",
+                "message": "Vector store configuration updated successfully"
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Failed to update vector store configuration"
+            }), 500
+
+    except Exception as e:
+        app_logger.error(f"Error updating vector store configuration: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/vectorstore/configurations/<config_id>", methods=["DELETE"])
+async def delete_vectorstore_configuration(config_id: str):
+    """Delete a vector store configuration (with dependency check)."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.auth import encryption
+        from trusted_data_agent.auth.admin import get_current_user_from_request
+        config_manager = get_config_manager()
+
+        success, error_msg = config_manager.remove_vector_store_configuration(config_id, user_uuid)
+
+        if not success:
+            return jsonify({"status": "error", "message": error_msg}), 400
+
+        # Clean up encrypted credentials
+        current_user = get_current_user_from_request()
+        if current_user:
+            try:
+                encryption.delete_credentials(current_user.id, f"vectorstore_{config_id}")
+            except Exception as e:
+                app_logger.warning(f"Could not clean up credentials for vector store {config_id}: {e}")
+
+        return jsonify({
+            "status": "success",
+            "message": "Vector store configuration deleted successfully"
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error deleting vector store configuration: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> tuple:
+    """Shared helper: test a vector store connection via the abstraction layer.
+
+    Args:
+        backend_type: 'chromadb' or 'teradata'
+        backend_config: Full config dict including credentials merged in
+
+    Returns:
+        (success: bool, message: str, server_info: dict | None)
+    """
+    if backend_type == "chromadb":
+        return True, "ChromaDB is local — no connection needed", None
+
+    # Validate required fields before attempting connection
+    has_user_pass = backend_config.get("username") and backend_config.get("password")
+    has_pat = backend_config.get("pat_token")
+    if not (has_user_pass or has_pat):
+        return False, "No credentials provided. Add username/password or PAT token.", None
+    if not backend_config.get("host"):
+        return False, "Host is required.", None
+    if not backend_config.get("base_url"):
+        return False, "Base URL (REST API endpoint) is required for Teradata.", None
+
+    # Use the abstraction layer — instantiate directly (NOT via factory) to avoid cache pollution
+    try:
+        from trusted_data_agent.vectorstore.teradata_backend import TeradataVectorBackend
+    except ImportError:
+        return False, "Teradata SDK not installed. Run: pip install teradatagenai teradataml", None
+
+    backend = TeradataVectorBackend(connection_config=backend_config)
+    try:
+        await backend.initialize()
+        server_info = {
+            "host": backend_config["host"],
+            "database": backend_config.get("database"),
+        }
+        return True, "Connection successful", server_info
+    except Exception as e:
+        error_msg = str(e)
+        # Add diagnostic hints for common SDK errors
+        if "set_auth_token" in error_msg:
+            auth_mode = "PAT token" if has_pat else "username/password"
+            hints = [f"Auth mode: {auth_mode}"]
+            hints.append(f"Base URL: {backend_config.get('base_url', '(empty)')}")
+            if has_pat and backend_config.get("pem_content"):
+                hints.append("PEM: provided (inline content)")
+            elif has_pat and backend_config.get("pem_file"):
+                hints.append(f"PEM: file path ({backend_config['pem_file']})")
+            elif has_pat:
+                hints.append("PEM: not provided")
+            error_msg = f"{error_msg}\n\nDiagnostics: {', '.join(hints)}"
+        return False, f"Connection failed: {error_msg}", None
+    finally:
+        try:
+            await backend.shutdown()
+        except Exception:
+            pass
+
+
+@rest_api_bp.route("/v1/vectorstore/test-connection", methods=["POST"])
+async def test_vectorstore_inline():
+    """Test a vector store connection with raw (unsaved) credentials.
+
+    Used by the modal's Test Connection button before saving.
+    Does NOT store anything — pure validation.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        data = await request.get_json()
+        backend_type = data.get("backend_type", "chromadb")
+        backend_config = dict(data.get("backend_config", {}))
+        credentials = data.get("credentials", {})
+
+        # Merge credentials into backend_config for the test
+        if credentials:
+            backend_config.update(credentials)
+
+        success, message, server_info = await _test_vectorstore_backend(backend_type, backend_config)
+
+        if success:
+            result = {"status": "success", "message": message}
+            if server_info:
+                result["server_info"] = server_info
+            return jsonify(result), 200
+        else:
+            return jsonify({"status": "error", "message": message}), 400
+
+    except Exception as e:
+        app_logger.warning(f"Vector store inline test failed: {e}")
+        return jsonify({"status": "error", "message": f"Connection test failed: {e}"}), 400
+
+
+@rest_api_bp.route("/v1/vectorstore/configurations/<config_id>/test", methods=["POST"])
+async def test_vectorstore_connection(config_id: str):
+    """Test connection for a saved vector store configuration (card-level Test button)."""
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.auth import encryption
+        from trusted_data_agent.auth.admin import get_current_user_from_request
+        config_manager = get_config_manager()
+
+        configurations = config_manager.get_vector_store_configurations(user_uuid)
+        config = next((c for c in configurations if c.get("id") == config_id), None)
+
+        if not config:
+            return jsonify({"status": "error", "message": "Vector store configuration not found"}), 404
+
+        backend_type = config.get("backend_type", "chromadb")
+        backend_config = dict(config.get("backend_config", {}))
+
+        # Decrypt credentials and merge into backend_config
+        current_user = get_current_user_from_request()
+        if current_user:
+            credentials = encryption.decrypt_credentials(current_user.id, f"vectorstore_{config_id}")
+            if credentials:
+                backend_config.update(credentials)
+
+        success, message, server_info = await _test_vectorstore_backend(backend_type, backend_config)
+
+        if success:
+            result = {"status": "success", "message": message}
+            if server_info:
+                result["server_info"] = server_info
+            return jsonify(result), 200
+        else:
+            return jsonify({"status": "error", "message": message}), 400
+
+    except Exception as e:
+        app_logger.warning(f"Vector store test-connection failed: {e}")
+        return jsonify({"status": "error", "message": f"Connection failed: {e}"}), 400
 
 
 # ============================================================================

@@ -41,7 +41,7 @@ class AgentPackManager:
         version = manifest.get("format_version")
         if version == "1.0":
             return self._validate_manifest_v10(manifest)
-        elif version == "1.1":
+        elif version in ("1.1", "1.2"):
             return self._validate_manifest_v11(manifest)
         else:
             return [f"Unsupported format_version: {version}"]
@@ -485,6 +485,34 @@ class AgentPackManager:
             if llm_config_id not in {c.get("id") for c in all_configs}:
                 raise ValueError(f"LLM configuration '{llm_config_id}' not found. It may have been deleted.")
 
+            # Step 4b: Import vector store configurations (v1.2+ packs)
+            vs_config_map = {}  # ref → local config ID
+            pack_vs_configs = manifest.get("vector_store_configurations", [])
+            if pack_vs_configs:
+                app_logger.info(f"Importing {len(pack_vs_configs)} vector store configurations...")
+                existing_vs_configs = config_manager.get_vector_store_configurations(user_uuid)
+                for vs_entry in pack_vs_configs:
+                    match = next((c for c in existing_vs_configs
+                                  if c.get("backend_type") == vs_entry.get("backend_type")
+                                  and c.get("name") == vs_entry.get("name")), None)
+                    if match:
+                        vs_config_map[vs_entry["ref"]] = match["id"]
+                        app_logger.info(f"  Matched existing vector store config '{match['name']}'")
+                    else:
+                        import random, string
+                        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                        new_vs_config = {
+                            "id": f"vs-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{suffix}",
+                            "name": vs_entry.get("name", "Imported Vector Store"),
+                            "backend_type": vs_entry.get("backend_type", "chromadb"),
+                            "backend_config": vs_entry.get("backend_config", {}),
+                            "credentials": {},
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        config_manager.add_vector_store_configuration(new_vs_config, user_uuid)
+                        vs_config_map[vs_entry["ref"]] = new_vs_config["id"]
+                        app_logger.info(f"  Created vector store config '{new_vs_config['name']}'")
+
             # Step 5: Import collections
             app_logger.info(f"Importing {len(collections)} collections...")
             ref_to_collection_id = {}
@@ -509,11 +537,23 @@ class AgentPackManager:
                     populate_knowledge_docs=True,
                 )
 
+                new_coll_id = result["collection_id"]
+
+                # Link collection to imported vector store config
+                vs_ref = coll_entry.get("vector_store_config_ref")
+                if vs_ref and vs_ref in vs_config_map:
+                    try:
+                        from trusted_data_agent.core.collection_db import get_collection_db
+                        coll_db = get_collection_db()
+                        coll_db.update_collection(new_coll_id, {"vector_store_config_id": vs_config_map[vs_ref]})
+                    except Exception as e:
+                        app_logger.warning(f"Could not link collection {new_coll_id} to vector store config: {e}")
+
                 ref_to_collection_id[ref] = {
-                    "id": result["collection_id"],
+                    "id": new_coll_id,
                     "name": result["collection_name"],
                 }
-                app_logger.info(f"  Imported collection '{ref}' -> id={result['collection_id']} ({result['document_count']} docs)")
+                app_logger.info(f"  Imported collection '{ref}' -> id={new_coll_id} ({result['document_count']} docs)")
 
             # Step 6: Create profiles — non-genie first, then genie (so child IDs are available)
             app_logger.info(f"Creating {len(profiles)} profiles...")
@@ -739,14 +779,18 @@ class AgentPackManager:
                         db = CollectionDatabase()
                         coll_meta = db.get_collection_by_id(coll_id)
 
-                        manifest_collections.append({
+                        mc_entry = {
                             "ref": safe_ref,
                             "file": f"collections/{final_name}",
                             "name": coll_meta["name"] if coll_meta else coll_info.get("name", ""),
                             "repository_type": coll_meta.get("repository_type", "knowledge") if coll_meta else "knowledge",
                             "description": coll_meta.get("description", "") if coll_meta else "",
+                            "backend_type": coll_meta.get("backend_type", "chromadb") if coll_meta else "chromadb",
                             "_source_id": coll_id,  # Internal tracking, stripped before writing
-                        })
+                        }
+                        if coll_meta and coll_meta.get("vector_store_config_id"):
+                            mc_entry["vector_store_config_ref"] = coll_meta["vector_store_config_id"]
+                        manifest_collections.append(mc_entry)
 
                         collection_refs.append(safe_ref)
                         exported_collection_ids.add(coll_id)
@@ -786,14 +830,18 @@ class AgentPackManager:
                         db = CollectionDatabase()
                         coll_meta = db.get_collection_by_id(coll_id)
 
-                        manifest_collections.append({
+                        mc_entry = {
                             "ref": safe_ref,
                             "file": f"collections/{final_name}",
                             "name": coll_meta["name"] if coll_meta else "",
                             "repository_type": coll_meta.get("repository_type", "planner") if coll_meta else "planner",
                             "description": coll_meta.get("description", "") if coll_meta else "",
+                            "backend_type": coll_meta.get("backend_type", "chromadb") if coll_meta else "chromadb",
                             "_source_id": coll_id,
-                        })
+                        }
+                        if coll_meta and coll_meta.get("vector_store_config_id"):
+                            mc_entry["vector_store_config_ref"] = coll_meta["vector_store_config_id"]
+                        manifest_collections.append(mc_entry)
 
                         collection_refs.append(safe_ref)
                         exported_collection_ids.add(coll_id)
@@ -860,6 +908,30 @@ class AgentPackManager:
 
                 manifest_profiles.append(prof_entry)
 
+            # Gather unique vector store configs referenced by pack collections
+            manifest_vs_configs = []
+            vs_config_ids = set()
+            for mc in manifest_collections:
+                vs_ref = mc.get("vector_store_config_ref")
+                if vs_ref and vs_ref not in vs_config_ids:
+                    vs_config_ids.add(vs_ref)
+            if vs_config_ids:
+                try:
+                    from trusted_data_agent.core.config_manager import get_config_manager
+                    config_manager = get_config_manager()
+                    vs_configs = config_manager.get_vector_store_configurations(user_uuid)
+                    for vs_id in vs_config_ids:
+                        vs_config = next((c for c in vs_configs if c.get("id") == vs_id), None)
+                        if vs_config:
+                            manifest_vs_configs.append({
+                                "ref": vs_id,
+                                "name": vs_config.get("name", ""),
+                                "backend_type": vs_config.get("backend_type", "chromadb"),
+                                "backend_config": vs_config.get("backend_config", {}),
+                            })
+                except Exception as e:
+                    app_logger.warning(f"Could not resolve vector store configs for agent pack export: {e}")
+
             # Strip internal tracking fields from collections
             for mc in manifest_collections:
                 mc.pop("_source_id", None)
@@ -869,9 +941,10 @@ class AgentPackManager:
                 genie_prof = next((p for p in selected_profiles if p.get("profile_type") == "genie"), None)
                 pack_name = genie_prof.get("name", "Exported Agent Pack") if genie_prof else "Exported Agent Pack"
 
-            # Build v1.1 manifest
+            # Build manifest (v1.2 if vector store configs present, otherwise v1.1)
+            manifest_version = "1.2" if manifest_vs_configs else "1.1"
             manifest = {
-                "format_version": "1.1",
+                "format_version": manifest_version,
                 "name": pack_name,
                 "description": pack_description or "",
                 "author": "",
@@ -881,6 +954,8 @@ class AgentPackManager:
                 "profiles": manifest_profiles,
                 "collections": manifest_collections,
             }
+            if manifest_vs_configs:
+                manifest["vector_store_configurations"] = manifest_vs_configs
 
             # Write manifest
             manifest_file = temp_path / "manifest.json"
