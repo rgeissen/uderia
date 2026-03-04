@@ -3045,6 +3045,46 @@
                                         </button>
                                     </div>
 
+                                    <!-- Vector Store Provider Tabs -->
+                                    <div id="vs-provider-tabs" class="flex gap-2 border-b border-white/10 mb-4 overflow-x-auto pb-1">
+                                        <!-- All -->
+                                        <button type="button" class="vs-backend-tab px-4 py-2 text-sm font-medium transition-all border-b-2 text-white whitespace-nowrap" data-backend="all" style="border-color: #6b7280;">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="#6b7280">
+                                                    <path fill-rule="evenodd" d="M3 6a3 3 0 013-3h2.25a3 3 0 013 3v2.25a3 3 0 01-3 3H6a3 3 0 01-3-3V6zm9.75 0a3 3 0 013-3H18a3 3 0 013 3v2.25a3 3 0 01-3 3h-2.25a3 3 0 01-3-3V6zM3 15.75a3 3 0 013-3h2.25a3 3 0 013 3V18a3 3 0 01-3 3H6a3 3 0 01-3-3v-2.25zm9.75 0a3 3 0 013-3H18a3 3 0 013 3V18a3 3 0 01-3 3h-2.25a3 3 0 01-3-3v-2.25z" clip-rule="evenodd" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">All</span>
+                                            </div>
+                                        </button>
+                                        <!-- ChromaDB -->
+                                        <button type="button" class="vs-backend-tab px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20 whitespace-nowrap" data-backend="chromadb">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">ChromaDB</span>
+                                            </div>
+                                        </button>
+                                        <!-- Teradata -->
+                                        <button type="button" class="vs-backend-tab px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20 whitespace-nowrap" data-backend="teradata">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="#F15F22" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">Teradata</span>
+                                            </div>
+                                        </button>
+                                        <!-- Qdrant -->
+                                        <button type="button" class="vs-backend-tab px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-all border-b-2 border-transparent hover:border-white/20 whitespace-nowrap" data-backend="qdrant">
+                                            <div class="flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+                                                </svg>
+                                                <span class="font-bold uppercase tracking-wide">Qdrant</span>
+                                            </div>
+                                        </button>
+                                    </div>
+
                                     <div id="vector-stores-container" class="space-y-4">
                                         <!-- Vector store cards rendered dynamically -->
                                     </div>
@@ -3070,6 +3110,7 @@
                                                 <select id="vs-backend-type" onchange="window.vectorStoreHandler.toggleBackendFields()" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white focus:border-orange-500 focus:outline-none">
                                                     <option value="chromadb">ChromaDB (Local)</option>
                                                     <option value="teradata">Teradata Vector Store</option>
+                                                    <option value="qdrant">Qdrant Cloud</option>
                                                 </select>
                                             </div>
                                             <div id="vs-teradata-fields" class="space-y-4 hidden">
@@ -3110,6 +3151,25 @@
                                                         <label class="block text-sm font-medium text-gray-300 mb-1">PEM Private Key <span class="text-gray-500">(optional, for PAT auth)</span></label>
                                                         <textarea id="vs-pem-content" rows="3" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none font-mono text-xs"></textarea>
                                                     </div>
+                                                </div>
+                                            </div>
+                                            <!-- Qdrant Cloud fields -->
+                                            <div id="vs-qdrant-fields" class="space-y-4 hidden">
+                                                <div>
+                                                    <label class="block text-sm font-medium text-gray-300 mb-1">Qdrant Cloud URL</label>
+                                                    <input type="text" id="vs-qdrant-url" placeholder="https://your-cluster.cloud.qdrant.io:6333" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                    <p class="text-xs text-gray-500 mt-1">Your Qdrant Cloud cluster endpoint URL</p>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-sm font-medium text-gray-300 mb-1">API Key</label>
+                                                    <input type="password" id="vs-qdrant-api-key" placeholder="API key from Qdrant Cloud dashboard" class="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none">
+                                                </div>
+                                                <div class="flex items-center gap-3">
+                                                    <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                                        <input type="checkbox" id="vs-qdrant-grpc" class="rounded border-gray-500 bg-white/5">
+                                                        <span>Prefer gRPC</span>
+                                                    </label>
+                                                    <span class="text-xs text-gray-500">(faster for large payloads, requires gRPC port)</span>
                                                 </div>
                                             </div>
                                             <!-- Test Results (inline) -->

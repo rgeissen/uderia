@@ -5930,7 +5930,7 @@ async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> 
     """Shared helper: test a vector store connection via the abstraction layer.
 
     Args:
-        backend_type: 'chromadb' or 'teradata'
+        backend_type: 'chromadb', 'teradata', or 'qdrant'
         backend_config: Full config dict including credentials merged in
 
     Returns:
@@ -5939,6 +5939,41 @@ async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> 
     if backend_type == "chromadb":
         return True, "ChromaDB is local — no connection needed", None
 
+    # ── Qdrant Cloud ──────────────────────────────────────────────────────
+    if backend_type == "qdrant":
+        if not backend_config.get("url"):
+            return False, "Qdrant Cloud URL is required.", None
+        if not backend_config.get("api_key"):
+            return False, "Qdrant API key is required.", None
+
+        try:
+            from trusted_data_agent.vectorstore.qdrant_backend import QdrantBackend
+        except ImportError:
+            return False, "qdrant-client not installed. Run: pip install qdrant-client", None
+
+        backend = QdrantBackend(connection_config=backend_config)
+        try:
+            await backend.initialize()
+            collections = await backend._client.get_collections()
+            server_info = {
+                "url": backend_config["url"],
+                "collections": len(collections.collections),
+            }
+            return True, "Connection successful", server_info
+        except Exception as e:
+            error_msg = str(e)
+            if "401" in error_msg or "Unauthorized" in error_msg:
+                error_msg = f"Authentication failed — check your API key. ({error_msg})"
+            elif "ECONNREFUSED" in error_msg or "Connection refused" in error_msg:
+                error_msg = f"Cannot reach Qdrant server — check the URL. ({error_msg})"
+            return False, f"Connection failed: {error_msg}", None
+        finally:
+            try:
+                await backend.shutdown()
+            except Exception:
+                pass
+
+    # ── Teradata ──────────────────────────────────────────────────────────
     # Validate required fields before attempting connection
     has_user_pass = backend_config.get("username") and backend_config.get("password")
     has_pat = backend_config.get("pat_token")

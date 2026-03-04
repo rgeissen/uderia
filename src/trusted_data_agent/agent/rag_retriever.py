@@ -1784,8 +1784,15 @@ class RAGRetriever:
                     coll_meta = self.get_collection_metadata(coll_id)
                     coll_name = coll_meta["collection_name"] if coll_meta else db_coll["collection_name"]
 
+                    # Non-ChromaDB backends (Qdrant, Teradata) need an
+                    # explicit embedding provider for client-side embedding.
+                    from trusted_data_agent.vectorstore import get_embedding_provider
+                    emb_model = (coll_meta or db_coll).get("embedding_model", self.embedding_model_name)
+                    emb_provider = get_embedding_provider(emb_model)
+
                     query_result = await backend.query(
-                        coll_name, query_text=query, n_results=k * 10
+                        coll_name, query_text=query, n_results=k * 10,
+                        embedding_provider=emb_provider,
                     )
 
                     for doc, distance in query_result:

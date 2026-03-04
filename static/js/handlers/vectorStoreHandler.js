@@ -10,6 +10,14 @@
     let configurations = [];
     let loaded = false;
     let connectionTested = false;
+    let activeBackendFilter = 'all';
+
+    const vectorStoreColors = {
+        'all':      '#6b7280',
+        'chromadb': '#22c55e',
+        'teradata': '#F15F22',
+        'qdrant':   '#a78bfa',
+    };
 
     // ── API helpers ──────────────────────────────────────────────────────────
 
@@ -64,6 +72,7 @@
             const result = await apiGet('/api/v1/vectorstore/configurations');
             if (result.status === 'success') {
                 configurations = result.configurations || [];
+                resetBackendTabs();
                 renderConfigurations(container);
                 loaded = true;
             } else {
@@ -75,39 +84,58 @@
     }
 
     function renderConfigurations(container) {
-        if (configurations.length === 0) {
+        const filtered = activeBackendFilter === 'all'
+            ? configurations
+            : configurations.filter(c => c.backend_type === activeBackendFilter);
+
+        if (filtered.length === 0) {
+            const filterLabel = activeBackendFilter === 'all' ? '' : ` for ${activeBackendFilter}`;
             container.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-16 text-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                     </svg>
-                    <p class="text-gray-400 text-lg font-medium">No vector stores configured</p>
-                    <p class="text-gray-500 text-sm mt-2">Click "Add Vector Store" to create your first configuration.</p>
+                    <p class="text-gray-400 text-lg font-medium">No vector stores configured${filterLabel}</p>
+                    <p class="text-gray-500 text-sm mt-2">Click "Add Vector Store" to create a configuration.</p>
                 </div>`;
             return;
         }
 
-        container.innerHTML = configurations.map(config => renderCard(config)).join('');
+        container.innerHTML = filtered.map(config => renderCard(config)).join('');
     }
 
     function renderCard(config) {
         const isDefault = config.id === 'vs-default-chromadb';
         const isChromaDB = config.backend_type === 'chromadb';
+        const isQdrant = config.backend_type === 'qdrant';
         const collCount = config.collection_count || 0;
 
-        const typeBadge = isChromaDB
-            ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">ChromaDB</span>'
-            : '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">Teradata</span>';
+        let typeBadge;
+        if (isChromaDB) {
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">ChromaDB</span>';
+        } else if (isQdrant) {
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30">Qdrant Cloud</span>';
+        } else {
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">Teradata</span>';
+        }
 
         const defaultBadge = isDefault
             ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">Default</span>'
             : '';
 
-        const host = config.backend_config?.host || '';
+        const host = config.backend_config?.host || config.backend_config?.url || '';
         const database = config.backend_config?.database || '';
-        const details = isChromaDB
-            ? '<span class="text-gray-500">Local embedded database</span>'
-            : `<span class="text-gray-400">${host}${database ? ' / ' + database : ''}</span>`;
+        let details;
+        if (isChromaDB) {
+            details = '<span class="text-gray-500">Local embedded database</span>';
+        } else if (isQdrant) {
+            details = `<span class="text-gray-400">${escapeHtml(host)}</span>`;
+        } else {
+            details = `<span class="text-gray-400">${escapeHtml(host)}${database ? ' / ' + escapeHtml(database) : ''}</span>`;
+        }
+
+        const iconBg = isChromaDB ? 'bg-green-500/10' : (isQdrant ? 'bg-purple-500/10' : 'bg-blue-500/10');
+        const iconColor = isChromaDB ? 'text-green-400' : (isQdrant ? 'text-purple-400' : 'text-blue-400');
 
         const actions = [];
         if (!isChromaDB) {
@@ -122,8 +150,8 @@
             <div class="glass-panel rounded-xl p-4 border border-white/5 hover:border-white/10 transition-colors" data-vs-id="${config.id}">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-lg flex items-center justify-center ${isChromaDB ? 'bg-green-500/10' : 'bg-blue-500/10'}">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ${isChromaDB ? 'text-green-400' : 'text-blue-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ${iconColor}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                             </svg>
                         </div>
@@ -152,7 +180,7 @@
         document.getElementById('vs-name').value = '';
         document.getElementById('vs-backend-type').value = 'chromadb';
         document.getElementById('vs-backend-type').disabled = false;
-        clearTeradataFields();
+        clearRemoteFields();
         connectionTested = false;
         clearTestResults();
         toggleBackendFields();
@@ -182,9 +210,13 @@
             document.getElementById('vs-pat-token').value = creds.pat_token || '';
             document.getElementById('vs-pem-key-name').value = creds.pem_key_name || '';
             document.getElementById('vs-pem-content').value = creds.pem_content || '';
+            // Qdrant fields
+            document.getElementById('vs-qdrant-url').value = bc.url || '';
+            document.getElementById('vs-qdrant-api-key').value = creds.api_key || '';
+            document.getElementById('vs-qdrant-grpc').checked = !!bc.prefer_grpc;
             // Existing saved config — mark as tested so user can save without re-testing
             // unless they change credentials (tracked by input listeners)
-            connectionTested = config.backend_type === 'teradata';
+            connectionTested = (config.backend_type === 'teradata' || config.backend_type === 'qdrant');
             clearTestResults();
             toggleBackendFields();
             document.getElementById('vector-store-modal').classList.remove('hidden');
@@ -197,23 +229,25 @@
         document.getElementById('vector-store-modal').classList.add('hidden');
     }
 
-    function clearTeradataFields() {
-        ['vs-host', 'vs-base-url', 'vs-database', 'vs-username', 'vs-password', 'vs-pat-token', 'vs-pem-key-name', 'vs-pem-content'].forEach(id => {
+    function clearRemoteFields() {
+        ['vs-host', 'vs-base-url', 'vs-database', 'vs-username', 'vs-password',
+         'vs-pat-token', 'vs-pem-key-name', 'vs-pem-content',
+         'vs-qdrant-url', 'vs-qdrant-api-key'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        const grpc = document.getElementById('vs-qdrant-grpc');
+        if (grpc) grpc.checked = false;
     }
 
     function toggleBackendFields() {
         const backendType = document.getElementById('vs-backend-type').value;
         const teradataFields = document.getElementById('vs-teradata-fields');
-        if (teradataFields) {
-            teradataFields.classList.toggle('hidden', backendType !== 'teradata');
-        }
+        const qdrantFields = document.getElementById('vs-qdrant-fields');
+        if (teradataFields) teradataFields.classList.toggle('hidden', backendType !== 'teradata');
+        if (qdrantFields) qdrantFields.classList.toggle('hidden', backendType !== 'qdrant');
         const testBtn = document.getElementById('vs-test-btn');
-        if (testBtn) {
-            testBtn.classList.toggle('hidden', backendType !== 'teradata');
-        }
+        if (testBtn) testBtn.classList.toggle('hidden', backendType === 'chromadb');
         // Reset test state when switching backend type
         connectionTested = false;
         clearTestResults();
@@ -230,6 +264,10 @@
     // ── Modal Test Connection ─────────────────────────────────────────────────
 
     async function testModalConnection() {
+        const backendType = document.getElementById('vs-backend-type').value;
+        if (backendType === 'qdrant') {
+            return testQdrantConnection();
+        }
         const host = document.getElementById('vs-host').value.trim();
         const baseUrl = document.getElementById('vs-base-url').value.trim();
         const database = document.getElementById('vs-database').value.trim();
@@ -304,10 +342,48 @@
         }
     }
 
+    // ── Qdrant Cloud Test Connection ─────────────────────────────────────────
+
+    async function testQdrantConnection() {
+        const url = document.getElementById('vs-qdrant-url').value.trim();
+        const apiKey = document.getElementById('vs-qdrant-api-key').value.trim();
+        const preferGrpc = document.getElementById('vs-qdrant-grpc').checked;
+
+        if (!url) { showTestResult(false, 'Qdrant Cloud URL is required.'); return; }
+        if (!apiKey) { showTestResult(false, 'API Key is required.'); return; }
+
+        const testBtn = document.getElementById('vs-test-btn');
+        const originalText = testBtn.textContent;
+        testBtn.textContent = 'Testing...';
+        testBtn.disabled = true;
+        clearTestResults();
+
+        try {
+            const result = await apiPost('/api/v1/vectorstore/test-connection', {
+                backend_type: 'qdrant',
+                backend_config: { url, prefer_grpc: preferGrpc },
+                credentials: { api_key: apiKey }
+            });
+            if (result.data.status === 'success') {
+                connectionTested = true;
+                showTestResult(true, result.data.message || 'Connection successful');
+            } else {
+                connectionTested = false;
+                showTestResult(false, result.data.message || 'Connection failed');
+            }
+        } catch (e) {
+            connectionTested = false;
+            showTestResult(false, `Test failed: ${e.message}`);
+        } finally {
+            testBtn.textContent = originalText;
+            testBtn.disabled = false;
+        }
+    }
+
     // ── Credential change tracking ────────────────────────────────────────────
 
     function initCredentialChangeTracking() {
-        const credentialFields = ['vs-host', 'vs-username', 'vs-password', 'vs-pat-token', 'vs-pem-key-name', 'vs-pem-content'];
+        const credentialFields = ['vs-host', 'vs-username', 'vs-password', 'vs-pat-token', 'vs-pem-key-name', 'vs-pem-content', 'vs-qdrant-url', 'vs-qdrant-api-key'];
         credentialFields.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -315,6 +391,46 @@
                     connectionTested = false;
                     clearTestResults();
                 });
+            }
+        });
+    }
+
+    // ── Backend Type Tabs ──────────────────────────────────────────────────
+
+    function initBackendTabs() {
+        const tabs = document.querySelectorAll('.vs-backend-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                activeBackendFilter = tab.dataset.backend;
+                tabs.forEach(t => {
+                    if (t === tab) {
+                        t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                        t.classList.add('text-white');
+                        t.style.borderColor = vectorStoreColors[t.dataset.backend] || '#6b7280';
+                    } else {
+                        t.classList.remove('text-white');
+                        t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                        t.style.borderColor = '';
+                    }
+                });
+                const container = document.getElementById('vector-stores-container');
+                if (container) renderConfigurations(container);
+            });
+        });
+    }
+
+    function resetBackendTabs() {
+        activeBackendFilter = 'all';
+        const tabs = document.querySelectorAll('.vs-backend-tab');
+        tabs.forEach(t => {
+            if (t.dataset.backend === 'all') {
+                t.classList.remove('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                t.classList.add('text-white');
+                t.style.borderColor = vectorStoreColors['all'];
+            } else {
+                t.classList.remove('text-white');
+                t.classList.add('text-gray-400', 'border-transparent', 'hover:border-white/20');
+                t.style.borderColor = '';
             }
         });
     }
@@ -378,6 +494,32 @@
                 if (connectionTested) {
                     payload.connection_tested = true;
                 }
+            } else if (backendType === 'qdrant') {
+                const url = document.getElementById('vs-qdrant-url').value.trim();
+                const apiKey = document.getElementById('vs-qdrant-api-key').value.trim();
+                const preferGrpc = document.getElementById('vs-qdrant-grpc').checked;
+
+                payload.backend_config = { url };
+                if (preferGrpc) payload.backend_config.prefer_grpc = true;
+
+                if (apiKey) {
+                    payload.credentials = { api_key: apiKey };
+                }
+
+                // Gate: must test connection before saving
+                if (payload.credentials && !connectionTested) {
+                    showToast('Please test the connection before saving.', 'error');
+                    const testBtn = document.getElementById('vs-test-btn');
+                    if (testBtn) {
+                        testBtn.classList.add('ring-2', 'ring-blue-400');
+                        setTimeout(() => testBtn.classList.remove('ring-2', 'ring-blue-400'), 2000);
+                    }
+                    return;
+                }
+
+                if (connectionTested) {
+                    payload.connection_tested = true;
+                }
             } else {
                 payload.backend_config = {};
             }
@@ -405,6 +547,7 @@
         });
 
         initCredentialChangeTracking();
+        initBackendTabs();
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────

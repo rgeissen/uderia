@@ -142,7 +142,11 @@ def get_embedding_provider(
     backend_type: str,
     model_name: str = "all-MiniLM-L6-v2",
 ) -> EmbeddingProvider:
-    """Return the appropriate EmbeddingProvider for a given backend type."""
+    """Return the appropriate EmbeddingProvider for a given backend type.
+
+    Teradata uses server-side embedding (Bedrock/Azure).  All other backends
+    (chromadb, qdrant) use client-side SentenceTransformer embedding.
+    """
     if backend_type == "teradata":
         return ServerSideEmbeddingProvider(model_name)
     return SentenceTransformerProvider.get_cached(model_name)

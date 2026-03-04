@@ -5,6 +5,7 @@ Callers build filters using FieldFilter / AndFilter / OrFilter. Each backend
 translates the AST to its native query format:
   - ChromaDB: nested dict  {"$and": [{"field": {"$eq": v}}, ...]}
   - Teradata:  SQL WHERE clause (implemented in teradata_backend.py)
+  - Qdrant:    Filter / FieldCondition objects (qdrant_client.models)
 
 The ``from_chromadb_where()`` bridge lets existing ChromaDB-format dicts be
 passed through during the migration without changing all call sites at once.
@@ -108,6 +109,76 @@ def from_chromadb_where(where: Optional[Dict]) -> MetadataFilter:
             return FieldFilter(field_name, FilterOp.EQ, condition)
 
     return None
+
+
+# ── Qdrant translator ────────────────────────────────────────────────────────
+
+def to_qdrant_filter(f: MetadataFilter):
+    """Translate a MetadataFilter tree into a Qdrant ``Filter`` object.
+
+    Returns ``None`` if *f* is ``None``.  All ``qdrant_client`` imports are
+    deferred so the package is only required at runtime when Qdrant is used.
+    """
+    if f is None:
+        return None
+
+    from qdrant_client.models import (
+        FieldCondition,
+        Filter,
+        MatchAny,
+        MatchExcept as QMatchExcept,
+        MatchValue,
+        Range,
+    )
+
+    def _field_condition(ff: FieldFilter):
+        """Single FieldFilter → FieldCondition (always a *must* condition)."""
+        key = ff.field
+        op = ff.op
+        val = ff.value
+
+        if op == FilterOp.EQ:
+            return FieldCondition(key=key, match=MatchValue(value=val))
+        if op == FilterOp.NE:
+            # NE has no native Qdrant match — caller wraps in must_not
+            return FieldCondition(key=key, match=MatchValue(value=val))
+        if op == FilterOp.GT:
+            return FieldCondition(key=key, range=Range(gt=val))
+        if op == FilterOp.GTE:
+            return FieldCondition(key=key, range=Range(gte=val))
+        if op == FilterOp.LT:
+            return FieldCondition(key=key, range=Range(lt=val))
+        if op == FilterOp.LTE:
+            return FieldCondition(key=key, range=Range(lte=val))
+        if op == FilterOp.IN:
+            return FieldCondition(key=key, match=MatchAny(any=val))
+        if op == FilterOp.NOT_IN:
+            return FieldCondition(key=key, match=QMatchExcept(**{"except": val}))
+        raise ValueError(f"Unsupported FilterOp for Qdrant: {op}")
+
+    def _translate(node: MetadataFilter) -> Filter:
+        if isinstance(node, FieldFilter):
+            cond = _field_condition(node)
+            if node.op == FilterOp.NE:
+                return Filter(must_not=[cond])
+            return Filter(must=[cond])
+
+        if isinstance(node, AndFilter):
+            must: list = []
+            must_not: list = []
+            for child in node.conditions:
+                sub = _translate(child)
+                must.extend(sub.must or [])
+                must_not.extend(sub.must_not or [])
+            return Filter(must=must or None, must_not=must_not or None)
+
+        if isinstance(node, OrFilter):
+            should = [_translate(child) for child in node.conditions]
+            return Filter(should=should)
+
+        raise TypeError(f"Unknown filter type: {type(node)}")
+
+    return _translate(f)
 
 
 # ── Convenience constructors ──────────────────────────────────────────────────

@@ -716,7 +716,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
 
         // Fetch last turn's cost data to initialize display
         // This provides immediate accurate costs when switching sessions
-        const workflowHistory = data.last_turn_data?.workflow_history || [];
+        const workflowHistory = data.workflow_history || [];
         const lastTurn = workflowHistory.length > 0 ? workflowHistory[workflowHistory.length - 1] : null;
 
         if (lastTurn) {
@@ -859,7 +859,9 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             turn_input: 0,                // Reset turn tokens
             turn_output: 0,
             total_input: data.input_tokens,   // Use backend data for session totals
-            total_output: data.output_tokens
+            total_output: data.output_tokens,
+            turn_cost: window.sessionCostAccumulator?.turn || 0,         // Backend-calculated cost from workflow_history
+            session_cost_usd: window.sessionCostAccumulator?.session || 0  // Backend-calculated cumulative cost
         }, true);  // isHistorical=true bypasses terminal event detection, forces normal update
 
         // --- MODIFICATION START: Refresh feedback button states after loading history ---

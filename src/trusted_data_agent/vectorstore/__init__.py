@@ -40,6 +40,7 @@ from .filters import (
     MetadataFilter,
     to_chromadb_where,
     from_chromadb_where,
+    to_qdrant_filter,
     eq,
     ne,
     gt,
@@ -84,6 +85,7 @@ __all__ = [
     "MetadataFilter",
     "to_chromadb_where",
     "from_chromadb_where",
+    "to_qdrant_filter",
     "eq",
     "ne",
     "gt",
@@ -107,3 +109,8 @@ try:
     from . import teradata_backend as _teradata_backend  # noqa: F401
 except Exception:
     pass  # teradatagenai/teradataml not installed — Teradata backend unavailable
+
+try:
+    from . import qdrant_backend as _qdrant_backend  # noqa: F401
+except Exception:
+    pass  # qdrant-client not installed — Qdrant backend unavailable

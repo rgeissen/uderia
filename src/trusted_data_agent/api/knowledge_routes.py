@@ -477,7 +477,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             # Drain any remaining progress messages
             while not progress_queue.empty():
                 try:
-                    progress_msg = await progress_queue.get_nowait()
+                    progress_msg = progress_queue.get_nowait()
                     yield progress_msg
                 except asyncio.QueueEmpty:
                     break
@@ -1045,8 +1045,13 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
             from trusted_data_agent.vectorstore import from_chromadb_where
             where_filter = from_chromadb_where(metadata_filter)
 
+        from trusted_data_agent.vectorstore import get_embedding_provider
+        emb_model = coll_meta.get("embedding_model", "all-MiniLM-L6-v2") if coll_meta else "all-MiniLM-L6-v2"
+        emb_provider = get_embedding_provider(emb_model)
+
         query_result = await backend.query(
-            coll_name, query_text=query, n_results=k, where=where_filter
+            coll_name, query_text=query, n_results=k, where=where_filter,
+            embedding_provider=emb_provider,
         )
 
         # Format results
@@ -1159,10 +1164,15 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
         # If search query provided (min 3 chars), do semantic search
         if query_text and len(query_text) >= 3:
             try:
+                from trusted_data_agent.vectorstore import get_embedding_provider
+                emb_model = coll_meta_full.get("embedding_model", "all-MiniLM-L6-v2") if coll_meta_full else "all-MiniLM-L6-v2"
+                emb_provider = get_embedding_provider(emb_model)
+
                 query_result = await backend.query(
                     coll_name_full,
                     query_text=query_text,
                     n_results=min(limit, 100),
+                    embedding_provider=emb_provider,
                 )
                 total = len(query_result.documents)
                 for doc, distance in query_result:
