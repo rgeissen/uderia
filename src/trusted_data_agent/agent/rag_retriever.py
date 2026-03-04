@@ -981,6 +981,8 @@ class RAGRetriever:
                             "backend_type": backend_type,
                             "backend_config": backend_config,
                             "embedding_model": embedding_model,
+                            "owner_user_id": owner_user_id,
+                            "vector_store_config_id": vector_store_config_id,
                         }
                         loop.create_task(self._register_non_chromadb_backend(
                             collection_id, coll_meta_for_factory))

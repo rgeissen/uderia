@@ -403,13 +403,15 @@ Files: `src/trusted_data_agent/agent/rag_retriever.py`, `repository_constructor.
 **Decouples platform from specific vector database implementations.** Single async-first interface with capability-based negotiation. Two production backends:
 
 - **ChromaDB** (default): Local/embedded, client-side embedding via SentenceTransformer, 12 capabilities
-- **Teradata** (enterprise): Server-side embedding via Amazon Bedrock/Azure, 10 capabilities including `SERVER_SIDE_CHUNKING`
+- **Teradata** (enterprise): Server-side embedding via Amazon Bedrock/Azure, 11 capabilities including `SERVER_SIDE_CHUNKING` and `GET_ALL`
 
 **Two ingestion paths for Teradata:**
 - **Client-side chunking**: Platform chunks locally → staging table → VectorStore (full doc management)
 - **Server-side chunking**: Raw files passed to `VectorStore.create(document_files=[...])` — SDK handles everything
 
-**Connection resilience**: All SQL operations use `_execute_sql()` wrapper that auto-reconnects on stale `teradataml` connection (catches `AttributeError: 'NoneType' ... cursor` at failure point, reconnects via `create_context()`, retries once).
+**Connection resilience**: All SQL operations use `_execute_sql()` wrapper with comprehensive stale-connection detection via `_is_connection_lost()` (catches `AttributeError`/NoneType, `OperationalError`/pool handle, socket/connection errors). Reconnect serialized via `_reconnect_all()` with `asyncio.Lock` + monotonic timestamp to prevent thundering herd. Same pattern protects `query()`'s `similarity_search()`. See architecture doc for details.
+
+**CRITICAL — EVS Object Ownership Rule**: Never use raw SQL DDL (`DROP TABLE`/`DROP VIEW`) on EVS-managed objects (`vectorstoreV_*`, `vectorstore_*_index*`, `chunks_table_*`). Always use `vs.destroy()` or the EVS REST API (`DELETE /data-insights/api/v1/vectorstores/<name>`). Raw DDL creates ghost dictionary entries that corrupt the entire database. Platform-owned tables (`UDERIA_VS_*`, `UDERIA_DELTA_*`, `UDERIA_DEL_*`) can safely use raw SQL. See *Teradata Object Ownership* in the architecture doc.
 
 **Factory**: Singleton cache with config fingerprinting + asyncio lock to prevent concurrent initialization races.
 

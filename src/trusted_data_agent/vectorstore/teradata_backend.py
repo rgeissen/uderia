@@ -103,6 +103,20 @@ class TeradataVectorBackend(VectorStoreBackend):
         # Known collections (VS creation may be deferred until first add)
         self._collections: Set[str] = set()
         self._initialized: bool = False
+        # Guard against concurrent create_context() calls invalidating
+        # in-flight VS operations (e.g. UI auto-refresh triggering count()
+        # while VectorStore.create() is being polled).
+        self._vs_operation_active: bool = False
+        # Serialise reconnect attempts: only ONE create_context() at a time.
+        # Without this, concurrent requests each detect a stale connection
+        # and call create_context() simultaneously, invalidating each other
+        # in a thundering-herd cascade.
+        self._reconnect_lock = asyncio.Lock()
+        # Monotonic timestamp of the last successful reconnect.  Callers that
+        # detect a stale connection check this: if another coroutine already
+        # reconnected *after* the caller's failed attempt, no second
+        # create_context() is needed — just retry the SQL.
+        self._last_reconnect_ts: float = 0.0
 
     # ── Identity & capabilities ───────────────────────────────────────────────
 
@@ -120,6 +134,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             VectorStoreCapability.GET_BY_ID,             # via staging table SQL
             VectorStoreCapability.COUNT,                 # via staging table COUNT(*)
             VectorStoreCapability.UPSERT,                # via Teradata UPI key-column semantics
+            VectorStoreCapability.GET_ALL,               # get() with no ids/where returns all docs
             VectorStoreCapability.SERVER_SIDE_EMBEDDING,
             VectorStoreCapability.SERVER_SIDE_CHUNKING,  # document_files ingestion
         }
@@ -261,32 +276,97 @@ class TeradataVectorBackend(VectorStoreBackend):
         """Return fully qualified Teradata table name (database.table)."""
         return f"{self._database}.{table_name}"
 
+    async def _reconnect_all(self) -> None:
+        """Re-establish both SQL context and VS REST API auth.
+
+        Uses ``_reconnect_lock`` to serialise: if another coroutine already
+        reconnected after the caller's failure timestamp, the lock winner's
+        fresh connection is reused (no second ``create_context()`` needed).
+        """
+        ts_before = time.monotonic()
+        async with self._reconnect_lock:
+            # Another coroutine may have reconnected while we waited for the lock.
+            if self._last_reconnect_ts > ts_before:
+                logger.debug("Skipping reconnect — another coroutine already reconnected")
+                return
+
+            from teradataml import create_context  # type: ignore[import]
+            from teradatagenai import set_auth_token  # type: ignore[import]
+
+            logger.info("teradataml connection lost — re-establishing create_context()")
+            ctx_kwargs: dict = {"host": self._host, "username": self._username}
+            if self._password:
+                ctx_kwargs["password"] = self._password
+            if self._database:
+                ctx_kwargs["database"] = self._database
+            await asyncio.to_thread(create_context, **ctx_kwargs)
+
+            if self._pat_token:
+                base_url = self._base_url
+                if base_url.endswith("/open-analytics"):
+                    base_url = base_url[:-len("/open-analytics")]
+                pat_kwargs: dict = {"base_url": base_url, "pat_token": self._pat_token}
+                if self._pem_file:
+                    pat_kwargs["pem_file"] = self._pem_file
+                await asyncio.to_thread(set_auth_token, **pat_kwargs)
+
+            self._last_reconnect_ts = time.monotonic()
+
+    @staticmethod
+    def _is_connection_lost(exc: BaseException) -> bool:
+        """Return True if *exc* indicates a stale / dead Teradata connection.
+
+        Known patterns:
+        - ``AttributeError: 'NoneType' object has no attribute 'cursor'``
+          (teradataml global context garbage-collected after idle timeout)
+        - ``OperationalError: N is not a valid connection pool handle``
+          (teradatasql pool invalidated by a concurrent ``create_context()``)
+        - ``OperationalError: … socket … / … connection …``
+          (TCP-level disconnect)
+        """
+        msg = str(exc).lower()
+        if isinstance(exc, AttributeError):
+            return "'nonetype'" in msg and "cursor" in msg
+        # teradatasql.OperationalError or sqlalchemy OperationalError
+        if "operationalerror" in type(exc).__name__.lower() or "operational" in type(exc).__name__.lower():
+            return (
+                "not a valid connection pool handle" in msg
+                or "socket" in msg
+                or "connection" in msg
+            )
+        # Catch-all: any exception mentioning the pool handle pattern
+        return "not a valid connection pool handle" in msg
+
     async def _execute_sql(self, sql: str) -> Any:
         """Run ``teradataml.execute_sql`` with automatic reconnect on stale connection.
 
         teradataml stores its connection as a module-level global.  After idle
         periods the connection may time out, causing ``execute_sql`` to fail
-        with ``AttributeError: 'NoneType' object has no attribute 'cursor'``.
+        with various connection errors (see ``_is_connection_lost``).
 
         Instead of probing with SELECT 1 (unreliable — connection can die
         between the probe and the real query), this wrapper catches the error
-        at the *actual* point of failure, reconnects, and retries exactly once.
+        at the *actual* point of failure, delegates to ``_reconnect_all()``
+        (serialised via lock), and retries exactly once.
         """
-        from teradataml import execute_sql, create_context  # type: ignore[import]
+        from teradataml import execute_sql  # type: ignore[import]
 
         try:
             return await asyncio.to_thread(execute_sql, sql)
-        except AttributeError as exc:
-            if "'NoneType'" in str(exc) and "cursor" in str(exc):
-                logger.info("teradataml connection lost — re-establishing create_context()")
-                ctx_kwargs: dict = {"host": self._host, "username": self._username}
-                if self._password:
-                    ctx_kwargs["password"] = self._password
-                if self._database:
-                    ctx_kwargs["database"] = self._database
-                await asyncio.to_thread(create_context, **ctx_kwargs)
-                return await asyncio.to_thread(execute_sql, sql)
-            raise
+        except Exception as exc:
+            if not self._is_connection_lost(exc):
+                raise
+            # If a VS operation (create/add/destroy) is in progress,
+            # do NOT call create_context() — it would invalidate the
+            # VectorStore instance being polled.
+            if self._vs_operation_active:
+                logger.warning(
+                    "teradataml connection lost but VS operation in progress "
+                    "— skipping create_context() to avoid invalidation"
+                )
+                raise
+            await self._reconnect_all()
+            return await asyncio.to_thread(execute_sql, sql)
 
     @staticmethod
     def _result_to_rows(result: Any) -> List[dict]:
@@ -325,40 +405,128 @@ class TeradataVectorBackend(VectorStoreBackend):
         operation: str,
         timeout: int = 300,
         interval: int = 5,
-    ) -> None:
-        """Poll vs.status() until the operation completes, raises on failure or timeout."""
+    ) -> Any:
+        """Poll VectorStore until the operation completes, raises on failure or timeout.
+
+        Uses ``vs.get_details()`` as the primary status source because
+        ``vs.status()`` is unreliable during creation — it returns ``None``
+        or throws ``TDML_2412 Object not found`` during the initial
+        ``CREATING (PREPARING INPUT)`` phase, even though the VS is being
+        created.  ``vs.get_details()`` consistently returns the correct
+        ``vs_status`` column throughout the entire lifecycle.
+
+        Falls back to ``vs.status()`` only when ``get_details()`` is
+        unavailable or returns no ``vs_status`` column.
+
+        Returns the (possibly rebuilt) VectorStore instance so callers can
+        cache the correct reference.
+
+        Resilient to ``create_context()`` calls from other code paths (e.g.
+        ``_execute_sql`` reconnect) that invalidate teradataml global state.
+        After 3 consecutive poll errors, re-establishes both SQL and REST API
+        connections, then re-creates the ``VectorStore`` instance so status
+        polling can resume.
+        """
         deadline = time.monotonic() + timeout
         poll_count = 0
+        consecutive_errors = 0
         last_status = ""
+        collection_name = getattr(vs, "name", None) or getattr(vs, "_name", None)
+        self._vs_operation_active = True
+
         while time.monotonic() < deadline:
             try:
-                status = await asyncio.to_thread(vs.status)
-                status_str = str(status).upper()
+                status_str = await self._get_vs_status(vs)
+                consecutive_errors = 0  # reset on success
 
                 # Log status changes and periodic heartbeats
                 if status_str != last_status:
-                    logger.info(f"VS '{operation}' status changed: {status_str}")
+                    logger.info(f"VS '{operation}' status: {status_str}")
                     last_status = status_str
                 elif poll_count % 12 == 0:  # Every ~60s at 5s interval
                     elapsed = int(time.monotonic() - (deadline - timeout))
                     logger.info(f"VS '{operation}' still {status_str} ({elapsed}s elapsed)")
 
                 if any(kw in status_str for kw in ("COMPLETED", "READY", "SUCCESS")):
-                    return
+                    self._vs_operation_active = False
+                    return vs
                 if any(kw in status_str for kw in ("FAILED", "ERROR", "ABORTED")):
+                    self._vs_operation_active = False
                     raise RuntimeError(
-                        f"Teradata VS operation '{operation}' failed with status: {status}"
+                        f"Teradata VS operation '{operation}' failed with status: {status_str}"
                     )
             except RuntimeError:
+                self._vs_operation_active = False
                 raise
             except Exception as exc:
+                consecutive_errors += 1
                 logger.warning(f"VS status poll error during '{operation}': {exc}")
+
+                # After 3 consecutive failures, the global teradataml state is
+                # likely stale (another code path called create_context()).
+                # Re-establish connections and rebuild the VectorStore instance.
+                if consecutive_errors == 3 and collection_name:
+                    logger.info(
+                        f"VS '{operation}': 3 consecutive poll errors — "
+                        f"re-establishing connections and rebuilding VS instance"
+                    )
+                    try:
+                        await self._reconnect_all()
+                        from teradatagenai import VectorStore as _VS  # type: ignore[import]
+                        vs = _VS(collection_name)
+                        logger.info(f"VS '{operation}': connections restored, polling resumed")
+                        consecutive_errors = 0
+                    except Exception as reconn_exc:
+                        logger.warning(f"VS '{operation}': reconnection failed: {reconn_exc}")
+
             poll_count += 1
             await asyncio.sleep(interval)
+        self._vs_operation_active = False
         raise TimeoutError(
             f"Teradata VS operation '{operation}' timed out after {timeout}s "
             f"(last status: {last_status})"
         )
+
+    @staticmethod
+    async def _get_vs_status(vs: Any) -> str:
+        """Extract the canonical status string from a VectorStore instance.
+
+        Prefers ``vs.get_details(return_type='json')`` because
+        ``vs.status()`` is unreliable during the creation phase — it
+        returns ``None`` or raises ``TDML_2412 Object not found`` while
+        the VS is in ``CREATING (PREPARING INPUT)``.
+
+        ``get_details(return_type='json')`` returns a plain dict with a
+        ``vs_status`` key that is reliable throughout the full lifecycle.
+
+        Falls back to ``vs.status()`` only when ``get_details()`` is
+        unavailable.
+        """
+        # Primary: get_details(return_type='json') — plain dict, reliable
+        try:
+            details = await asyncio.to_thread(
+                lambda: vs.get_details(return_type="json")
+            )
+            if details and isinstance(details, dict):
+                vs_status = details.get("vs_status")
+                if vs_status is not None:
+                    return str(vs_status).upper()
+        except Exception:
+            pass  # fall through to status()
+
+        # Fallback: status() — works once the VS is past the initial phase
+        try:
+            status = await asyncio.to_thread(vs.status)
+            if status is not None:
+                # status() returns a teradataml DataFrame
+                pdf = await asyncio.to_thread(status.to_pandas)
+                if not pdf.empty and "status" in pdf.columns:
+                    return str(pdf["status"].iloc[0]).upper()
+                return str(status).upper()
+        except Exception:
+            pass
+
+        return "UNKNOWN"
 
     async def _ensure_staging_table(self, collection_name: str) -> str:
         """Create the staging table if it does not exist. Returns the table name."""
@@ -518,6 +686,8 @@ class TeradataVectorBackend(VectorStoreBackend):
 
     async def count(self, collection_name: str) -> int:
         """Return the number of documents (staging table or chunks_table)."""
+        if self._vs_operation_active:
+            return 0  # Don't run SQL while VS create/add is in progress
         staging = await self._staging_count(collection_name)
         if staging:
             return staging
@@ -598,7 +768,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     key_columns=["CHUNK_ID"],
                     data_columns=["CONTENT"],
                 )
-                await self._poll_status(vs, operation="create")
+                vs = await self._poll_status(vs, operation="create")
                 self._stores[collection_name] = vs
                 self._collections.add(collection_name)
                 logger.info(
@@ -615,7 +785,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     data_columns=["CONTENT"],
                     update_style="MINOR",
                 )
-                await self._poll_status(vs, operation="add_datasets")
+                vs = await self._poll_status(vs, operation="add_datasets")
                 logger.info(
                     f"Added {len(documents)} documents to Teradata VS '{collection_name}'"
                 )
@@ -664,6 +834,10 @@ class TeradataVectorBackend(VectorStoreBackend):
             "document_files": file_paths,
             "chunk_size": config.chunk_size,
             "optimized_chunking": config.optimized_chunking,
+            # Required by EVS per Getting Started guide Section 7:
+            "object_names": [collection_name],
+            "data_columns": ["chunks"],
+            "vector_column": "VectorIndex",
         }
 
         # Header/footer trimming — only pass when non-zero to avoid
@@ -675,7 +849,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         await asyncio.to_thread(vs.create, **create_kwargs)
         # PDF processing with Bedrock embeddings can take 15–30+ minutes
-        await self._poll_status(vs, operation="create_from_files", timeout=1800)
+        vs = await self._poll_status(vs, operation="create_from_files", timeout=1800)
 
         self._stores[collection_name] = vs
         self._collections.add(collection_name)
@@ -749,7 +923,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 key_columns=["CHUNK_ID"],
                 update_style="MINOR",
             )
-            await self._poll_status(vs, operation="delete_datasets")
+            vs = await self._poll_status(vs, operation="delete_datasets")
 
             # 4. Delete from staging table
             await self._execute_sql(
@@ -807,31 +981,21 @@ class TeradataVectorBackend(VectorStoreBackend):
                 question=query_text,
                 return_type="pandas",
             )
-        except AttributeError as exc:
-            # Stale teradataml connection — reconnect and retry once
-            if "'NoneType'" in str(exc) and "cursor" in str(exc):
-                from teradataml import create_context  # type: ignore[import]
-
-                logger.info("teradataml connection lost during query — reconnecting")
-                ctx_kwargs: dict = {"host": self._host, "username": self._username}
-                if self._password:
-                    ctx_kwargs["password"] = self._password
-                if self._database:
-                    ctx_kwargs["database"] = self._database
-                await asyncio.to_thread(create_context, **ctx_kwargs)
-                result_df_raw = await asyncio.to_thread(
-                    vs.similarity_search,
-                    question=query_text,
-                    return_type="pandas",
-                )
-            else:
+        except Exception as exc:
+            if not self._is_connection_lost(exc):
                 raise RuntimeError(
                     f"Teradata similarity_search failed for collection '{collection_name}': {exc}"
                 ) from exc
-        except Exception as exc:
-            raise RuntimeError(
-                f"Teradata similarity_search failed for collection '{collection_name}': {exc}"
-            ) from exc
+            # Stale connection — reconnect and retry once.
+            logger.info("teradataml connection lost during query — reconnecting")
+            await self._reconnect_all()
+            # Re-acquire VectorStore handle (SDK object may be invalidated)
+            vs = self._get_store(collection_name)
+            result_df_raw = await asyncio.to_thread(
+                vs.similarity_search,
+                question=query_text,
+                return_type="pandas",
+            )
 
         # Defensive: some SDK versions return a wrapper with .similar_objects
         if hasattr(result_df_raw, 'similar_objects'):
@@ -976,23 +1140,24 @@ class TeradataVectorBackend(VectorStoreBackend):
         if not chunks_qualified:
             return GetResult(documents=[], total_count=0)
 
+        # Use SELECT * because the EVS SDK may name the content column
+        # differently depending on version/parameters (file_splits, chunks,
+        # content, etc.).  Column detection mirrors the query() approach.
         try:
             if ids is not None:
                 safe_ids = [cid.replace("'", "''") for cid in ids]
                 in_clause = ", ".join(f"'{cid}'" for cid in safe_ids)
                 sql = (
-                    f"SELECT TD_ID, file_splits, TD_FILENAME "
-                    f"FROM {chunks_qualified} "
+                    f"SELECT * FROM {chunks_qualified} "
                     f"WHERE CAST(TD_ID AS VARCHAR(100)) IN ({in_clause})"
                 )
             else:
                 row_start = offset + 1
                 row_end = (offset + limit) if limit else 2_000_000_000
                 sql = (
-                    f"SELECT TD_ID, file_splits, TD_FILENAME FROM ("
-                    f"  SELECT TD_ID, file_splits, TD_FILENAME,"
-                    f"         ROW_NUMBER() OVER (ORDER BY TD_ID) AS RN"
-                    f"  FROM {chunks_qualified}"
+                    f"SELECT * FROM ("
+                    f"  SELECT T2.*, ROW_NUMBER() OVER (ORDER BY TD_ID) AS RN"
+                    f"  FROM {chunks_qualified} T2"
                     f") T WHERE RN BETWEEN {row_start} AND {row_end}"
                 )
 
@@ -1008,17 +1173,30 @@ class TeradataVectorBackend(VectorStoreBackend):
                 f"'{chunks_qualified}' for collection '{collection_name}': {exc}"
             ) from exc
 
+        # Dynamically detect column names (case-insensitive).
+        # The SDK uses varying names: file_splits, chunks, content, etc.
+        cols_upper: Dict[str, str] = {}
+        if vs_rows:
+            cols_upper = {k.upper(): k for k in vs_rows[0].keys()}
+
+        id_key = cols_upper.get("TD_ID", "TD_ID")
+        # Content column: try known names in priority order
+        content_key = None
+        for candidate in ("FILE_SPLITS", "CHUNKS", "CONTENT", "REV_TEXT", "TEXT"):
+            if candidate in cols_upper:
+                content_key = cols_upper[candidate]
+                break
+        filename_key = cols_upper.get("TD_FILENAME", "TD_FILENAME")
+
         docs = []
         for row in vs_rows:
-            doc_id = str(row.get("TD_ID", row.get("td_id", "")))
-            content = (
-                str(row.get("file_splits", row.get("FILE_SPLITS", "")))
-                if include_documents
-                else ""
-            )
+            doc_id = str(row.get(id_key, ""))
+            content = ""
+            if include_documents and content_key:
+                content = str(row.get(content_key, ""))
             meta: dict = {}
             if include_metadata:
-                filename = row.get("TD_FILENAME", row.get("td_filename", ""))
+                filename = row.get(filename_key, "")
                 if filename:
                     meta["filename"] = str(filename)
             docs.append(VectorDocument(id=doc_id, content=content, metadata=meta))

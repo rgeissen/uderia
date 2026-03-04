@@ -9,9 +9,6 @@ import hashlib
 import httpx
 import uuid # Import the uuid module
 from pathlib import Path
-import chromadb
-from chromadb.utils import embedding_functions
-
 from quart import Blueprint, request, jsonify, render_template, Response, abort
 from langchain_mcp_adapters.prompts import load_mcp_prompt
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -1103,31 +1100,20 @@ async def subscribe_notifications():
 
 @api_bp.route("/rag/collections", methods=["GET"])
 async def list_rag_collections():
-    """Lists available ChromaDB collections with basic metadata and document counts."""
+    """Lists available planner collections via the retriever's collection registry."""
     try:
         retriever = APP_STATE.get('rag_retriever_instance')
-        client = None
-        if retriever and hasattr(retriever, 'client'):
-            client = retriever.client
-        else:
-            # Fallback: attempt to open persistent client if RAG is enabled
-            if APP_CONFIG.RAG_ENABLED:
-                project_root = Path(__file__).resolve().parent.parent.parent
-                persist_dir = project_root / '.chromadb_rag_cache'
-                persist_dir.mkdir(exist_ok=True)
-                client = chromadb.PersistentClient(path=str(persist_dir))
-        if not client:
+        if not retriever:
             return jsonify({"collections": []})
-        raw_collections = client.list_collections()
+
         collections = []
-        for col in raw_collections:
-            name = getattr(col, 'name', None) or getattr(col, 'id', 'unknown')
+        for coll_id, coll_obj in retriever.collections.items():
+            name = getattr(coll_obj, 'name', None) or str(coll_id)
             count = None
             metadata = {}
             try:
-                c_obj = client.get_collection(name=name)
-                count = c_obj.count()
-                metadata = c_obj.metadata or {}
+                count = coll_obj.count()
+                metadata = getattr(coll_obj, 'metadata', None) or {}
             except Exception as inner_e:
                 app_logger.warning(f"Failed to inspect collection '{name}': {inner_e}")
             collections.append({"name": name, "count": count, "metadata": metadata})
@@ -1138,7 +1124,11 @@ async def list_rag_collections():
 
 @api_bp.route("/rag/collections/<int:collection_id>/rows", methods=["GET"])
 async def get_collection_rows(collection_id):
-    """Returns a sample or search results of rows from a ChromaDB collection.
+    """Returns a sample or search results of rows from a planner collection.
+
+    Uses the retriever's pre-loaded ChromaDB collection objects instead of
+    creating a raw ChromaDB client.  This keeps the endpoint consistent with
+    the vector store abstraction layer.
 
     Query Parameters:
       limit (int): number of rows to return (default 25, max 100)
@@ -1150,68 +1140,46 @@ async def get_collection_rows(collection_id):
         from trusted_data_agent.core.collection_db import get_collection_db
         collection_db = get_collection_db()
         collection_meta = collection_db.get_collection_by_id(collection_id)
-        
+
         if not collection_meta:
             return jsonify({"error": f"Collection with ID {collection_id} not found."}), 404
-        
+
         collection_name = collection_meta["collection_name"]
         app_logger.info(f"RAG Inspection - Collection ID: {collection_id}, Name: {collection_meta.get('name')}, ChromaDB Name: {collection_name}")
-        
-        # Always try to get ChromaDB client, even if app is not configured
-        # RAG collections can be inspected independently of MCP/LLM configuration
-        client = None
+
+        # Get collection via retriever (pre-loaded ChromaDB objects)
         retriever = APP_STATE.get('rag_retriever_instance')
-        
-        if retriever and hasattr(retriever, 'client'):
-            # Use existing retriever's client if available
-            client = retriever.client
-            app_logger.info(f"Using existing RAG retriever client")
-        else:
-            # Create direct client connection to ChromaDB
-            # This allows RAG inspection even before app configuration
-            try:
-                # routes.py is at src/trusted_data_agent/api/routes.py
-                # We need to go up 4 levels to get to project root
-                project_root = Path(__file__).resolve().parent.parent.parent.parent
-                persist_dir = project_root / '.chromadb_rag_cache'
-                persist_dir.mkdir(exist_ok=True)
-                
-                # Create client
-                client = chromadb.PersistentClient(path=str(persist_dir))
-                
-                # WORKAROUND: Force client initialization by listing collections immediately
-                # This seems to help with ChromaDB 0.6+ telemetry initialization timing
-                try:
-                    _ = client.list_collections()
-                except:
-                    pass
-                
-                app_logger.info(f"Created direct ChromaDB client for RAG inspection (app not configured)")
-                app_logger.info(f"ChromaDB persist directory: {persist_dir}")
-                app_logger.info(f"Directory exists: {persist_dir.exists()}")
-                if persist_dir.exists():
-                    files = list(persist_dir.glob('*'))
-                    app_logger.info(f"Files in persist_dir: {[f.name for f in files]}")
-                
-                # Note: We don't set the embedding function on the client itself.
-                # Collections in ChromaDB 0.6+ store their own embedding function,
-                # so we need to get the collection and it will use its stored embedding function.
-            except Exception as e:
-                app_logger.error(f"Failed to create ChromaDB client: {e}")
-                return jsonify({
-                    "error": "Failed to connect to RAG database",
-                    "rows": [],
-                    "total": 0,
-                    "collection_name": collection_name
-                }), 500
-        
-        if not client:
+        collection = None
+
+        if retriever:
+            # Primary path: use retriever's pre-loaded collection
+            coll_obj = retriever.collections.get(collection_id)
+            if coll_obj is not None:
+                collection = coll_obj
+                app_logger.info(f"Using retriever collection for ID {collection_id}")
+            else:
+                # Collection might not be loaded yet — try via ChromaDB client
+                client = getattr(retriever, 'client', None)
+                if client:
+                    try:
+                        collection = client.get_or_create_collection(
+                            name=collection_name,
+                            metadata={"hnsw:space": "cosine"},
+                        )
+                        app_logger.info(f"Loaded collection '{collection_name}' via retriever client")
+                    except Exception as e:
+                        app_logger.warning(f"Failed to load collection '{collection_name}': {e}")
+
+        if collection is None:
             return jsonify({
-                "error": "RAG database not available",
+                "error": "Collection not loaded. Please ensure the RAG system is initialized.",
                 "rows": [],
                 "total": 0,
-                "collection_name": collection_name
-            }), 500
+                "collection_name": collection_name,
+            }), 404
+
+        count = collection.count()
+        app_logger.info(f"Collection '{collection_name}' has {count} documents")
 
         limit = request.args.get('limit', default=25, type=int)
         limit = max(1, min(limit, 200))  # Allow up to 200 rows per request
@@ -1219,39 +1187,6 @@ async def get_collection_rows(collection_id):
         offset = max(0, offset)
         query_text = request.args.get('q', default=None, type=str)
         light = request.args.get('light', default='true').lower() == 'true'
-
-        try:
-            # Try to get or create the collection
-            # Use get_or_create to handle case where collection doesn't exist yet
-            collection = client.get_or_create_collection(
-                name=collection_name,
-                metadata={"hnsw:space": "cosine"}
-            )
-            count = collection.count()
-            app_logger.info(f"Successfully retrieved collection '{collection_name}' with {count} documents")
-        except Exception as e:
-            app_logger.error(f"Failed to get ChromaDB collection '{collection_name}': {e}")
-            
-            # List available collections for debugging
-            try:
-                available_collections = client.list_collections()
-                available_names = [str(col) for col in available_collections]
-                app_logger.info(f"Available collections in ChromaDB: {available_names}")
-                
-                # If there's only one collection and it's not the one we're looking for,
-                # this might be a naming mismatch - use the first available collection
-                if len(available_collections) == 1 and collection_name == "default_collection":
-                    actual_name = str(available_collections[0])
-                    app_logger.info(f"Attempting to use actual collection '{actual_name}' instead of '{collection_name}'")
-                    collection = client.get_collection(name=actual_name)
-                    count = collection.count()
-                    app_logger.info(f"Successfully retrieved fallback collection '{actual_name}' with {count} documents")
-                    collection_name = actual_name  # Update for response
-                else:
-                    return jsonify({"error": f"ChromaDB collection '{collection_name}' not found. Available: {available_names}"}), 404
-            except Exception as list_error:
-                app_logger.error(f"Failed to list ChromaDB collections: {list_error}")
-                return jsonify({"error": f"ChromaDB collection '{collection_name}' not found."}), 404
 
         rows = []
         total = 0

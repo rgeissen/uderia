@@ -398,12 +398,12 @@ Server-side chunked collections use SDK-managed tables with a different naming c
 | Table | Naming Pattern | Purpose |
 |---|---|---|
 | Index table | `vectorstore_{collection_name}_index` | Embedding vectors + references |
-| Chunks table | `chunks_table_{uuid}` | Chunk text (`file_splits`), `TD_ID`, `TD_FILENAME` |
+| Chunks table | `chunks_table_{uuid}` | Content column (name varies by SDK version — detected dynamically), `TD_ID`, `TD_FILENAME` |
 
 The chunks table name is a random UUID, discoverable from the index table's `TableName` column via `_resolve_chunks_table()`.
 
-#### Capabilities (10 declared)
-`CREATE_COLLECTION` · `DELETE_COLLECTION` · `ADD_DOCUMENTS` · `DELETE_DOCUMENTS` · `SIMILARITY_SEARCH` · `GET_BY_ID` · `COUNT` · `UPSERT` · `SERVER_SIDE_EMBEDDING` · `SERVER_SIDE_CHUNKING`
+#### Capabilities (11 declared)
+`CREATE_COLLECTION` · `DELETE_COLLECTION` · `ADD_DOCUMENTS` · `DELETE_DOCUMENTS` · `SIMILARITY_SEARCH` · `GET_BY_ID` · `GET_ALL` · `COUNT` · `UPSERT` · `SERVER_SIDE_EMBEDDING` · `SERVER_SIDE_CHUNKING`
 
 #### Configuration
 ```json
@@ -500,32 +500,52 @@ count(collection_name)
 get(collection_name, limit, offset)
     ↓ query staging table (CHUNK_ID, CONTENT, METADATA_JSON)
     ↓ if staging has data → return staging rows
-    ↓ else → _resolve_chunks_table() → query chunks_table (TD_ID, file_splits, TD_FILENAME)
-    ↓ column mapping: TD_ID→id, file_splits→content, TD_FILENAME→metadata.filename
+    ↓ else → _resolve_chunks_table() → SELECT * FROM chunks_table
+    ↓ dynamic column detection: tries FILE_SPLITS, CHUNKS, CONTENT, REV_TEXT, TEXT (priority order)
+    ↓ column mapping: TD_ID→id, {detected_content_col}→content, TD_FILENAME→metadata.filename
 ```
 
-#### Connection Resilience — `_execute_sql()` Retry Wrapper
+#### Connection Resilience
 
-The `teradataml` library stores its database connection as a module-level global. After idle periods (~10 min), the connection times out silently, causing `execute_sql()` to fail with `AttributeError: 'NoneType' object has no attribute 'cursor'`.
+The `teradataml` library stores its database connection as a module-level global singleton. After idle periods (~10 min) or external SDK calls, the connection goes stale, causing failures like `AttributeError: 'NoneType' object has no attribute 'cursor'` or `OperationalError: N is not a valid connection pool handle`.
 
-**Solution:** All SQL operations use `_execute_sql(sql)` — a wrapper that:
-1. Attempts `execute_sql(sql)` via `asyncio.to_thread()`
-2. Catches `AttributeError` with the stale-connection signature
-3. Reconnects via `create_context(host, username, password, database)`
-4. Retries the exact same SQL once
+**Detection — `_is_connection_lost(exc)`:**
+
+A static helper classifies exceptions as connection-loss indicators:
+
+| Exception Type | Pattern Matched |
+|---|---|
+| `AttributeError` | `'NoneType'` + `'cursor'` in message |
+| `OperationalError` | `"not a valid connection pool handle"`, `"socket"`, or `"connection"` in message |
+| Any exception | `"not a valid connection pool handle"` in message (defensive fallback) |
+
+**Reconnect — `_reconnect_all()`:**
+
+Serialized via `asyncio.Lock` + monotonic timestamp to prevent thundering herd (multiple concurrent requests each detecting stale connections and calling `create_context()`, invalidating each other's fresh connections in a cascade):
 
 ```python
-async def _execute_sql(self, sql: str) -> Any:
-    try:
-        return await asyncio.to_thread(execute_sql, sql)
-    except AttributeError as exc:
-        if "'NoneType'" in str(exc) and "cursor" in str(exc):
-            await asyncio.to_thread(create_context, **ctx_kwargs)
-            return await asyncio.to_thread(execute_sql, sql)
-        raise
+async def _reconnect_all(self) -> None:
+    ts_before = time.monotonic()
+    async with self._reconnect_lock:
+        if self._last_reconnect_ts > ts_before:
+            return  # Another coroutine already reconnected
+        create_context(host, username, password, database=database)
+        set_auth_token(pem_file=pem_path, base_url=base_url, access_token=pat_token)
+        self._last_reconnect_ts = time.monotonic()
 ```
 
-The same reconnect pattern is applied to `query()`'s `similarity_search()` call, which doesn't use `execute_sql` but suffers from the same stale-connection issue.
+**SQL Wrapper — `_execute_sql(sql)`:**
+
+All SQL operations go through this wrapper:
+1. Attempts `execute_sql(sql)` via `asyncio.to_thread()`
+2. On failure, checks `_is_connection_lost(exc)` — if not connection-related, re-raises immediately
+3. If a VS operation is in progress (`_vs_operation_active`), skips reconnect and re-raises (to avoid invalidating the SDK's own connection mid-operation)
+4. Calls `_reconnect_all()` (serialized, skip-if-recent)
+5. Retries the exact same SQL once
+
+**Query Resilience:**
+
+The same pattern protects `query()`'s `similarity_search()` call, which doesn't use `execute_sql` but suffers from the same stale-connection issue. On connection loss: `_reconnect_all()` → re-acquire VectorStore handle via `_get_store()` (since the SDK object may be invalidated) → retry search once.
 
 **Why not a connection probe?** An earlier approach used `SELECT 1` before every operation (`_ensure_connection`). This was unreliable — the connection could die between the probe and the actual query. The retry-at-failure wrapper catches the error at the exact point of failure.
 
@@ -1025,6 +1045,71 @@ Passing `EmbeddingProvider` as an argument to `add()`/`upsert()` means:
 - **Server-side embedding:** `ServerSideEmbeddingProvider` marker causes the backend to skip client inference
 - **Pre-computed vectors:** `EMBEDDING_PASSTHROUGH` capability + `VectorDocument.embedding` field
 
+### Teradata Object Ownership — EVS-Managed vs Platform-Managed
+
+> **CRITICAL OPERATIONAL RULE:** Never use raw SQL DDL (`DROP TABLE`, `DROP VIEW`) on EVS-managed objects. Always use the EVS SDK (`vs.destroy()`) or the EVS REST API (`DELETE /data-insights/api/v1/vectorstores/<name>`).
+
+The Teradata database contains objects owned by two different systems. Mixing up ownership and using the wrong deletion method causes **ghost dictionary entries** — objects that appear in `DBC.TablesV` but cannot be dropped, queried, or recreated. These ghost entries corrupt the entire database, blocking all future VectorStore creation with the error: *"Object not found. Please issue an object scan to update the dictionary."* Recovery requires DBA intervention (Teradata dictionary object scan) or a fresh database.
+
+#### Object Ownership Map
+
+| Object Pattern | Owner | Created By | Delete With | Raw SQL DDL? |
+|---|---|---|---|---|
+| `UDERIA_VS_<COLLECTION>` | **Platform** | `_ensure_staging_table()` | `DROP TABLE` | **Yes** — our table |
+| `UDERIA_DELTA_<UUID>` | **Platform** | `add()` temp table | `DROP TABLE` | **Yes** — our temp table |
+| `UDERIA_DEL_<UUID>` | **Platform** | `delete()` temp table | `DROP TABLE` | **Yes** — our temp table |
+| `vectorstoreV_<name>` | **EVS Service** | `vs.create()` | `vs.destroy()` or EVS REST API | **NO** |
+| `vectorstore_<name>_index` | **EVS Service** | `vs.create()` | `vs.destroy()` or EVS REST API | **NO** |
+| `vectorstore_<name>_index_Embeddings` | **EVS Service** | `vs.create()` | `vs.destroy()` or EVS REST API | **NO** |
+| `chunks_table_<uuid>` | **EVS Service** | `vs.create(document_files=...)` | `vs.destroy()` or EVS REST API | **NO** |
+| `AWSEmbeddingsAuth` | **EVS Service** | `set_auth_token()` | Never — shared auth object | **NO** |
+
+#### Correct Cleanup Methods
+
+**For individual vector stores:**
+```python
+# Python SDK (preferred)
+vs = VectorStore(name="my_vs_name")
+vs.destroy()
+vs.status()  # poll until DESTROYED
+```
+
+**For listing / bulk operations:**
+```python
+from teradatagenai import VSManager
+
+VSManager.list()            # List all VS visible to current user
+VSManager.list_sessions()   # Show active VS sessions
+VSManager.disconnect()      # Disconnect all sessions (clear locks)
+```
+
+**REST API (for stuck VS or when SDK fails):**
+```bash
+# Delete a vector store
+curl -X 'DELETE' \
+    "$BASE_URL/data-insights/api/v1/vectorstores/<vs_name>" \
+    -H "Authorization: Bearer $JWT" \
+    -b session_cookie
+
+# Check status after deletion
+curl -X 'GET' \
+    "$BASE_URL/data-insights/api/v1/vectorstores/<vs_name>" \
+    -H "Authorization: Bearer $JWT" \
+    -b session_cookie
+```
+
+#### Code Compliance
+
+The `teradata_backend.py` implementation **follows this rule correctly**:
+
+- `delete_collection()` uses `vs.destroy()` for the EVS VectorStore, then `DROP TABLE` only for the platform-owned staging table (`UDERIA_VS_*`)
+- `add()` and `delete()` use `vs.create()` / `vs.add_datasets()` / `vs.delete_datasets()` for EVS operations, and raw SQL only for platform-owned temp tables (`UDERIA_DELTA_*`, `UDERIA_DEL_*`)
+- No production code path ever runs `DROP TABLE`/`DROP VIEW` on `vectorstoreV_*`, `vectorstore_*_index*`, or `chunks_table_*` objects
+
+#### Incident Reference (March 2026)
+
+Manually running `DROP TABLE` / `DROP VIEW` on EVS-managed objects during an ad-hoc cleanup left 5 ghost dictionary entries (4 views + 1 table) that could not be dropped (`Error 3807: Object not found`). These ghosts blocked **all** new VectorStore creation in the database — even with completely new VS names that had no relation to the ghost objects. The EVS service (confirmed via `VSManager.list()`) showed zero vector stores for the user, yet creation consistently failed with *"Object not found. Please issue an object scan to update the dictionary."* The database had to be abandoned and replaced with a fresh ClearScape Experience environment.
+
 ---
 
 ## Known Limitations
@@ -1040,6 +1125,7 @@ Passing `EmbeddingProvider` as an argument to `add()`/`upsert()` means:
 | Server-side: add more docs | Not yet supported after initial create | Would need `vs.add_datasets()` with file path (future) |
 | Server-side: chunk preview | Not available — preview requires local chunking | Upload directly; inspect after completion |
 | VantageCloud Lake quota | Test environments have ~36 MB quota per AMP | Use smaller PDFs or production environments |
+| EVS ghost dictionary entries | Raw SQL DDL on EVS objects corrupts dictionary, blocks all future VS creation | Never DROP EVS objects directly — use `vs.destroy()` or EVS REST API. See *Teradata Object Ownership* in Design Decisions |
 
 ---
 
