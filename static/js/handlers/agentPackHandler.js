@@ -239,7 +239,7 @@ async function handleInstallAgentPack() {
         const hasKnowledgeCollections = manifest && (manifest.collections || [])
             .some(c => c.repository_type === 'knowledge');
         if (hasKnowledgeCollections) {
-            const vsResult = await _showVectorStoreConfigPicker();
+            const vsResult = await _showVectorStoreConfigPicker(manifest);
             if (vsResult === null) return; // User cancelled
             vectorStoreConfigId = vsResult || null; // '' → null (use original)
         }
@@ -301,6 +301,12 @@ async function handleInstallAgentPack() {
                 successMsg += ` | Tags renamed: ${remapList}`;
             }
             _notify('success', successMsg);
+
+            // Show governance warnings (non-blocking)
+            if (data.warnings && data.warnings.length > 0) {
+                data.warnings.forEach(w => _notify('warning', w));
+            }
+
             await loadAgentPacks();
             // Refresh profiles and knowledge repositories so new resources appear immediately
             await configState.loadProfiles();
@@ -431,43 +437,90 @@ function _showLlmConfigPicker() {
 
 // ── Vector Store Configuration Picker ─────────────────────────────────────────
 
-function _showVectorStoreConfigPicker() {
+function _showVectorStoreConfigPicker(manifest) {
     return new Promise(async (resolve) => {
-        // Fetch available VS configurations
+        // Fetch available VS configurations and allowed backends in parallel
         let vsConfigs = [];
+        let allowedBackends = null;
         try {
-            const res = await fetch('/api/v1/vectorstore/configurations', {
-                headers: _headers(false),
-            });
-            if (res.ok) {
-                const data = await res.json();
+            const [configRes, allowedRes] = await Promise.all([
+                fetch('/api/v1/vectorstore/configurations', { headers: _headers(false) }),
+                fetch('/api/v1/vectorstore/allowed-backends', { headers: _headers(false) }),
+            ]);
+            if (configRes.ok) {
+                const data = await configRes.json();
                 vsConfigs = data.configurations || [];
+            }
+            if (allowedRes.ok) {
+                const data = await allowedRes.json();
+                allowedBackends = data.allowed_backends || null;
             }
         } catch (e) {
             console.warn('Failed to fetch vector store configurations:', e);
         }
 
-        // If no configs available, skip (use original from export)
-        if (vsConfigs.length === 0) {
+        // Filter configs to only show allowed backends
+        const filteredConfigs = allowedBackends
+            ? vsConfigs.filter(c => allowedBackends.includes(c.backend_type))
+            : vsConfigs;
+
+        // Check if "Use Original" is safe — all pack VS backends must be allowed
+        const packVsConfigs = (manifest && manifest.vector_store_configurations) || [];
+        let packBackends = packVsConfigs.map(c => c.backend_type).filter(Boolean);
+        // Also check collection entries for backend_type (covers v1.0/v1.1 packs without VS configs)
+        if (packBackends.length === 0 && manifest && manifest.collections) {
+            packBackends = manifest.collections
+                .filter(c => c.repository_type === 'knowledge' && c.backend_type)
+                .map(c => c.backend_type);
+        }
+        packBackends = [...new Set(packBackends)];
+        // v1.0 packs have no backend_type info — they always used chromadb
+        if (packBackends.length === 0 && manifest && (manifest.collections || [])
+            .some(c => c.repository_type === 'knowledge')) {
+            packBackends = ['chromadb'];
+        }
+        const originalAllowed = !allowedBackends || packBackends.length === 0
+            || packBackends.every(b => allowedBackends.includes(b));
+
+        // If no allowed configs and original is also restricted, warn and proceed
+        // (server-side will skip the restricted knowledge collections)
+        if (filteredConfigs.length === 0 && !originalAllowed) {
+            _notify('warning', 'All vector store backends are restricted for your tier. Knowledge collections in this pack will be skipped.');
+            resolve('');  // proceed without override — server skips restricted collections
+            return;
+        }
+
+        // If no allowed configs but original is fine, skip picker
+        if (filteredConfigs.length === 0 && originalAllowed) {
             resolve('');
             return;
         }
 
-        // Build options HTML — "Use Original" first, then each config
-        const optionsHtml = vsConfigs.map(c => {
+        // Build options HTML — only allowed configs
+        const optionsHtml = filteredConfigs.map(c => {
             const backendLabel = (c.backend_type || 'unknown').charAt(0).toUpperCase() + (c.backend_type || 'unknown').slice(1);
             const label = `${_esc(c.name)} (${_esc(backendLabel)})`;
             return `<option value="${_esc(c.id)}">${label}</option>`;
         }).join('');
+
+        // Build "Use Original" option only if pack's backends are all allowed
+        const useOriginalOption = originalAllowed
+            ? '<option value="">Use Original (from export)</option>'
+            : '';
+
+        // Description text adapts based on whether "Use Original" is available
+        const descText = originalAllowed
+            ? 'Select which vector store backend to use for knowledge collections in this agent pack. Choose "Use Original" to keep the backend from the export.'
+            : 'The original vector store backend from this export is restricted for your tier. Please select an allowed backend configuration.';
 
         const overlay = document.createElement('div');
         overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]';
         overlay.innerHTML = `
             <div class="glass-panel rounded-xl p-6 w-full max-w-md border border-white/10 shadow-2xl">
                 <h3 class="text-lg font-bold text-white mb-2">Vector Store Backend</h3>
-                <p class="text-sm text-gray-400 mb-4">Select which vector store backend to use for knowledge collections in this agent pack. Choose "Use Original" to keep the backend from the export.</p>
+                <p class="text-sm text-gray-400 mb-4">${descText}</p>
                 <select id="vs-config-picker-select" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm mb-4 focus:outline-none focus:border-blue-500">
-                    <option value="">Use Original (from export)</option>
+                    ${useOriginalOption}
                     ${optionsHtml}
                 </select>
                 <div class="flex justify-end gap-3">

@@ -1053,6 +1053,11 @@ async function handleAgentPackInstall(packOrId, button) {
 
         showNotification('success', `Subscribed to ${result.name || 'agent pack'}`);
 
+        // Show governance warnings (non-blocking)
+        if (result.warnings && result.warnings.length > 0) {
+            result.warnings.forEach(w => showNotification('warning', w));
+        }
+
         // Reload marketplace and agent packs list
         loadMarketplaceAgentPacks();
         if (window.agentPackHandler?.loadAgentPacks) {

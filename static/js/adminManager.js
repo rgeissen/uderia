@@ -2579,6 +2579,8 @@ const AdminManager = {
         base.comp_mode = compAllRadio && compAllRadio.checked ? 'all' : 'selective';
         // Disabled components (dynamic checkboxes)
         base.comp_disabled = JSON.stringify(this._getDisabledComponents());
+        // Vector store governance
+        base.vs_gov = this._getVsGovSnapshot();
         return base;
     },
     checkFeaturesDirty() {
@@ -2942,6 +2944,127 @@ const AdminManager = {
             console.error('[AdminManager] Error saving component settings:', err);
             return false;
         }
+    },
+
+    // --- Vector Store Governance ---
+
+    /** Load vector store governance settings from the admin API */
+    async loadVectorStoreSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return;
+
+            const resp = await fetch('/api/v1/admin/vectorstore-settings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) return;
+
+            const data = await resp.json();
+            if (data.status !== 'success') return;
+
+            const settings = data.settings || {};
+            const devAllowed = settings.allowed_backends_developer || ['chromadb', 'teradata', 'qdrant'];
+            const userAllowed = settings.allowed_backends_user || ['chromadb', 'teradata', 'qdrant'];
+
+            // Populate developer checkboxes
+            ['chromadb', 'teradata', 'qdrant'].forEach(backend => {
+                const cb = document.getElementById(`vs-gov-developer-${backend}`);
+                if (cb) cb.checked = devAllowed.includes(backend);
+            });
+
+            // Populate user checkboxes
+            ['chromadb', 'teradata', 'qdrant'].forEach(backend => {
+                const cb = document.getElementById(`vs-gov-user-${backend}`);
+                if (cb) {
+                    cb.checked = userAllowed.includes(backend);
+                    // Disable user checkbox if developer doesn't have this backend
+                    cb.disabled = !devAllowed.includes(backend);
+                    if (cb.disabled) {
+                        cb.closest('label').classList.add('opacity-50');
+                    } else {
+                        cb.closest('label').classList.remove('opacity-50');
+                    }
+                }
+            });
+
+            // Wire cascade: unchecking developer auto-unchecks + disables user
+            ['chromadb', 'teradata', 'qdrant'].forEach(backend => {
+                const devCb = document.getElementById(`vs-gov-developer-${backend}`);
+                const userCb = document.getElementById(`vs-gov-user-${backend}`);
+                if (devCb && userCb) {
+                    devCb.addEventListener('change', () => {
+                        if (!devCb.checked) {
+                            userCb.checked = false;
+                            userCb.disabled = true;
+                            userCb.closest('label').classList.add('opacity-50');
+                        } else {
+                            userCb.disabled = false;
+                            userCb.closest('label').classList.remove('opacity-50');
+                        }
+                        this.checkFeaturesDirty();
+                    });
+                    userCb.addEventListener('change', () => this.checkFeaturesDirty());
+                }
+            });
+
+        } catch (err) {
+            console.error('[AdminManager] Error loading vectorstore settings:', err);
+        }
+    },
+
+    /** Save vector store governance settings to the admin API */
+    async saveVectorStoreSettings() {
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            if (!token) return true;
+
+            const devAllowed = [];
+            const userAllowed = [];
+
+            ['chromadb', 'teradata', 'qdrant'].forEach(backend => {
+                const devCb = document.getElementById(`vs-gov-developer-${backend}`);
+                const userCb = document.getElementById(`vs-gov-user-${backend}`);
+                if (devCb && devCb.checked) devAllowed.push(backend);
+                if (userCb && userCb.checked) userAllowed.push(backend);
+            });
+
+            const resp = await fetch('/api/v1/admin/vectorstore-settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    allowed_backends_developer: devAllowed,
+                    allowed_backends_user: userAllowed
+                })
+            });
+
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                if (window.showNotification) {
+                    window.showNotification('error', data.message || 'Failed to save vector store settings');
+                }
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.error('[AdminManager] Error saving vectorstore settings:', err);
+            return false;
+        }
+    },
+
+    /** Get the current VS governance checkbox state for dirty tracking */
+    _getVsGovSnapshot() {
+        const devAllowed = [];
+        const userAllowed = [];
+        ['chromadb', 'teradata', 'qdrant'].forEach(backend => {
+            const devCb = document.getElementById(`vs-gov-developer-${backend}`);
+            const userCb = document.getElementById(`vs-gov-user-${backend}`);
+            if (devCb && devCb.checked) devAllowed.push(backend);
+            if (userCb && userCb.checked) userAllowed.push(backend);
+        });
+        return JSON.stringify({ dev: devAllowed, user: userAllowed });
     },
 
     // --- AI & Knowledge Tab ---
@@ -3563,6 +3686,9 @@ const AdminManager = {
             // Load component governance settings (populates UI before snapshot)
             await this.loadComponentSettings();
 
+            // Load vector store governance settings (populates UI before snapshot)
+            await this.loadVectorStoreSettings();
+
             // Store original values for dirty tracking - Features tab
             this.featuresOriginal = this.getFeaturesSnapshot();
             this.featuresDirty = false;
@@ -3817,6 +3943,10 @@ const AdminManager = {
             // Save component governance settings
             const compOk = await this.saveComponentSettings();
             if (!compOk) return;
+
+            // Save vector store governance settings
+            const vsOk = await this.saveVectorStoreSettings();
+            if (!vsOk) return;
 
             // Reset dirty state
             this.featuresOriginal = this.getFeaturesSnapshot();

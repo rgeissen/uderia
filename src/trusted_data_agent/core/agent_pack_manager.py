@@ -488,9 +488,31 @@ class AgentPackManager:
 
             # Step 4b: Import vector store configurations (v1.2+ packs)
             vs_config_map = {}  # ref → local config ID
+            import_warnings = []  # governance warnings (non-blocking)
+
+            # Resolve importing user's tier for VS governance checks
+            try:
+                from trusted_data_agent.vectorstore.settings import get_allowed_backends
+                from trusted_data_agent.auth.admin import get_user_tier
+                from trusted_data_agent.auth.middleware import get_current_user
+                _importing_user = get_current_user()
+                _importing_tier = get_user_tier(_importing_user) if _importing_user else "user"
+                _allowed_backends = get_allowed_backends(_importing_tier)
+            except Exception:
+                _allowed_backends = ["chromadb", "teradata", "qdrant"]
 
             if vector_store_config_id:
                 # Override: map ALL pack VS refs to the user-selected config
+                # Validate the selected config's backend is allowed for this user's tier
+                override_config = next(
+                    (c for c in config_manager.get_vector_store_configurations(user_uuid)
+                     if c.get("id") == vector_store_config_id), None
+                )
+                if override_config and override_config.get("backend_type") not in _allowed_backends:
+                    raise ValueError(
+                        f"Vector store backend '{override_config.get('backend_type')}' "
+                        f"is restricted for your tier. Choose a different backend."
+                    )
                 pack_vs_configs = manifest.get("vector_store_configurations", [])
                 for vs_entry in pack_vs_configs:
                     vs_config_map[vs_entry["ref"]] = vector_store_config_id
@@ -523,6 +545,20 @@ class AgentPackManager:
                             vs_config_map[vs_entry["ref"]] = new_vs_config["id"]
                             app_logger.info(f"  Created vector store config '{new_vs_config['name']}'")
 
+                        # Check governance: block import of restricted backend configs
+                        _backend = vs_entry.get("backend_type", "chromadb")
+                        if _backend not in _allowed_backends:
+                            # Remove from vs_config_map so collections using this ref are skipped
+                            vs_config_map.pop(vs_entry["ref"], None)
+                            import_warnings.append(
+                                f"Vector store backend '{_backend}' (config: {vs_entry.get('name', 'unknown')}) "
+                                f"is restricted for your tier. Associated knowledge collections were skipped."
+                            )
+                            app_logger.warning(
+                                f"  VS governance block: backend '{_backend}' restricted for tier '{_importing_tier}', "
+                                f"ref '{vs_entry['ref']}' removed from import"
+                            )
+
             # Step 5: Import collections
             app_logger.info(f"Importing {len(collections)} collections...")
             ref_to_collection_id = {}
@@ -547,6 +583,14 @@ class AgentPackManager:
                         vs_ref = coll_entry.get("vector_store_config_ref")
                         if vs_ref and vs_ref in vs_config_map:
                             coll_vs_config_id = vs_config_map[vs_ref]
+                        elif vs_ref and vs_ref not in vs_config_map:
+                            # VS ref was removed by governance — skip this knowledge collection
+                            import_warnings.append(
+                                f"Knowledge collection '{coll_entry.get('name', ref)}' skipped: "
+                                f"its vector store backend is restricted for your tier."
+                            )
+                            app_logger.warning(f"  Skipping collection '{ref}': VS ref '{vs_ref}' blocked by governance")
+                            continue
 
                 result = await import_collection_from_zip(
                     zip_path=coll_zip_path,
@@ -672,6 +716,7 @@ class AgentPackManager:
                 # Legacy compat
                 "experts_created": len(non_genie),
                 "tag_remap": tag_remap if tag_remap else None,
+                "warnings": import_warnings if import_warnings else None,
             }
 
             app_logger.info(f"Agent pack '{manifest['name']}' installed successfully (id={installation_id})")

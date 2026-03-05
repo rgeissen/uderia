@@ -2793,6 +2793,19 @@ async def create_rag_collection():
             else:
                 return jsonify({"status": "error", "message": f"Vector store configuration '{vector_store_config_id}' not found"}), 400
 
+        # Enforce vector store governance for knowledge repositories
+        if repository_type == "knowledge":
+            from trusted_data_agent.auth.middleware import get_current_user
+            from trusted_data_agent.auth.admin import get_user_tier
+            from trusted_data_agent.vectorstore.settings import is_backend_allowed
+            _current_user = get_current_user()
+            _user_tier = get_user_tier(_current_user)
+            if not is_backend_allowed(backend_type, _user_tier):
+                return jsonify({
+                    "status": "error",
+                    "message": f"Vector store backend '{backend_type}' is not available for your tier"
+                }), 403
+
         if isinstance(backend_config, dict):
             import json as _json
             backend_config = _json.dumps(backend_config)
@@ -5666,6 +5679,31 @@ async def get_llm_context_limit(config_id: str):
 # ============================================================================
 # VECTOR STORE CONFIGURATION ENDPOINTS
 # ============================================================================
+
+@rest_api_bp.route("/v1/vectorstore/allowed-backends", methods=["GET"])
+@require_auth
+async def get_allowed_vectorstore_backends(current_user):
+    """
+    Get the list of vector store backends allowed for the current user's tier.
+    Non-admin endpoint — resolves tier server-side so frontend needs no tier logic.
+    """
+    try:
+        from trusted_data_agent.auth.admin import get_user_tier
+        from trusted_data_agent.vectorstore.settings import get_allowed_backends
+
+        user_tier = get_user_tier(current_user)
+        allowed = get_allowed_backends(user_tier)
+
+        return jsonify({
+            "status": "success",
+            "allowed_backends": allowed,
+            "user_tier": user_tier,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting allowed backends: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @rest_api_bp.route("/v1/vectorstore/configurations", methods=["GET"])
 async def get_vectorstore_configurations():
@@ -14509,6 +14547,23 @@ async def kg_generate(current_user):
                 "status": "error",
                 "message": "KG Constructor requires a profile with MCP tool-calling capability (Optimize or Conversation with Tools)."
             }), 400
+
+        # Enforce vector store governance on profile's linked backend
+        profile_vs_config_id = (profile.get("vectorStoreConfigId")
+                                or profile.get("knowledgeConfig", {}).get("vectorStoreConfigId"))
+        if profile_vs_config_id:
+            vs_configs = config_manager.get_vector_store_configurations(user_uuid)
+            vs_config = next((c for c in vs_configs if c.get("id") == profile_vs_config_id), None)
+            if vs_config:
+                from trusted_data_agent.auth.admin import get_user_tier
+                from trusted_data_agent.vectorstore.settings import is_backend_allowed
+                _vs_backend = vs_config.get("backend_type", "chromadb")
+                _user_tier = get_user_tier(current_user)
+                if not is_backend_allowed(_vs_backend, _user_tier):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Profile's vector store backend '{_vs_backend}' is not available for your tier"
+                    }), 403
 
         from trusted_data_agent.core.configuration_service import switch_profile_context
         await switch_profile_context(profile_id, user_uuid, validate_llm=False)

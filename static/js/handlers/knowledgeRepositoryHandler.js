@@ -166,6 +166,21 @@ async function _populateVectorStoreDropdown() {
 
     try {
         const token = localStorage.getItem('tda_auth_token');
+
+        // Fetch allowed backends for current user's tier
+        let allowedBackends = ['chromadb', 'teradata', 'qdrant'];
+        try {
+            const govResp = await fetch('/api/v1/vectorstore/allowed-backends', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (govResp.ok) {
+                const govData = await govResp.json();
+                if (govData.status === 'success' && Array.isArray(govData.allowed_backends)) {
+                    allowedBackends = govData.allowed_backends;
+                }
+            }
+        } catch (_) { /* governance endpoint unavailable — allow all */ }
+
         const resp = await fetch('/api/v1/vectorstore/configurations', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -174,17 +189,22 @@ async function _populateVectorStoreDropdown() {
         const configs = data.configurations || [];
 
         vsSelect.innerHTML = '';
+        let addedCount = 0;
         for (const cfg of configs) {
+            // Skip configs whose backend is restricted for this user's tier
+            if (!allowedBackends.includes(cfg.backend_type)) continue;
+
             const opt = document.createElement('option');
             opt.value = cfg.id;
             opt.dataset.backendType = cfg.backend_type;
             const typeBadge = cfg.backend_type === 'chromadb' ? 'ChromaDB' : cfg.backend_type.charAt(0).toUpperCase() + cfg.backend_type.slice(1);
             opt.textContent = `${cfg.name} (${typeBadge})`;
             vsSelect.appendChild(opt);
+            addedCount++;
         }
 
-        // If no configs returned, add default fallback
-        if (configs.length === 0) {
+        // If no allowed configs, add default ChromaDB fallback (always allowed)
+        if (addedCount === 0) {
             const opt = document.createElement('option');
             opt.value = 'vs-default-chromadb';
             opt.dataset.backendType = 'chromadb';

@@ -2701,6 +2701,122 @@ async def save_component_settings_endpoint():
 
 
 # ---------------------------------------------------------------------------
+# Vector Store Governance Settings (per-tier backend availability)
+# ---------------------------------------------------------------------------
+
+@admin_api_bp.route('/v1/admin/vectorstore-settings', methods=['GET'])
+@require_admin
+async def get_vectorstore_settings_endpoint():
+    """
+    Get current vector store governance settings plus metadata.
+
+    Returns:
+    {
+        "status": "success",
+        "settings": {
+            "allowed_backends_user": ["chromadb", "teradata", "qdrant"],
+            "allowed_backends_developer": ["chromadb", "teradata", "qdrant"]
+        },
+        "available_backends": [
+            {"backend_id": "chromadb", "display_name": "ChromaDB (Local)", "color": "#22c55e"},
+            ...
+        ]
+    }
+    """
+    try:
+        from trusted_data_agent.vectorstore.settings import get_vectorstore_settings
+
+        settings = get_vectorstore_settings()
+
+        available = [
+            {"backend_id": "chromadb", "display_name": "ChromaDB (Local)", "color": "#22c55e"},
+            {"backend_id": "teradata", "display_name": "Teradata (Enterprise)", "color": "#F15F22"},
+            {"backend_id": "qdrant", "display_name": "Qdrant Cloud", "color": "#a78bfa"},
+        ]
+
+        return jsonify({
+            'status': 'success',
+            'settings': settings,
+            'available_backends': available,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting vectorstore settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/vectorstore-settings', methods=['POST'])
+@require_admin
+async def save_vectorstore_settings_endpoint():
+    """
+    Save vector store governance settings (admin only).
+
+    Body (all fields optional — only supplied keys are updated):
+    {
+        "allowed_backends_user": ["chromadb"],
+        "allowed_backends_developer": ["chromadb", "teradata"]
+    }
+
+    Enforces cumulative constraint: anything not in developer list
+    is automatically removed from user list.
+    """
+    try:
+        from trusted_data_agent.vectorstore.settings import (
+            save_vectorstore_settings, get_vectorstore_settings, ALL_BACKENDS
+        )
+
+        data = await request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        valid_set = set(ALL_BACKENDS)
+
+        # Validate allowed_backends_developer
+        if 'allowed_backends_developer' in data:
+            if not isinstance(data['allowed_backends_developer'], list):
+                return jsonify({'status': 'error', 'message': 'allowed_backends_developer must be a list'}), 400
+            invalid = set(data['allowed_backends_developer']) - valid_set
+            if invalid:
+                return jsonify({'status': 'error', 'message': f'Invalid backends: {", ".join(invalid)}'}), 400
+
+        # Validate allowed_backends_user
+        if 'allowed_backends_user' in data:
+            if not isinstance(data['allowed_backends_user'], list):
+                return jsonify({'status': 'error', 'message': 'allowed_backends_user must be a list'}), 400
+            invalid = set(data['allowed_backends_user']) - valid_set
+            if invalid:
+                return jsonify({'status': 'error', 'message': f'Invalid backends: {", ".join(invalid)}'}), 400
+
+        # Enforce cumulative constraint: user list must be subset of developer list
+        dev_list = data.get('allowed_backends_developer')
+        user_list = data.get('allowed_backends_user')
+
+        if dev_list is not None and user_list is not None:
+            # Both provided — enforce subset
+            data['allowed_backends_user'] = [b for b in user_list if b in dev_list]
+        elif dev_list is not None and user_list is None:
+            # Developer list changed — trim existing user list
+            current = get_vectorstore_settings()
+            current_user = current.get('allowed_backends_user', list(ALL_BACKENDS))
+            data['allowed_backends_user'] = [b for b in current_user if b in dev_list]
+
+        admin_user = get_current_user_from_request()
+        admin_uuid = admin_user.id if admin_user else 'unknown'
+
+        save_vectorstore_settings(data, admin_uuid)
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Vector store settings updated successfully',
+            'settings': get_vectorstore_settings(),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error saving vectorstore settings: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # Knowledge Graph Marketplace Governance Settings
 # ---------------------------------------------------------------------------
 

@@ -53,6 +53,7 @@ INSERT OR IGNORE INTO schema_version (version, description) VALUES
 -- 18. 18_components.sql            - Installed components + profile config
 -- 19. 19_component_settings.sql    - Admin component governance settings
 -- 23. 23_marketplace_knowledge_graphs.sql - Marketplace knowledge graphs + ratings + settings
+-- 24. 24_vectorstore_settings.sql  - Admin vector store governance (per-tier backend availability)
 
 -- ============================================================================
 -- Alternatively, use the Python validation script to build the database

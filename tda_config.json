@@ -2768,6 +2768,10 @@
     "user_components_enabled": true,
     "user_components_marketplace_enabled": true
   },
+  "vectorstore_settings": {
+    "allowed_backends_user": ["chromadb", "teradata", "qdrant"],
+    "allowed_backends_developer": ["chromadb", "teradata", "qdrant"]
+  },
   "context_window_types": [
     {
       "id": "cwt-default-balanced",

@@ -127,6 +127,9 @@ def init_database():
         # Create component settings table (admin governance)
         _create_component_settings_table()
 
+        # Create vector store settings table (admin governance per tier)
+        _create_vectorstore_settings_table()
+
         # Create knowledge graph tables (kg_entities + kg_relationships)
         _create_knowledge_graph_tables()
 
@@ -975,8 +978,7 @@ def _create_component_settings_table():
                             """
                             INSERT INTO component_settings (setting_key, setting_value)
                             VALUES (?, ?)
-                            ON CONFLICT(setting_key) DO UPDATE
-                            SET setting_value = excluded.setting_value
+                            ON CONFLICT(setting_key) DO NOTHING
                             """,
                             (key, str_value)
                         )
@@ -988,6 +990,75 @@ def _create_component_settings_table():
 
     except Exception as e:
         logger.error(f"Error creating component_settings table: {e}", exc_info=True)
+
+
+def _create_vectorstore_settings_table():
+    """
+    Create vectorstore_settings table for admin governance of vector store backends.
+    Controls which backends are available per user tier for knowledge repository creation.
+    Safe to call multiple times (won't recreate if exists).
+    Mirrors _create_component_settings_table().
+    """
+    import json
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "24_vectorstore_settings.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 24_vectorstore_settings.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS vectorstore_settings (
+                    id INTEGER PRIMARY KEY,
+                    setting_key TEXT NOT NULL UNIQUE,
+                    setting_value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                );
+                INSERT OR IGNORE INTO vectorstore_settings (setting_key, setting_value) VALUES
+                    ('allowed_backends_user', '["chromadb","teradata","qdrant"]'),
+                    ('allowed_backends_developer', '["chromadb","teradata","qdrant"]');
+                CREATE INDEX IF NOT EXISTS idx_vectorstore_settings_key
+                    ON vectorstore_settings(setting_key);
+            """)
+            logger.info("Created vectorstore_settings table (inline fallback)")
+
+        # Bootstrap from tda_config.json if vectorstore_settings key exists
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                vectorstore_settings = config.get("vectorstore_settings", {})
+                if vectorstore_settings:
+                    for key, value in vectorstore_settings.items():
+                        if isinstance(value, list):
+                            str_value = json.dumps(value)
+                        else:
+                            str_value = str(value)
+                        cursor.execute(
+                            """
+                            INSERT INTO vectorstore_settings (setting_key, setting_value)
+                            VALUES (?, ?)
+                            ON CONFLICT(setting_key) DO NOTHING
+                            """,
+                            (key, str_value)
+                        )
+            except Exception as cfg_err:
+                logger.warning(f"Could not bootstrap vectorstore settings from tda_config.json: {cfg_err}")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating vectorstore_settings table: {e}", exc_info=True)
 
 
 def _create_knowledge_graph_tables():

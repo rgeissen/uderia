@@ -11,6 +11,7 @@
     let loaded = false;
     let connectionTested = false;
     let activeBackendFilter = 'all';
+    let allowedBackends = ['chromadb', 'teradata', 'qdrant']; // governance — updated on load
 
     const vectorStoreColors = {
         'all':      '#6b7280',
@@ -69,6 +70,14 @@
         container.innerHTML = '<p class="text-gray-400 text-center py-8">Loading vector stores...</p>';
 
         try {
+            // Fetch allowed backends for current user's tier
+            try {
+                const govResult = await apiGet('/api/v1/vectorstore/allowed-backends');
+                if (govResult.status === 'success' && Array.isArray(govResult.allowed_backends)) {
+                    allowedBackends = govResult.allowed_backends;
+                }
+            } catch (_) { /* governance endpoint unavailable — allow all */ }
+
             const result = await apiGet('/api/v1/vectorstore/configurations');
             if (result.status === 'success') {
                 configurations = result.configurations || [];
@@ -109,6 +118,7 @@
         const isChromaDB = config.backend_type === 'chromadb';
         const isQdrant = config.backend_type === 'qdrant';
         const collCount = config.collection_count || 0;
+        const isRestricted = !allowedBackends.includes(config.backend_type);
 
         let typeBadge;
         if (isChromaDB) {
@@ -121,6 +131,10 @@
 
         const defaultBadge = isDefault
             ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">Default</span>'
+            : '';
+
+        const restrictedBadge = isRestricted
+            ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">Restricted</span>'
             : '';
 
         const host = config.backend_config?.host || config.backend_config?.url || '';
@@ -138,16 +152,20 @@
         const iconColor = isChromaDB ? 'text-green-400' : (isQdrant ? 'text-purple-400' : 'text-blue-400');
 
         const actions = [];
-        if (!isChromaDB) {
-            actions.push(`<button onclick="window.vectorStoreHandler.testConnection('${config.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 hover:bg-white/5 text-sm transition-colors" title="Test connection">Test</button>`);
-        }
-        actions.push(`<button onclick="window.vectorStoreHandler.showEditModal('${config.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 hover:bg-white/5 text-sm transition-colors">Edit</button>`);
-        if (!isDefault) {
-            actions.push(`<button onclick="window.vectorStoreHandler.deleteConfig('${config.id}')" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm transition-colors">Delete</button>`);
+        if (isRestricted) {
+            actions.push('<span class="text-xs text-red-400 italic">Backend restricted by admin</span>');
+        } else {
+            if (!isChromaDB) {
+                actions.push(`<button onclick="window.vectorStoreHandler.testConnection('${config.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 hover:bg-white/5 text-sm transition-colors" title="Test connection">Test</button>`);
+            }
+            actions.push(`<button onclick="window.vectorStoreHandler.showEditModal('${config.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 hover:bg-white/5 text-sm transition-colors">Edit</button>`);
+            if (!isDefault) {
+                actions.push(`<button onclick="window.vectorStoreHandler.deleteConfig('${config.id}')" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm transition-colors">Delete</button>`);
+            }
         }
 
         return `
-            <div class="glass-panel rounded-xl p-4 border border-white/5 hover:border-white/10 transition-colors" data-vs-id="${config.id}">
+            <div class="glass-panel rounded-xl p-4 border border-white/5 hover:border-white/10 transition-colors ${isRestricted ? 'opacity-50' : ''}" data-vs-id="${config.id}">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}">
@@ -160,6 +178,7 @@
                                 <span class="text-white font-medium">${escapeHtml(config.name)}</span>
                                 ${typeBadge}
                                 ${defaultBadge}
+                                ${restrictedBadge}
                             </div>
                             <div class="text-sm mt-0.5">${details}</div>
                             <div class="text-xs text-gray-500 mt-0.5">${collCount} collection${collCount !== 1 ? 's' : ''}</div>
@@ -178,8 +197,23 @@
         document.getElementById('vector-store-modal-title').textContent = 'Add Vector Store';
         document.getElementById('vs-edit-id').value = '';
         document.getElementById('vs-name').value = '';
-        document.getElementById('vs-backend-type').value = 'chromadb';
-        document.getElementById('vs-backend-type').disabled = false;
+        const backendSelect = document.getElementById('vs-backend-type');
+        backendSelect.value = 'chromadb';
+        backendSelect.disabled = false;
+
+        // Disable backend options restricted by governance
+        Array.from(backendSelect.options).forEach(opt => {
+            const restricted = !allowedBackends.includes(opt.value);
+            opt.disabled = restricted;
+            opt.textContent = opt.textContent.replace(/ \(Restricted\)$/, '');
+            if (restricted) opt.textContent += ' (Restricted)';
+        });
+        // If current selection is restricted, pick first allowed
+        if (!allowedBackends.includes(backendSelect.value)) {
+            const firstAllowed = Array.from(backendSelect.options).find(o => !o.disabled);
+            if (firstAllowed) backendSelect.value = firstAllowed.value;
+        }
+
         clearRemoteFields();
         connectionTested = false;
         clearTestResults();
