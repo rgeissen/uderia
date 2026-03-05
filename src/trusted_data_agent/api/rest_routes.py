@@ -13921,7 +13921,6 @@ async def _run_kg_agent_turn(user_uuid: str, session_id: str, query: str, profil
         event_handler=_kg_event_handler,
         source="kg_constructor",
         profile_override_id=profile_id,
-        force_profile_type="tool_enabled",  # Always use Planner/Executor for structured execution traces
     )
 
     return result or final_payload
