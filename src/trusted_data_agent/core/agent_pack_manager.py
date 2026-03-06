@@ -1425,8 +1425,11 @@ class AgentPackManager:
             profile_data["genieConfig"] = genie_config
 
         elif profile_type == "rag_focused":
+            # Always get knowledgeConfig from manifest (preserves settings like maxDocs, maxTokens)
+            knowledge_config = prof.get("knowledgeConfig", {}).copy()
+
+            # Add collections if collection_refs exist
             if collection_refs:
-                knowledge_config = prof.get("knowledgeConfig", {}).copy()
                 collections_list = []
                 for cr in collection_refs:
                     collection_info = ref_to_collection_id.get(cr)
@@ -1438,11 +1441,13 @@ class AgentPackManager:
                 if collections_list:
                     knowledge_config["collections"] = collections_list
 
-                synthesis_prompt = prof.get("synthesisPromptOverride")
-                if synthesis_prompt:
-                    knowledge_config["synthesisPromptOverride"] = synthesis_prompt
+            # Add synthesis prompt override if exists
+            synthesis_prompt = prof.get("synthesisPromptOverride")
+            if synthesis_prompt:
+                knowledge_config["synthesisPromptOverride"] = synthesis_prompt
 
-                profile_data["knowledgeConfig"] = knowledge_config
+            # Always set knowledgeConfig (even if no collection_refs)
+            profile_data["knowledgeConfig"] = knowledge_config
 
         elif profile_type == "tool_enabled":
             if mcp_server_id:
