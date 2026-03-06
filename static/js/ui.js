@@ -747,7 +747,7 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             details: kgEnrichmentEvent,
             type: 'kg_enrichment',
             _filterCategory: 'knowledge'
-        }, DOM.statusWindowContent, false);
+        }, DOM.statusWindowContent, true);
     }
 
     // 2. Iterate through the execution trace with collapsible phase containers

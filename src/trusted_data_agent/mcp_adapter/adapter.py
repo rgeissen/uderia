@@ -1273,6 +1273,46 @@ async def _invoke_core_llm_task(STATE: dict, command: dict, workflow_state: dict
 
     return result, input_tokens, output_tokens
 
+def _extract_fallback_answer(response_text: str) -> str | None:
+    """
+    Last-resort extraction of an answer string from an LLM response whose
+    JSON field names are corrupted beyond repair by key normalization.
+
+    Strategy: parse the JSON and find the most likely 'direct_answer' value
+    by checking key names and string value lengths.
+    """
+    try:
+        json_match = re.search(r'```json\s*\n(.*?)\n\s*```|(\{.*\}|\[.*\])', response_text, re.DOTALL)
+        if not json_match:
+            return None
+        json_str = next(g for g in json_match.groups() if g is not None)
+        data = json.loads(json_str)
+    except (json.JSONDecodeError, StopIteration):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    # Priority 1: Key containing "direct" or "answer" with a string value
+    for key, value in data.items():
+        if isinstance(value, str) and len(value.strip()) > 10:
+            key_lower = key.lower()
+            if 'direct' in key_lower or 'answer' in key_lower:
+                return value.strip()
+
+    # Priority 2: First string value longer than 20 chars
+    for key, value in data.items():
+        if isinstance(value, str) and len(value.strip()) > 20:
+            return value.strip()
+
+    # Priority 3: First non-empty string value
+    for key, value in data.items():
+        if isinstance(value, str) and len(value.strip()) > 0:
+            return value.strip()
+
+    return None
+
+
 # --- MODIFICATION START: Add user_uuid ---
 async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: dict, user_uuid: str = None, session_id: str = None, call_id: str | None = None) -> tuple[dict, int, int]:
 # --- MODIFICATION END ---
@@ -1371,6 +1411,32 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
     try:
         report_data, correction_descriptions = llm_handler.parse_and_coerce_llm_response(response_text, CanonicalResponse)
 
+        # --- SANITY CHECK: Cross-validate key_metric against direct_answer ---
+        # Weak models often hallucinate garbage in key_metric.value (e.g. "10 growth."
+        # instead of "100") while getting direct_answer right. Since key_metric is
+        # optional, null it out if the value looks inconsistent with the answer.
+        if report_data.key_metric and report_data.direct_answer:
+            metric_val = report_data.key_metric.value.strip()
+            answer = report_data.direct_answer
+            # Extract all numbers from the direct_answer for cross-validation
+            answer_numbers = set(re.findall(r'\d[\d,]*\.?\d*', answer))
+            # Extract the leading number from the metric value (if any)
+            metric_number_match = re.match(r'(\d[\d,]*\.?\d*)', metric_val)
+            metric_number = metric_number_match.group(1) if metric_number_match else None
+            # If metric has a number but it doesn't appear in the answer, OR
+            # if metric contains unexpected alphabetic filler, null it out
+            has_alpha_filler = bool(re.search(r'[a-zA-Z]{2,}', metric_val))
+            number_mismatch = metric_number and answer_numbers and metric_number not in answer_numbers
+            if has_alpha_filler and number_mismatch:
+                correction_msg = (
+                    f"Corrected key_metric: value '{metric_val}' is inconsistent with "
+                    f"direct_answer (expected one of {answer_numbers}). Metric removed."
+                )
+                app_logger.info(correction_msg)
+                correction_descriptions.append(correction_msg)
+                report_data.key_metric = None
+        # --- END SANITY CHECK ---
+
         result = {
             "status": "success",
             # --- MODIFICATION START: Add token counts to metadata ---
@@ -1399,6 +1465,38 @@ async def _invoke_final_report_task(STATE: dict, command: dict, workflow_state: 
             f"  Response end: {response_end}"
         )
         # --- END FIX ---
+
+        # --- LAST-RESORT FALLBACK: Extract answer from corrupted JSON ---
+        fallback_answer = _extract_fallback_answer(response_text)
+        if fallback_answer:
+            app_logger.warning(
+                f"TDA_FinalReport: Using last-resort fallback extraction. "
+                f"Extracted direct_answer ({len(fallback_answer)} chars) from corrupted response."
+            )
+            result = {
+                "status": "success",
+                "metadata": {
+                    "call_id": final_call_id,
+                    "tool_name": "TDA_FinalReport",
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "optimization": "fallback_extraction"
+                },
+                "results": [{
+                    "direct_answer": fallback_answer,
+                    "key_metric": None,
+                    "key_observations": []
+                }],
+                "corrections": [
+                    "Last-resort fallback: LLM produced corrupted JSON field names. "
+                    "The system extracted the answer text and constructed a minimal response."
+                ]
+            }
+            if distill_meta:
+                result["_distillation_meta"] = distill_meta
+            return result, input_tokens, output_tokens
+        # --- END LAST-RESORT FALLBACK ---
+
         return {"status": "error", "error_message": "Failed to generate valid report JSON.", "data": str(e)}, input_tokens, output_tokens
 
 # --- MODIFICATION START: Add user_uuid ---

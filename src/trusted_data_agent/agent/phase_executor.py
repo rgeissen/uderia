@@ -2185,6 +2185,21 @@ class PhaseExecutor:
                 "details": tool_result
             })
 
+            # Emit correction event if deterministic recovery was applied (key normalization or fallback)
+            if isinstance(tool_result, dict) and tool_result.get("corrections"):
+                optimization_type = tool_result.get("metadata", {}).get("optimization", "key_normalization")
+                correction_event = {
+                    "step": "System Auto-Correction",
+                    "type": "auto_correction",
+                    "details": {
+                        "summary": f"Deterministic recovery applied ({optimization_type})",
+                        "corrections": tool_result["corrections"],
+                        "tool_name": tool_name
+                    }
+                }
+                self.executor._log_system_event(correction_event)
+                yield self.executor._format_sse_with_depth(correction_event)
+
             yield self.executor._format_sse_with_depth({"target": status_target, "state": "idle"}, "status_indicator_update")
 
             if input_tokens > 0 or output_tokens > 0:

@@ -70,7 +70,7 @@
     {
       "name": "Friendli - Llama",
       "provider": "Friendli",
-      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "model": "meta-llama-3.3-70b-instruct",
       "credentials": {},
       "id": "1763819257483-fluhef2vk"
     },
@@ -2324,7 +2324,7 @@
   "default_model_costs": [
     {
       "provider": "Friendli",
-      "model": "meta-llama/Llama-3.1-8B-Instruct",
+      "model": "meta-llama-3.1-8b-instruct",
       "input_cost_per_million": 0.1,
       "output_cost_per_million": 0.1,
       "notes": "Friendli serverless (token-based) @ $0.1/1M tokens - verified Jan 31, 2026",
@@ -2332,7 +2332,7 @@
     },
     {
       "provider": "Friendli",
-      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "model": "meta-llama-3.3-70b-instruct",
       "input_cost_per_million": 0.6,
       "output_cost_per_million": 0.6,
       "notes": "Friendli serverless (token-based) @ $0.6/1M tokens - verified Jan 31, 2026",
@@ -2543,7 +2543,7 @@
     },
     {
       "provider": "Friendli",
-      "model_pattern": "meta-llama/Llama-3.3-70B-Instruct",
+      "model_pattern": "meta-llama-3.3-70b-instruct",
       "notes": "Llama 3.3 70B on Friendli serverless - best quality/price ratio"
     },
     {
@@ -2554,7 +2554,7 @@
   ],
   "friendli_serverless_models": [
     {
-      "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "model_id": "meta-llama-3.1-8b-instruct",
       "display_name": "Llama 3.1 8B Instruct",
       "billing_type": "token",
       "status": "active",
@@ -2575,7 +2575,7 @@
       "notes": "Input $0.3 / Output $1.2 per 1M tokens"
     },
     {
-      "model_id": "meta-llama/Llama-3.3-70B-Instruct",
+      "model_id": "meta-llama-3.3-70b-instruct",
       "display_name": "Llama 3.3 70B Instruct",
       "billing_type": "token",
       "status": "active",

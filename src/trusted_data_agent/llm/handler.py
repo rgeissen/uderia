@@ -8,7 +8,9 @@ import re
 import random
 import time
 import copy
+import difflib
 import pprint # Added for debugging
+import unicodedata
 from typing import Tuple, List
 
 import google.generativeai as genai
@@ -113,11 +115,16 @@ def parse_and_coerce_llm_response(response_text: str, target_model: BaseModel) -
             app_logger.error(f"JSON parsing failed even after repair. Original error: {e}. String: {json_str[:500]}...")
             raise e  # Re-raise the original error
 
+    # 1b. Normalize corrupted field names before validation
+    if isinstance(data, dict):
+        data, key_corrections = _normalize_keys(data, target_model)
+        correction_descriptions.extend(key_corrections)
+
     # 2. First validation attempt
     try:
         validated_data = target_model.model_validate(data)
         app_logger.debug("Initial validation successful. No coercion needed.")
-        return validated_data, []
+        return validated_data, correction_descriptions
     except ValidationError as e:
         app_logger.warning(f"Initial validation against {target_model.__name__} failed. Attempting proactive correction.")
 
@@ -175,6 +182,87 @@ def _sanitize_llm_output(text: str) -> str:
 
     # Basic stripping of leading/trailing whitespace
     return sanitized_text.strip()
+
+
+def _normalize_keys(data: dict, target_model) -> tuple[dict, list[str]]:
+    """
+    Deterministically normalize JSON keys to match expected Pydantic field names.
+
+    Handles LLM corruption patterns where field names contain non-ASCII characters,
+    special Unicode symbols replacing underscores, or wrong suffixes on recognizable
+    prefixes (e.g. 'direct在玩家中' or 'direct✑answer' instead of 'direct_answer').
+
+    Returns:
+        Tuple of (normalized dict, list of correction description strings).
+    """
+    expected_keys = set(target_model.model_fields.keys())
+    corrections = []
+
+    # Fast path: all keys already match
+    if set(data.keys()) <= expected_keys:
+        return data, corrections
+
+    normalized = {}
+    for original_key in list(data.keys()):
+        if original_key in expected_keys:
+            normalized[original_key] = data[original_key]
+            continue
+
+        # Step 1: Strip non-ASCII, replace non-alphanumeric with _, collapse, lowercase
+        cleaned = unicodedata.normalize('NFKD', original_key)
+        cleaned = ''.join(c if c.isascii() else '' for c in cleaned)
+        cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', cleaned)
+        cleaned = re.sub(r'_+', '_', cleaned).strip('_').lower()
+
+        # Step 2: Exact match after cleaning
+        if cleaned in expected_keys and cleaned not in normalized:
+            correction_msg = (
+                f"Corrected key '{original_key}' -> '{cleaned}': "
+                f"non-ASCII/special characters removed to match schema field."
+            )
+            app_logger.info(correction_msg)
+            corrections.append(correction_msg)
+            normalized[cleaned] = data[original_key]
+            continue
+
+        # Step 3: Fuzzy match
+        matches = difflib.get_close_matches(cleaned, list(expected_keys), n=1, cutoff=0.6)
+        if matches and matches[0] not in normalized:
+            matched_key = matches[0]
+            correction_msg = (
+                f"Corrected key '{original_key}' -> '{matched_key}': "
+                f"fuzzy-matched after normalization (cleaned: '{cleaned}')."
+            )
+            app_logger.info(correction_msg)
+            corrections.append(correction_msg)
+            normalized[matched_key] = data[original_key]
+            continue
+
+        # No match — keep as-is
+        app_logger.warning(
+            f"Key normalization: '{original_key}' (cleaned: '{cleaned}') "
+            f"could not be matched to any expected field in {target_model.__name__}. Keeping as-is."
+        )
+        normalized[original_key] = data[original_key]
+
+    # Recursively normalize nested dicts for nested Pydantic models
+    for key, value in list(normalized.items()):
+        if key in expected_keys and isinstance(value, dict):
+            field_info = target_model.model_fields.get(key)
+            if field_info:
+                annotation = field_info.annotation
+                # Unwrap Optional[T] to get T
+                args = getattr(annotation, '__args__', ())
+                for arg in args:
+                    if hasattr(arg, 'model_fields'):
+                        annotation = arg
+                        break
+                if hasattr(annotation, 'model_fields'):
+                    value_normalized, nested_corrections = _normalize_keys(value, annotation)
+                    normalized[key] = value_normalized
+                    corrections.extend(nested_corrections)
+
+    return normalized, corrections
 
 
 _VALID_JSON_ESCAPE_CHARS = set('"\\\\/bfnrtu')
@@ -1164,16 +1252,16 @@ def _get_friendli_serverless_models() -> list[str]:
             # Fallback: Database empty - return minimal list
             app_logger.warning("No Friendli models in database, using fallback list")
             return [
-                "meta-llama/Llama-3.3-70B-Instruct",
-                "meta-llama/Llama-3.1-8B-Instruct",
+                "meta-llama-3.3-70b-instruct",
+                "meta-llama-3.1-8b-instruct",
             ]
 
     except Exception as e:
         app_logger.warning(f"Failed to query Friendli models from database: {e}, using fallback list")
         # Fallback on error
         return [
-            "meta-llama/Llama-3.3-70B-Instruct",
-            "meta-llama/Llama-3.1-8B-Instruct",
+            "meta-llama-3.3-70b-instruct",
+            "meta-llama-3.1-8b-instruct",
         ]
 
 

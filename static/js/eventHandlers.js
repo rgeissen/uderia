@@ -2437,7 +2437,7 @@ export async function handleReloadPlanClick(element) {
                     details: turnData.kg_enrichment_event,
                     type: 'kg_enrichment'
                 };
-                UI.renderConversationAgentStepForReload(kgEventData, DOM.statusWindowContent, false, 'knowledge');
+                UI.renderConversationAgentStepForReload(kgEventData, DOM.statusWindowContent, true, 'knowledge');
             }
 
             if (agentEvents.length > 0) {

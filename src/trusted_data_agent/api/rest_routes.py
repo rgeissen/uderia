@@ -14588,6 +14588,29 @@ async def kg_generate(current_user):
         )
         app_logger.info(f"[KG Constructor] System session created: {session_id}")
 
+        # ── Broadcast new-session notification so UI updates immediately ──
+        new_session_data = await session_manager.get_session(user_uuid=user_uuid, session_id=session_id)
+        if new_session_data:
+            notification_payload = {
+                "id": new_session_data["id"],
+                "name": new_session_data.get("name", "New Chat"),
+                "models_used": new_session_data.get("models_used", []),
+                "profile_tags_used": new_session_data.get("profile_tags_used", []),
+                "last_updated": new_session_data.get("last_updated", datetime.now(timezone.utc).isoformat()),
+                "profile_id": new_session_data.get("profile_id"),
+                "profile_tag": new_session_data.get("profile_tag"),
+                "profile_type": profile.get("profile_type"),
+                "genie_metadata": new_session_data.get("genie_metadata", {}),
+                "is_temporary": new_session_data.get("is_temporary", False),
+                "temporary_purpose": new_session_data.get("temporary_purpose"),
+            }
+            notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
+            for queue in notification_queues:
+                asyncio.create_task(queue.put({
+                    "type": "new_session_created",
+                    "payload": notification_payload,
+                }))
+
         # ── Turn 1: Technical structure discovery ──
         turn1_query = (
             f"List every table in database '{database_name}' and describe each table's "

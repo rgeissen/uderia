@@ -538,18 +538,35 @@ async def run_agent_execution(
                 from trusted_data_agent.skills.manager import get_skill_manager
                 from trusted_data_agent.skills.models import SkillSpec, SkillResult
                 from trusted_data_agent.skills.settings import is_skill_available
+                from trusted_data_agent.skills.db import get_user_activated_skills
 
                 skill_manager = get_skill_manager()
-                # Build SkillSpec list, filtering by admin governance
+
+                # Look up user's activated skills keyed by activation_name
+                # (mirrors extension resolution pattern at _run_extensions)
+                activated = get_user_activated_skills(user_uuid)
+                activated_lookup = {a["activation_name"]: a for a in activated}
+
+                # Build SkillSpec list, resolving activation_name → skill_id
                 resolved_specs = []
                 for spec in skill_specs:
-                    name = spec.get("name", "")
-                    if not is_skill_available(name):
-                        app_logger.warning(f"Skill '{name}' is disabled by admin — skipping")
+                    activation_name = spec.get("name", "")  # activation_name from frontend
+                    activation = activated_lookup.get(activation_name)
+
+                    if activation is None:
+                        app_logger.warning(f"Skill '{activation_name}' not activated for user {user_uuid} — skipping")
                         continue
+
+                    skill_id = activation["skill_id"]  # actual skill to load
+                    if not is_skill_available(skill_id):
+                        app_logger.warning(f"Skill '{skill_id}' is disabled by admin — skipping")
+                        continue
+
+                    # Query param overrides activation default_param
+                    param = spec.get("param") or activation.get("default_param")
                     resolved_specs.append(SkillSpec(
-                        name=name,
-                        param=spec.get("param"),
+                        name=skill_id,
+                        param=param,
                     ))
 
                 if resolved_specs:

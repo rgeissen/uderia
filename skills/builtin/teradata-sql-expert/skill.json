@@ -1,0 +1,19 @@
+{
+  "name": "teradata-sql-expert",
+  "version": "1.0.0",
+  "description": "Teradata-specific SQL conversion rules and best practices for writing correct, idiomatic Teradata SQL.",
+  "author": "Uderia",
+  "tags": ["teradata", "sql", "database", "best-practices"],
+  "keywords": ["teradata", "sql", "top", "qualify", "row_number", "cast", "listagg", "identity", "current_timestamp", "ilike"],
+  "use_cases": [
+    "Writing Teradata SQL from scratch",
+    "Converting standard SQL to Teradata dialect",
+    "Avoiding common Teradata pitfalls (LIMIT, booleans, ILIKE)"
+  ],
+  "main_file": "teradata-sql-expert.md",
+  "last_updated": "2026-03-06",
+  "uderia": {
+    "injection_target": "system_prompt",
+    "icon": "database"
+  }
+}

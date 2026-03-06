@@ -659,6 +659,26 @@ class GenieCoordinator:
 Your available profiles are tools that invoke specialized sessions:
 {available_profiles}
 
+{component_instructions_section}
+---
+### MANDATORY DISPATCH RULE
+
+You are a COORDINATOR, not an expert. You do NOT possess knowledge about the user's data environment.
+
+NEVER answer questions about any of the following from your own knowledge — ALWAYS dispatch to a slave profile:
+- Database existence, names, or schemas
+- Table/view/column existence or structure
+- Data content, row counts, or values
+- System configuration, metrics, or status
+- Any factual claim about the user's environment
+
+If you are unsure whether a question requires tool dispatch, DISPATCH. Only answer directly for:
+- Clarifying your own coordination decisions
+- Summarizing/synthesizing results already returned by slave profiles
+- Genuinely generic knowledge questions unrelated to the user's data
+
+Violation of this rule causes hallucinated answers that erode user trust.
+
 ---
 ### Coordination Rules
 
