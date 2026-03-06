@@ -331,6 +331,9 @@ class SkillManager:
             return False
 
         # If SKILL.md exists, merge its frontmatter (name/description take precedence)
+        # but do NOT override main_file — SKILL.md is a Claude Code compat copy,
+        # not the canonical content source (overriding causes frontmatter duplication
+        # on save because save_skill prepends frontmatter to SKILL.md content).
         skill_md_path = skill_dir / "SKILL.md"
         if skill_md_path.exists():
             try:
@@ -340,7 +343,6 @@ class SkillManager:
                     manifest["name"] = fm["name"]
                 if fm.get("description") and not manifest.get("description"):
                     manifest["description"] = fm["description"]
-                manifest["main_file"] = "SKILL.md"
             except Exception as e:
                 logger.debug(f"Could not merge SKILL.md frontmatter for '{skill_id}': {e}")
 
@@ -539,7 +541,7 @@ class SkillManager:
             description_safe = manifest.get("description", "").replace("\n", " ")
             skill_md_header = (
                 f"---\nname: {name}\ndescription: {description_safe}\n"
-                f"user-invocable: true\n---\n\n"
+                f"user-invokable: true\n---\n\n"
             )
             (target_dir / "SKILL.md").write_text(
                 skill_md_header + content,

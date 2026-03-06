@@ -13,7 +13,7 @@
   "main_file": "teradata-sql-expert.md",
   "last_updated": "2026-03-06",
   "uderia": {
-    "injection_target": "system_prompt",
+    "injection_target": "user_context",
     "icon": "database"
   }
 }

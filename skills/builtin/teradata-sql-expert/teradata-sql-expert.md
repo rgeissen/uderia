@@ -2,7 +2,7 @@ If you would like to create SQL, you must follow the following conversion rules:
 
 **Conversion Rules:**
 
-1. TOP clause:
+1. Use Top instead of Limit:
    - Always use "SELECT TOP n ..." instead of "LIMIT n" to restrict rows.
    - Combine with QUALIFY for OFFSET handling when needed.
 
