@@ -42,9 +42,17 @@ The competitive landscape as of 2025-2026:
 
 ## Story Arc — Five Beats
 
+### Opening — Personal Introduction (~15s)
+
+*Open on hero page. Let the shield animation play for 10–15s before speaking.*
+
+> Hello — I'm Rainer Geissendoerfer, founder of Uderia. I built this platform because I kept running into the same walls blocking enterprise AI adoption — and nothing on the market solved all of them at once. Let me show you what I mean.
+
+---
+
 ### Beat 1 — The Failed Promise (~60s)
 
-*Open on hero page. Let the shield animation play. Then:*
+*Stay on hero page.*
 
 > The enterprise AI race is real. The AI agents market hit $7.63 billion in 2025. 85% of enterprises have committed to AI agent deployment.
 >
@@ -148,38 +156,48 @@ The competitive landscape as of 2025-2026:
 
 Narration over the marketing website only — no platform UI shown.
 
-**Scroll & cursor choreography:**
+**Recorded as three separate clips in Kapwing** — avoids a scroll-back-to-hero problem.
+Stitch A → B → C with a simple cut or 0.5s crossfade.
+
+---
+
+### Clip A — Hero page (Opening + Beat 1)
 
 1. Open `uderia.com` full-screen (hide browser chrome if possible)
-2. Let hero animation play 10-15s before speaking
+2. Let hero animation play 10–15s before speaking
+3. Deliver personal introduction (~15s) — cursor rests center, no movement
+4. Continue straight into Beat 1 — cursor stays center, no scroll
+5. End narration on: *"…five walls — and no existing platform solves all five at once."*
+6. **Stop recording.**
 
-**Beat 1 — Stay on hero:**
-3. Cursor rests center. No scroll. Narrate the market context (MIT 95%, Gartner 40%).
+---
 
-**Beat 2 — Scroll to "Reality" / Five Walls section:**
-4. Slow scroll down to the Five Walls section (`#why-supersection`)
-5. Let the cards stagger-animate in before speaking
-6. Pause cursor briefly on each card's big stat as you narrate its wall:
-   - `$154B → $823B` → "Your data has to leave"
+### Clip B — Why supersection (Beat 2)
+
+7. Scroll to `#why-supersection` **before** starting the recording
+8. **Start recording** with the five wall cards visible and already stagger-animated
+9. Pause cursor briefly on each card's big stat as you narrate its wall:
+   - `$823B` → "Your data has to leave"
    - `37%` → "You're locked in"
    - `53%` → "Costs are unpredictable"
    - `€15M` → "AI is a black box"
    - `95%` → "Discovery never becomes production"
-7. End Beat 2 on the resolution line: *"Uderia eliminates all five — simultaneously."*
+10. End narration on the resolution line: *"Uderia eliminates all five — simultaneously."*
+11. **Stop recording.**
 
-**Beat 3 — Scroll back to hero headline:**
-8. Smooth scroll back up to `Cloud-Level Reasoning. Zero-Trust Privacy.`
-9. Pause. Let the headline land. Narrate the promise.
+---
 
-**Beat 4 — Stay on hero, draw to pills:**
-10. Cursor moves to each tagline pill in sequence:
+### Clip C — Hero page (Beats 3, 4, 5)
+
+12. Scroll back to hero **before** starting the recording
+13. **Start recording** with the hero headline visible
+14. **Beat 3** — Cursor draws to `Cloud-Level Reasoning. Zero-Trust Privacy.` Pause. Narrate the promise.
+15. **Beat 4** — Cursor moves to each tagline pill in sequence:
     - `Zero-Trust Sovereignty`
     - `Cloud-Level Intelligence`
     - `Extreme Efficiency`
-
-**Beat 5 — Draw to shield badge:**
-11. Cursor or slight zoom to the animated shield (`BUILT FOR TERADATA — OPEN FOR THE WORLD`)
-12. Final closing line. End recording.
+16. **Beat 5** — Cursor or slight zoom to the animated shield (`BUILT FOR TERADATA — OPEN FOR THE WORLD`)
+17. Final closing line. **Stop recording.**
 
 ---
 
