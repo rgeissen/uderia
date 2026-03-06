@@ -1016,7 +1016,17 @@
           "intensity": "medium"
         }
       },
-      "contextWindowTypeId": "cwt-default-balanced"
+      "contextWindowTypeId": "cwt-default-balanced",
+      "skillsConfig": {
+        "skills": [
+          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "table-format", "enabled": true, "active": false, "param": null},
+          {"id": "concise", "enabled": true, "active": false, "param": null},
+          {"id": "detailed", "enabled": true, "active": false, "param": null},
+          {"id": "step-by-step", "enabled": true, "active": false, "param": null}
+        ]
+      }
     },
     {
       "id": "profile-1764006444002-z0hdduce9",
@@ -2167,7 +2177,17 @@
           "intensity": "medium"
         }
       },
-      "contextWindowTypeId": "cwt-default-balanced"
+      "contextWindowTypeId": "cwt-default-balanced",
+      "skillsConfig": {
+        "skills": [
+          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "table-format", "enabled": true, "active": false, "param": null},
+          {"id": "concise", "enabled": true, "active": false, "param": null},
+          {"id": "detailed", "enabled": true, "active": false, "param": null},
+          {"id": "step-by-step", "enabled": true, "active": false, "param": null}
+        ]
+      }
     },
     {
       "id": "profile-default-rag",
@@ -2238,7 +2258,17 @@
           "intensity": "medium"
         }
       },
-      "contextWindowTypeId": "cwt-default-balanced"
+      "contextWindowTypeId": "cwt-default-balanced",
+      "skillsConfig": {
+        "skills": [
+          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "table-format", "enabled": true, "active": false, "param": null},
+          {"id": "concise", "enabled": true, "active": false, "param": null},
+          {"id": "detailed", "enabled": true, "active": false, "param": null},
+          {"id": "step-by-step", "enabled": true, "active": false, "param": null}
+        ]
+      }
     },
     {
       "id": "profile-default-genie",
@@ -2304,7 +2334,17 @@
           "intensity": "medium"
         }
       },
-      "contextWindowTypeId": "cwt-default-balanced"
+      "contextWindowTypeId": "cwt-default-balanced",
+      "skillsConfig": {
+        "skills": [
+          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
+          {"id": "table-format", "enabled": true, "active": false, "param": null},
+          {"id": "concise", "enabled": true, "active": false, "param": null},
+          {"id": "detailed", "enabled": true, "active": false, "param": null},
+          {"id": "step-by-step", "enabled": true, "active": false, "param": null}
+        ]
+      }
     }
   ],
   "active_profile_id": null,

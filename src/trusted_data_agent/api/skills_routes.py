@@ -1250,3 +1250,70 @@ async def unpublish_skill(marketplace_id: str):
     except Exception as e:
         app_logger.error(f"Unpublish skill failed: {e}", exc_info=True)
         return jsonify({"error": f"Unpublish failed: {e}"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Profile skill assignments
+# ---------------------------------------------------------------------------
+
+@skills_api_bp.route("/v1/profiles/<profile_id>/skills", methods=["GET"])
+async def get_profile_skills(profile_id):
+    """
+    Get skills assigned to a profile, enriched with manifest metadata.
+
+    Returns:
+        { "skills": [{ "id", "enabled", "active", "param", "name", "description",
+                        "icon", "injection_target", "tags", "is_builtin" }] }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.core.config_manager import get_config_manager
+        from trusted_data_agent.skills.manager import get_skill_manager
+        from trusted_data_agent.skills.settings import is_skill_available
+
+        cm = get_config_manager()
+        profile = cm.get_profile(profile_id, user_uuid)
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        manager = get_skill_manager()
+        all_skills = {s["skill_id"]: s for s in manager.list_skills()}
+
+        skills_config = profile.get("skillsConfig", {})
+        assigned = skills_config.get("skills", [])
+
+        # Auto-populate for profiles created before skillsConfig feature
+        if not assigned:
+            assigned = [
+                {"id": sid, "enabled": True, "active": False, "param": None}
+                for sid in all_skills
+                if is_skill_available(sid)
+            ]
+
+        result = []
+        for entry in assigned:
+            skill_id = entry.get("id", "")
+            manifest = all_skills.get(skill_id)
+            available = is_skill_available(skill_id) if skill_id else False
+            result.append({
+                "id": skill_id,
+                "enabled": bool(entry.get("enabled", True)),
+                "active": bool(entry.get("active")),
+                "param": entry.get("param"),
+                "name": manifest.get("name", skill_id) if manifest else skill_id,
+                "description": manifest.get("description", "") if manifest else "",
+                "icon": manifest.get("icon", "") if manifest else "",
+                "injection_target": manifest.get("injection_target", "system_prompt") if manifest else "system_prompt",
+                "tags": manifest.get("tags", []) if manifest else [],
+                "is_builtin": manifest.get("is_builtin", False) if manifest else False,
+                "available": available,
+            })
+
+        return jsonify({"skills": result}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get profile skills: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get profile skills: {e}"}), 500

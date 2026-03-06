@@ -48,30 +48,6 @@ async function _fetchActivated() {
     return data.skills || [];
 }
 
-async function _activateSkill(skillId, activationName = null) {
-    const body = {};
-    if (activationName) body.activation_name = activationName;
-    const res = await fetch(`/api/v1/skills/${skillId}/activate`, {
-        method: 'POST',
-        headers: _authHeaders(),
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
-}
-
-async function _deactivateSkill(activationName) {
-    const res = await fetch(`/api/v1/skills/activations/${activationName}/deactivate`, {
-        method: 'POST',
-        headers: _authHeaders(),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-}
-
 async function _deleteSkillFromDisk(skillId) {
     const res = await fetch(`/api/v1/skills/${skillId}`, {
         method: 'DELETE',
@@ -200,38 +176,6 @@ function _createSkillCard(skill, activation) {
     // Action buttons
     const actions = document.createElement('div');
     actions.className = 'flex items-center gap-1';
-
-    // Toggle button
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'px-2 py-1 text-xs rounded transition-colors';
-    if (activation) {
-        toggleBtn.textContent = 'Active';
-        toggleBtn.style.cssText = 'background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25);';
-        toggleBtn.addEventListener('click', async () => {
-            try {
-                await _deactivateSkill(activationName);
-                await _refreshSkillData();
-                if (window.loadActivatedSkills) window.loadActivatedSkills();
-                _notify('success', `Skill #${activationName} deactivated`);
-            } catch (err) {
-                _notify('error', `Deactivation failed: ${err.message}`);
-            }
-        });
-    } else {
-        toggleBtn.textContent = 'Activate';
-        toggleBtn.style.cssText = 'background: var(--hover-bg); color: var(--text-muted); border: 1px solid var(--border-subtle);';
-        toggleBtn.addEventListener('click', async () => {
-            try {
-                await _activateSkill(skill.skill_id);
-                await _refreshSkillData();
-                if (window.loadActivatedSkills) window.loadActivatedSkills();
-                _notify('success', `Skill #${skill.skill_id} activated`);
-            } catch (err) {
-                _notify('error', `Activation failed: ${err.message}`);
-            }
-        });
-    }
-    actions.appendChild(toggleBtn);
 
     // Edit button
     const editBtn = document.createElement('button');

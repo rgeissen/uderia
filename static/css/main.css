@@ -3580,6 +3580,33 @@ button[data-action="delete-mcp"]:hover {
     background: rgba(16, 185, 129, 0.25);
     border-color: rgba(16, 185, 129, 0.5);
 }
+/* Auto-active skill items: visible but non-selectable */
+.skill-item.skill-item-auto {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+}
+.skill-item.skill-item-auto .skill-item-badge {
+    background: rgba(107, 114, 128, 0.15);
+    border-color: rgba(107, 114, 128, 0.3);
+    color: #6b7280;
+}
+.skill-item.skill-item-auto .skill-item-name {
+    color: #6b7280;
+}
+.skill-item-auto-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
 
 /* Enhanced checkbox styling */
 input[type="checkbox"] {
@@ -6170,6 +6197,14 @@ button.bg-gray-700.px-2:hover {
 }
 .profile-toggle input:checked + .profile-toggle-slider::before {
     transform: translateX(20px);
+}
+.profile-toggle input:checked + .profile-toggle-slider[data-color="blue"] {
+    background: #3b82f6;
+    border-color: #3b82f6;
+}
+.profile-toggle input:checked + .profile-toggle-slider[data-color="green"] {
+    background: #10b981;
+    border-color: #10b981;
 }
 
 /* Light Theme Overrides */

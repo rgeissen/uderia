@@ -27,6 +27,7 @@ import './handlers/splitViewHandler.js';
 import { initializeUploadUI, initializeUploadCapabilities } from './handlers/chatDocumentUpload.js';
 import { loadKnowledgeGraphsPanel } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel } from './handlers/contextPanelHandler.js';
+import { initSkillsPanelEvents } from './handlers/skillsPanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -518,6 +519,12 @@ async function initializeRAGAutoCompletion() {
 
             // Update Context panel to reflect the active profile's context window type
             loadContextPanel();
+
+            // Update Skills panel to reflect the active profile's assigned skills
+            import('./handlers/skillsPanelHandler.js').then(mod => mod.loadSkillsPanel());
+
+            // Refresh #skill autocomplete for the new profile's enabled skills
+            loadActivatedSkills();
 
             let tools, prompts;
 
@@ -1058,7 +1065,6 @@ async function initializeRAGAutoCompletion() {
 
     function showSkillSelector(skills) {
         currentSkills = skills;
-        skillSelectedIndex = skills.length > 0 ? 0 : -1;
         isShowingSkillSelector = true;
 
         if (skills.length === 0) {
@@ -1069,10 +1075,16 @@ async function initializeRAGAutoCompletion() {
 
         skillSelector.innerHTML = '';
 
+        // Find the first selectable (non-auto) skill for initial highlight
+        const firstSelectable = skills.findIndex(s => !s.active);
+        skillSelectedIndex = firstSelectable >= 0 ? firstSelectable : -1;
+
         skills.forEach((skill, index) => {
+            const isAuto = !!skill.active;
             const item = document.createElement('div');
             item.className = 'skill-item';
-            if (index === 0) item.classList.add('skill-highlighted');
+            if (isAuto) item.classList.add('skill-item-auto');
+            if (index === firstSelectable) item.classList.add('skill-highlighted');
 
             const header = document.createElement('div');
             header.className = 'skill-item-header';
@@ -1089,6 +1101,13 @@ async function initializeRAGAutoCompletion() {
             name.textContent = skill.name || skill.skill_id;
             header.appendChild(name);
 
+            if (isAuto) {
+                const autoBadge = document.createElement('span');
+                autoBadge.className = 'skill-item-auto-badge';
+                autoBadge.textContent = 'AUTO';
+                header.appendChild(autoBadge);
+            }
+
             item.appendChild(header);
 
             if (skill.description) {
@@ -1098,22 +1117,24 @@ async function initializeRAGAutoCompletion() {
                 item.appendChild(desc);
             }
 
-            if (skill.default_param) {
+            if (skill.default_param && !isAuto) {
                 const param = document.createElement('div');
                 param.className = 'skill-item-param';
                 param.textContent = `Default: ${skill.default_param}`;
                 item.appendChild(param);
             }
 
-            item.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                selectSkill(index);
-                userInput.focus();
-            });
-            item.addEventListener('mouseenter', () => {
-                skillSelectedIndex = index;
-                highlightSkill(index);
-            });
+            if (!isAuto) {
+                item.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectSkill(index);
+                    userInput.focus();
+                });
+                item.addEventListener('mouseenter', () => {
+                    skillSelectedIndex = index;
+                    highlightSkill(index);
+                });
+            }
 
             skillSelector.appendChild(item);
         });
@@ -1153,6 +1174,7 @@ async function initializeRAGAutoCompletion() {
     function selectSkill(index) {
         if (index >= 0 && index < currentSkills.length) {
             const skill = currentSkills[index];
+            if (skill.active) return; // auto-active skills are not selectable
             const activationName = skill.activation_name || skill.skill_id;
 
             // Remove the partial #tag from input text
@@ -1887,16 +1909,24 @@ async function initializeRAGAutoCompletion() {
                 return;
             }
 
-            // Handle skill selector navigation
+            // Handle skill selector navigation (skip auto-active items)
             if (isShowingSkillSelector && currentSkills.length > 0) {
+                const _nextSelectable = (from, dir) => {
+                    const len = currentSkills.length;
+                    for (let i = 1; i <= len; i++) {
+                        const idx = (from + dir * i + len) % len;
+                        if (!currentSkills[idx].active) return idx;
+                    }
+                    return -1;
+                };
                 if (e.key === 'ArrowDown') {
                     e.preventDefault();
-                    skillSelectedIndex = (skillSelectedIndex + 1) % currentSkills.length;
-                    highlightSkill(skillSelectedIndex);
+                    const next = _nextSelectable(skillSelectedIndex, 1);
+                    if (next >= 0) { skillSelectedIndex = next; highlightSkill(skillSelectedIndex); }
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
-                    skillSelectedIndex = (skillSelectedIndex - 1 + currentSkills.length) % currentSkills.length;
-                    highlightSkill(skillSelectedIndex);
+                    const prev = _nextSelectable(skillSelectedIndex, -1);
+                    if (prev >= 0) { skillSelectedIndex = prev; highlightSkill(skillSelectedIndex); }
                 } else if ((e.key === 'Tab' || e.key === 'Enter') && skillSelectedIndex >= 0) {
                     e.preventDefault();
                     selectSkill(skillSelectedIndex);
@@ -1987,7 +2017,8 @@ async function loadActivatedExtensions() {
 window.loadActivatedExtensions = loadActivatedExtensions;
 
 /**
- * Load activated skills from the API for # autocomplete.
+ * Load enabled skills from the current profile for # autocomplete.
+ * Uses /api/v1/profiles/<id>/skills which returns enriched skill data.
  * Stores results in window.skillState.activated for access by the input handler.
  */
 async function loadActivatedSkills() {
@@ -1995,15 +2026,40 @@ async function loadActivatedSkills() {
         const token = localStorage.getItem('tda_auth_token');
         if (!token) return;
 
-        const response = await fetch('/api/v1/skills/activated', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            window.skillState = { activated: data.skills || [] };
-            console.log(`[Skills] Loaded ${window.skillState.activated.length} activated skill(s)`);
+        const profileId = state.currentResourcePanelProfileId;
+        if (!profileId) {
+            window.skillState = { activated: [] };
+            return;
         }
+
+        const headers = { 'Authorization': `Bearer ${token}` };
+
+        const res = await fetch(`/api/v1/profiles/${encodeURIComponent(profileId)}/skills`, { headers });
+        if (!res.ok) {
+            window.skillState = { activated: [] };
+            return;
+        }
+
+        const data = await res.json();
+
+        // Collect enabled skills for #hashtag autocomplete
+        // Auto-active skills are included but marked so they render as non-selectable
+        const enabledSkills = [];
+        for (const skill of (data.skills || [])) {
+            if (!skill.available) continue;
+            if (!skill.enabled && !skill.active) continue;
+            enabledSkills.push({
+                skill_id: skill.id,
+                activation_name: skill.id,
+                name: skill.name || skill.id,
+                description: skill.description || '',
+                default_param: skill.param || null,
+                active: !!skill.active,
+            });
+        }
+
+        window.skillState = { activated: enabledSkills };
+        console.log(`[Skills] Loaded ${enabledSkills.length} enabled skill(s) from profile`);
     } catch (err) {
         console.warn('[Skills] Failed to load activated skills:', err);
         window.skillState = { activated: [] };
@@ -2225,6 +2281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeEventListeners();
     initializeVoiceRecognition();
     initializeUploadUI();
+    initSkillsPanelEvents();
 
     // Initialize industrial hierarchy path highlighting for session tree
     initializePathHighlighting();

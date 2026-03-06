@@ -27,6 +27,7 @@ import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowMan
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
+import { loadSkillsPanel } from './handlers/skillsPanelHandler.js';
 import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
@@ -3146,6 +3147,11 @@ function handleResourceTabClick(e) {
         // Lazy-load Context panel on first click
         if (type === 'context') {
             loadContextPanel();
+        }
+
+        // Lazy-load Skills panel on first click (or refresh on subsequent)
+        if (type === 'skills') {
+            loadSkillsPanel();
         }
     }
 }

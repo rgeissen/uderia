@@ -4820,6 +4820,124 @@ function getCategoryColor(category) {
     return colors[category] || '#9ca3af'; // default gray
 }
 
+/**
+ * Collect skill toggle states from the profile modal into a skillsConfig object.
+ */
+function _collectSkillsConfig(modal) {
+    const rows = modal.querySelectorAll('#profile-modal-skills-list [data-skill-row]');
+    const skills = [];
+    for (const row of rows) {
+        const skillId = row.dataset.skillRow;
+        const enabledCb = row.querySelector('input[data-role="enabled"]');
+        const activeCb = row.querySelector('input[data-role="active"]');
+        const isEnabled = enabledCb?.checked || false;
+        const isActive = activeCb?.checked || false;
+        // Only include skills that are at least enabled; active implies enabled
+        if (isEnabled || isActive) {
+            skills.push({ id: skillId, enabled: true, active: isActive, param: null });
+        }
+    }
+    return { skills };
+}
+
+/**
+ * Populate the Skills tab in the profile edit modal.
+ * Fetches all available skills and renders toggle switches for each.
+ * Assigned skills are read from profile.skillsConfig.skills[].
+ */
+async function _populateSkillsTab(modal, profile) {
+    const container = modal.querySelector('#profile-modal-skills-list');
+    if (!container) return;
+
+    const INJECTION_LABELS = {
+        system_prompt: { label: 'System Prompt', color: '#a78bfa' },
+        user_context:  { label: 'User Context',  color: '#60a5fa' },
+    };
+
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const res = await fetch('/api/v1/skills', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const allSkills = data.skills || [];
+
+        if (allSkills.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-500 italic">No skills installed</p>';
+            return;
+        }
+
+        // Current assignments from profile
+        const assigned = (profile?.skillsConfig?.skills || []);
+        const assignedMap = {};
+        for (const entry of assigned) {
+            assignedMap[entry.id] = entry;
+        }
+
+        // Column headers
+        container.innerHTML = `
+            <div class="flex items-center justify-between px-4 py-2 bg-gray-800/50 rounded-lg border-b border-gray-700/40 mb-1">
+                <span class="text-xs text-gray-300 font-medium flex-1">Skill</span>
+                <div class="flex items-center gap-6 flex-shrink-0">
+                    <span class="text-xs text-gray-300 font-medium w-16 text-center">Enabled</span>
+                    <span class="text-xs text-gray-300 font-medium w-16 text-center">Auto</span>
+                </div>
+            </div>
+        `;
+
+        for (const skill of allSkills) {
+            const entry = assignedMap[skill.skill_id];
+            // New profiles: default enabled=true, active=false
+            const isEnabled = entry ? (entry.enabled !== false) : !profile;
+            const isActive = entry ? !!entry.active : false;
+            const injTarget = INJECTION_LABELS[skill.injection_target] || INJECTION_LABELS.system_prompt;
+
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between px-4 py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all';
+            row.dataset.skillRow = skill.skill_id;
+            row.innerHTML = `
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0" style="color: ${injTarget.color}; background: ${injTarget.color}20; border: 1px solid ${injTarget.color}40;">${injTarget.label}</span>
+                    <div class="min-w-0">
+                        <span class="text-sm text-white font-medium block truncate">${skill.name || skill.skill_id}</span>
+                        ${skill.description ? `<span class="text-xs text-gray-400 block truncate">${skill.description}</span>` : ''}
+                    </div>
+                </div>
+                <div class="flex items-center gap-6 flex-shrink-0">
+                    <div class="w-16 flex justify-center">
+                        <label class="profile-toggle">
+                            <input type="checkbox" data-role="enabled" ${isEnabled ? 'checked' : ''}>
+                            <span class="profile-toggle-slider" data-color="blue"></span>
+                        </label>
+                    </div>
+                    <div class="w-16 flex justify-center">
+                        <label class="profile-toggle">
+                            <input type="checkbox" data-role="active" ${isActive ? 'checked' : ''}>
+                            <span class="profile-toggle-slider" data-color="green"></span>
+                        </label>
+                    </div>
+                </div>
+            `;
+
+            // Constraint: active implies enabled; enabled off → active off
+            const enabledCb = row.querySelector('input[data-role="enabled"]');
+            const activeCb = row.querySelector('input[data-role="active"]');
+            enabledCb.addEventListener('change', () => {
+                if (!enabledCb.checked) activeCb.checked = false;
+            });
+            activeCb.addEventListener('change', () => {
+                if (activeCb.checked) enabledCb.checked = true;
+            });
+
+            container.appendChild(row);
+        }
+    } catch (err) {
+        console.error('[Profile Modal] Failed to load skills:', err);
+        container.innerHTML = `<p class="text-xs text-red-400">Failed to load skills: ${err.message}</p>`;
+    }
+}
+
 async function populateSystemPrompts(modal, profile) {
     const profileType = profile ? (profile.profile_type || 'tool_enabled') : 'tool_enabled';
 
@@ -6642,15 +6760,20 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         await populateSystemPrompts(modal, profile);
     }
 
+    // Populate Skills tab
+    await _populateSkillsTab(modal, profile);
+
     // Show the modal
     modal.classList.remove('hidden');
 
-    // Tab switching logic for MCP Resources, Intelligence Collections, and System Prompts
+    // Tab switching logic for MCP Resources, Intelligence Collections, Skills, and System Prompts
     const mcpResourcesTab = modal.querySelector('#profile-tab-mcp-resources');
     const intelligenceTab = modal.querySelector('#profile-tab-intelligence');
+    const skillsTab = modal.querySelector('#profile-tab-skills');
     const systemPromptsTab = modal.querySelector('#profile-tab-system-prompts');
     const mcpResourcesContent = modal.querySelector('#profile-content-mcp-resources');
     const intelligenceContent = modal.querySelector('#profile-content-intelligence');
+    const skillsContent = modal.querySelector('#profile-content-skills');
     const systemPromptsContent = modal.querySelector('#profile-content-system-prompts');
 
     // Hide System Prompts tab for non-privileged users
@@ -6661,9 +6784,11 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         }
     }
 
-    const allTabs = [mcpResourcesTab, intelligenceTab, systemPromptsTab].filter(tab => tab && tab.style.display !== 'none');
-    const allContents = [mcpResourcesContent, intelligenceContent, systemPromptsContent].filter((content, index) => {
-        const correspondingTab = [mcpResourcesTab, intelligenceTab, systemPromptsTab][index];
+    const rawTabs = [mcpResourcesTab, intelligenceTab, skillsTab, systemPromptsTab];
+    const rawContents = [mcpResourcesContent, intelligenceContent, skillsContent, systemPromptsContent];
+    const allTabs = rawTabs.filter(tab => tab && tab.style.display !== 'none');
+    const allContents = rawContents.filter((content, index) => {
+        const correspondingTab = rawTabs[index];
         return content && correspondingTab && correspondingTab.style.display !== 'none';
     });
 
@@ -6704,6 +6829,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     if (mcpResourcesTab && intelligenceTab && systemPromptsTab) {
         mcpResourcesTab.onclick = () => switchToTab(mcpResourcesTab, mcpResourcesContent);
         intelligenceTab.onclick = () => switchToTab(intelligenceTab, intelligenceContent);
+        if (skillsTab) skillsTab.onclick = () => switchToTab(skillsTab, skillsContent);
         systemPromptsTab.onclick = () => switchToTab(systemPromptsTab, systemPromptsContent);
 
         // CRITICAL FIX: Reset to MCP Resources tab as default every time modal opens
@@ -6958,6 +7084,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             ragCollections: selectedRag,  // Always save explicit IDs (no wildcard)
             autocompleteCollections: selectedAutocomplete,  // Always save explicit IDs (no wildcard)
             knowledgeConfig: knowledgeConfig,
+            skillsConfig: _collectSkillsConfig(modal),
             genieConfig: genieConfig,  // Will be null for non-genie profiles
             // Conversation capability flags (only relevant for llm_only profiles)
             useMcpTools: useMcpTools,

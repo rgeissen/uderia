@@ -532,62 +532,80 @@ async def run_agent_execution(
         # --- END GENIE PROFILE DETECTION ---
 
         # --- SKILL RESOLUTION: Resolve pre-processing skills before executor ---
+        # Two sources: (1) profile auto-assigned skills, (2) manual per-query skills
         skill_result = None
-        if skill_specs:
-            try:
-                from trusted_data_agent.skills.manager import get_skill_manager
-                from trusted_data_agent.skills.models import SkillSpec, SkillResult
-                from trusted_data_agent.skills.settings import is_skill_available
-                from trusted_data_agent.skills.db import get_user_activated_skills
+        try:
+            from trusted_data_agent.skills.manager import get_skill_manager
+            from trusted_data_agent.skills.models import SkillSpec, SkillResult
+            from trusted_data_agent.skills.settings import is_skill_available
+            skill_manager = get_skill_manager()
+            resolved_specs = []
+            seen_skill_ids = set()
 
-                skill_manager = get_skill_manager()
+            # Build profile-level skill lookup (enabled + active flags)
+            profile_skills = {}
+            if active_profile:
+                for entry in active_profile.get("skillsConfig", {}).get("skills", []):
+                    sid = entry.get("id", "")
+                    if sid:
+                        profile_skills[sid] = entry
 
-                # Look up user's activated skills keyed by activation_name
-                # (mirrors extension resolution pattern at _run_extensions)
-                activated = get_user_activated_skills(user_uuid)
-                activated_lookup = {a["activation_name"]: a for a in activated}
+            # --- (1) AUTO-SKILLS: Profile skills with active=true ---
+            for skill_id, entry in profile_skills.items():
+                if entry.get("active") and is_skill_available(skill_id) and skill_id not in seen_skill_ids:
+                    resolved_specs.append(SkillSpec(
+                        name=skill_id,
+                        param=entry.get("param"),
+                    ))
+                    seen_skill_ids.add(skill_id)
+                    app_logger.debug(f"Auto-skill from profile: {skill_id}")
 
-                # Build SkillSpec list, resolving activation_name → skill_id
-                resolved_specs = []
+            # --- (2) MANUAL SKILLS: #hashtag skills checked against profile enabled list ---
+            if skill_specs:
                 for spec in skill_specs:
-                    activation_name = spec.get("name", "")  # activation_name from frontend
-                    activation = activated_lookup.get(activation_name)
+                    skill_id = spec.get("name", "")
+                    profile_entry = profile_skills.get(skill_id)
 
-                    if activation is None:
-                        app_logger.warning(f"Skill '{activation_name}' not activated for user {user_uuid} — skipping")
+                    if not profile_entry or not profile_entry.get("enabled", False):
+                        app_logger.warning(f"Skill '{skill_id}' not enabled in profile — skipping")
                         continue
 
-                    skill_id = activation["skill_id"]  # actual skill to load
                     if not is_skill_available(skill_id):
                         app_logger.warning(f"Skill '{skill_id}' is disabled by admin — skipping")
                         continue
 
-                    # Query param overrides activation default_param
-                    param = spec.get("param") or activation.get("default_param")
-                    resolved_specs.append(SkillSpec(
-                        name=skill_id,
-                        param=param,
-                    ))
+                    param = spec.get("param") or profile_entry.get("param")
 
-                if resolved_specs:
-                    skill_result = skill_manager.resolve_skills(resolved_specs)
-                    if skill_result and skill_result.has_content:
-                        # Emit skills_applied SSE event for transparency
-                        applied_list = skill_result.to_applied_list()
-                        await event_handler({
-                            "type": "skills_applied",
-                            "payload": {
-                                "skills": applied_list,
-                                "total_estimated_tokens": skill_result.total_estimated_tokens,
-                            }
-                        }, "notification")
-                        app_logger.info(
-                            f"Skills applied: {[s['name'] for s in applied_list]} "
-                            f"(~{skill_result.total_estimated_tokens} tokens)"
-                        )
-            except Exception as e:
-                app_logger.error(f"Failed to resolve skills: {e}", exc_info=True)
-                skill_result = None
+                    if skill_id in seen_skill_ids:
+                        # Manual overrides auto-skill param for same skill_id
+                        resolved_specs = [
+                            SkillSpec(name=skill_id, param=param) if s.name == skill_id else s
+                            for s in resolved_specs
+                        ]
+                        app_logger.debug(f"Manual skill '{skill_id}' overrides auto-skill param")
+                    else:
+                        resolved_specs.append(SkillSpec(name=skill_id, param=param))
+                        seen_skill_ids.add(skill_id)
+
+            # --- Resolve all skills through SkillManager ---
+            if resolved_specs:
+                skill_result = skill_manager.resolve_skills(resolved_specs)
+                if skill_result and skill_result.has_content:
+                    applied_list = skill_result.to_applied_list()
+                    await event_handler({
+                        "type": "skills_applied",
+                        "payload": {
+                            "skills": applied_list,
+                            "total_estimated_tokens": skill_result.total_estimated_tokens,
+                        }
+                    }, "notification")
+                    app_logger.info(
+                        f"Skills applied: {[s['name'] for s in applied_list]} "
+                        f"(~{skill_result.total_estimated_tokens} tokens)"
+                    )
+        except Exception as e:
+            app_logger.error(f"Failed to resolve skills: {e}", exc_info=True)
+            skill_result = None
 
         # --- MODIFICATION START: Pass new parameters to PlanExecutor ---
         executor = PlanExecutor(
