@@ -796,6 +796,22 @@ async def _run_genie_execution(
             """Forward genie coordination events to SSE stream."""
             await event_handler(payload, event_type)
 
+        # --- EPC: Create provenance chain for genie ---
+        _genie_provenance = None
+        try:
+            from trusted_data_agent.core.provenance import ProvenanceChain, get_previous_turn_tip_hash
+            prev_tip = await get_previous_turn_tip_hash(user_uuid, session_id)
+            _genie_provenance = ProvenanceChain(
+                session_id=session_id, turn_number=0,  # Will be updated below
+                user_uuid=user_uuid, profile_type="genie",
+                previous_turn_tip_hash=prev_tip,
+                event_queue=None,  # Genie doesn't use async generator
+            )
+            _genie_provenance.add_step("query_intake", user_input, f"Query: {user_input[:100]}")
+            _genie_provenance.add_step("profile_resolve", f"{profile_id}:genie:{profile_tag}", f"Profile: @{profile_tag} (genie)")
+        except Exception as _epc_err:
+            app_logger.debug(f"EPC genie init: {_epc_err}")
+
         # Build and execute coordinator
         coordinator = GenieCoordinator(
             genie_profile=genie_profile,
@@ -807,7 +823,8 @@ async def _run_genie_execution(
             base_url=base_url,
             event_callback=lambda t, p: asyncio.create_task(genie_sse_event_handler(t, p)),
             genie_config=effective_genie_config,
-            current_nesting_level=current_nesting_level
+            current_nesting_level=current_nesting_level,
+            provenance=_genie_provenance
         )
 
         # Load existing child sessions to preserve context across multiple queries
@@ -825,6 +842,9 @@ async def _run_genie_execution(
         workflow_history = session_data.get('last_turn_data', {}).get('workflow_history', []) if session_data else []
         turn_number = len(workflow_history) + 1
         coordinator.turn_number = turn_number
+        # Update provenance turn number now that we know it
+        if _genie_provenance:
+            _genie_provenance.turn_number = turn_number
 
         # --- CONTEXT WINDOW MANAGER (Feature-Flagged, Observability) ---
         cw_history_window = 10  # Default fallback
@@ -1124,6 +1144,16 @@ async def _run_genie_execution(
             # Combine coordinator events with session name events
             combined_genie_events = result.get('genie_events', []) + session_name_events
 
+            # --- EPC: Seal provenance chain for genie ---
+            _provenance_data = None
+            try:
+                if _genie_provenance and not _genie_provenance._sealed:
+                    _genie_provenance.add_step("coordinator_synthesis", coordinator_response[:4096] if coordinator_response else "", f"Genie synthesis complete")
+                    _genie_provenance.add_step("turn_complete", coordinator_response or "", f"genie turn {turn_number} complete")
+                    _provenance_data = _genie_provenance.finalize()
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC genie finalize: {_epc_err}")
+
             turn_data = {
                 'turn': turn_number,
                 'user_query': user_input,
@@ -1146,6 +1176,8 @@ async def _run_genie_execution(
                 'session_input_tokens': session_input_tokens,  # Session totals at time of this turn
                 'session_output_tokens': session_output_tokens  # Session totals at time of this turn
             }
+            if _provenance_data:
+                turn_data.update(_provenance_data)
 
             await session_manager.update_last_turn_data(
                 user_uuid=user_uuid,

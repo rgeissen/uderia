@@ -81,7 +81,8 @@ class ConversationAgentExecutor:
         model: Optional[str] = None,
         canvas_context: Optional[str] = None,
         component_instructions: Optional[str] = None,
-        profile_type: Optional[str] = None
+        profile_type: Optional[str] = None,
+        provenance: Optional[Any] = None
     ):
         """
         Initialize the Conversation Agent Executor.
@@ -128,6 +129,7 @@ class ConversationAgentExecutor:
         self.provider = provider or "Unknown"
         self.model = model or "Unknown"
         self.profile_type = profile_type or "conversation_with_tools"
+        self.provenance = provenance  # EPC: Provenance chain from executor
 
         # Collect events during execution for session storage/replay
         self.collected_events = []
@@ -591,6 +593,13 @@ RESPONSE FORMAT:
                     # Record start time
                     self.tool_start_times[tool_name] = time.time()
 
+                    # EPC: Record agent tool call
+                    try:
+                        if self.provenance:
+                            self.provenance.add_step("agent_tool_call", f"{tool_name}:{json.dumps(tool_input, sort_keys=True, default=str)[:4096]}", f"Calling {tool_name}")
+                    except Exception:
+                        pass
+
                     # Emit tool invoked event
                     await self._emit_event("conversation_tool_invoked", {
                         "tool_name": tool_name,
@@ -622,6 +631,13 @@ RESPONSE FORMAT:
                     output_preview = str(tool_output)[:5000] if tool_output else ""
                     logger.info(f"[ConvAgent] Tool output preview length: {len(output_preview)} chars")
                     logger.debug(f"[ConvAgent] Tool output preview content: {output_preview[:100]}...")
+
+                    # EPC: Record agent tool result
+                    try:
+                        if self.provenance:
+                            self.provenance.add_step("agent_tool_result", f"{tool_name}:{str(tool_output)[:4096]}", f"{tool_name} completed ({duration_ms}ms)")
+                    except Exception:
+                        pass
 
                     await self._emit_event("conversation_tool_completed", {
                         "tool_name": tool_name,

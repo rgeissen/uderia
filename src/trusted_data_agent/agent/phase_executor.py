@@ -1550,6 +1550,20 @@ class PhaseExecutor:
         tool_name = action.get("tool_name")
         prompt_name = action.get("prompt_name")
 
+        # --- EPC: tactical_decision step ---
+        try:
+            if hasattr(self.executor, 'provenance') and self.executor.provenance:
+                import json as _json
+                _epc_phase_num = phase.get("phase", "?")
+                _epc_args = action.get("arguments", {})
+                self.executor.provenance.add_step(
+                    "tactical_decision",
+                    f"{_epc_phase_num}:{tool_name or prompt_name}:{_json.dumps(_epc_args, sort_keys=True, default=str)}",
+                    f"Phase {_epc_phase_num}: {tool_name or prompt_name}")
+        except Exception:
+            pass
+        # --- EPC END ---
+
         if not tool_name and not prompt_name:
             raise ValueError("Action from tactical LLM is missing a 'tool_name' or 'prompt_name'.")
 
@@ -2116,6 +2130,19 @@ class PhaseExecutor:
                 **self.executor.workflow_state
             }
 
+            # --- EPC: tool_call step ---
+            try:
+                if hasattr(self.executor, 'provenance') and self.executor.provenance:
+                    import json as _json
+                    _epc_args = action.get("arguments", {})
+                    self.executor.provenance.add_step(
+                        "tool_call",
+                        f"{tool_name}:{_json.dumps(_epc_args, sort_keys=True, default=str)}",
+                        f"Call: {tool_name}")
+            except Exception:
+                pass
+            # --- EPC END ---
+
             # --- MODIFICATION START: Pass user_uuid and remove incorrect comment ---
             tool_result, input_tokens, output_tokens = await mcp_adapter.invoke_mcp_tool(
                 self.executor.dependencies['STATE'],
@@ -2184,6 +2211,18 @@ class PhaseExecutor:
                 "type": _result_event_type,
                 "details": tool_result
             })
+
+            # --- EPC: tool_result step ---
+            try:
+                if hasattr(self.executor, 'provenance') and self.executor.provenance:
+                    _epc_result_str = str(tool_result)[:4096] if tool_result else ""
+                    self.executor.provenance.add_step(
+                        "tool_result",
+                        f"{tool_name}:{_epc_result_str}",
+                        f"Result: {tool_name} ({'error' if _result_event_type == 'tool_error' else 'ok'})")
+            except Exception:
+                pass
+            # --- EPC END ---
 
             # Emit correction event if deterministic recovery was applied (key normalization or fallback)
             if isinstance(tool_result, dict) and tool_result.get("corrections"):
@@ -2257,6 +2296,19 @@ class PhaseExecutor:
                     yield self.executor._format_sse_with_depth(event_data)
 
                     corrected_action, correction_events = await self._attempt_tool_self_correction(action, tool_result)
+
+                    # --- EPC: self_correction step ---
+                    try:
+                        if hasattr(self.executor, 'provenance') and self.executor.provenance:
+                            _epc_err_str = str(tool_result)[:500] if tool_result else ""
+                            _epc_corr_str = str(corrected_action)[:500] if corrected_action else "none"
+                            self.executor.provenance.add_step(
+                                "self_correction",
+                                f"{attempt}:{_epc_err_str}:{_epc_corr_str}",
+                                f"Self-correction attempt {attempt + 1} for {tool_name}")
+                    except Exception:
+                        pass
+                    # --- EPC END ---
 
                     for event_data, event_name in correction_events:
                         self.executor._log_system_event(event_data, event_name=event_name)

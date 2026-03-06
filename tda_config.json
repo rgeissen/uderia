@@ -1019,7 +1019,6 @@
       "contextWindowTypeId": "cwt-default-balanced",
       "skillsConfig": {
         "skills": [
-          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "table-format", "enabled": true, "active": false, "param": null},
           {"id": "concise", "enabled": true, "active": false, "param": null},
@@ -2180,7 +2179,6 @@
       "contextWindowTypeId": "cwt-default-balanced",
       "skillsConfig": {
         "skills": [
-          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "table-format", "enabled": true, "active": false, "param": null},
           {"id": "concise", "enabled": true, "active": false, "param": null},
@@ -2261,7 +2259,6 @@
       "contextWindowTypeId": "cwt-default-balanced",
       "skillsConfig": {
         "skills": [
-          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "table-format", "enabled": true, "active": false, "param": null},
           {"id": "concise", "enabled": true, "active": false, "param": null},
@@ -2337,7 +2334,6 @@
       "contextWindowTypeId": "cwt-default-balanced",
       "skillsConfig": {
         "skills": [
-          {"id": "sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "teradata-sql-expert", "enabled": true, "active": false, "param": null},
           {"id": "table-format", "enabled": true, "active": false, "param": null},
           {"id": "concise", "enabled": true, "active": false, "param": null},

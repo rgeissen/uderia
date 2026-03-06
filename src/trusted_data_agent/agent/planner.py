@@ -2423,6 +2423,17 @@ Ranking:"""
         for event in self._ensure_final_report_phase():
             yield event
 
+        # --- EPC: Record plan after all rewrite passes ---
+        try:
+            if hasattr(self.executor, 'provenance') and self.executor.provenance:
+                import json as _json
+                self.executor.provenance.add_step(
+                    "plan_rewrite",
+                    _json.dumps(self.executor.meta_plan, sort_keys=True, default=str),
+                    f"Plan after rewrites: {len(self.executor.meta_plan)} phase(s)")
+        except Exception:
+            pass
+        # --- EPC END ---
 
         event_data = {
             "step": "Strategic Meta-Plan Generated",

@@ -33,11 +33,14 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
    - [Skills: Pre-Processing Context Injection](#-skills-pre-processing-context-injection)
    - [Extensions: Post-Processing Transformations](#-extensions-post-processing-transformations)
    - [Interactive Visual Components: Generative UI](#-interactive-visual-components-generative-ui)
-4. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
-5. [Installation and Setup Guide](#-installation-and-setup-guide)
+4. [Security Architecture](#-security-architecture)
+   - [License-Based Prompt Encryption](#-license-based-prompt-encryption)
+   - [Execution Provenance Chain (EPC)](#-execution-provenance-chain-epc)
+5. [How It Works: Architecture](#%EF%B8%8F-how-it-works-architecture)
+6. [Installation and Setup Guide](#-installation-and-setup-guide)
    - [Model Selection: Recommended vs All Models](#model-selection-recommended-vs-all-models)
    - [Command Line Options](#command-line-options)
-6. [User Guide](#-user-guide)
+7. [User Guide](#-user-guide)
    - [Getting Started](#getting-started)
    - [Using the Interface](#using-the-interface)
    - [Advanced Context Management](#advanced-context-management)
@@ -45,10 +48,10 @@ Whether on-premises or in the cloud, you get **enterprise results** with **optim
    - [Real-Time Monitoring](#real-time-monitoring)
    - [Operationalization](#operationalization)
    - [Troubleshooting](#troubleshooting)
-7. [Docker Deployment](#docker-deployment)
-8. [License](#license)
-9. [Author & Contributions](#author-contributions)
-10. [Appendix: Feature Update List](#appendix-feature-update-list)
+8. [Docker Deployment](#docker-deployment)
+9. [License](#license)
+10. [Author & Contributions](#author-contributions)
+11. [Appendix: Feature Update List](#appendix-feature-update-list)
 
 
 ---
@@ -1692,6 +1695,109 @@ The Knowledge Graph component (`TDA_KnowledgeGraph`) maintains a living, queryab
 - **Third-party extensibility** — add custom components without modifying core files; manifest-driven discovery with hot-reload
 
 Architecture details: [**Component Architecture (docs/Architecture/COMPONENT_ARCHITECTURE.md)**](docs/Architecture/COMPONENT_ARCHITECTURE.md) · [**Canvas Architecture (docs/Architecture/CANVAS_ARCHITECTURE.md)**](docs/Architecture/CANVAS_ARCHITECTURE.md) · [**Knowledge Graph Architecture (docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)**](docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)
+
+[⬆️ Back to Table of Contents](#table-of-contents)
+
+---
+
+## 🔐 Security Architecture
+
+Uderia implements two complementary cryptographic security systems that together provide end-to-end trust guarantees no other agentic AI platform offers:
+
+1. **License-Based Prompt Encryption** — Protects the intellectual property embedded in system prompts through a multi-layered encryption architecture with tier-based access control. Ensures that the strategic reasoning instructions powering the platform remain protected during distribution, at rest in the database, and at runtime.
+
+2. **Execution Provenance Chain (EPC)** — Creates an immutable, cryptographically signed audit trail from user query through every LLM decision, tool call, and response. Enables offline verification that no step was injected, tampered with, or replayed. Covers all five execution paths across the platform.
+
+Together, these systems establish a **zero-trust execution model**: the prompts that drive the AI are cryptographically protected, and every action the AI takes is cryptographically recorded. This positions Uderia for enterprise compliance requirements including SOX audit trails, GDPR accountability, and EU AI Act transparency mandates.
+
+### 🛡️ License-Based Prompt Encryption
+
+System prompts — encoding strategic planning logic, tactical tool selection heuristics, error recovery strategies, and domain-specific reasoning patterns — are protected through a **multi-layered encryption architecture** tied to each customer's license.
+
+**How it works:**
+
+1. **At development time**, plain-text prompts are encrypted with a key derived from the platform's RSA-4096 public key and distributed as an encrypted artifact (`default_prompts.dat`)
+2. **At first startup**, the bootstrap process decrypts each prompt and re-encrypts it with a key derived from the customer's unique license signature and tier — binding database content to the specific license
+3. **At runtime**, the `PromptLoader` decrypts prompts on demand using the license-derived key, with results cached in memory for performance
+
+**Tier-based access control** ensures that while all license tiers can decrypt prompts for LLM conversations (runtime usage), only Prompt Engineer and Enterprise tiers can view and edit prompt content through the System Prompts UI editor.
+
+| Capability | Standard | Prompt Engineer | Enterprise |
+|---|:-:|:-:|:-:|
+| Runtime LLM usage | Yes | Yes | Yes |
+| View/edit in UI | — | Yes | Yes |
+| Create prompt overrides | — | Profile-level | User + Profile |
+
+**Key properties:**
+- **License-specific keys** — different customers cannot decrypt each other's database content
+- **RSA-PSS (4096-bit) license signing** — prevents license forgery
+- **Fernet authenticated encryption** (AES-128-CBC + HMAC-SHA256) — provides both confidentiality and integrity
+- **Zero-downtime deployment** — prompt updates to running installations via `update_prompt.py` with automatic cache invalidation
+
+### 🔗 Execution Provenance Chain (EPC)
+
+The EPC is implemented as a blockchain-like hash chain signed with Ed25519.
+
+**How it works:**
+
+1. Each execution step (query intake, strategic plan, tool call, tool result, synthesis, etc.) is recorded as a **provenance step**
+2. Each step's content is SHA-256 hashed (content is hashed, never stored — no sensitive data in the provenance record)
+3. Steps are **hash-chained**: each step's chain hash incorporates its index, type, content hash, and the previous step's chain hash
+4. Every chain hash is **signed with Ed25519**, enabling offline verification with just the public key
+5. Across turns, the first step of each turn links to the last step of the previous turn, creating **full session integrity**
+
+```
+Turn 1: [query] -> [plan] -> [tool_call] -> [tool_result] -> [complete]
+           h0   ->   h1   ->     h2      ->      h3       ->     h4
+                                                                   |
+Turn 2: [query] -> [llm_call] -> [response] -> [complete]         |
+           h5   ->    h6      ->     h7      ->    h8              |
+           ^                                                       |
+           previous_turn_tip = h4  (cross-turn cryptographic link) +
+```
+
+**22 step types** across all five profile classes ensure comprehensive coverage:
+
+| Profile | Example Steps Recorded |
+|---|---|
+| **Optimize** (tool_enabled) | Strategic plan, plan rewrites, tactical decisions, tool calls, tool results, self-corrections |
+| **Ideate** (llm_only) | Knowledge retrieval, LLM calls, LLM responses |
+| **Focus** (rag_focused) | RAG search, RAG results with doc IDs and scores, synthesis |
+| **Ideate + MCP** (conversation_with_tools) | Agent tool calls, agent tool results, agent LLM steps |
+| **Coordinate** (genie) | Child profile dispatch, cross-session chain references, coordinator synthesis |
+
+**Three verification levels:**
+
+1. **Chain Integrity** (offline-capable) — verifies hash linking, hash computation, and Ed25519 signatures using only the public key
+2. **Content Verification** — confirms content hashes match actual session data
+3. **Session Integrity** — verifies cross-turn linking across all turns, including genie's cross-session Merkle-tree structure
+
+**REST API for auditors:**
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/sessions/{id}/provenance` | Full provenance for all turns |
+| `POST /api/v1/sessions/{id}/provenance/verify` | Verify chain integrity |
+| `GET /api/v1/sessions/{id}/provenance/export` | Download JSON for offline audit |
+| `GET /api/v1/provenance/public-key` | Download public key for independent verification |
+
+**Key properties:**
+- **Zero new dependencies** — uses the `cryptography` library already present in the project
+- **Negligible overhead** — ~100 microseconds per step (hashing + signing), invisible against LLM latency
+- **Degraded mode** — if the signing key is unavailable, hashes are still recorded (unsigned); execution is never blocked
+- **Key rotation** — `maintenance/rotate_provenance_key.py` generates new keys; old chains remain verifiable via stored key fingerprints
+- **Backward compatible** — existing sessions without provenance data are handled gracefully
+
+### Enterprise Compliance
+
+| Regulation | Requirement | How Uderia Addresses It |
+|---|---|---|
+| **EU AI Act** | Transparency and traceability for AI systems | EPC records every LLM call, tool selection, and response with cryptographic proof |
+| **GDPR Art. 22** | Right to explanation of automated decisions | Provenance chain traces from query to final answer |
+| **SOX** | Audit trails for financial reporting | Tamper-evident record of every AI-assisted operation |
+| **ISO 27001** | Information security management | Encrypted prompts, signed execution logs, key management |
+
+Full technical details: [**Security Architecture (docs/Architecture/SECURITY_ARCHITECTURE.md)**](docs/Architecture/SECURITY_ARCHITECTURE.md)
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 

@@ -185,6 +185,7 @@ def create_app():
     from trusted_data_agent.api.contact_routes import contact_bp
     from trusted_data_agent.api.agent_pack_routes import agent_pack_bp
     from trusted_data_agent.api.skills_routes import skills_api_bp
+    from trusted_data_agent.api.provenance_routes import provenance_bp
 
     app.register_blueprint(api_bp)
     app.register_blueprint(rest_api_bp, url_prefix="/api")
@@ -195,6 +196,7 @@ def create_app():
     app.register_blueprint(contact_bp)  # Contact form endpoint for promotional website
     app.register_blueprint(agent_pack_bp, url_prefix="/api")  # Agent pack management
     app.register_blueprint(skills_api_bp, url_prefix="/api")  # Skills management
+    app.register_blueprint(provenance_bp)  # Execution Provenance Chain endpoints
 
     from trusted_data_agent.api.kg_marketplace_routes import kg_marketplace_bp
     app.register_blueprint(kg_marketplace_bp, url_prefix="/api")  # KG marketplace

@@ -1603,6 +1603,14 @@ class PlanExecutor:
         mcp_server_id = profile_config.get("mcpServerId")
         llm_config_id = profile_config.get("llmConfigurationId")
 
+        # --- EPC: Record query intake and profile for conversation_with_tools ---
+        try:
+            if hasattr(self, 'provenance') and self.provenance:
+                self.provenance.add_step("query_intake", self.original_user_input, f"Query: {self.original_user_input[:100]}")
+                self.provenance.add_step("profile_resolve", f"{self.active_profile_id}:conversation_with_tools:{profile_tag}", f"Profile: @{profile_tag} (conversation_with_tools)")
+        except Exception as _epc_err:
+            app_logger.debug(f"EPC conversation_with_tools intake: {_epc_err}")
+
         # MCP server is optional when component tools are available (platform feature).
         # Component tools (TDA_Charting, etc.) don't require an MCP server.
         from trusted_data_agent.components.manager import get_component_langchain_tools
@@ -1948,6 +1956,7 @@ class PlanExecutor:
                 model=self.current_model,        # NEW: Pass model for event tracking
                 canvas_context=self._format_canvas_context(),  # Canvas bidirectional context
                 component_instructions=getattr(self, '_cw_component_instructions', None),
+                provenance=getattr(self, 'provenance', None),  # EPC: Pass provenance chain
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
@@ -2138,6 +2147,15 @@ class PlanExecutor:
             except Exception as e:
                 app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
 
+            # --- EPC: Seal provenance chain for conversation_with_tools ---
+            _provenance_data = None
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    self.provenance.add_step("turn_complete", response_text or "", f"conversation_with_tools turn {self.current_turn_number} complete")
+                    _provenance_data = self.provenance.finalize()
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC conversation_with_tools finalize: {_epc_err}")
+
             # Save turn data to workflow_history for session reload
             turn_summary = {
                 "turn": self.current_turn_number,
@@ -2175,6 +2193,8 @@ class PlanExecutor:
                 # Pre-processing skills applied to this turn
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
+            if _provenance_data:
+                turn_summary.update(_provenance_data)
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.info(f"✅ conversation_with_tools execution completed: {len(tools_used)} tools used")
@@ -2598,6 +2618,19 @@ Response:"""
         # Only pure llm_only (without MCP tools AND without component tools) goes through direct execution
         is_llm_only = (profile_type == "llm_only" and not use_mcp_tools and not has_component_tools)
 
+        # --- EXECUTION PROVENANCE CHAIN (EPC) INIT ---
+        from trusted_data_agent.core.provenance import ProvenanceChain, get_previous_turn_tip_hash
+        prev_tip = await get_previous_turn_tip_hash(self.user_uuid, self.session_id)
+        self.provenance = ProvenanceChain(
+            session_id=self.session_id,
+            turn_number=self.current_turn_number,
+            user_uuid=self.user_uuid,
+            profile_type=profile_type,
+            previous_turn_tip_hash=prev_tip,
+            event_queue=asyncio.Queue(maxsize=100),
+        )
+        # --- EPC INIT END ---
+
         # --- Document upload: Load document context with multimodal routing ---
         if self.attachments:
             self.multimodal_content, text_fallback = load_multimodal_document_content(
@@ -2811,6 +2844,14 @@ Response:"""
         if is_llm_only:
             # DIRECT EXECUTION PATH - Bypass planner entirely
             app_logger.info("🗨️ LLM-only profile detected - direct execution mode")
+
+            # --- EPC: llm_only query_intake + profile_resolve ---
+            self.provenance.add_step("query_intake", self.original_user_input,
+                                     f"Query: {self.original_user_input[:80]}")
+            self.provenance.add_step("profile_resolve",
+                                     f"{self.active_profile_id}:llm_only:{self._get_current_profile_tag() or 'CHAT'}",
+                                     f"Profile: @{self._get_current_profile_tag() or 'CHAT'} (llm_only)")
+            # --- EPC END ---
 
             # Initialize event collection for plan reload (similar to rag_focused)
             llm_execution_events = []
@@ -3133,6 +3174,13 @@ The following domain knowledge may be relevant to this conversation:
                 # Signal LLM busy for status indicator dots
                 yield self._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
+                # --- EPC: llm_call step ---
+                import hashlib as _hl
+                self.provenance.add_step("llm_call",
+                    f"{_hl.sha256((system_prompt or '').encode()).hexdigest()[:32]}:{_hl.sha256((user_message or '').encode()).hexdigest()[:32]}",
+                    f"LLM call: {self.current_provider}/{self.current_model}")
+                # --- EPC END ---
+
                 # Call LLM with proper system/user separation
                 # System prompt passed via override, user message contains only content
                 response_text, input_tokens, output_tokens = await self._call_llm_and_update_tokens(
@@ -3142,6 +3190,12 @@ The following domain knowledge may be relevant to this conversation:
                     source=self.source,
                     multimodal_content=self.multimodal_content
                 )
+
+                # --- EPC: llm_response step ---
+                self.provenance.add_step("llm_response",
+                    (response_text or "")[:4096],
+                    f"Response: {len(response_text or '')} chars")
+                # --- EPC END ---
             finally:
                 # Restore original dependencies
                 self.dependencies = original_dependencies
@@ -3376,6 +3430,15 @@ The following domain knowledge may be relevant to this conversation:
             except Exception as e:
                 app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
 
+            # --- EPC: Seal provenance chain for llm_only ---
+            _provenance_data = None
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    self.provenance.add_step("turn_complete", response_text or "", f"llm_only turn {self.current_turn_number} complete")
+                    _provenance_data = self.provenance.finalize()
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC llm_only finalize: {_epc_err}")
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -3413,6 +3476,8 @@ The following domain knowledge may be relevant to this conversation:
                 "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
+            if _provenance_data:
+                turn_summary.update(_provenance_data)
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved llm_only turn data to workflow_history for turn {self.current_turn_number}")
@@ -3472,6 +3537,15 @@ The following domain knowledge may be relevant to this conversation:
         is_rag_focused = self._is_rag_focused_profile()
         if is_rag_focused:
             app_logger.info("🔍 RAG-focused profile - mandatory knowledge retrieval")
+
+            # --- EPC: Record query intake and profile for rag_focused ---
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    self.provenance.add_step("query_intake", self.original_user_input, f"Query: {self.original_user_input[:100]}")
+                    _ptag = self._get_current_profile_tag()
+                    self.provenance.add_step("profile_resolve", f"{self.active_profile_id}:rag_focused:{_ptag}", f"Profile: @{_ptag} (rag_focused)")
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC rag_focused intake: {_epc_err}")
 
             # Collect events for plan reload (similar to genie_events and conversation_agent_events)
             # Initialize BEFORE lifecycle emission so we can store the start event
@@ -3596,6 +3670,18 @@ The following domain knowledge may be relevant to this conversation:
                 freshness_weight=freshness_weight,
                 freshness_decay_rate=freshness_decay_rate
             )
+
+            # --- EPC: Record RAG search and results ---
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    import json as _json
+                    _coll_ids = [c.get("id", "") for c in knowledge_collections]
+                    self.provenance.add_step("rag_search", _json.dumps(_coll_ids), f"Searching {len(knowledge_collections)} collection(s)")
+                    _doc_ids = [r.get("document_id", "") for r in all_results[:50]]
+                    _scores = [round(r.get("similarity_score", 0), 4) for r in all_results[:50]]
+                    self.provenance.add_step("rag_results", _json.dumps({"doc_ids": _doc_ids, "scores": _scores}), f"Retrieved {len(all_results)} chunks")
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC rag_focused search/results: {_epc_err}")
 
             app_logger.info(f"[RAG] Retrieved {len(all_results)} chunks from {len(knowledge_collections)} collection(s)")
             for idx, r in enumerate(all_results[:5]):
@@ -4018,6 +4104,13 @@ The following domain knowledge may be relevant to this conversation:
                 if uc_block:
                     user_message = f"{uc_block}\n\n{user_message}"
 
+            # --- EPC: Record synthesis step ---
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    self.provenance.add_step("rag_synthesis", user_message[:4096], f"Synthesis with {len(final_results)} documents")
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC rag_synthesis: {_epc_err}")
+
             # Emit "Calling LLM" event with call_id for token tracking
             call_id = str(uuid.uuid4())
             llm_start_time = time.time()
@@ -4110,6 +4203,13 @@ The following domain knowledge may be relevant to this conversation:
                     system_prompt_override=system_prompt,
                     multimodal_content=self.multimodal_content
                 )
+
+            # --- EPC: Record LLM response ---
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    self.provenance.add_step("llm_response", response_text[:4096] if response_text else "", f"Synthesis response ({len(response_text) if response_text else 0} chars)")
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC rag llm_response: {_epc_err}")
 
             # Calculate LLM call duration
             llm_duration_ms = int((time.time() - llm_start_time) * 1000)
@@ -4348,6 +4448,15 @@ The following domain knowledge may be relevant to this conversation:
             except Exception as e:
                 app_logger.warning(f"Failed to calculate session cost: {e}", exc_info=True)
 
+            # --- EPC: Seal provenance chain for rag_focused ---
+            _provenance_data = None
+            try:
+                if hasattr(self, 'provenance') and self.provenance:
+                    self.provenance.add_step("turn_complete", response_text or "", f"rag_focused turn {self.current_turn_number} complete")
+                    _provenance_data = self.provenance.finalize()
+            except Exception as _epc_err:
+                app_logger.debug(f"EPC rag_focused finalize: {_epc_err}")
+
             turn_summary = {
                 "turn": self.current_turn_number,
                 "user_query": self.original_user_input,
@@ -4391,6 +4500,8 @@ The following domain knowledge may be relevant to this conversation:
                 "context_window_snapshot_event": getattr(self, 'context_window_snapshot_event', None),
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
+            if _provenance_data:
+                turn_summary.update(_provenance_data)
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.debug(f"Saved rag_focused turn data to workflow_history for turn {self.current_turn_number}")
@@ -4998,6 +5109,15 @@ The following domain knowledge may be relevant to this conversation:
             self.original_user_input = f"[User has uploaded documents]\n{self.document_context}\n\n[User's question]\n{self.original_user_input}"
             app_logger.info(f"Prepended document context ({len(self.document_context):,} chars) to user input for tool_enabled planning")
 
+        # --- EPC: tool_enabled query_intake + profile_resolve ---
+        self.provenance.add_step("query_intake", self.original_user_input,
+                                 f"Query: {self.original_user_input[:80]}")
+        profile_tag = self._get_current_profile_tag() or "OPTIM"
+        self.provenance.add_step("profile_resolve",
+                                 f"{self.active_profile_id}:{profile_type}:{profile_tag}",
+                                 f"Profile: @{profile_tag} ({profile_type})")
+        # --- EPC END ---
+
         try:
             # --- MODIFICATION START: Handle Replay ---
             if self.plan_to_execute:
@@ -5143,6 +5263,16 @@ The following domain knowledge may be relevant to this conversation:
                         self.original_plan_for_history = copy.deepcopy(self.meta_plan)
                         app_logger.debug("Stored original plan (post-refinement) for history.")
                         # --- MODIFICATION END ---
+
+                        # --- EPC: strategic_plan step ---
+                        try:
+                            self.provenance.add_step(
+                                "strategic_plan",
+                                json.dumps(self.meta_plan, sort_keys=True, default=str),
+                                f"Plan: {len(self.meta_plan)} phase(s)")
+                        except Exception as _epc_err:
+                            app_logger.debug(f"[EPC] strategic_plan step error: {_epc_err}")
+                        # --- EPC END ---
 
                         # --- MODIFICATION START: Inject knowledge context into workflow_state for hybrid plans ---
                         # This allows TDA_FinalReport to access both gathered data AND knowledge context
@@ -5502,6 +5632,15 @@ The following domain knowledge may be relevant to this conversation:
                     "duration_ms": int((time.time() - self.tool_enabled_start_time) * 1000) if hasattr(self, 'tool_enabled_start_time') else 0,
                     "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
                 }
+                # --- EPC: Seal provenance chain and merge into turn_summary ---
+                try:
+                    self.provenance.add_step("turn_complete",
+                                             self.final_summary_text or "",
+                                             "Turn completed successfully")
+                    turn_summary.update(self.provenance.finalize())
+                except Exception as _epc_err:
+                    app_logger.debug(f"[EPC] finalize error: {_epc_err}")
+                # --- EPC END ---
                 # --- MODIFICATION END ---
                 await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
                 app_logger.debug(f"Saved last turn data to session {self.session_id} for user {self.user_uuid}")
@@ -5623,6 +5762,16 @@ The following domain knowledge may be relevant to this conversation:
                 "is_partial": True,  # Flag to indicate incomplete execution
                 "skills_applied": self.skill_result.to_applied_list() if self.skill_result and self.skill_result.has_content else []
             }
+
+            # --- EPC: Seal provenance chain on error/cancellation ---
+            try:
+                if hasattr(self, 'provenance') and not self.provenance._sealed:
+                    self.provenance.add_error_step(
+                        status, error_message or "Unknown error")
+                    turn_summary.update(self.provenance.finalize())
+            except Exception as _epc_err:
+                app_logger.debug(f"[EPC] error finalize: {_epc_err}")
+            # --- EPC END ---
 
             await session_manager.update_last_turn_data(self.user_uuid, self.session_id, turn_summary)
             app_logger.info(f"Saved partial turn data (status={status}) for turn {self.current_turn_number}")

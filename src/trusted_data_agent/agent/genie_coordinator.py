@@ -50,6 +50,9 @@ _slave_session_cache: Dict[str, str] = {}
 # Module-level event callbacks (keyed by parent_session_id)
 _event_callbacks: Dict[str, Callable[[str, Dict], None]] = {}
 
+# Module-level provenance chains (keyed by parent_session_id) — EPC
+_provenance_chains: Dict[str, Any] = {}
+
 
 class SlaveSessionTool(BaseTool):
     """
@@ -125,6 +128,14 @@ class SlaveSessionTool(BaseTool):
             # Log nested Genie invocation
             logger.info(f"🔮 Invoking nested Genie @{self.profile_tag} at level {next_level}")
 
+        # EPC: Record coordinator dispatch
+        try:
+            prov = _provenance_chains.get(self.parent_session_id)
+            if prov:
+                prov.add_step("coordinator_dispatch", f"{self.profile_tag}:{query or ''}", f"Dispatching to @{self.profile_tag}")
+        except Exception:
+            pass
+
         # Emit child invoked event with full query for UI display
         self._emit_event("genie_slave_invoked", {
             "profile_tag": self.profile_tag,
@@ -152,6 +163,18 @@ class SlaveSessionTool(BaseTool):
 
             # Emit completion event with full result for UI display
             duration_ms = int((time.time() - start_time) * 1000)
+
+            # EPC: Record child chain reference
+            try:
+                prov = _provenance_chains.get(self.parent_session_id)
+                if prov:
+                    # Read child session's provenance tip hash (if available)
+                    from trusted_data_agent.core.provenance import get_previous_turn_tip_hash as _get_tip
+                    child_tip = await _get_tip(self.user_uuid, session_id)
+                    prov.add_step("child_chain_ref", f"{session_id}:{child_tip or 'none'}", f"@{self.profile_tag} completed ({duration_ms}ms)")
+            except Exception:
+                pass
+
             self._emit_event("genie_slave_completed", {
                 "profile_tag": self.profile_tag,
                 "slave_session_id": session_id,
@@ -422,7 +445,8 @@ class GenieCoordinator:
         base_url: str = "http://localhost:5050",
         event_callback: Optional[Callable[[str, Dict], None]] = None,
         genie_config: Optional[Dict[str, Any]] = None,
-        current_nesting_level: int = 0
+        current_nesting_level: int = 0,
+        provenance: Optional[Any] = None
     ):
         """
         Initialize the Genie Coordinator.
@@ -452,6 +476,7 @@ class GenieCoordinator:
         self.base_url = base_url
         self.event_callback = event_callback
         self.current_nesting_level = current_nesting_level
+        self.provenance = provenance  # EPC: Provenance chain from execution_service
 
         # Extract effective config values with defaults
         genie_config = genie_config or {}
@@ -532,6 +557,10 @@ class GenieCoordinator:
                     if profile_tag and profile_tag not in self.invoked_profiles:
                         self.invoked_profiles.append(profile_tag)
             _event_callbacks[parent_session_id] = collecting_only_callback
+
+        # EPC: Register provenance chain for SlaveSessionTool access
+        if self.provenance:
+            _provenance_chains[parent_session_id] = self.provenance
 
         # Build tools and agent
         self.tools = self._build_tools()

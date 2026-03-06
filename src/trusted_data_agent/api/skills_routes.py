@@ -1282,16 +1282,16 @@ async def get_profile_skills(profile_id):
         manager = get_skill_manager()
         all_skills = {s["skill_id"]: s for s in manager.list_skills()}
 
-        skills_config = profile.get("skillsConfig", {})
-        assigned = skills_config.get("skills", [])
-
-        # Auto-populate for profiles created before skillsConfig feature
-        if not assigned:
+        skills_config = profile.get("skillsConfig")
+        if skills_config is None:
+            # Profile created before skillsConfig feature — auto-populate all skills
             assigned = [
                 {"id": sid, "enabled": True, "active": False, "param": None}
                 for sid in all_skills
                 if is_skill_available(sid)
             ]
+        else:
+            assigned = skills_config.get("skills", [])
 
         result = []
         for entry in assigned:
