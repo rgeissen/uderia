@@ -8,9 +8,13 @@ Experience a fundamental transformation in how you work with enterprise data:
 - **From Intent to Autonomy** - Your AI organization that senses, reasons, and delivers. Stop orchestrating. Start delegating. Specialized agents coordinate autonomously to gather data, reason across domains, and synthesize actionable intelligence.
 - **From Ideation to Operationalization** - Revolutionary IFOC Methodology adapts to your needs. Four execution modes (Ideate, Focus, Optimize, Coordinate) in one conversation with zero friction. Switch between creative ideation, document-verified answers, sovereign efficiency, and cross-team orchestration with a simple @TAG.
 - **From Days to Seconds** - Discover insights via conversation. Operationalize them via API. Your conversational discovery is your production-ready automation.
+- **From Hallucination to Ground Truth** - Knowledge Graph maps your databases and RAG retrieves verified documents. Every answer grounded in proven sources with full citations. Zero fabrication, complete traceability.
 - **From Guesswork to Clarity** - Full transparency eliminates the AI black box. See every strategic plan, tool execution, and self-correction in real-time through the Live Status Window.
 - **From Uncertainty to Accountability** - Every action recorded. Every decision traceable. Enterprise-grade audit logging captures every interaction with full forensic context for compliance (GDPR, SOC2) and accountability at scale.
+- **From Prompt Hijacking to Prompt Integrity** - Two-layer encryption with license-derived keys makes prompt extraction cryptographically impossible. Your AI logic remains proprietary, auditable, and tamper-proof.
 - **From Data Exposure to Data Sovereignty** - Your data, your rules, your environment. Execute with cloud intelligence while maintaining local privacy through decoupled planning and execution with Champion Cases.
+- **From Isolated Expertise to Collective Intelligence** - Intelligence Marketplace transforms individual expertise into collective knowledge. Share and discover repositories, agent packs, skills, extensions, and knowledge graphs with one click.
+- **From Context Contamination to Context Optimization** - Nine intelligent context modules with budget-aware orchestration. Dynamic adjustments, surplus redistribution, and intelligent condensation optimize every token.
 - **From $$$ to ¢¢¢** - Revolutionary Fusion Optimizer with strategic planning, proactive optimization, and autonomous self-correction for cost-effective execution.
 - **From Hidden Costs to Total Visibility** - Complete financial governance with real-time tracking, comprehensive analytics, and fine-grained cost control. Track every token, understand every cost.
 
@@ -144,6 +148,13 @@ Eliminate the friction between conversational exploration and production automat
   - Complete safeguards: Circular dependency detection, depth limits, cost visibility at every level
   - Stop force-fitting every problem into one AI—match your intent to the right intelligence phase
 
+* **Session Primer & Automatic Context**: Transform generic LLMs into pre-educated specialists from the first message:
+  - Auto-initialize new sessions with domain-specific knowledge
+  - Inject business context, schemas, and common patterns at session creation
+  - Profiles can define default primer content for consistent onboarding
+  - Eliminates repetitive context-setting for every new conversation
+  - Specialists understand your environment without manual training
+
 * **Autonomous AI Organization (Genie Mode)**: From intent to autonomy—your AI organization that senses, reasons, and delivers:
   - Multi-profile coordination where specialized agents work as a unified team
   - Master coordinator intelligently routes queries to domain experts
@@ -153,7 +164,7 @@ Eliminate the friction between conversational exploration and production automat
   - Stop orchestrating manually—start delegating to an AI organization that never sleeps
   - Executive-level queries like "Improve Product Margin for Q4" automatically cascade to CFO, CMO, and Legal specialists
 
-* **MCP Server Import with Dual Format Support**: Seamless integration of community MCP servers:
+* **Intelligent MCP Server Import**: Seamless integration of community MCP servers with dual format support:
   - Import from official MCP Registry format (io.example/server-name specifications)
   - Import from Claude Desktop configuration files (direct migration)
   - Automatic format detection with validation
@@ -205,6 +216,14 @@ Build trust through complete visibility into every decision, action, and data po
   - Historical token trends across sessions
   - Optimization insights for cost-conscious users
   - Theme-aware KPI displays adapt seamlessly to dark and light themes (11-Feb-2026)
+
+* **Anti-Hallucination by Architecture**: Ground every answer in verified sources—zero fabrication:
+  - Strict retrieval-then-synthesize pattern where the LLM answers only from retrieved documents
+  - Knowledge Graph maps your databases (tables, relationships, business concepts) before query generation
+  - RAG system retrieves and scores documents from knowledge bases with full citations
+  - Source traceability with citations back to specific document chunks
+  - Transparent failure when no relevant sources exist (no guessing)
+  - Dual knowledge layers work in unison for comprehensive grounding
 
 * **Execution Monitoring Dashboard**: Cross-source workload tracking:
   - Real-time task list (running, completed, failed)

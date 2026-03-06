@@ -6939,7 +6939,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             (selectedProfileType === 'llm_only' && useKnowledgeCheckboxForConfig?.checked);
         const knowledgeConfig = {
             enabled: knowledgeEnabled,
-            collections: knowledgeEnabled ? collectionsWithReranking : []
+            collections: collectionsWithReranking
         };
 
         // Add optional fields only if knowledge is enabled and user specified them (non-empty)
