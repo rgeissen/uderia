@@ -523,6 +523,9 @@ async function initializeRAGAutoCompletion() {
             // Update Skills panel to reflect the active profile's assigned skills
             import('./handlers/skillsPanelHandler.js').then(mod => mod.loadSkillsPanel());
 
+            // Update Extensions panel (user-level, refresh on profile switch for freshness)
+            import('./handlers/extensionsPanelHandler.js').then(mod => mod.loadExtensionsPanel());
+
             // Refresh #skill autocomplete for the new profile's enabled skills
             loadActivatedSkills();
 

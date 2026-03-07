@@ -197,10 +197,15 @@ export async function loadKnowledgeGraphsPanel() {
             return kgState.isAvailable;
         });
 
-        // Update tab counter with visible count only
+        // Update tab counter and visibility — hide tab when no graphs available
         const tabBtn = document.querySelector('.resource-tab[data-type="knowledge-graphs"]');
         if (tabBtn) {
-            tabBtn.textContent = `Knowledge Graphs (${visibleGraphs.length})`;
+            if (visibleGraphs.length === 0) {
+                tabBtn.style.display = 'none';
+            } else {
+                tabBtn.style.display = 'inline-block';
+                tabBtn.textContent = `Knowledge Graphs (${visibleGraphs.length})`;
+            }
         }
 
         if (visibleGraphs.length === 0) {

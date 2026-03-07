@@ -28,6 +28,7 @@ import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
 import { loadSkillsPanel } from './handlers/skillsPanelHandler.js';
+import { loadExtensionsPanel } from './handlers/extensionsPanelHandler.js';
 import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
@@ -3152,6 +3153,11 @@ function handleResourceTabClick(e) {
         // Lazy-load Skills panel on first click (or refresh on subsequent)
         if (type === 'skills') {
             loadSkillsPanel();
+        }
+
+        // Lazy-load Extensions panel on first click (or refresh on subsequent)
+        if (type === 'extensions') {
+            loadExtensionsPanel();
         }
     }
 }

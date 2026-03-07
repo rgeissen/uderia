@@ -167,19 +167,24 @@ export async function loadSkillsPanel() {
         const data = await res.json();
         const skills = data.skills || [];
 
-        // Update tab counter
+        // Update tab counter and visibility — hide tab when no skills assigned
         const tabBtn = document.querySelector('.resource-tab[data-type="skills"]');
         if (tabBtn) {
-            const activeCount = skills.filter(s => s.active).length;
-            const enabledCount = skills.filter(s => s.enabled && !s.active).length;
-            let label = 'Skills';
-            if (activeCount > 0 || enabledCount > 0) {
-                const parts = [];
-                if (activeCount > 0) parts.push(`${activeCount} auto`);
-                if (enabledCount > 0) parts.push(`${enabledCount} on`);
-                label = `Skills (${parts.join(', ')})`;
+            if (skills.length === 0) {
+                tabBtn.style.display = 'none';
+            } else {
+                tabBtn.style.display = 'inline-block';
+                const activeCount = skills.filter(s => s.active).length;
+                const enabledCount = skills.filter(s => s.enabled && !s.active).length;
+                let label = 'Skills';
+                if (activeCount > 0 || enabledCount > 0) {
+                    const parts = [];
+                    if (activeCount > 0) parts.push(`${activeCount} auto`);
+                    if (enabledCount > 0) parts.push(`${enabledCount} on`);
+                    label = `Skills (${parts.join(', ')})`;
+                }
+                tabBtn.textContent = label;
             }
-            tabBtn.textContent = label;
         }
 
         if (skills.length === 0) {
@@ -268,5 +273,8 @@ export function resetSkillsPanelState() {
     if (container) container.innerHTML = '';
 
     const tabBtn = document.querySelector('.resource-tab[data-type="skills"]');
-    if (tabBtn) tabBtn.textContent = 'Skills';
+    if (tabBtn) {
+        tabBtn.textContent = 'Skills';
+        tabBtn.style.display = 'inline-block';
+    }
 }
