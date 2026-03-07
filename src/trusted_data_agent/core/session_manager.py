@@ -94,9 +94,28 @@ async def _init_session_index():
                     temporary_purpose TEXT,
                     models_used TEXT DEFAULT '[]',
                     profile_tags_used TEXT DEFAULT '[]',
-                    genie_metadata TEXT DEFAULT '{}'
+                    genie_metadata TEXT DEFAULT '{}',
+                    total_tokens INTEGER DEFAULT 0,
+                    turn_count INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'unknown',
+                    provider TEXT,
+                    model TEXT,
+                    profile_type TEXT
                 )
             """)
+            # Migrate existing index databases that lack the new columns
+            for col, typedef in [
+                ("total_tokens", "INTEGER DEFAULT 0"),
+                ("turn_count", "INTEGER DEFAULT 0"),
+                ("status", "TEXT DEFAULT 'unknown'"),
+                ("provider", "TEXT"),
+                ("model", "TEXT"),
+                ("profile_type", "TEXT"),
+            ]:
+                try:
+                    await db.execute(f"ALTER TABLE session_index ADD COLUMN {col} {typedef}")
+                except Exception:
+                    pass  # Column already exists
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_si_user
                 ON session_index(user_uuid)
@@ -119,14 +138,22 @@ async def _upsert_session_index(session_id: str, session_data: dict):
         return
     try:
         genie_metadata = session_data.get("genie_metadata", {})
+        # Compute total_tokens and turn_count from session data
+        input_tokens = session_data.get("input_tokens", 0) or 0
+        output_tokens = session_data.get("output_tokens", 0) or 0
+        total_tokens = input_tokens + output_tokens
+        # Turn count from last_turn_data workflow_history or top-level
+        wf = session_data.get("last_turn_data", {}).get("workflow_history", [])
+        turn_count = len([t for t in wf if t.get("isValid", True)]) if wf else session_data.get("turn_count", 0)
         async with aiosqlite.connect(str(SESSION_INDEX_DB)) as db:
             await db.execute("""
                 INSERT INTO session_index
                     (session_id, user_uuid, name, created_at, last_updated,
                      profile_tag, profile_id, archived, archived_at,
                      is_temporary, temporary_purpose, models_used,
-                     profile_tags_used, genie_metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     profile_tags_used, genie_metadata,
+                     total_tokens, turn_count, provider, model, profile_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     name=excluded.name,
                     last_updated=excluded.last_updated,
@@ -138,7 +165,12 @@ async def _upsert_session_index(session_id: str, session_data: dict):
                     temporary_purpose=excluded.temporary_purpose,
                     models_used=excluded.models_used,
                     profile_tags_used=excluded.profile_tags_used,
-                    genie_metadata=excluded.genie_metadata
+                    genie_metadata=excluded.genie_metadata,
+                    total_tokens=excluded.total_tokens,
+                    turn_count=excluded.turn_count,
+                    provider=excluded.provider,
+                    model=excluded.model,
+                    profile_type=excluded.profile_type
             """, (
                 session_id,
                 session_data.get("user_uuid", ""),
@@ -154,6 +186,11 @@ async def _upsert_session_index(session_id: str, session_data: dict):
                 json.dumps(session_data.get("models_used", [])),
                 json.dumps(session_data.get("profile_tags_used", [])),
                 json.dumps(genie_metadata),
+                total_tokens,
+                turn_count,
+                session_data.get("provider"),
+                session_data.get("model"),
+                session_data.get("profile_type"),
             ))
             await db.commit()
     except Exception as e:
@@ -207,6 +244,7 @@ async def _query_session_index(user_uuid: str, include_archived: bool = False,
             for row in rows:
                 summaries.append({
                     "id": row["session_id"],
+                    "user_uuid": row["user_uuid"],
                     "name": row["name"] or "Unnamed Session",
                     "created_at": row["created_at"] or "Unknown",
                     "last_updated": row["last_updated"] or row["created_at"] or "Unknown",
@@ -219,6 +257,12 @@ async def _query_session_index(user_uuid: str, include_archived: bool = False,
                     "models_used": json.loads(row["models_used"] or "[]"),
                     "profile_tags_used": json.loads(row["profile_tags_used"] or "[]"),
                     "genie_metadata": json.loads(row["genie_metadata"] or "{}"),
+                    "total_tokens": row["total_tokens"] or 0,
+                    "turn_count": row["turn_count"] or 0,
+                    "status": row["status"] or "unknown",
+                    "provider": row["provider"] or "Unknown",
+                    "model": row["model"] or "Unknown",
+                    "profile_type": row["profile_type"],
                 })
             app_logger.debug(f"Session index returned {len(summaries)} sessions for user {user_uuid}")
             return summaries
@@ -230,7 +274,9 @@ async def _query_session_index(user_uuid: str, include_archived: bool = False,
 _INDEX_KEYS = frozenset({
     "id", "name", "created_at", "last_updated", "profile_tag", "profile_id",
     "archived", "archived_at", "is_temporary", "temporary_purpose",
-    "models_used", "profile_tags_used", "genie_metadata"
+    "models_used", "profile_tags_used", "genie_metadata",
+    "input_tokens", "output_tokens", "provider", "model", "profile_type",
+    "user_uuid",
 })
 
 
@@ -242,6 +288,10 @@ async def _read_session_metadata_only(session_file: Path) -> dict | None:
     full_data = json.loads(content)
     del content  # Release raw string for GC
     metadata = {k: full_data[k] for k in _INDEX_KEYS if k in full_data}
+    # Compute turn_count from workflow_history without retaining it
+    wf = full_data.get("last_turn_data", {}).get("workflow_history", [])
+    if wf:
+        metadata["turn_count"] = len([t for t in wf if t.get("isValid", True)])
     del full_data  # Release full parsed dict for GC
     return metadata if metadata else None
 

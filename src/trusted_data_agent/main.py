@@ -320,14 +320,24 @@ def create_app():
             _init_session_index, _rebuild_session_index, SESSION_INDEX_DB
         )
         await _init_session_index()
-        # Rebuild index from session files if DB is missing, empty, or has no rows
+        # Rebuild index from session files if DB is missing, empty, has no rows,
+        # or was created before the schema update (total_tokens column all zeros)
         _needs_rebuild = not SESSION_INDEX_DB.exists() or SESSION_INDEX_DB.stat().st_size < 4096
         if not _needs_rebuild:
             try:
                 import aiosqlite as _aiosqlite
                 async with _aiosqlite.connect(str(SESSION_INDEX_DB)) as _db:
                     _row = await (await _db.execute("SELECT COUNT(*) FROM session_index")).fetchone()
-                    _needs_rebuild = (_row[0] == 0)
+                    if _row[0] == 0:
+                        _needs_rebuild = True
+                    else:
+                        # Check if index was built before schema update (all total_tokens = 0)
+                        _tok = await (await _db.execute(
+                            "SELECT MAX(total_tokens) FROM session_index"
+                        )).fetchone()
+                        if _tok and (_tok[0] is None or _tok[0] == 0):
+                            _needs_rebuild = True
+                            app_logger.info("Session index missing enrichment columns, rebuilding...")
             except Exception:
                 _needs_rebuild = True
         if _needs_rebuild:

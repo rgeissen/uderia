@@ -9052,7 +9052,85 @@ async def get_sessions_list():
         
         project_root = Path(__file__).resolve().parents[3]
         sessions_base = project_root / 'tda_sessions'
-        
+
+        # --- FAST PATH: Use session index for instant listing ---
+        from trusted_data_agent.core.session_manager import _query_session_index
+        _filter_by_user = not all_users and APP_CONFIG.SESSIONS_FILTER_BY_USER
+        index_sessions = await _query_session_index(
+            user_uuid=user_uuid if _filter_by_user else None,
+            include_archived=True,
+            filter_by_user=_filter_by_user,
+        )
+        if index_sessions is not None:
+            # Apply model filter using models_used from index
+            if filter_model != 'all':
+                index_sessions = [s for s in index_sessions if filter_model in str(s.get('models_used', []))]
+
+            # Apply status filter (status is in index, defaults to 'unknown' for old sessions)
+            if filter_status != 'all':
+                index_sessions = [s for s in index_sessions if s.get('status', 'unknown') == filter_status]
+
+            # Build Genie hierarchy from index data
+            session_by_id = {s["id"]: s for s in index_sessions}
+            parent_sessions = []
+            slave_sessions_by_parent = {}
+
+            for session in index_sessions:
+                genie_meta = session.get("genie_metadata", {})
+                parent_id = genie_meta.get("parent_session_id")
+                if genie_meta.get("is_genie_slave") and parent_id:
+                    slave_sessions_by_parent.setdefault(parent_id, []).append(session)
+                else:
+                    parent_sessions.append(session)
+
+            # Sort parent sessions
+            if sort_by == 'recent':
+                parent_sessions.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
+            elif sort_by == 'oldest':
+                parent_sessions.sort(key=lambda x: x.get('created_at', ''))
+            elif sort_by == 'tokens':
+                parent_sessions.sort(key=lambda x: x.get('total_tokens', 0), reverse=True)
+            elif sort_by == 'turns':
+                parent_sessions.sort(key=lambda x: x.get('turn_count', 0), reverse=True)
+
+            # Sort children by sequence number
+            for slaves in slave_sessions_by_parent.values():
+                slaves.sort(key=lambda s: s.get("genie_metadata", {}).get("slave_sequence_number", 0))
+
+            # Build final hierarchical list
+            final_sessions = []
+            added_ids = set()
+
+            def _add_with_children(sid):
+                if sid in added_ids or sid not in session_by_id:
+                    return
+                final_sessions.append(session_by_id[sid])
+                added_ids.add(sid)
+                for child in slave_sessions_by_parent.get(sid, []):
+                    _add_with_children(child["id"])
+
+            for parent in parent_sessions:
+                _add_with_children(parent["id"])
+
+            # Paginate from index results (no file I/O needed!)
+            total = len(final_sessions)
+            sessions_page = final_sessions[offset:offset + limit]
+
+            # Add default fields expected by the UI that aren't in index
+            for s in sessions_page:
+                s.setdefault("has_rag", False)
+                s.setdefault("has_errors", False)
+                s.setdefault("last_turn_data", {"workflow_history": []})
+
+            return jsonify({
+                "sessions": sessions_page,
+                "total": total,
+                "limit": limit,
+                "offset": offset
+            }), 200
+
+        # --- FALLBACK: Full file scan (when index is unavailable) ---
+
         # Determine which sessions to scan based on all_users parameter or filter setting
         if all_users or not APP_CONFIG.SESSIONS_FILTER_BY_USER:
             # All users mode
