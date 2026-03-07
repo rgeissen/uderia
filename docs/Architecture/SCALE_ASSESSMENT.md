@@ -1,7 +1,7 @@
 # Uderia Platform - Comprehensive Scale Assessment
 
 **Date:** March 2026
-**Current capacity estimate:** ~100-1,000 concurrent agents (single server)
+**Current capacity estimate:** ~1,000s concurrent agents (single server, after Phase 1 optimizations)
 
 ---
 
@@ -304,51 +304,137 @@ All are single-machine, single-process resources.
 
 ## Consolidated Bottleneck Severity Matrix
 
-| # | Bottleneck | Layer | Current Limit | Breaks At | Severity |
-|---|-----------|-------|--------------|-----------|----------|
-| 1 | SQLite StaticPool (1 connection) | Database | ~100 writes/sec | 100s of agents | **CRITICAL** |
-| 2 | File-based sessions (full re-serialize) | Session | ~1K concurrent | 1,000s of agents | **CRITICAL** |
-| 3 | Single RAG processing worker | Execution | 10 ops/sec | 100s of agents | **CRITICAL** |
-| 4 | No LLM client pooling (new client per call) | Execution | ~1GB at 1K agents | 1,000s of agents | **CRITICAL** |
-| 5 | Global APP_STATE (unprotected, unbounded) | Execution | Race conditions at any scale | 100s of agents | **CRITICAL** |
-| 6 | In-process-only locks (no distributed coordination) | Session | 1 server instance | Any multi-instance | **CRITICAL** |
-| 7 | Session listing O(n) file scan | Session | ~1K sessions/user | 1,000s of sessions | **HIGH** |
-| 8 | Consumption enforcement 5 queries/check | Database | ~200 checks/sec | 1,000s of agents | **HIGH** |
-| 9 | No JWT validation cache | API | ~10K verifications/sec | 10,000s of agents | **HIGH** |
-| 10 | Unbounded prompt/collection/backend caches | Caching | GB-scale memory | 10,000s of agents | **HIGH** |
-| 11 | Single asyncio event loop | API | CPU-bound ops block all | 1,000s of agents | **HIGH** |
-| 12 | In-memory rate limiting (per-process) | API | 1 server instance | Any multi-instance | **MEDIUM** |
-| 13 | No circuit breakers for LLM providers | Execution | Retry storms on outage | 100s of agents | **MEDIUM** |
-| 14 | No observability/metrics | Infra | Blind at any scale | 100s of agents | **MEDIUM** |
+| # | Bottleneck | Layer | Current Limit | Breaks At | Severity | Status |
+|---|-----------|-------|--------------|-----------|----------|--------|
+| 1 | SQLite StaticPool (1 connection) | Database | ~100 writes/sec | 100s of agents | **CRITICAL** | **RESOLVED** (Phase 1) |
+| 2 | File-based sessions (full re-serialize) | Session | ~1K concurrent | 1,000s of agents | **CRITICAL** | Open |
+| 3 | Single RAG processing worker | Execution | 10 ops/sec | 100s of agents | **CRITICAL** | **RESOLVED** (Phase 1) |
+| 4 | No LLM client pooling (new client per call) | Execution | ~1GB at 1K agents | 1,000s of agents | **CRITICAL** | **RESOLVED** (Phase 1) |
+| 5 | Global APP_STATE (unprotected, unbounded) | Execution | Race conditions at any scale | 100s of agents | **CRITICAL** | **RESOLVED** (Phase 1) |
+| 6 | In-process-only locks (no distributed coordination) | Session | 1 server instance | Any multi-instance | **CRITICAL** | Open |
+| 7 | Session listing O(n) file scan | Session | ~1K sessions/user | 1,000s of sessions | **HIGH** | **RESOLVED** (Phase 1) |
+| 8 | Consumption enforcement 5 queries/check | Database | ~200 checks/sec | 1,000s of agents | **HIGH** | Open |
+| 9 | No JWT validation cache | API | ~10K verifications/sec | 10,000s of agents | **HIGH** | **RESOLVED** (Phase 1) |
+| 10 | Unbounded prompt/collection/backend caches | Caching | GB-scale memory | 10,000s of agents | **HIGH** | **PARTIAL** (Phase 1 -- PromptLoader + cost mgr bounded; VectorStore/collection caches deferred to Phase 2) |
+| 11 | Single asyncio event loop | API | CPU-bound ops block all | 1,000s of agents | **HIGH** | Open |
+| 12 | In-memory rate limiting (per-process) | API | 1 server instance | Any multi-instance | **MEDIUM** | Open (Phase 2) |
+| 13 | No circuit breakers for LLM providers | Execution | Retry storms on outage | 100s of agents | **MEDIUM** | Open (Phase 2) |
+| 14 | No observability/metrics | Infra | Blind at any scale | 100s of agents | **MEDIUM** | Open |
 
 ---
 
 ## Phased Improvement Roadmap
 
-### Phase 1: Quick Wins (1-2 weeks) -- Scale to 1,000s of agents
+### Phase 1: Quick Wins (COMPLETE -- March 2026) -- Scale to 1,000s of agents
 
 **Goal:** Remove the cheapest critical bottlenecks without architectural changes.
+**Status:** All 8 items implemented and verified via REST API testing.
 
-1. **Enable SQLite WAL mode + PRAGMAs** -- `database.py:32-45`
-2. **LLM client pool** -- `client_factory.py` -- reuse clients per (provider, model) key
-3. **Scale RAG worker** -- `main.py` -- pool of 10 workers instead of 1
-4. **JWT validation LRU cache** -- `middleware.py` -- 10K entries, 1-hour TTL
-5. **Cost manager cache** -- `cost_manager.py` -- LRU cache for model pricing
-6. **Add max-size + TTL to PromptLoader caches** -- `prompt_loader.py`
-7. **Session metadata index** -- SQLite table for fast listing without full-file scan
-8. **APP_STATE lock protection** -- Add `asyncio.Lock` guards on mutable dict operations
+1. **SQLite WAL mode + PRAGMAs** -- `database.py` -- WAL, synchronous=NORMAL, cache_size=-64000, temp_store=MEMORY [DONE]
+2. **LLM client pool** -- `client_factory.py` -- `get_or_create_llm_client()` with 50-max pool, keyed by provider+model+credentials hash [DONE]
+3. **Scale RAG worker** -- `main.py` -- Pool of 10 workers (configurable via `TDA_RAG_WORKERS`) [DONE]
+4. **JWT validation cache** -- `middleware.py` -- In-memory TTL cache (60s, 10K max) with explicit invalidation on token revocation [DONE]
+5. **Cost manager cache** -- `cost_manager.py` -- 5-minute TTL cache for model pricing lookups [DONE]
+6. **PromptLoader bounded caches** -- `prompt_loader.py` -- `_TTLCache` class with TTL (5 min) + max-size (10K) eviction [DONE]
+7. **Session metadata index** -- `session_manager.py` -- aiosqlite-based index with auto-rebuild on startup [DONE]
+8. **APP_STATE lock protection** -- `config.py`, `configuration_service.py` -- asyncio.Lock + dict.setdefault() for atomic operations [DONE]
 
-### Phase 2: Foundation (2-6 weeks) -- Scale to 10,000s of agents
+### Phase 2: Foundation (POSTPONED) -- Scale to 10,000s of agents
 
-**Goal:** Replace core single-server dependencies with scalable alternatives.
+**Goal:** Add reliability infrastructure (circuit breakers), cache hygiene (evict unbounded caches), and Redis integration (shared state for future multi-process scaling).
+**Infrastructure:** Redis instance (existing), Teradata (enterprise DB -- full migration deferred to Phase 3).
+**Target:** ~10,000s of concurrent agents with resilience to provider failures.
+**Estimated effort:** ~7 days
 
-1. **Migrate to PostgreSQL** -- Replace SQLite with PostgreSQL + pgBouncer
-2. **Redis for hot state** -- Rate limiting, session hot data, JWT cache, config cache
-3. **Session storage redesign** -- PostgreSQL JSONB or Redis for active sessions
-4. **Circuit breakers** -- Per-LLM-provider circuit breaker with adaptive backoff
-5. **Multi-worker Hypercorn** -- Run with `--workers N` behind nginx
-6. **Cache eviction everywhere** -- LRU with configurable max-size for all caches
-7. **Distributed locking** -- Redis-based session locks (replace asyncio.Lock)
+#### Item 1: LLM Circuit Breakers (~2 days) -- Priority: TOP
+
+Prevents cascading failures when LLM providers go down.
+
+**New file:** `src/trusted_data_agent/llm/circuit_breaker.py`
+- `CircuitBreaker` class: CLOSED -> OPEN (after 3 consecutive failures) -> HALF_OPEN (after 60s timeout) -> CLOSED (on success)
+- Module-level registry keyed by provider name
+- `CircuitBreakerOpen` exception for fast-fail (non-retryable)
+- Config: `TDA_CIRCUIT_BREAKER_THRESHOLD` (default 3), `TDA_CIRCUIT_BREAKER_TIMEOUT` (default 60)
+
+**Integration points:**
+- `llm/handler.py` -- wrap retry loop: check `allow_request()` before attempts, `record_failure()` in exception handlers, `record_success()` after response
+- Expand caught error types: add `GoogleAPIError`, `botocore.ClientError`, `httpx.ConnectError/TimeoutException`, `ConnectionError/TimeoutError`
+- `agent/executor.py` -- catch `CircuitBreakerOpen`, yield user-friendly SSE error
+- `agent/phase_executor.py` -- catch in tactical calls, treat as non-retryable
+- `api/admin_routes.py` -- `GET /api/v1/admin/circuit-breakers` + `POST .../reset`
+
+#### Item 2: Cache Eviction for Unbounded Caches (~1 day) -- Priority: HIGH
+
+**New file:** `src/trusted_data_agent/core/cache_janitor.py`
+- Periodic async task (every 5 min): purge completed background_tasks (>1hr), stale mcp_tool_schema_cache (>10min)
+- Start via `asyncio.create_task()` in `main.py` startup
+
+**Max-size guards:**
+- `configuration_service.py` -- `llm_instance_pool` FIFO eviction at 50
+- `vectorstore/factory.py` -- `_INSTANCES` FIFO eviction at 20
+- `core/config.py` -- `current_provider_by_user` / `current_model_by_user` FIFO eviction at 500
+
+#### Item 3: Redis Foundation (~0.5 day) -- Priority: MEDIUM
+
+**New file:** `src/trusted_data_agent/core/redis_client.py`
+- Async Redis singleton via `redis>=5.0.0` (add to `requirements.txt`)
+- Config: `TDA_REDIS_ENABLED` (default false), `TDA_REDIS_URL`, `TDA_REDIS_PREFIX=uderia:`
+- `get_redis() -> Optional[Redis]` -- returns None if disabled/unavailable (all consumers must handle None)
+- Lifecycle: connect in `@app.before_serving`, close in `@app.after_serving`
+- Admin: `GET /api/v1/admin/redis/status`
+
+#### Item 4: Redis-Backed Rate Limiting (~1 day) -- Priority: MEDIUM (depends on Item 3)
+
+- `rate_limiter.py` -- add Redis path (INCR + EXPIRE), fallback to existing in-memory
+- `check_rate_limit()` becomes async -- update 4 callers (all in async route handlers)
+
+#### Item 5: Redis-Backed JWT Auth Cache (~0.5 day) -- Priority: LOW (depends on Item 3)
+
+- `middleware.py` -- add Redis as L2 cache: L1 (in-memory) -> L2 (Redis GET/SET with 60s TTL) -> DB
+- `get_current_user()` becomes async -- update `require_auth`, `require_admin`, `optional_auth` decorators
+
+#### Item 6: Redis-Backed Consumption Counters (~1 day) -- Priority: LOW (depends on Item 3)
+
+- `consumption_enforcer.py` -- replace 5 sequential DB queries with Redis INCR+EXPIRE counters
+- Keep DB writes for audit trail; Redis is fast-path check
+- Fallback to existing DB queries if Redis unavailable
+
+#### Item 7: Collection DB Connection Pooling (~0.5 day) -- Priority: LOW
+
+- `collection_db.py` -- replace per-call `sqlite3.connect()` with context-manager pool (3 connections)
+- Add WAL mode pragma to pooled connections
+
+#### Implementation Order
+
+```
+Day 1-2: Item 1 (Circuit Breakers) -- new file + handler integration + admin endpoints
+Day 3:   Item 2 (Cache Eviction) + Item 7 (Collection DB Pooling)
+Day 4:   Item 3 (Redis Foundation)
+Day 5:   Item 4 (Redis Rate Limiting)
+Day 6:   Item 5 (Redis JWT Cache) + Item 6 (Redis Consumption Counters)
+Day 7:   Integration testing all items together
+```
+
+#### Files Modified (Phase 2)
+
+| File | Items | Changes |
+|------|-------|---------|
+| **NEW** `llm/circuit_breaker.py` | 1 | CircuitBreaker class + registry |
+| **NEW** `core/cache_janitor.py` | 2 | Background cleanup task |
+| **NEW** `core/redis_client.py` | 3 | Async Redis singleton |
+| `llm/handler.py` | 1 | Circuit breaker wrapping retry loop |
+| `agent/executor.py` | 1 | Handle CircuitBreakerOpen |
+| `agent/phase_executor.py` | 1 | Handle CircuitBreakerOpen |
+| `api/admin_routes.py` | 1, 3 | Circuit breaker + Redis admin endpoints |
+| `main.py` | 2, 3 | Cache janitor + Redis lifecycle |
+| `core/configuration_service.py` | 2 | LLM pool max-size |
+| `vectorstore/factory.py` | 2 | Instance pool max-size |
+| `core/config.py` | 2 | Per-user dict max-size |
+| `auth/rate_limiter.py` | 4 | Redis rate limiting + async |
+| `auth/middleware.py` | 5 | Redis L2 JWT cache + async |
+| `auth/consumption_enforcer.py` | 6 | Redis consumption counters |
+| `core/collection_db.py` | 7 | Connection pooling |
+| `requirements.txt` | 3 | Add redis>=5.0.0 |
 
 ### Phase 3: Horizontal Scaling (1-3 months) -- Scale to 100,000s of agents
 
