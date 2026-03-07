@@ -315,8 +315,30 @@ def create_app():
             app_logger.error(f"Failed to initialize extensions: {e}", exc_info=True)
             app_logger.warning("Extensions will be lazy-initialized on first use.")
 
-        # Start the single RAG worker as a background task
-        asyncio.create_task(rag_processing_worker())
+        # Initialize session metadata index (SQLite cache for fast session listing)
+        from trusted_data_agent.core.session_manager import (
+            _init_session_index, _rebuild_session_index, SESSION_INDEX_DB
+        )
+        await _init_session_index()
+        # Rebuild index from session files if DB is missing, empty, or has no rows
+        _needs_rebuild = not SESSION_INDEX_DB.exists() or SESSION_INDEX_DB.stat().st_size < 4096
+        if not _needs_rebuild:
+            try:
+                import aiosqlite as _aiosqlite
+                async with _aiosqlite.connect(str(SESSION_INDEX_DB)) as _db:
+                    _row = await (await _db.execute("SELECT COUNT(*) FROM session_index")).fetchone()
+                    _needs_rebuild = (_row[0] == 0)
+            except Exception:
+                _needs_rebuild = True
+        if _needs_rebuild:
+            app_logger.info("Session index is empty or missing, rebuilding from session files...")
+            await _rebuild_session_index()
+
+        # Start RAG processing workers (configurable via TDA_RAG_WORKERS env var)
+        _rag_worker_count = int(os.environ.get('TDA_RAG_WORKERS', '4'))
+        for _i in range(_rag_worker_count):
+            asyncio.create_task(rag_processing_worker())
+        app_logger.info(f"Started {_rag_worker_count} RAG processing worker(s)")
 
         # Print ready message now that all initialization is complete
         host = APP_STATE.get('server_host', '127.0.0.1')

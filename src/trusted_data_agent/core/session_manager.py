@@ -9,6 +9,7 @@ import shutil # For potential cleanup later if needed
 import asyncio # For sending notifications asynchronously
 import tempfile # For atomic file writes
 import aiofiles # For async file I/O
+import aiosqlite # For async session index database
 
 import google.generativeai as genai
 from trusted_data_agent.agent.prompts import PROVIDER_SYSTEM_PROMPTS
@@ -58,6 +59,198 @@ def _get_session_lock(session_id: str) -> asyncio.Lock:
     if session_id not in _session_locks:
         _session_locks[session_id] = asyncio.Lock()
     return _session_locks[session_id]
+
+
+# ---------------------------------------------------------------------------
+# Session Metadata Index — SQLite cache for fast session listing
+# ---------------------------------------------------------------------------
+# The index is a CACHE over session JSON files. If deleted, the system falls
+# back to file-scanning and rebuilds the index on next startup.
+# ---------------------------------------------------------------------------
+SESSION_INDEX_DB = SESSIONS_DIR / "session_index.db"
+_session_index_ready = False  # Set True after _init_session_index succeeds
+
+
+async def _init_session_index():
+    """Create the session_index table and indexes if they don't exist."""
+    global _session_index_ready
+    try:
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        async with aiosqlite.connect(str(SESSION_INDEX_DB)) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA synchronous=NORMAL")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS session_index (
+                    session_id TEXT PRIMARY KEY,
+                    user_uuid TEXT NOT NULL,
+                    name TEXT DEFAULT 'New Chat',
+                    created_at TEXT,
+                    last_updated TEXT,
+                    profile_tag TEXT,
+                    profile_id TEXT,
+                    archived INTEGER DEFAULT 0,
+                    archived_at TEXT,
+                    is_temporary INTEGER DEFAULT 0,
+                    temporary_purpose TEXT,
+                    models_used TEXT DEFAULT '[]',
+                    profile_tags_used TEXT DEFAULT '[]',
+                    genie_metadata TEXT DEFAULT '{}'
+                )
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_si_user
+                ON session_index(user_uuid)
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_si_user_updated
+                ON session_index(user_uuid, last_updated DESC)
+            """)
+            await db.commit()
+        _session_index_ready = True
+        app_logger.info("Session index database initialized")
+    except Exception as e:
+        _session_index_ready = False
+        app_logger.error(f"Failed to initialize session index: {e}", exc_info=True)
+
+
+async def _upsert_session_index(session_id: str, session_data: dict):
+    """Insert or update a session's metadata in the index. Fire-and-forget safe."""
+    if not _session_index_ready:
+        return
+    try:
+        genie_metadata = session_data.get("genie_metadata", {})
+        async with aiosqlite.connect(str(SESSION_INDEX_DB)) as db:
+            await db.execute("""
+                INSERT INTO session_index
+                    (session_id, user_uuid, name, created_at, last_updated,
+                     profile_tag, profile_id, archived, archived_at,
+                     is_temporary, temporary_purpose, models_used,
+                     profile_tags_used, genie_metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    name=excluded.name,
+                    last_updated=excluded.last_updated,
+                    profile_tag=excluded.profile_tag,
+                    profile_id=excluded.profile_id,
+                    archived=excluded.archived,
+                    archived_at=excluded.archived_at,
+                    is_temporary=excluded.is_temporary,
+                    temporary_purpose=excluded.temporary_purpose,
+                    models_used=excluded.models_used,
+                    profile_tags_used=excluded.profile_tags_used,
+                    genie_metadata=excluded.genie_metadata
+            """, (
+                session_id,
+                session_data.get("user_uuid", ""),
+                session_data.get("name", "New Chat"),
+                session_data.get("created_at"),
+                session_data.get("last_updated"),
+                session_data.get("profile_tag"),
+                session_data.get("profile_id"),
+                1 if session_data.get("archived") else 0,
+                session_data.get("archived_at"),
+                1 if session_data.get("is_temporary") else 0,
+                session_data.get("temporary_purpose"),
+                json.dumps(session_data.get("models_used", [])),
+                json.dumps(session_data.get("profile_tags_used", [])),
+                json.dumps(genie_metadata),
+            ))
+            await db.commit()
+    except Exception as e:
+        app_logger.warning(f"Failed to upsert session index for {session_id}: {e}")
+
+
+async def _delete_from_session_index(session_id: str):
+    """Remove a session from the index."""
+    if not _session_index_ready:
+        return
+    try:
+        async with aiosqlite.connect(str(SESSION_INDEX_DB)) as db:
+            await db.execute("DELETE FROM session_index WHERE session_id=?", (session_id,))
+            await db.commit()
+    except Exception as e:
+        app_logger.warning(f"Failed to delete session index entry for {session_id}: {e}")
+
+
+async def _query_session_index(user_uuid: str, include_archived: bool = False,
+                                filter_by_user: bool = True) -> list[dict] | None:
+    """
+    Query session summaries from the index.
+
+    Returns list of summary dicts on success, or None if the index is
+    unavailable (caller should fall back to file scan).
+    """
+    if not _session_index_ready:
+        return None
+    try:
+        async with aiosqlite.connect(str(SESSION_INDEX_DB)) as db:
+            db.row_factory = aiosqlite.Row
+            if filter_by_user:
+                if include_archived:
+                    cursor = await db.execute(
+                        "SELECT * FROM session_index WHERE user_uuid=? ORDER BY last_updated DESC",
+                        (user_uuid,))
+                else:
+                    cursor = await db.execute(
+                        "SELECT * FROM session_index WHERE user_uuid=? AND archived=0 ORDER BY last_updated DESC",
+                        (user_uuid,))
+            else:
+                if include_archived:
+                    cursor = await db.execute(
+                        "SELECT * FROM session_index ORDER BY last_updated DESC")
+                else:
+                    cursor = await db.execute(
+                        "SELECT * FROM session_index WHERE archived=0 ORDER BY last_updated DESC")
+
+            rows = await cursor.fetchall()
+            summaries = []
+            for row in rows:
+                summaries.append({
+                    "id": row["session_id"],
+                    "name": row["name"] or "Unnamed Session",
+                    "created_at": row["created_at"] or "Unknown",
+                    "last_updated": row["last_updated"] or row["created_at"] or "Unknown",
+                    "profile_tag": row["profile_tag"],
+                    "profile_id": row["profile_id"],
+                    "archived": bool(row["archived"]),
+                    "archived_at": row["archived_at"],
+                    "is_temporary": bool(row["is_temporary"]),
+                    "temporary_purpose": row["temporary_purpose"],
+                    "models_used": json.loads(row["models_used"] or "[]"),
+                    "profile_tags_used": json.loads(row["profile_tags_used"] or "[]"),
+                    "genie_metadata": json.loads(row["genie_metadata"] or "{}"),
+                })
+            app_logger.debug(f"Session index returned {len(summaries)} sessions for user {user_uuid}")
+            return summaries
+    except Exception as e:
+        app_logger.warning(f"Session index query failed, will fall back to file scan: {e}")
+        return None
+
+
+async def _rebuild_session_index():
+    """Full scan of session JSON files to populate/rebuild the index."""
+    if not _session_index_ready:
+        app_logger.warning("Cannot rebuild session index: not initialized")
+        return
+    count = 0
+    errors = 0
+    try:
+        if not SESSIONS_DIR.is_dir():
+            return
+        for session_file in SESSIONS_DIR.glob("**/*.json"):
+            try:
+                async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                session_id = data.get("id", session_file.stem)
+                await _upsert_session_index(session_id, data)
+                count += 1
+            except Exception as e:
+                errors += 1
+                app_logger.debug(f"Skipped {session_file.name} during index rebuild: {e}")
+        app_logger.info(f"Session index rebuilt: {count} sessions indexed, {errors} errors")
+    except Exception as e:
+        app_logger.error(f"Session index rebuild failed: {e}", exc_info=True)
 
 
 from contextlib import asynccontextmanager
@@ -180,6 +373,9 @@ async def _save_session(user_uuid: str, session_id: str, session_data: dict):
                 pass
             raise
         app_logger.debug(f"Successfully saved session '{session_id}' for user '{user_uuid}'.")
+
+        # Update session index (fire-and-forget — index is a cache)
+        asyncio.create_task(_upsert_session_index(session_id, session_data))
 
         # --- MODIFICATION START: Send session_model_update notification (with deduplication) ---
         notification_queues = APP_STATE.get("notification_queues", {}).get(user_uuid, set())
@@ -373,68 +569,81 @@ async def get_all_sessions(user_uuid: str, limit: int = None, offset: int = 0, i
     app_logger.debug(f"Getting all sessions for user '{user_uuid}'. Filter by user: {APP_CONFIG.SESSIONS_FILTER_BY_USER}, limit={limit}, offset={offset}")
     session_summaries = []
 
-    # Determine which directories to scan based on filter setting
-    if APP_CONFIG.SESSIONS_FILTER_BY_USER:
-        # User-specific mode: scan only the user's directory
-        user_session_dir = SESSIONS_DIR / "".join(c for c in user_uuid if c.isalnum() or c in ['-', '_'])
-        app_logger.debug(f"Scanning user-specific directory: {user_session_dir}")
-        if not user_session_dir.is_dir():
-            # Create the directory if it doesn't exist (first time for this user)
-            try:
-                user_session_dir.mkdir(parents=True, exist_ok=True)
-                app_logger.info(f"Created user session directory: {user_session_dir}")
-            except OSError as e:
-                app_logger.error(f"Failed to create user session directory: {user_session_dir}. Error: {e}")
-                return {"sessions": [], "total_count": 0, "has_more": False}
-        scan_dirs = [user_session_dir]
+    # --- FAST PATH: Try session index first ---
+    indexed = await _query_session_index(
+        user_uuid,
+        include_archived=include_archived,
+        filter_by_user=APP_CONFIG.SESSIONS_FILTER_BY_USER
+    )
+    if indexed is not None:
+        session_summaries = indexed
+        app_logger.debug(f"Session index returned {len(session_summaries)} sessions (fast path)")
     else:
-        # All users mode: scan all subdirectories
-        app_logger.debug(f"Scanning all user directories in: {SESSIONS_DIR}")
-        if not SESSIONS_DIR.is_dir():
-            app_logger.warning(f"Sessions directory not found: {SESSIONS_DIR}. Returning empty list.")
-            return {"sessions": [], "total_count": 0, "has_more": False}
-        scan_dirs = [d for d in SESSIONS_DIR.iterdir() if d.is_dir()]
+        # --- SLOW PATH: Fall back to file scan ---
+        app_logger.debug("Session index unavailable, falling back to file scan")
 
-    # Scan all determined directories (recursively to include child Genie sessions)
-    # First pass: collect all session summaries WITHOUT genie metadata enrichment
-    for session_dir in scan_dirs:
-        for session_file in session_dir.glob("**/*.json"):
-            app_logger.debug(f"Found potential session file: {session_file.name}")
-            try:
-                async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
-                    # Load only necessary fields for summary to improve performance
-                    content = await f.read()
-                    data = json.loads(content)
+        # Determine which directories to scan based on filter setting
+        if APP_CONFIG.SESSIONS_FILTER_BY_USER:
+            # User-specific mode: scan only the user's directory
+            user_session_dir = SESSIONS_DIR / "".join(c for c in user_uuid if c.isalnum() or c in ['-', '_'])
+            app_logger.debug(f"Scanning user-specific directory: {user_session_dir}")
+            if not user_session_dir.is_dir():
+                # Create the directory if it doesn't exist (first time for this user)
+                try:
+                    user_session_dir.mkdir(parents=True, exist_ok=True)
+                    app_logger.info(f"Created user session directory: {user_session_dir}")
+                except OSError as e:
+                    app_logger.error(f"Failed to create user session directory: {user_session_dir}. Error: {e}")
+                    return {"sessions": [], "total_count": 0, "has_more": False}
+            scan_dirs = [user_session_dir]
+        else:
+            # All users mode: scan all subdirectories
+            app_logger.debug(f"Scanning all user directories in: {SESSIONS_DIR}")
+            if not SESSIONS_DIR.is_dir():
+                app_logger.warning(f"Sessions directory not found: {SESSIONS_DIR}. Returning empty list.")
+                return {"sessions": [], "total_count": 0, "has_more": False}
+            scan_dirs = [d for d in SESSIONS_DIR.iterdir() if d.is_dir()]
 
-                    genie_metadata = data.get("genie_metadata", {})
+        # Scan all determined directories (recursively to include child Genie sessions)
+        # First pass: collect all session summaries WITHOUT genie metadata enrichment
+        for session_dir in scan_dirs:
+            for session_file in session_dir.glob("**/*.json"):
+                app_logger.debug(f"Found potential session file: {session_file.name}")
+                try:
+                    async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+                        # Load only necessary fields for summary to improve performance
+                        content = await f.read()
+                        data = json.loads(content)
 
-                    summary = {
-                        "id": data.get("id", session_file.stem),
-                        "name": data.get("name", "Unnamed Session"),
-                        "created_at": data.get("created_at", "Unknown"),
-                        "models_used": data.get("models_used", []),
-                        "profile_tags_used": data.get("profile_tags_used", []),
-                        "last_updated": data.get("last_updated", data.get("created_at", "Unknown")),
-                        "archived": data.get("archived", False),
-                        "archived_at": data.get("archived_at"),
-                        # Additional fields for UI display
-                        "profile_tag": data.get("profile_tag"),
-                        "profile_id": data.get("profile_id"),
-                        "is_temporary": data.get("is_temporary", False),
-                        "temporary_purpose": data.get("temporary_purpose"),
-                        "genie_metadata": genie_metadata
-                    }
-                    app_logger.debug(f"Loaded summary for {session_file.name}: models_used={summary['models_used']}, profile_tags_used={summary['profile_tags_used']}")
-                    session_summaries.append(summary)
-                    app_logger.debug(f"Successfully loaded summary for {session_file.name}.")
-            except (json.JSONDecodeError, OSError, KeyError) as e:
-                app_logger.error(f"Error loading summary from session file '{session_file}': {e}", exc_info=False) # Keep log concise
-                # Optionally add a placeholder or skip corrupted files
-                session_summaries.append({
-                     "id": session_file.stem,
-                     "name": f"Error Loading ({session_file.stem})",
-                     "created_at": "Unknown"
-                })
+                        genie_metadata = data.get("genie_metadata", {})
+
+                        summary = {
+                            "id": data.get("id", session_file.stem),
+                            "name": data.get("name", "Unnamed Session"),
+                            "created_at": data.get("created_at", "Unknown"),
+                            "models_used": data.get("models_used", []),
+                            "profile_tags_used": data.get("profile_tags_used", []),
+                            "last_updated": data.get("last_updated", data.get("created_at", "Unknown")),
+                            "archived": data.get("archived", False),
+                            "archived_at": data.get("archived_at"),
+                            # Additional fields for UI display
+                            "profile_tag": data.get("profile_tag"),
+                            "profile_id": data.get("profile_id"),
+                            "is_temporary": data.get("is_temporary", False),
+                            "temporary_purpose": data.get("temporary_purpose"),
+                            "genie_metadata": genie_metadata
+                        }
+                        app_logger.debug(f"Loaded summary for {session_file.name}: models_used={summary['models_used']}, profile_tags_used={summary['profile_tags_used']}")
+                        session_summaries.append(summary)
+                        app_logger.debug(f"Successfully loaded summary for {session_file.name}.")
+                except (json.JSONDecodeError, OSError, KeyError) as e:
+                    app_logger.error(f"Error loading summary from session file '{session_file}': {e}", exc_info=False) # Keep log concise
+                    # Optionally add a placeholder or skip corrupted files
+                    session_summaries.append({
+                         "id": session_file.stem,
+                         "name": f"Error Loading ({session_file.stem})",
+                         "created_at": "Unknown"
+                    })
 
     # --- BATCH GENIE METADATA ENRICHMENT ---
     # Collect all slave session IDs that need metadata enrichment
@@ -680,6 +889,9 @@ async def delete_session(user_uuid: str, session_id: str, archived_reason: str =
                 await f.write(json.dumps(session_data, indent=2, ensure_ascii=False))
 
             app_logger.info(f"Successfully archived session file: {session_path}")
+
+            # Update session index with archived status
+            asyncio.create_task(_upsert_session_index(session_id, session_data))
 
             # Clean up uploads directory for this session
             _cleanup_session_uploads(user_uuid, session_id)

@@ -539,8 +539,9 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     else:
                         raise ValueError(f"Unsupported provider: {provider}")
 
-                    # === Add to pool after successful creation ===
-                    llm_pool[pool_key] = temp_llm_instance
+                    # === Add to pool after successful creation (lock-protected) ===
+                    async with APP_STATE["_pool_lock"]:
+                        llm_pool[pool_key] = temp_llm_instance
                     app_logger.debug(f"Created LLM instance for {provider}/{model} (added to pool)")
 
                 except Exception as e:
@@ -641,7 +642,8 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                 else:
                     # Create new MCP client with the config
                     temp_mcp_client = MultiServerMCPClient(server_configs)
-                    client_pool[pool_key] = temp_mcp_client
+                    async with APP_STATE["_pool_lock"]:
+                        client_pool[pool_key] = temp_mcp_client
                     app_logger.debug(f"✓ Created new MCP client for server {server_name} (ID: {mcp_server_id}, added to pool)")
 
                 # Test MCP connection with 10 second timeout (even for pooled clients - health check)

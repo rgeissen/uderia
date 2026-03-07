@@ -155,6 +155,67 @@ def get_provider_config_details(provider: str, model: str, credentials: Dict[str
     return details
 
 
+# ---------------------------------------------------------------------------
+# LLM Client Pool — reuses clients per (provider, model, credentials) key
+# Phase 1 scaling: avoids creating a new client object per request
+# ---------------------------------------------------------------------------
+import hashlib as _hashlib
+import json as _json
+import logging as _logging
+
+_pool_logger = _logging.getLogger("quart.app")
+_client_pool: dict = {}
+_POOL_MAX_SIZE = 50
+
+
+def _make_pool_key(provider: str, model: str, credentials: dict) -> str:
+    """Generate a deterministic cache key for an LLM client."""
+    # Only include non-None credential values, sorted for consistency
+    cred_str = _json.dumps(
+        {k: v for k, v in sorted(credentials.items()) if v is not None},
+        sort_keys=True,
+    )
+    cred_hash = _hashlib.sha256(cred_str.encode()).hexdigest()[:16]
+    return f"{provider}:{model}:{cred_hash}"
+
+
+async def get_or_create_llm_client(
+    provider: str, model: str, credentials: Dict[str, Any], validate: bool = False
+) -> Any:
+    """
+    Get a cached LLM client or create a new one.
+
+    For validate=True, always creates a fresh client (to test connectivity).
+    Otherwise checks the module-level pool first.
+    """
+    if validate:
+        return await create_llm_client(provider, model, credentials, validate=True)
+
+    pool_key = _make_pool_key(provider, model, credentials)
+
+    if pool_key in _client_pool:
+        _pool_logger.debug(f"LLM client pool HIT: {provider}/{model}")
+        return _client_pool[pool_key]
+
+    # Create new client
+    client = await create_llm_client(provider, model, credentials)
+
+    # Evict oldest if at capacity
+    if len(_client_pool) >= _POOL_MAX_SIZE:
+        oldest_key = next(iter(_client_pool))
+        del _client_pool[oldest_key]
+
+    _client_pool[pool_key] = client
+    _pool_logger.debug(f"LLM client pool MISS, created and cached: {provider}/{model}")
+    return client
+
+
+def clear_client_pool():
+    """Clear the module-level LLM client pool."""
+    _client_pool.clear()
+    _pool_logger.info("LLM client pool cleared")
+
+
 async def test_llm_credentials(provider: str, model: str, credentials: Dict[str, Any]) -> Tuple[bool, str]:
     """
     Test LLM credentials by making a lightweight API call.

@@ -2366,7 +2366,7 @@ async def ask_stream():
         set_user_llm_instance, set_user_mcp_client,
         set_user_provider, set_user_model
     )
-    from trusted_data_agent.llm.client_factory import create_llm_client
+    from trusted_data_agent.llm.client_factory import get_or_create_llm_client
     from trusted_data_agent.core.configuration_service import retrieve_credentials_for_provider
 
     user_llm = get_user_llm_instance(user_uuid)
@@ -2396,8 +2396,8 @@ async def ask_stream():
                             if credentials_result.get('credentials'):
                                 credentials = credentials_result['credentials']
 
-                                # Create LLM instance
-                                user_llm = await create_llm_client(provider, model, credentials)
+                                # Create LLM instance (pooled)
+                                user_llm = await get_or_create_llm_client(provider, model, credentials)
                                 if user_llm:
                                     set_user_llm_instance(user_llm, user_uuid)
                                     APP_STATE['llm'] = user_llm

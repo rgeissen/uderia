@@ -190,6 +190,9 @@ APP_STATE = {
     # TTS client caching (managed by tts_service.py)
     "tts_client_global": None,       # Cached global TTS client (for 'global' mode)
     "tts_clients_by_user": {},       # Per-user TTS client cache (for 'user' mode)
+
+    # Fine-grained lock for pool mutations (Phase 1 scaling)
+    "_pool_lock": asyncio.Lock(),
 }
 
 # Note: Recommended models are now stored in the database (recommended_models table)
@@ -533,9 +536,7 @@ def set_user_llm_instance(llm_instance, user_uuid: str):
     """
     if not user_uuid:
         raise ValueError("user_uuid is required for set_user_llm_instance")
-    if "llm_by_user" not in APP_STATE:
-        APP_STATE["llm_by_user"] = {}
-    APP_STATE["llm_by_user"][user_uuid] = llm_instance
+    APP_STATE.setdefault("llm_by_user", {})[user_uuid] = llm_instance
     # Also update global APP_STATE for backwards compatibility
     APP_STATE["llm"] = llm_instance
 
@@ -571,9 +572,7 @@ def set_user_mcp_client(mcp_client, user_uuid: str):
     """
     if not user_uuid:
         raise ValueError("user_uuid is required for set_user_mcp_client")
-    if "mcp_clients" not in APP_STATE:
-        APP_STATE["mcp_clients"] = {}
-    APP_STATE["mcp_clients"][user_uuid] = mcp_client
+    APP_STATE.setdefault("mcp_clients", {})[user_uuid] = mcp_client
     # Also update global APP_STATE for backwards compatibility
     APP_STATE["mcp_client"] = mcp_client
 

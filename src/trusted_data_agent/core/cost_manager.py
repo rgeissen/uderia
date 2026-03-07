@@ -35,7 +35,11 @@ class CostManager:
         except ImportError:
             logger.warning("LiteLLM library not available - will use manual pricing only")
             self._litellm = None
-        
+
+        # Cost lookup cache: {cache_key: (cost_tuple_or_None, timestamp)}
+        self._cost_cache: dict = {}
+        self._COST_CACHE_TTL = 300  # 5 minutes
+
         # Load bootstrap costs from tda_config.json if not already loaded
         self._ensure_bootstrap_costs_loaded()
     
@@ -167,8 +171,11 @@ class CostManager:
             logger.error(error_msg, exc_info=True)
             results['errors'].append(error_msg)
 
+        # Clear cost cache after sync so new pricing takes effect immediately
+        self.clear_cost_cache()
+
         return results
-    
+
     def _infer_provider_from_model(self, model_name: str) -> str:
         """Infer provider from model name patterns."""
         model_lower = model_name.lower()
@@ -222,18 +229,28 @@ class CostManager:
     
     def get_model_cost(self, provider: str, model: str) -> Optional[Tuple[float, float]]:
         """
-        Get pricing for a specific model.
-        
+        Get pricing for a specific model (with in-memory TTL cache).
+
         Args:
             provider: Provider name (e.g., 'Google', 'Anthropic', 'Amazon')
             model: Model name (e.g., 'gemini-2.5-flash', ARN, or inference profile)
-        
+
         Returns:
             Tuple of (input_cost_per_million, output_cost_per_million) or None if not found
         """
+        import time
+
         # Normalize model name to strip ARNs and regional prefixes
         normalized_model = self._normalize_model_name(model)
-        
+        cache_key = f"{provider}:{normalized_model}"
+
+        # Check cache first
+        cached = self._cost_cache.get(cache_key)
+        if cached is not None:
+            value, ts = cached
+            if time.time() - ts < self._COST_CACHE_TTL:
+                return value
+
         with get_db_session() as db:
             # Try exact match first
             stmt = select(LLMModelCost).where(
@@ -241,10 +258,12 @@ class CostManager:
                 LLMModelCost.model == model
             )
             cost_entry = db.execute(stmt).scalar_one_or_none()
-            
+
             if cost_entry:
-                return (cost_entry.input_cost_per_million, cost_entry.output_cost_per_million)
-            
+                result = (cost_entry.input_cost_per_million, cost_entry.output_cost_per_million)
+                self._cost_cache[cache_key] = (result, time.time())
+                return result
+
             # Try normalized model name
             if normalized_model != model:
                 stmt = select(LLMModelCost).where(
@@ -252,12 +271,21 @@ class CostManager:
                     LLMModelCost.model == normalized_model
                 )
                 cost_entry = db.execute(stmt).scalar_one_or_none()
-                
+
                 if cost_entry:
                     logger.debug(f"Found cost for normalized model: {model} -> {normalized_model}")
-                    return (cost_entry.input_cost_per_million, cost_entry.output_cost_per_million)
-            
+                    result = (cost_entry.input_cost_per_million, cost_entry.output_cost_per_million)
+                    self._cost_cache[cache_key] = (result, time.time())
+                    return result
+
+            # Cache the miss too (avoids repeated DB queries for unknown models)
+            self._cost_cache[cache_key] = (None, time.time())
             return None
+
+    def clear_cost_cache(self):
+        """Clear the in-memory cost lookup cache."""
+        self._cost_cache.clear()
+        logger.info("Cost cache cleared")
     
     def get_fallback_cost(self) -> Tuple[float, float]:
         """

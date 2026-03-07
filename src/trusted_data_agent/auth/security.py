@@ -286,11 +286,17 @@ def revoke_token(token: str) -> bool:
                 auth_token.revoked = True
                 auth_token.revoked_at = datetime.now(timezone.utc)
                 logger.info(f"Token revoked for user {auth_token.user_id}")
+                # Invalidate auth cache so revoked token is not served from cache
+                try:
+                    from trusted_data_agent.auth.middleware import invalidate_auth_cache
+                    invalidate_auth_cache(token_hash=token_hash)
+                except ImportError:
+                    pass
                 return True
             else:
                 logger.warning("Attempted to revoke non-existent token")
                 return False
-    
+
     except Exception as e:
         logger.error(f"Error revoking token: {e}", exc_info=True)
         return False
@@ -320,7 +326,15 @@ def revoke_all_user_tokens(user_id: str) -> int:
             for token in tokens:
                 token.revoked = True
                 token.revoked_at = now
-            
+
+            # Clear entire auth cache (simpler than finding each user's cached entries)
+            if count > 0:
+                try:
+                    from trusted_data_agent.auth.middleware import invalidate_auth_cache
+                    invalidate_auth_cache()
+                except ImportError:
+                    pass
+
             logger.info(f"Revoked {count} tokens for user {user_id}")
             return count
     

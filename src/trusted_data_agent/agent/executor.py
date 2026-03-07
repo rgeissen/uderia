@@ -2733,7 +2733,7 @@ Response:"""
         if self.current_provider and (self.current_provider != current_user_provider or self.current_model != current_user_model):
             app_logger.info(f"🔄 Profile uses different LLM than default: {self.current_provider}/{self.current_model} vs {current_user_provider}/{current_user_model}")
             try:
-                from trusted_data_agent.llm.client_factory import create_llm_client
+                from trusted_data_agent.llm.client_factory import get_or_create_llm_client
                 from trusted_data_agent.core.configuration_service import retrieve_credentials_for_provider
 
                 credentials_result = await retrieve_credentials_for_provider(self.user_uuid, self.current_provider)
@@ -2757,7 +2757,7 @@ Response:"""
                     except Exception as e:
                         app_logger.debug(f"Could not merge profile LLM config credentials: {e}")
 
-                    self.profile_llm_instance = await create_llm_client(self.current_provider, self.current_model, credentials)
+                    self.profile_llm_instance = await get_or_create_llm_client(self.current_provider, self.current_model, credentials)
                     app_logger.info(f"✅ Created profile-specific LLM instance: {self.current_provider}/{self.current_model}")
                 else:
                     app_logger.warning(f"No credentials found for profile provider {self.current_provider}, falling back to global LLM instance")
@@ -2771,7 +2771,7 @@ Response:"""
         # because they may use different providers (e.g., Google for strategic, Friendli for tactical)
         if self.is_dual_model_active:
             try:
-                from trusted_data_agent.llm.client_factory import create_llm_client
+                from trusted_data_agent.llm.client_factory import get_or_create_llm_client
                 from trusted_data_agent.auth.encryption import decrypt_credentials
 
                 # Create strategic LLM instance
@@ -2780,7 +2780,7 @@ Response:"""
                 if not strategic_creds:
                     raise ValueError(f"No credentials found for strategic model provider: {self.strategic_provider}")
 
-                self.strategic_llm_instance = await create_llm_client(
+                self.strategic_llm_instance = await get_or_create_llm_client(
                     self.strategic_provider,
                     self.strategic_model,
                     strategic_creds
@@ -2793,7 +2793,7 @@ Response:"""
                 if not tactical_creds:
                     raise ValueError(f"No credentials found for tactical model provider: {self.tactical_provider}")
 
-                self.tactical_llm_instance = await create_llm_client(
+                self.tactical_llm_instance = await get_or_create_llm_client(
                     self.tactical_provider,
                     self.tactical_model,
                     tactical_creds
@@ -4673,11 +4673,11 @@ The following domain knowledge may be relevant to this conversation:
                             except Exception as e:
                                 app_logger.error(f"Error loading stored credentials: {e}", exc_info=True)
                             
-                            # Create temporary LLM instance using shared factory
-                            from trusted_data_agent.llm.client_factory import create_llm_client, get_provider_config_details
-                            
+                            # Create temporary LLM instance using shared factory (pooled)
+                            from trusted_data_agent.llm.client_factory import get_or_create_llm_client, get_provider_config_details
+
                             try:
-                                temp_llm_instance = await create_llm_client(provider, model, credentials)
+                                temp_llm_instance = await get_or_create_llm_client(provider, model, credentials)
                                 
                                 # Only update if LLM instance was created successfully
                                 # Update APP_CONFIG and executor's cached values for this turn

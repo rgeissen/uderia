@@ -5,6 +5,8 @@ Provides decorators for requiring authentication and authorization.
 """
 
 import logging
+import time as _time
+import hashlib as _hashlib
 from functools import wraps
 from typing import Optional, Callable
 
@@ -16,6 +18,30 @@ from trusted_data_agent.auth.database import get_db_session
 from trusted_data_agent.auth.models import User
 
 logger = logging.getLogger("quart.app")
+
+# ---------------------------------------------------------------------------
+# In-memory JWT auth cache — eliminates 2 DB queries per request for cached tokens
+# ---------------------------------------------------------------------------
+_auth_cache: dict = {}  # token_hash -> (User, timestamp)
+_AUTH_CACHE_TTL = 60  # seconds — short enough that revocations propagate quickly
+_AUTH_CACHE_MAX_SIZE = 10000
+
+
+def invalidate_auth_cache(token: str = None, token_hash: str = None):
+    """
+    Remove a specific token from the auth cache, or clear the entire cache.
+
+    Called from security.py on token revocation to ensure revoked tokens
+    are not served from cache.
+    """
+    if token:
+        token_hash = _hashlib.sha256(token.encode()).hexdigest()
+    if token_hash and token_hash in _auth_cache:
+        del _auth_cache[token_hash]
+        logger.debug(f"Invalidated auth cache entry for token hash {token_hash[:12]}...")
+    elif token is None and token_hash is None:
+        _auth_cache.clear()
+        logger.debug("Auth cache cleared entirely")
 
 
 def get_current_user() -> Optional[User]:
@@ -49,19 +75,29 @@ def get_current_user() -> Optional[User]:
             return None
     
     # Otherwise, verify as JWT token
+    # Check auth cache first (avoids 2 DB queries per request)
+    _token_hash = _hashlib.sha256(token.encode()).hexdigest()
+    _cached = _auth_cache.get(_token_hash)
+    if _cached is not None:
+        _cached_user, _cache_ts = _cached
+        if _time.time() - _cache_ts < _AUTH_CACHE_TTL:
+            return _cached_user
+        else:
+            del _auth_cache[_token_hash]
+
     payload = verify_auth_token(token)
     if not payload:
         return None
-    
+
     user_id = payload.get('user_id')
     if not user_id:
         return None
-    
+
     # Load user from database
     try:
         with get_db_session() as session:
             user = session.query(User).filter_by(id=user_id).first()
-            
+
             if not user:
                 logger.warning(f"Token valid but user {user_id} not found")
                 # Revoke this token since the user no longer exists
@@ -72,15 +108,22 @@ def get_current_user() -> Optional[User]:
                 except Exception as e:
                     logger.error(f"Failed to revoke orphaned token: {e}")
                 return None
-            
+
             if not user.is_active:
                 logger.warning(f"Inactive user {user_id} attempted to authenticate")
                 return None
-            
+
             # Detach from session to use outside context manager
             session.expunge(user)
+
+            # Cache the verified user (evict oldest if at capacity)
+            if len(_auth_cache) >= _AUTH_CACHE_MAX_SIZE:
+                _oldest_key = min(_auth_cache, key=lambda k: _auth_cache[k][1])
+                del _auth_cache[_oldest_key]
+            _auth_cache[_token_hash] = (user, _time.time())
+
             return user
-    
+
     except Exception as e:
         logger.error(f"Error loading user during authentication: {e}", exc_info=True)
         return None

@@ -43,6 +43,39 @@ from trusted_data_agent.agent.prompt_encryption import (
 # Initialize logger
 logger = logging.getLogger("quart.app")
 
+import time as _time
+
+
+class _TTLCache:
+    """Simple TTL cache with max-size eviction for prompt data."""
+
+    def __init__(self, max_size: int = 5000, ttl: int = 300):
+        self._data: dict = {}
+        self._ts: dict = {}
+        self._max_size = max_size
+        self._ttl = ttl
+
+    def get(self, key, default=None):
+        if key in self._data and _time.time() - self._ts[key] < self._ttl:
+            return self._data[key]
+        # Expired or missing — clean up if present
+        self._data.pop(key, None)
+        self._ts.pop(key, None)
+        return default
+
+    def __setitem__(self, key, value):
+        if len(self._data) >= self._max_size and key not in self._data:
+            # Evict oldest entry
+            oldest = min(self._ts, key=self._ts.get)
+            del self._data[oldest]
+            del self._ts[oldest]
+        self._data[key] = value
+        self._ts[key] = _time.time()
+
+    def clear(self):
+        self._data.clear()
+        self._ts.clear()
+
 
 class PromptLoader:
     """
@@ -110,10 +143,10 @@ class PromptLoader:
             logger.warning(f"Database not found during PromptLoader init: {self.db_path}")
             logger.warning("PromptLoader initialized but will fail on prompt access until database is created")
         
-        # Step 4: Initialize cache
-        self._prompt_cache: Dict[str, str] = {}
-        self._parameter_cache: Dict[str, Dict] = {}
-        self._override_cache: Dict[str, Any] = {}
+        # Step 4: Initialize bounded caches with TTL (Phase 1 scaling)
+        self._prompt_cache = _TTLCache(max_size=5000, ttl=300)
+        self._parameter_cache = _TTLCache(max_size=2000, ttl=300)
+        self._override_cache = _TTLCache(max_size=2000, ttl=300)
         
         logger.info(f"PromptLoader initialized successfully (Tier: {self._tier})")
         self._initialized = True
@@ -242,11 +275,10 @@ class PromptLoader:
         Raises:
             ValueError: If prompt not found
         """
-        # Check cache first
+        # Check cache first (TTLCache with bounded size)
         cache_key = f"{name}:{user_uuid}:{profile_id}"
-        if cache_key in self._prompt_cache:
-            content = self._prompt_cache[cache_key]
-        else:
+        content = self._prompt_cache.get(cache_key)
+        if content is None:
             # Load with override hierarchy
             content = self._load_with_overrides(name, user_uuid, profile_id)
             self._prompt_cache[cache_key] = content
@@ -422,20 +454,26 @@ class PromptLoader:
                              profile_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Load parameter values for a prompt (global + prompt-specific + overrides).
-        
+
         Args:
             name: Prompt name
             user_uuid: User UUID for parameter overrides (optional)
             profile_id: Profile ID for parameter overrides (optional)
-        
+
         Returns:
             dict: Parameter name -> value mapping
         """
+        # Check parameter cache first (Phase 1 scaling)
+        param_cache_key = f"params:{name}:{user_uuid}:{profile_id}"
+        cached = self._parameter_cache.get(param_cache_key)
+        if cached is not None:
+            return cached
+
         import sqlite3
-        
+
         conn = self._get_db_connection()
         cursor = conn.cursor()
-        
+
         try:
             # Get prompt ID
             cursor.execute("SELECT id FROM prompts WHERE name = ?", (name,))
@@ -443,31 +481,31 @@ class PromptLoader:
             if not row:
                 logger.warning(f"Prompt '{name}' not found for parameter loading")
                 return {}
-            
+
             prompt_id = row[0]
-            
+
             # Build parameters dictionary starting with global parameters
             parameters = {}
-            
+
             # 1. Load global parameters
             cursor.execute("""
-                SELECT parameter_name, default_value 
+                SELECT parameter_name, default_value
                 FROM global_parameters
             """)
             for row in cursor.fetchall():
                 parameters[row[0]] = row[1]
-            
+
             # 2. Load prompt-specific parameters (override globals if same name)
             cursor.execute("""
-                SELECT parameter_name, default_value 
+                SELECT parameter_name, default_value
                 FROM prompt_parameters
                 WHERE prompt_id = ?
             """, (prompt_id,))
             for row in cursor.fetchall():
                 parameters[row[0]] = row[1]
-            
+
             logger.debug(f"Loaded {len(parameters)} parameters for prompt '{name}': {list(parameters.keys())}")
-            
+
             # 3. Load parameter overrides (user or profile)
             if user_uuid or profile_id:
                 cursor.execute("""
@@ -483,9 +521,11 @@ class PromptLoader:
                     override_count += 1
                 if override_count > 0:
                     logger.debug(f"Applied {override_count} parameter overrides")
-            
+
+            # Cache the result
+            self._parameter_cache[param_cache_key] = parameters
             return parameters
-            
+
         finally:
             conn.close()
     

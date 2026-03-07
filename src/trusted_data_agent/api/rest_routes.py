@@ -506,11 +506,11 @@ async def execute_prompt_raw(prompt_name: str):
                                                 llm_configs = config_manager.get_llm_configurations(user_uuid)
                                                 llm_config = next((cfg for cfg in llm_configs if cfg.get("id") == llm_config_id), None)
                                                 if llm_config:
-                                                    from trusted_data_agent.llm.client_factory import create_llm_client
+                                                    from trusted_data_agent.llm.client_factory import get_or_create_llm_client
                                                     provider = llm_config.get("provider")
                                                     model = llm_config.get("model")
                                                     credentials = llm_config.get("credentials", {})
-                                                    llm_instance = await create_llm_client(provider, model, credentials)
+                                                    llm_instance = await get_or_create_llm_client(provider, model, credentials)
                                                     set_user_llm_instance(llm_instance, user_uuid)
                                                     current_app.logger.info("Created LLM instance from profile")
 
@@ -7258,7 +7258,7 @@ async def reclassify_profile(profile_id: str):
         app_logger.info(f"Cleared classification cache for profile {profile_id}")
         
         # Initialize temporary clients if needed
-        from trusted_data_agent.llm.client_factory import create_llm_client
+        from trusted_data_agent.llm.client_factory import get_or_create_llm_client
         
         # Authentication is always enabled - encryption always available
         ENCRYPTION_AVAILABLE = True
@@ -7324,9 +7324,9 @@ async def reclassify_profile(profile_id: str):
                     "message": f"No credentials available for {provider}. Credentials must be stored in the encrypted database. Please save your LLM configuration credentials first."
                 }), 400
         
-        # Create temporary LLM client
+        # Create temporary LLM client (pooled)
         app_logger.info(f"Creating temporary LLM client for {provider}/{model}")
-        temp_llm_instance = await create_llm_client(provider, model, credentials)
+        temp_llm_instance = await get_or_create_llm_client(provider, model, credentials)
 
         # Determine if MCP is needed based on profile type
         profile_type = profile.get('profile_type', 'tool_enabled')
