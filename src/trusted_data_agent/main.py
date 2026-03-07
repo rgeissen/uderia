@@ -335,7 +335,7 @@ def create_app():
             await _rebuild_session_index()
 
         # Start RAG processing workers (configurable via TDA_RAG_WORKERS env var)
-        _rag_worker_count = int(os.environ.get('TDA_RAG_WORKERS', '4'))
+        _rag_worker_count = int(os.environ.get('TDA_RAG_WORKERS', '2'))
         for _i in range(_rag_worker_count):
             asyncio.create_task(rag_processing_worker())
         app_logger.info(f"Started {_rag_worker_count} RAG processing worker(s)")

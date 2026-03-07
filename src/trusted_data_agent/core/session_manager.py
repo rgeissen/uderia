@@ -227,8 +227,28 @@ async def _query_session_index(user_uuid: str, include_archived: bool = False,
         return None
 
 
+_INDEX_KEYS = frozenset({
+    "id", "name", "created_at", "last_updated", "profile_tag", "profile_id",
+    "archived", "archived_at", "is_temporary", "temporary_purpose",
+    "models_used", "profile_tags_used", "genie_metadata"
+})
+
+
+async def _read_session_metadata_only(session_file: Path) -> dict | None:
+    """Read a session file and extract only the metadata fields needed for indexing.
+    Avoids retaining the full chat/workflow history in memory."""
+    async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+        content = await f.read()
+    full_data = json.loads(content)
+    del content  # Release raw string for GC
+    metadata = {k: full_data[k] for k in _INDEX_KEYS if k in full_data}
+    del full_data  # Release full parsed dict for GC
+    return metadata if metadata else None
+
+
 async def _rebuild_session_index():
-    """Full scan of session JSON files to populate/rebuild the index."""
+    """Full scan of session JSON files to populate/rebuild the index.
+    Uses metadata-only reads to minimize memory usage during rebuild."""
     if not _session_index_ready:
         app_logger.warning("Cannot rebuild session index: not initialized")
         return
@@ -239,12 +259,14 @@ async def _rebuild_session_index():
             return
         for session_file in SESSIONS_DIR.glob("**/*.json"):
             try:
-                async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
-                    content = await f.read()
-                    data = json.loads(content)
-                session_id = data.get("id", session_file.stem)
-                await _upsert_session_index(session_id, data)
-                count += 1
+                data = await _read_session_metadata_only(session_file)
+                if data:
+                    session_id = data.get("id", session_file.stem)
+                    await _upsert_session_index(session_id, data)
+                    count += 1
+                    # Yield to event loop periodically to avoid blocking startup
+                    if count % 50 == 0:
+                        await asyncio.sleep(0)
             except Exception as e:
                 errors += 1
                 app_logger.debug(f"Skipped {session_file.name} during index rebuild: {e}")
