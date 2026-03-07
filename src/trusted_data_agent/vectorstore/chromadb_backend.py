@@ -173,10 +173,10 @@ class ChromaDBBackend(VectorStoreBackend):
         include_embeddings: bool = False,
     ) -> GetResult:
         """Convert a ChromaDB get() result into a flat GetResult."""
-        ids = raw.get("ids") or []
-        documents_text = raw.get("documents") or []
-        metadatas = raw.get("metadatas") or []
-        embeddings = raw.get("embeddings") or []
+        ids = raw.get("ids") if raw.get("ids") is not None else []
+        documents_text = raw.get("documents") if raw.get("documents") is not None else []
+        metadatas = raw.get("metadatas") if raw.get("metadatas") is not None else []
+        embeddings = raw.get("embeddings") if raw.get("embeddings") is not None else []
 
         docs: List[VectorDocument] = []
         for i, doc_id in enumerate(ids):

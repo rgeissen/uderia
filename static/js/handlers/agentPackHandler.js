@@ -645,7 +645,8 @@ async function handleCreateAgentPack() {
     }
 
     try {
-        const res = await fetch('/api/v1/agent-packs/create', {
+        // Step 1: Create the .agentpack ZIP
+        const createRes = await fetch('/api/v1/agent-packs/create', {
             method: 'POST',
             headers: _headers(true),
             body: JSON.stringify({
@@ -655,27 +656,47 @@ async function handleCreateAgentPack() {
             }),
         });
 
-        if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.message || `Create failed (${res.status})`);
+        if (!createRes.ok) {
+            const errData = await createRes.json().catch(() => ({}));
+            throw new Error(errData.message || `Create failed (${createRes.status})`);
         }
 
-        // Trigger download
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${result.name.replace(/\s+/g, '_')}.agentpack`;
-        const cd = res.headers.get('content-disposition');
-        if (cd) {
-            const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-            if (match) a.download = match[1].replace(/['"]/g, '');
+        // Step 2: Import the ZIP to install it
+        const blob = await createRes.blob();
+        const file = new File([blob], `${result.name.replace(/\s+/g, '_')}.agentpack`, { type: 'application/zip' });
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('conflict_strategy', 'expand');
+
+        const token = localStorage.getItem('tda_auth_token');
+        const importRes = await fetch('/api/v1/agent-packs/import', {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: formData,
+        });
+
+        const data = await importRes.json();
+        if (!importRes.ok || data.status === 'error') {
+            throw new Error(data.message || `Install failed (${importRes.status})`);
         }
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        _notify('success', `Agent pack "${result.name}" created and downloaded`);
+
+        let successMsg = `Agent pack "${result.name}" created (${data.profiles_created || data.experts_created || 0} profiles, ${data.collections_created} collections)`;
+        if (data.tag_remap && Object.keys(data.tag_remap).length > 0) {
+            const remapList = Object.entries(data.tag_remap)
+                .map(([old, nw]) => `@${old} → @${nw}`)
+                .join(', ');
+            successMsg += ` | Tags renamed: ${remapList}`;
+        }
+        _notify('success', successMsg);
+
+        if (data.warnings && data.warnings.length > 0) {
+            data.warnings.forEach(w => _notify('warning', w));
+        }
+
+        await loadAgentPacks();
+        await configState.loadProfiles();
+        renderProfiles();
+        loadKnowledgeRepositories();
     } catch (err) {
         _notify('error', `Create failed: ${err.message}`);
     } finally {
@@ -904,8 +925,10 @@ async function _showCreatePackModal(profiles) {
                 for (const kc of kCollections) {
                     if (kc.name) knowledgeRepos.add(kc.name);
                 }
-                // Planner collections (integer IDs — resolve to name)
-                const plannerIds = prof.ragCollections || [];
+                // Planner collections (only for tool-using profiles)
+                const usesTools = prof.profile_type === 'tool_enabled' ||
+                    (prof.profile_type === 'llm_only' && prof.useMcpTools);
+                const plannerIds = usesTools ? (prof.ragCollections || []) : [];
                 for (const pid of plannerIds) {
                     if (pid === '*') continue;
                     const coll = allCollections.find(c => c.id === pid);
@@ -977,19 +1000,27 @@ async function _showCreatePackModal(profiles) {
 
 async function handleExportAgentPack(installationId) {
     try {
-        // First get pack details to find coordinator_profile_id
+        // Get pack details to extract profile IDs
         const detailRes = await fetch(`/api/v1/agent-packs/${installationId}`, { headers: _headers(false) });
         if (!detailRes.ok) throw new Error(`Failed to get pack details (${detailRes.status})`);
         const detail = await detailRes.json();
-        const coordProfileId = detail.coordinator_profile_id;
-        if (!coordProfileId) throw new Error('No coordinator profile found for this pack');
+
+        // Extract profile IDs from pack resources
+        const profileIds = (detail.resources || [])
+            .filter(r => r.resource_type === 'profile')
+            .map(r => r.resource_id);
+        if (profileIds.length === 0) throw new Error('No profiles found in this pack');
 
         _notify('info', 'Exporting agent pack...');
 
-        const res = await fetch('/api/v1/agent-packs/export', {
+        const res = await fetch('/api/v1/agent-packs/create', {
             method: 'POST',
             headers: _headers(true),
-            body: JSON.stringify({ coordinator_profile_id: coordProfileId }),
+            body: JSON.stringify({
+                profile_ids: profileIds,
+                name: detail.name || 'Agent Pack',
+                description: detail.description || '',
+            }),
         });
 
         if (!res.ok) {

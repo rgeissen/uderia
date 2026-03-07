@@ -864,8 +864,13 @@ class AgentPackManager:
                     except Exception as e:
                         app_logger.warning(f"Failed to export collection {coll_id} for @{profile.get('tag')}: {e}")
 
-                # Also check ragCollections (planner repos on tool_enabled profiles)
-                rag_collection_ids = profile.get("ragCollections", [])
+                # Also check ragCollections (planner repos for tool-using profiles only)
+                profile_type = profile.get("profile_type", "")
+                uses_tools = (
+                    profile_type == "tool_enabled"
+                    or (profile_type == "llm_only" and profile.get("useMcpTools"))
+                )
+                rag_collection_ids = profile.get("ragCollections", []) if uses_tools else []
                 for coll_id in rag_collection_ids:
                     if coll_id in exported_collection_ids:
                         existing_ref = next(
