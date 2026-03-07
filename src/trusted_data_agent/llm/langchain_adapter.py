@@ -308,16 +308,17 @@ def _create_friendli_llm(model: str, credentials: dict, temperature: float) -> A
 
         logger.info(f"Creating Friendli LLM with base_url={base_url}, model={model}")
 
-        # CRITICAL FIX: stream_usage=True is required for FriendliAI to populate usage_metadata
-        # When using ChatOpenAI with a custom base_url, stream_usage defaults to False
-        # Without this, usage_metadata will be None/empty even for non-streaming calls
+        # CRITICAL: Streaming disabled for Friendli — Llama models may not emit stop tokens
+        # in streaming mode, causing infinite token generation. Non-streaming mode enforces
+        # max_tokens server-side. Token usage extracted from response's usage field instead.
         return ChatOpenAI(
             model=model,
             api_key=friendli_token,
             base_url=base_url,
             temperature=temperature,
-            timeout=60,  # 60 second timeout to prevent hanging on unavailable models
-            stream_usage=True  # Enable token usage tracking for FriendliAI
+            max_tokens=16384,  # Cap response length
+            timeout=120,  # HTTP timeout
+            streaming=False,  # Disable streaming — Friendli/Llama may generate infinite tokens in streaming mode
         )
     except ImportError:
         raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")
@@ -487,9 +488,12 @@ async def load_mcp_tools_for_langchain(
 
         mcp_server_url = f"http://{host}:{port}{path}"
         # StreamableHttpConnection is a TypedDict - must include 'transport' key
+        from datetime import timedelta
         connection = {
             "transport": "streamable_http",
-            "url": mcp_server_url
+            "url": mcp_server_url,
+            "timeout": timedelta(seconds=30),
+            "sse_read_timeout": timedelta(seconds=120),
         }
         logger.info(f"Using HTTP connection for MCP server {mcp_server_id}: {mcp_server_url}")
 

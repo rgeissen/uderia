@@ -1,12 +1,17 @@
 # trusted_data_agent/mcp/adapter.py
+import asyncio
 import copy
 import json
 import logging
+import os
 import re
 import statistics as _stats
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta
+
+# Configurable MCP tool call timeout (seconds). Prevents infinite hangs.
+_MCP_TOOL_TIMEOUT = int(os.environ.get('TDA_MCP_TOOL_TIMEOUT', '120'))
 
 from pydantic import ValidationError
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -1904,8 +1909,15 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
         if not server_id:
             raise Exception("MCP server ID not found in configuration.")
 
-        async with mcp_client.session(server_id) as temp_session:
-            call_tool_result = await temp_session.call_tool(tool_name, aligned_args)
+        async def _do_mcp_call():
+            async with mcp_client.session(server_id) as temp_session:
+                return await temp_session.call_tool(tool_name, aligned_args)
+
+        call_tool_result = await asyncio.wait_for(_do_mcp_call(), timeout=_MCP_TOOL_TIMEOUT)
+    except asyncio.TimeoutError:
+        app_logger.error(f"⏱️ [MCP TIMEOUT] Tool '{tool_name}' timed out after {_MCP_TOOL_TIMEOUT}s. Server ID: {server_id}")
+        result = {"status": "error", "error": f"Tool '{tool_name}' timed out after {_MCP_TOOL_TIMEOUT} seconds. The MCP server may be unresponsive.", "data": f"Timeout after {_MCP_TOOL_TIMEOUT}s"}
+        return result, 0, 0
     except Exception as e:
         app_logger.error(f"❌ [MCP CALL ERROR] Tool '{tool_name}' failed: {e}", exc_info=True)
         result = {"status": "error", "error": f"An exception occurred while invoking tool '{tool_name}'.", "data": str(e)}

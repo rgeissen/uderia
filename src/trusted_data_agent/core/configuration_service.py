@@ -101,9 +101,12 @@ def build_mcp_server_config(server_id: str, server_data: dict) -> dict:
         # Build URL
         mcp_server_url = f"http://{host}:{port}{path}"
 
+        from datetime import timedelta
         config = {
             'transport': 'streamable_http',
-            'url': mcp_server_url
+            'url': mcp_server_url,
+            'timeout': timedelta(seconds=30),
+            'sse_read_timeout': timedelta(seconds=120),
         }
 
         app_logger.debug(f"Building HTTP config for {server_id}: {mcp_server_url}")

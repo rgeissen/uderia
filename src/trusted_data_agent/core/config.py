@@ -67,6 +67,9 @@ class AppConfig:
     MAX_EXECUTION_DEPTH = 5  # Maximum nesting depth for delegated prompt execution
     MAX_PHASE_RETRY_ATTEMPTS = 5  # Maximum retry attempts per phase before LLM recovery
 
+    # Langchain agent limits
+    LANGCHAIN_MAX_ITERATIONS = 25  # Max tool invocations for conversation agent (LangGraph recursion_limit = 2x)
+
     # Knowledge chunking defaults
     KNOWLEDGE_CHUNK_SIZE = 1_000  # Default chunk size in characters for document segmentation
     KNOWLEDGE_CHUNK_OVERLAP = 200  # Overlap between consecutive document chunks

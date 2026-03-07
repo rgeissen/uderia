@@ -1946,7 +1946,7 @@ class PlanExecutor:
                 llm_instance=llm_instance,
                 mcp_tools=all_tools,
                 async_event_handler=self.event_handler,  # Real-time SSE via asyncio.create_task()
-                max_iterations=5,
+                max_iterations=APP_CONFIG.LANGCHAIN_MAX_ITERATIONS,
                 conversation_history=conversation_history,
                 knowledge_context=knowledge_context_str or None,  # From knowledge retrieval and/or KG enrichment
                 document_context=self.document_context,
@@ -1960,7 +1960,24 @@ class PlanExecutor:
             )
 
             # Execute agent (events are emitted in real-time via async_event_handler)
-            result = await agent.execute(self.original_user_input)
+            # Wrap with timeout to prevent indefinite hangs (e.g. Friendli streaming stalls)
+            import os
+            _conv_timeout = int(os.environ.get('TDA_CONVERSATION_AGENT_TIMEOUT', '300'))
+            try:
+                result = await asyncio.wait_for(
+                    agent.execute(self.original_user_input),
+                    timeout=_conv_timeout
+                )
+            except asyncio.TimeoutError:
+                app_logger.error(
+                    f"⏱️ Conversation agent timed out after {_conv_timeout}s. "
+                    f"Provider: {self.current_provider}, Model: {self.current_model}"
+                )
+                raise Exception(
+                    f"The AI model did not respond within {_conv_timeout} seconds. "
+                    f"This may be a temporary issue with the {self.current_provider} provider. "
+                    f"Please try again or switch to a different model."
+                )
 
             # Note: Events are now emitted in real-time via asyncio.create_task() in the agent
             # The collected_events in result are used for session storage/replay only
@@ -1985,18 +2002,19 @@ class PlanExecutor:
             self.turn_input_tokens += combined_input
             self.turn_output_tokens += combined_output
 
-            # CRITICAL: Conversation agent uses LangChain directly (not llm_handler)
-            # so we must explicitly update session token counts here.
-            # NOTE: Only add LangChain tokens — component tokens already in DB.
-            if input_tokens > 0 or output_tokens > 0:
+            # LangChain tokens are now persisted incrementally per LLM step
+            # inside conversation_agent.py (via update_token_count per on_chat_model_end).
+            # Only persist component LLM tokens here (chart mapping, etc.) since those
+            # are NOT captured by LangChain callbacks.
+            if comp_llm_in > 0 or comp_llm_out > 0:
                 await session_manager.update_token_count(
                     self.user_uuid,
                     self.session_id,
-                    input_tokens,
-                    output_tokens
+                    comp_llm_in,
+                    comp_llm_out
                 )
 
-            # Emit token update event with updated session totals
+            # Emit final token_update event with complete session totals
             updated_session = await session_manager.get_session(self.user_uuid, self.session_id)
             if updated_session:
                 # Calculate cost using combined tokens (LangChain + component LLM)

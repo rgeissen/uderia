@@ -396,9 +396,12 @@ RESPONSE FORMAT:
             llm_start_time = None
 
             # Use astream_events to track tool calls in real-time
+            # Pass recursion_limit in config to control max agent iterations
+            # A value of N allows roughly N/2 tool invocations since each iteration is tool_call -> tool_result
             async for event in self.agent_executor.astream_events(
                 {"messages": messages},
-                version="v2"
+                version="v2",
+                config={"recursion_limit": self.max_iterations * 2}
             ):
                 event_kind = event.get("event", "")
                 event_name = event.get("name", "")
@@ -545,6 +548,32 @@ RESPONSE FORMAT:
 
                     logger.info(f"[ConvAgent] ✓ Emitted conversation_llm_step event #{self.llm_call_count} ({step_name})")
 
+                    # Emit incremental token_update so header KPI counters update in real-time
+                    # (not just after the entire agent execution completes)
+                    if self.async_event_handler and (input_tokens > 0 or output_tokens > 0):
+                        try:
+                            from trusted_data_agent.core import session_manager
+                            import uuid as _uuid
+                            # Persist this step's tokens to session DB
+                            await session_manager.update_token_count(
+                                self.user_uuid, self.session_id, input_tokens, output_tokens
+                            )
+                            # Read updated session totals
+                            session_data = await session_manager.get_session(self.user_uuid, self.session_id)
+                            await self.async_event_handler({
+                                "statement_input": input_tokens,
+                                "statement_output": output_tokens,
+                                "turn_input": total_input_tokens,
+                                "turn_output": total_output_tokens,
+                                "total_input": session_data.get("input_tokens", 0) if session_data else 0,
+                                "total_output": session_data.get("output_tokens", 0) if session_data else 0,
+                                "call_id": str(_uuid.uuid4()),
+                                "cost_usd": call_cost
+                            }, "token_update")
+                            logger.info(f"[ConvAgent] ✓ Emitted incremental token_update: stmt={input_tokens}/{output_tokens}, turn={total_input_tokens}/{total_output_tokens}")
+                        except Exception as e:
+                            logger.warning(f"[ConvAgent] Failed to emit incremental token_update: {e}")
+
                     # CRITICAL: Yield control to event loop to allow SSE consumer to process queue
                     # Use small non-zero delay to ensure SSE actually gets scheduled
                     await asyncio.sleep(0.001)
@@ -646,7 +675,7 @@ RESPONSE FORMAT:
                         "success": True,
                         "session_id": self.session_id
                     })
-                    logger.info(f"[ConvAgent] ✓ Emitted conversation_tool_completed event with result_preview: {bool(output_preview)}")
+                    logger.info(f"[ConvAgent] Tool completed: {tool_name} ({duration_ms}ms)")
 
                     # Detect component render payloads (chart specs, code blocks, etc.)
                     # so the executor can generate data-component-id divs for the frontend.

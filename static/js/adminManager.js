@@ -2437,7 +2437,7 @@ const AdminManager = {
      */
     setupAIKnowledgeChangeListeners() {
         const fields = [
-            'llm-max-retries', 'llm-base-delay', 'llm-max-output-tokens',
+            'llm-max-retries', 'llm-base-delay', 'llm-max-output-tokens', 'langchain-max-iterations',
             'rag-refresh-startup', 'rag-num-examples', 'rag-embedding-model',
             'knowledge-rag-enabled', 'knowledge-min-relevance', 'knowledge-num-docs',
             'knowledge-max-tokens', 'knowledge-reranking-enabled',
@@ -3073,6 +3073,7 @@ const AdminManager = {
             llm_max_retries: 'llm-max-retries',
             llm_base_delay: 'llm-base-delay',
             llm_max_output_tokens: 'llm-max-output-tokens',
+            langchain_max_iterations: 'langchain-max-iterations',
             rag_refresh: 'rag-refresh-startup',
             rag_num_examples: 'rag-num-examples',
             rag_embedding_model: 'rag-embedding-model',
@@ -3644,6 +3645,11 @@ const AdminManager = {
                                 this.setFieldValue('llm-max-output-tokens', s.llm_behavior.max_output_tokens);
                             }
 
+                            // Langchain Behavior
+                            if (s.langchain_behavior) {
+                                this.setFieldValue('langchain-max-iterations', s.langchain_behavior.max_iterations);
+                            }
+
                             // Document Context (System Operations tab)
                             if (s.performance) {
                                 this.setFieldValue('document-context-max-chars', s.performance.document_context_max_chars);
@@ -3978,6 +3984,9 @@ const AdminManager = {
                     max_retries: parseInt(this.getFieldValue('llm-max-retries')),
                     base_delay: parseFloat(this.getFieldValue('llm-base-delay')),
                     max_output_tokens: parseInt(this.getFieldValue('llm-max-output-tokens'))
+                },
+                langchain_behavior: {
+                    max_iterations: parseInt(this.getFieldValue('langchain-max-iterations'))
                 }
             };
 

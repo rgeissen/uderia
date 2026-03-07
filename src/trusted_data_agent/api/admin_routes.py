@@ -1532,6 +1532,9 @@ async def get_expert_settings():
             'security': {
                 'session_timeout': APP_CONFIG.SESSION_TIMEOUT_HOURS if hasattr(APP_CONFIG, 'SESSION_TIMEOUT_HOURS') else 24,
                 'token_expiry': APP_CONFIG.TOKEN_EXPIRY_HOURS if hasattr(APP_CONFIG, 'TOKEN_EXPIRY_HOURS') else 168
+            },
+            'langchain_behavior': {
+                'max_iterations': APP_CONFIG.LANGCHAIN_MAX_ITERATIONS
             }
         }
         
@@ -1580,6 +1583,12 @@ async def save_expert_settings():
             if 'max_output_tokens' in llm:
                 APP_CONFIG.LLM_MAX_OUTPUT_TOKENS = int(llm['max_output_tokens'])
         
+        # Update Langchain behavior settings
+        if 'langchain_behavior' in data:
+            lc = data['langchain_behavior']
+            if 'max_iterations' in lc:
+                APP_CONFIG.LANGCHAIN_MAX_ITERATIONS = max(1, min(100, int(lc['max_iterations'])))
+
         # Update agent configuration
         if 'agent_config' in data:
             agent = data['agent_config']
