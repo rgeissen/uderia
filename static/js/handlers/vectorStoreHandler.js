@@ -253,6 +253,13 @@
             connectionTested = (config.backend_type === 'teradata' || config.backend_type === 'qdrant');
             clearTestResults();
             toggleBackendFields();
+            // Restore embedding model from backend_config (after toggleBackendFields populates options)
+            if (bc.embedding_model) {
+                const embSel = document.getElementById('vs-embedding-model');
+                if (embSel && [...embSel.options].some(o => o.value === bc.embedding_model)) {
+                    embSel.value = bc.embedding_model;
+                }
+            }
             document.getElementById('vector-store-modal').classList.remove('hidden');
         } catch (e) {
             showToast(`Failed to load configuration: ${e.message}`, 'error');
@@ -282,9 +289,30 @@
         if (qdrantFields) qdrantFields.classList.toggle('hidden', backendType !== 'qdrant');
         const testBtn = document.getElementById('vs-test-btn');
         if (testBtn) testBtn.classList.toggle('hidden', backendType === 'chromadb');
+        // Update embedding model options for selected backend
+        updateEmbeddingOptions(backendType);
         // Reset test state when switching backend type
         connectionTested = false;
         clearTestResults();
+    }
+
+    function updateEmbeddingOptions(backendType) {
+        const sel = document.getElementById('vs-embedding-model');
+        if (!sel) return;
+        const prev = sel.value;
+        if (backendType === 'teradata') {
+            sel.innerHTML =
+                '<option value="amazon.titan-embed-text-v1">amazon.titan-embed-text-v1 (AWS Bedrock)</option>' +
+                '<option value="amazon.titan-embed-text-v2:0">amazon.titan-embed-text-v2:0 (AWS Bedrock v2)</option>' +
+                '<option value="text-embedding-ada-002">text-embedding-ada-002 (Azure OpenAI)</option>';
+        } else {
+            sel.innerHTML =
+                '<option value="all-MiniLM-L6-v2">all-MiniLM-L6-v2 (fast, lightweight)</option>' +
+                '<option value="all-mpnet-base-v2">all-mpnet-base-v2 (balanced)</option>' +
+                '<option value="all-distilroberta-v1">all-distilroberta-v1 (high quality)</option>';
+        }
+        // Restore previous selection if still available
+        if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
     }
 
     function clearTestResults() {
@@ -489,6 +517,9 @@
 
             const payload = { name, backend_type: backendType };
 
+            // Embedding model applies to all backend types
+            const embeddingModel = document.getElementById('vs-embedding-model')?.value;
+
             if (backendType === 'teradata') {
                 payload.backend_config = {
                     host: document.getElementById('vs-host').value.trim(),
@@ -556,6 +587,12 @@
                 }
             } else {
                 payload.backend_config = {};
+            }
+
+            // Inject embedding model into backend_config for all backends
+            if (embeddingModel) {
+                if (!payload.backend_config) payload.backend_config = {};
+                payload.backend_config.embedding_model = embeddingModel;
             }
 
             try {

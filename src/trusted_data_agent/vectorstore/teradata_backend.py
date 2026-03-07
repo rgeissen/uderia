@@ -605,8 +605,19 @@ class TeradataVectorBackend(VectorStoreBackend):
                     return vs
                 if any(kw in status_str for kw in ("FAILED", "ERROR", "ABORTED")):
                     self._vs_operation_active = False
+                    # Try to capture detailed failure reason from get_details()
+                    fail_detail = ""
+                    try:
+                        details = await self._run_in_td_thread(
+                            lambda: vs.get_details(return_type="json")
+                        )
+                        if details and isinstance(details, dict):
+                            fail_detail = f" | details: {details}"
+                            logger.error(f"VS '{operation}' failure details: {details}")
+                    except Exception:
+                        pass
                     raise RuntimeError(
-                        f"Teradata VS operation '{operation}' failed with status: {status_str}"
+                        f"Teradata VS operation '{operation}' failed with status: {status_str}{fail_detail}"
                     )
             except RuntimeError:
                 self._vs_operation_active = False
@@ -1014,6 +1025,14 @@ class TeradataVectorBackend(VectorStoreBackend):
         if config.footer_height > 0:
             create_kwargs["footer_height"] = config.footer_height
 
+        logger.info(
+            f"VS create kwargs: embeddings_model={create_kwargs['embeddings_model']}, "
+            f"search_algorithm={create_kwargs['search_algorithm']}, "
+            f"target_database={create_kwargs['target_database']}, "
+            f"document_files={create_kwargs['document_files']}, "
+            f"chunk_size={create_kwargs['chunk_size']}, "
+            f"optimized_chunking={create_kwargs['optimized_chunking']}"
+        )
         await self._run_in_td_thread(vs.create, **create_kwargs)
         # PDF processing with Bedrock embeddings can take 15–30+ minutes
         vs = await self._poll_status(
